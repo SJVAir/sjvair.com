@@ -52,12 +52,15 @@ def carb(criteria_by_county, toxics_by_county, urls=None):
     return get
 
 
-def geocode_all(addresses, **kwargs):
-    return [(address, POINT, 'census') for address in addresses]
+CARB_POINT = Point(-119.79, 36.74, srid=4326)
 
 
-def geocode_maptiler(addresses, **kwargs):
-    return [(address, POINT, 'maptiler') for address in addresses]
+def census_all(addresses, **kwargs):
+    return [(address, POINT) for address in addresses]
+
+
+def none_found(addresses, **kwargs):
+    return [(address, None) for address in addresses]
 
 
 class ImportCeidarsTests(TestCase):
@@ -71,15 +74,21 @@ class ImportCeidarsTests(TestCase):
             county.metadata['ca_county_code'] = CA_COUNTY_CODES[county.name]
             county.save(update_fields=['metadata'])
 
-    def run_import(self, year=2024, county=None, criteria=None, toxics=None, urls=None, geocode=geocode_all):
+    def run_import(self, year=2024, county=None, criteria=None, toxics=None, urls=None,
+                   census=census_all, maptiler=none_found, markers=None, regeocode=False):
         criteria = criteria if criteria is not None else {10: FRESNO_CRITERIA, 15: KERN_CRITERIA}
         toxics = toxics if toxics is not None else {10: FRESNO_TOXICS, 15: KERN_TOXICS}
-        with patch('requests.get', side_effect=carb(criteria, toxics, urls)):
-            with patch('camp.utils.geocode.resolve_batch', side_effect=geocode):
-                kwargs = {'year': year}
-                if county:
-                    kwargs['county'] = county
-                call_command('import_ceidars', **kwargs)
+        with patch('requests.get', side_effect=carb(criteria, toxics, urls)), \
+                patch('camp.apps.emissions.pmt.fetch_markers', return_value=(markers or {}, [2024])), \
+                patch('camp.utils.geocode.census_batch', side_effect=census), \
+                patch('camp.utils.geocode.maptiler_batch', side_effect=maptiler) as maptiler_mock:
+            kwargs = {'year': year}
+            if county:
+                kwargs['county'] = county
+            if regeocode:
+                kwargs['regeocode'] = True
+            call_command('import_ceidars', **kwargs)
+        return maptiler_mock
 
     def test_creates_facility_and_record(self):
         self.run_import(county='fresno')
@@ -140,7 +149,7 @@ class ImportCeidarsTests(TestCase):
         assert facility.emissions.count() == 2
 
     def test_geocode_failure_does_not_abort(self):
-        self.run_import(county='fresno', geocode=lambda addresses, **kw: [(a, None, '') for a in addresses])
+        self.run_import(county='fresno', census=none_found)
         facility = Facility.objects.get(county_code=10, facid=1)
         assert facility.point is None
         assert facility.emissions.count() == 1
@@ -149,11 +158,48 @@ class ImportCeidarsTests(TestCase):
         self.run_import(county='fresno')
         assert Facility.objects.get(county_code=10, facid=1).point_source == Facility.PointSource.CENSUS
         Facility.objects.all().delete()
-        self.run_import(county='fresno', geocode=geocode_maptiler)
+        self.run_import(county='fresno', census=none_found, maptiler=census_all)
         assert Facility.objects.get(county_code=10, facid=1).point_source == Facility.PointSource.MAPTILER
 
+    def test_carb_coordinates_come_before_maptiler(self):
+        maptiler = self.run_import(county='fresno', census=none_found, maptiler=census_all, markers={(10, 'SJU', 1): CARB_POINT})
+        facility = Facility.objects.get(county_code=10, facid=1)
+        assert facility.point.equals_exact(CARB_POINT, 1e-9) and facility.point_source == Facility.PointSource.CARB
+        assert maptiler.call_args.args[0] == []  # no MapTiler request for a facility CARB placed
+
+    def test_a_census_street_match_beats_carb(self):
+        self.run_import(county='fresno', markers={(10, 'SJU', 1): CARB_POINT})
+        facility = Facility.objects.get(county_code=10, facid=1)
+        assert facility.point == POINT and facility.point_source == Facility.PointSource.CENSUS
+
+    def test_an_untrusted_point_is_upgraded_on_the_next_run(self):
+        self.run_import(county='fresno', census=none_found, maptiler=census_all)
+        assert Facility.objects.get(county_code=10, facid=1).point_source == Facility.PointSource.MAPTILER
+        self.run_import(county='fresno', census=none_found, markers={(10, 'SJU', 1): CARB_POINT})
+        assert Facility.objects.get(county_code=10, facid=1).point_source == Facility.PointSource.CARB
+
+    def test_a_legacy_point_with_nothing_better_is_kept(self):
+        self.run_import(county='fresno')
+        Facility.objects.filter(county_code=10, facid=1).update(point_source=Facility.PointSource.LEGACY)
+        self.run_import(county='fresno', census=none_found)
+        facility = Facility.objects.get(county_code=10, facid=1)
+        assert facility.point == POINT and facility.point_source == Facility.PointSource.LEGACY
+
+    def test_a_trusted_point_is_left_alone_without_regeocode(self):
+        self.run_import(county='fresno')
+        located = []
+
+        def census(addresses, **kwargs):
+            located.extend(addresses)
+            return census_all(addresses)
+
+        self.run_import(county='fresno', census=census)
+        assert located == []
+        self.run_import(county='fresno', census=census, regeocode=True)
+        assert [address['street'] for address in located] == ['123 MAIN ST']
+
     def test_no_point_means_no_source(self):
-        self.run_import(county='fresno', geocode=lambda addresses, **kwargs: [])
+        self.run_import(county='fresno', census=lambda addresses, **kwargs: [])
         facility = Facility.objects.get(county_code=10, facid=1)
         assert facility.point is None and facility.point_source == ''
 
@@ -178,7 +224,7 @@ class ImportCeidarsTests(TestCase):
 
     def test_point_outside_the_county_is_dropped(self):
         slovakia = Point(19.174, 48.741, srid=4326)
-        self.run_import(county='fresno', geocode=lambda addresses, **kw: [(a, slovakia, 'census') for a in addresses])
+        self.run_import(county='fresno', census=lambda addresses, **kw: [(a, slovakia) for a in addresses])
         assert Facility.objects.get(county_code=10, facid=1).point is None
 
     def test_various_locations_are_not_geocoded(self):
@@ -189,9 +235,9 @@ class ImportCeidarsTests(TestCase):
 
         def geocode(addresses, **kw):
             geocoded.extend(addresses)
-            return [(a, POINT, 'census') for a in addresses]
+            return [(a, POINT) for a in addresses]
 
-        self.run_import(county='fresno', criteria=criteria, toxics=toxics, geocode=geocode)
+        self.run_import(county='fresno', criteria=criteria, toxics=toxics, census=geocode, maptiler=geocode)
         assert geocoded == []
         facility = Facility.objects.get(county_code=10, facid=1)
         assert facility.point is None

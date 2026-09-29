@@ -1,12 +1,8 @@
-from io import StringIO
 from unittest.mock import MagicMock, patch
 
-from django.contrib.gis.geos import Point
-from django.core.management import call_command
 from django.test import TestCase
 
 from camp.apps.emissions import pmt
-from camp.apps.emissions.models import Facility
 
 COMMA = (
     '"CO","AB","DIS","FACID","FACILITY","LATITUDE","LONGITUDE"\r\n'
@@ -57,55 +53,3 @@ class FetchMarkersTests(TestCase):
         assert markers[(15, 'SJU', 2)].y == 35.37       # only in 2022
         assert (15, 'KER', 2) in markers
 
-
-class ImportCarbLocationsTests(TestCase):
-    fixtures = ['regions.yaml', 'emissions.yaml']
-
-    CENSUS_PLANT = Point(-119.7871, 36.7371, srid=4326)
-
-    def run_command(self, *args, markers=None, census=None):
-        markers = pmt.parse_markers(COMMA) if markers is None else markers
-        census = census or {}
-
-        def census_batch(addresses):
-            for address in addresses:
-                yield address, census.get(address['street'])
-
-        out = StringIO()
-        with patch('camp.apps.emissions.pmt.fetch_markers', return_value=(markers, [2024])):
-            with patch('camp.utils.geocode.census_batch', side_effect=census_batch):
-                call_command('import_carb_locations', *args, stdout=out)
-        return out.getvalue()
-
-    def test_census_street_match_beats_carb(self):
-        self.run_command(census={'123 MAIN ST': self.CENSUS_PLANT})
-        plant = Facility.objects.get(name='TEST PLANT')
-        assert plant.point.equals_exact(self.CENSUS_PLANT, 1e-9)
-        assert plant.point_source == Facility.PointSource.CENSUS
-
-    def test_carb_beats_a_non_census_point(self):
-        output = self.run_command()
-        plant = Facility.objects.get(name='TEST PLANT')
-        assert plant.point.equals_exact(Point(-119.79, 36.74, srid=4326), 1e-9)
-        assert plant.point_source == Facility.PointSource.CARB
-        assert 'Updated' in output
-
-    def test_no_carb_point_keeps_the_current_one(self):
-        Facility.objects.filter(name='TEST GAS STATION').update(point_source=Facility.PointSource.LEGACY)
-        before = Facility.objects.get(name='TEST GAS STATION').point
-        self.run_command()
-        station = Facility.objects.get(name='TEST GAS STATION')
-        assert station.point.equals_exact(before, 1e-9)
-        assert station.point_source == Facility.PointSource.LEGACY  # kept, not upgraded
-
-    def test_a_source_change_alone_is_written(self):
-        # Same point as CARB's, but stamped legacy: the source is corrected even though the point doesn't move.
-        Facility.objects.filter(name='TEST PLANT').update(point=Point(-119.79, 36.74, srid=4326), point_source=Facility.PointSource.LEGACY)
-        self.run_command()
-        assert Facility.objects.get(name='TEST PLANT').point_source == Facility.PointSource.CARB
-
-    def test_dry_run_writes_nothing(self):
-        before = Facility.objects.get(name='TEST PLANT').point
-        output = self.run_command('--dry-run')
-        assert Facility.objects.get(name='TEST PLANT').point.equals_exact(before, 1e-9)
-        assert 'Would update' in output

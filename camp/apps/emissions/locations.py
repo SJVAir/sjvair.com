@@ -10,7 +10,7 @@ Street-only addresses ("EUCLID AVE, DINUBA") are kept: approximate, but the
 county check catches the ones that land somewhere absurd.
 
 choose_point decides between a Census street match, CARB's own coordinates
-(pmt.py) and the point a facility already has; import_carb_locations applies it.
+(pmt.py) and the point a facility already has; import_ceidars applies it (locate).
 """
 
 import re
@@ -79,3 +79,20 @@ def choose_point(address, *, census, carb, current, area):
         if plausible(point, area):
             return point
     return None
+
+
+def locate(address, *, census, carb, current, current_source, area):
+    """
+    choose_point's pick and its Facility.point_source: 'census' or 'carb' when
+    that candidate won, `current_source` when the current point stays (a
+    MapTiler result, or a legacy point nothing better replaced), and
+    (None, '') when nothing is plausible.
+    """
+    point = choose_point(address, census=census, carb=carb, current=current, area=area)
+    if point is None:
+        return None, ''
+    if point is census:
+        return point, 'census'
+    if point is carb:
+        return point, 'carb'
+    return point, current_source

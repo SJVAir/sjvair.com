@@ -1,10 +1,11 @@
+import datetime
 import time
 
 import requests
 
 from django.core.management.base import BaseCommand, CommandError
 
-from camp.apps.emissions import carb, ceidars, locations
+from camp.apps.emissions import carb, ceidars, locations, pmt
 from camp.apps.emissions.models import EmissionsRecord, Facility
 from camp.apps.emissions.sectors import sector_for_sic
 from camp.apps.regions.models import Region
@@ -21,7 +22,10 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--year', type=int, required=True, help='Inventory year (e.g. 2024)')
         parser.add_argument('--county', help='Limit to one covered county, by slug (e.g. fresno)')
-        parser.add_argument('--regeocode', action='store_true', help='Re-geocode all facilities, not just new ones')
+        parser.add_argument(
+            '--regeocode', action='store_true',
+            help="Re-locate every facility in the year's inventory, not just new ones and ones without a trusted point",
+        )
 
     def handle(self, *args, **options):
         year = options['year']
@@ -41,6 +45,11 @@ class Command(BaseCommand):
             r.name.upper(): r
             for r in Region.objects.filter(type__in=[Region.Type.CITY, Region.Type.CDP])
         }
+
+        # CARB's own coordinates for every facility (Pollution Mapping Tool),
+        # the fallback between a Census street match and MapTiler.
+        markers, marker_years = pmt.fetch_markers(range(pmt.FIRST_YEAR, datetime.date.today().year + 1))
+        self.stdout.write(f'CARB coordinates: {", ".join(map(str, marker_years)) or "none"} ({len(markers)} facilities)')
 
         total_facilities = total_records = total_geocode_failures = 0
         failed = []
@@ -75,39 +84,53 @@ class Command(BaseCommand):
                 failed.append(county.name)
                 continue
 
-            # Determine which facilities need geocoding.
+            # Which facilities to locate: new ones, ones without a trusted
+            # point (legacy, MapTiler, none), and every one with --regeocode.
             all_facids = [int(row['FACID']) for _, row in merged.iterrows()]
-            existing_keys = set(
-                Facility.objects.filter(county_code=county_code, facid__in=all_facids)
-                .values_list('air_district__external_id', 'facid')
-            )
-
-            geocode_index = []  # [((district, facid), address_dict), ...] in batch order
+            existing = {
+                (district, facid): (point, source)
+                for district, facid, point, source in Facility.objects.filter(county_code=county_code, facid__in=all_facids)
+                .values_list('air_district__external_id', 'facid', 'point', 'point_source')
+            }
+            to_locate = {}  # (district, facid) -> address
             for _, row in merged.iterrows():
                 key = (row['DIS'], int(row['FACID']))
-                if key not in existing_keys or regeocode:
-                    address = {
-                        'street': row.get('FSTREET', '').strip(),
-                        'city': row.get('FCITY', '').strip(),
-                        'state': 'CA',
-                        'zipcode': row.get('FZIP', '').strip(),
-                    }
-                    # Portable equipment and oil-field names aren't places;
-                    # a geocoder would put them anywhere.
-                    if locations.is_geocodable(address):
-                        geocode_index.append((key, address))
+                if key in existing and not regeocode and existing[key][1] in Facility.TRUSTED_POINT_SOURCES:
+                    continue
+                to_locate[key] = {
+                    'street': row.get('FSTREET', '').strip(),
+                    'city': row.get('FCITY', '').strip(),
+                    'state': 'CA',
+                    'zipcode': row.get('FZIP', '').strip(),
+                }
 
-            # Batch geocode upfront via Census, falling back to MapTiler for
-            # failures. A point outside the facility's county is a bad match
-            # and is dropped.
+            # Census street matches in one batch, then CARB's coordinates;
+            # MapTiler only for a new facility neither of those places.
+            # Portable equipment and oil-field names aren't places: a
+            # geocoder would put them anywhere, so they aren't geocoded.
             positions = {}  # (district, facid) -> (Point, source)
-            if geocode_index:
-                self.status(f'{label}: geocoding {len(geocode_index)} facilities...')
+            if to_locate:
+                self.status(f'{label}: locating {len(to_locate)} facilities...')
                 area = locations.county_area(county)
-                addr_to_key = {id(addr): key for key, addr in geocode_index}
-                for addr, point, source in geocode.resolve_batch([addr for _, addr in geocode_index]):
-                    if locations.plausible(point, area):
-                        positions[addr_to_key[id(addr)]] = (point, source)
+                geocodable = [(key, address) for key, address in to_locate.items() if locations.is_geocodable(address)]
+                by_id = {id(address): key for key, address in geocodable}
+                census = {by_id[id(address)]: point for address, point in geocode.census_batch([a for _, a in geocodable])}
+                carb_points = {key: markers.get((county_code, key[0], key[1])) for key in to_locate}
+                misses = [
+                    address for key, address in geocodable
+                    if key not in existing
+                    and not locations.plausible(census.get(key), area)
+                    and not locations.plausible(carb_points[key], area)
+                ]
+                maptiler = {by_id[id(address)]: point for address, point in geocode.maptiler_batch(misses)}
+                for key, address in to_locate.items():
+                    current, current_source = existing.get(key, (None, ''))
+                    if key in maptiler:
+                        current, current_source = maptiler[key], Facility.PointSource.MAPTILER
+                    positions[key] = locations.locate(
+                        address, census=census.get(key), carb=carb_points[key],
+                        current=current, current_source=current_source, area=area,
+                    )
 
             total_rows = len(merged)
             seen_keys = set()
@@ -145,18 +168,15 @@ class Command(BaseCommand):
                     },
                 )
 
-                if created:
-                    created_count += 1
-                    facility.point, facility.point_source = positions.get(key, (None, ''))
+                if key in positions:
+                    facility.point, facility.point_source = positions[key]
                     if facility.point is None:
                         geocode_failures += 1
+                if created:
+                    created_count += 1
                     facility.save()
                 else:
                     updated_count += 1
-                    if regeocode:
-                        facility.point, facility.point_source = positions.get(key, (None, ''))
-                        if facility.point is None:
-                            geocode_failures += 1
 
                     if facility.metadata_year is None or year >= facility.metadata_year:
                         facility.name = row.get('FNAME', '').strip()
