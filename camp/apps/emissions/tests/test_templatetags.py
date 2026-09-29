@@ -98,3 +98,12 @@ class SharePctTests(TestCase):
         assert share_pct(0.00005) == '<0.01%' and share_pct(0.0003) == '0.03%'
         assert share_pct(0.012) == '1.2%' and share_pct(0.2437) == '24%' and share_pct(1) == '100%'
         assert amount(0.012, CANCER) == '1.2%' and amount(2, POLLUTANTS['nox']) == '2.0'
+
+
+class PercentileTests(TestCase):
+    def test_rounds_down_so_no_tract_reads_100th(self):
+        assert tags.percentile(99.989) == '99th'
+        assert tags.percentile(89.6) == '89th'
+        assert tags.percentile(1.36) == '1st'
+        assert tags.percentile(0.4) == '1st'
+        assert tags.percentile(None) == ''
