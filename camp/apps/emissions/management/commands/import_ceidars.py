@@ -3,6 +3,7 @@ import time
 
 import requests
 
+from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 
 from camp.apps.emissions import carb, ceidars, locations, pmt
@@ -25,6 +26,10 @@ class Command(BaseCommand):
         parser.add_argument(
             '--regeocode', action='store_true',
             help="Re-locate every facility in the year's inventory, not just new ones and ones without a trusted point",
+        )
+        parser.add_argument(
+            '--skip-toxics', action='store_true',
+            help='Skip the per-facility toxics crawl (import_toxics, ~10 minutes a year); run it later on its own',
         )
 
     def handle(self, *args, **options):
@@ -229,5 +234,10 @@ class Command(BaseCommand):
             f'{total_geocode_failures} geocoding failures '
             f'[{total_elapsed:.1f}s]'
         )
+        # Every reported toxic, per facility: the crawl reads the facilities
+        # this import just wrote for the year.
+        if not options['skip_toxics']:
+            self.stdout.write('')
+            call_command('import_toxics', year=year, county=options.get('county'), stdout=self.stdout, stderr=self.stderr)
         if failed:
             raise CommandError(f'Import incomplete for: {", ".join(failed)}')

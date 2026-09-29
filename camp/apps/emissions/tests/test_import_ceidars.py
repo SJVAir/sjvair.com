@@ -75,7 +75,7 @@ class ImportCeidarsTests(TestCase):
             county.save(update_fields=['metadata'])
 
     def run_import(self, year=2024, county=None, criteria=None, toxics=None, urls=None,
-                   census=census_all, maptiler=none_found, markers=None, regeocode=False):
+                   census=census_all, maptiler=none_found, markers=None, regeocode=False, crawl_toxics=False):
         criteria = criteria if criteria is not None else {10: FRESNO_CRITERIA, 15: KERN_CRITERIA}
         toxics = toxics if toxics is not None else {10: FRESNO_TOXICS, 15: KERN_TOXICS}
         with patch('requests.get', side_effect=carb(criteria, toxics, urls)), \
@@ -87,6 +87,8 @@ class ImportCeidarsTests(TestCase):
                 kwargs['county'] = county
             if regeocode:
                 kwargs['regeocode'] = True
+            if not crawl_toxics:
+                kwargs['skip_toxics'] = True
             call_command('import_ceidars', **kwargs)
         return maptiler_mock
 
@@ -160,6 +162,15 @@ class ImportCeidarsTests(TestCase):
         Facility.objects.all().delete()
         self.run_import(county='fresno', census=none_found, maptiler=census_all)
         assert Facility.objects.get(county_code=10, facid=1).point_source == Facility.PointSource.MAPTILER
+
+    def test_runs_the_toxics_crawl_for_the_same_year_and_county(self):
+        with patch('camp.apps.emissions.management.commands.import_ceidars.call_command') as crawl:
+            self.run_import(county='fresno', crawl_toxics=True)
+        assert crawl.call_args.args == ('import_toxics',)
+        assert (crawl.call_args.kwargs['year'], crawl.call_args.kwargs['county']) == (2024, 'fresno')
+        with patch('camp.apps.emissions.management.commands.import_ceidars.call_command') as crawl:
+            self.run_import(county='fresno')
+        assert not crawl.called
 
     def test_carb_coordinates_come_before_maptiler(self):
         maptiler = self.run_import(county='fresno', census=none_found, maptiler=census_all, markers={(10, 'SJU', 1): CARB_POINT})
