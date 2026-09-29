@@ -38,10 +38,34 @@
   logo: img/logo/rootaccess.svg
   url: https://rootaccess.org/
 
+- name: Clean Water Action
+  logo: img/logo/cleanwateraction.svg
+  url: https://cleanwater.org/california
+
 - name: University of California, Merced
   logo: img/logo/ucmerced.png
   url: https://www.ucmerced.edu/
 
+- name: University of California, Berkeley
+  logo: img/logo/ucberkeley.svg
+  url: https://www.berkeley.edu/
+
 - name: San Joaquin Valley Air Pollution Control District
   logo: img/logo/sjvapcd.svg
   url: https://valleyair.org/
+
+- name: Tulare County Health & Human Services Agency
+  logo: img/logo/tulare-hhsa.png
+  url: https://tchhsa.org/
+
+- name: California Air Resources Board
+  logo: img/logo/carb.svg
+  url: https://ww2.arb.ca.gov/
+
+- name: California Environmental Protection Agency
+  logo: img/logo/calepa.png
+  url: https://calepa.ca.gov/
+
+- name: U.S. Environmental Protection Agency
+  logo: img/logo/epa-horizontal.svg
+  url: https://www.epa.gov/
