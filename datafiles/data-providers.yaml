@@ -65,3 +65,8 @@
       logo: img/logo/cdpr.png
       url: https://www.cdpr.ca.gov/
       classes: is-3-mobile is-2-tablet is-2-desktop
+
+    - name: California Geologic Energy Management Division (CalGEM)
+      logo: img/logo/conservation.svg
+      url: https://www.conservation.ca.gov/calgem
+      classes: is-6-mobile is-4-tablet is-4-desktop
