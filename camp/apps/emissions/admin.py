@@ -10,7 +10,7 @@ from camp.utils.admin import MapFigureMixin, ReadOnlyAdminMixin
 
 from .models import (
     AirComplianceFacility, ComplianceEvent, CountyInventory, CountyNEI, EmissionsRecord, Facility,
-    GHGReport, SourceImport, ToxicEmission, ToxicPollutant, Well,
+    GHGReport, MethaneSource, SourceImport, ToxicEmission, ToxicPollutant, Well,
 )
 
 
@@ -262,3 +262,11 @@ class GHGReportAdmin(ReadOnlyAdminMixin, base_admin.ModelAdmin):
     search_fields = ['name', 'external_id', 'frs_id', 'facility__name']
     raw_id_fields = ['facility']
     ordering = ['-co2e']
+
+
+@admin.register(MethaneSource)
+class MethaneSourceAdmin(ReadOnlyAdminMixin, base_admin.ModelAdmin):
+    list_display = ['source_name', 'gas', 'sector_label', 'emission_kg_h', 'uncertainty_kg_h', 'persistence', 'detections', 'observations', 'county', 'dairy', 'facility', 'distance_m', 'fetched_at']
+    list_filter = ['gas', 'sector_label', 'county']
+    search_fields = ['source_name', 'dairy__name', 'facility__name']
+    raw_id_fields = ['dairy', 'facility']

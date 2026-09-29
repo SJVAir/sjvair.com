@@ -191,3 +191,57 @@ class AirComplianceFacilityTests(TestCase):
         ComplianceEvent.objects.create(icis_facility=row, kind='formal', date=date(2024, 1, 1), agency='L', external_id='1')
         with pytest.raises(IntegrityError):
             ComplianceEvent.objects.create(icis_facility=row, kind='nov', date=date(2024, 2, 2), agency='L', external_id='1')
+
+
+class MethaneSourceTests(TestCase):
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def make(self, **overrides):
+        from django.contrib.gis.geos import Point
+        from camp.apps.emissions.models import MethaneSource
+        from camp.apps.regions.models import Region
+        values = dict(
+            source_name='CH4-test-1', gas='CH4', point=Point(-119.786, 36.736, srid=4326),
+            ipcc_sector='4B', sector_label='Livestock', persistence=0.6,
+            emission_kg_h=120.0, uncertainty_kg_h=40.0, observations=12, detections=5,
+            county=Region.objects.get(type=Region.Type.COUNTY, slug='fresno'),
+        )
+        values.update(overrides)
+        return MethaneSource.objects.create(**values)
+
+    def test_sector_groups_and_labels(self):
+        from camp.apps.emissions.models import MethaneSource
+        assert MethaneSource.sector_for('4B') == ('livestock', 'Livestock')
+        assert MethaneSource.sector_for('1B2') == ('oil-gas', 'Oil & gas')
+        assert MethaneSource.sector_for('6A') == ('waste', 'Solid waste')
+        assert MethaneSource.sector_for('6B') == ('waste', 'Wastewater')
+        assert MethaneSource.sector_for('1B1') == ('other', 'Coal mining')
+        assert MethaneSource.sector_for('9Z') == ('other', '9Z')
+        assert MethaneSource.sector_for('') == ('other', 'Unknown sector')
+        assert self.make().group == 'livestock'
+        assert self.make(source_name='x', ipcc_sector='1B2').group == 'oil-gas'
+
+    def test_viewer_url_rate_text_and_licence(self):
+        from camp.apps.emissions.models import MethaneSource
+        source = self.make()
+        assert source.viewer_url == 'https://data.carbonmapper.org/#36.73600,-119.78600'
+        assert source.rate_text == '120 ± 40 kg/h'
+        assert self.make(source_name='y', uncertainty_kg_h=None).rate_text == '120 kg/h'
+        assert self.make(source_name='z', emission_kg_h=None).rate_text == 'rate not estimated'
+        assert MethaneSource.ATTRIBUTION == 'Data by Carbon Mapper®'
+        assert MethaneSource.LICENSE == 'Carbon Mapper non-commercial terms, https://carbonmapper.org/terms'
+        assert MethaneSource.LICENSE_URL == 'https://carbonmapper.org/terms'
+        assert source.sqid and str(source) == 'CH4-test-1 (Livestock)'
+
+    def test_methane_generation(self):
+        from django.core.cache import cache
+        from camp.apps.emissions import methane
+        from camp.apps.emissions.models import SourceImport
+        cache.clear()
+        first = methane.generation()
+        assert methane.key('a', 1).endswith(f':{first}:a:1')
+        methane.clear_caches()
+        assert methane.generation() == first + 1
+        assert methane.stamp() is None and not methane.enabled()
+        SourceImport.objects.create(source='carbon-mapper')
+        assert methane.stamp() is not None and methane.enabled()

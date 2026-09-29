@@ -1,5 +1,5 @@
 from django.contrib.gis.db import models
-from django.db.models import Q
+from django.db.models import F, Q
 from django.urls import reverse
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
@@ -818,3 +818,102 @@ class GHGReport(models.Model):
         if self.program == self.Program.GHGRP:
             return f'https://ghgdata.epa.gov/ghgp/service/facilityDetail/{self.year}?id={self.external_id}&et=undefined'
         return 'https://ww2.arb.ca.gov/mrr-data'
+
+
+class MethaneSource(models.Model):
+    """
+    A methane point source in Carbon Mapper's public catalog: the durable
+    cluster of plumes seen at one spot across aircraft and satellite passes
+    since 2016, with Carbon Mapper's estimate of its emission rate. Each rate
+    is an instantaneous estimate with wide uncertainty, not an annual total,
+    and a site with no source hasn't been shown to be clean (see the About
+    page's Methane section). Refreshed monthly by import_carbon_mapper,
+    which links each source to the nearest CADD dairy and the nearest
+    CEIDARS facility with a trusted point within 1 km.
+
+    Licence: Carbon Mapper's custom non-commercial terms (LICENSE). The data
+    is shown only on our own pages, never re-licensed or offered as a
+    download, and every rendering carries ATTRIBUTION.
+    """
+
+    ATTRIBUTION = 'Data by Carbon Mapper®'
+    LICENSE = 'Carbon Mapper non-commercial terms, https://carbonmapper.org/terms'
+    LICENSE_URL = 'https://carbonmapper.org/terms'
+    HOME_URL = 'https://carbonmapper.org'
+    VIEWER_URL = 'https://data.carbonmapper.org/#{lat:.5f},{lng:.5f}'
+
+    class Gas(models.TextChoices):
+        CH4 = 'CH4', _('Methane')
+        CO2 = 'CO2', _('Carbon dioxide')
+
+    class Group(models.TextChoices):
+        LIVESTOCK = 'livestock', _('Livestock')
+        OIL_GAS = 'oil-gas', _('Oil & gas')
+        WASTE = 'waste', _('Waste & wastewater')
+        OTHER = 'other', _('Other')
+
+    # IPCC 2006 source categories as Carbon Mapper codes them, longest
+    # prefix wins: the map's colour group and the label shown for the sector.
+    SECTORS = {
+        '4B': (Group.LIVESTOCK, 'Livestock'),
+        '1B2': (Group.OIL_GAS, 'Oil & gas'),
+        '1B1': (Group.OTHER, 'Coal mining'),
+        '1A1': (Group.OTHER, 'Energy industries'),
+        '1A2': (Group.OTHER, 'Manufacturing & construction'),
+        '6A': (Group.WASTE, 'Solid waste'),
+        '6B': (Group.WASTE, 'Wastewater'),
+        '4C': (Group.OTHER, 'Rice cultivation'),
+    }
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('emissions.MethaneSource'))
+    source_name = models.CharField(_('Source name'), max_length=64, unique=True)
+    gas = models.CharField(_('Gas'), max_length=3, choices=Gas.choices, db_index=True)
+    point = models.PointField(_('Point'))
+    ipcc_sector = models.CharField(_('IPCC sector'), max_length=8, blank=True)
+    sector_label = models.CharField(_('Sector'), max_length=32, blank=True)
+    persistence = models.FloatField(_('Persistence'), null=True, blank=True)
+    emission_kg_h = models.FloatField(_('Emission rate (kg/h)'), null=True, blank=True)
+    uncertainty_kg_h = models.FloatField(_('Emission uncertainty (kg/h)'), null=True, blank=True)
+    observations = models.IntegerField(_('Observation dates'), default=0)
+    detections = models.IntegerField(_('Detection dates'), default=0)
+    county = models.ForeignKey('regions.Region', verbose_name=_('County'), on_delete=models.PROTECT, related_name='methane_sources')
+    dairy = models.ForeignKey(Dairy, verbose_name=_('Nearest dairy'), null=True, blank=True, on_delete=models.SET_NULL, related_name='methane_sources')
+    facility = models.ForeignKey(Facility, verbose_name=_('Nearest facility'), null=True, blank=True, on_delete=models.SET_NULL, related_name='methane_sources')
+    distance_m = models.FloatField(_('Distance to the match (m)'), null=True, blank=True)
+    fetched_at = models.DateTimeField(_('Fetched at'), auto_now=True)
+
+    class Meta:
+        ordering = [F('emission_kg_h').desc(nulls_last=True), 'source_name']
+        indexes = [models.Index(fields=['county', 'gas'])]
+
+    def __str__(self):
+        return f'{self.source_name} ({self.sector_label or self.ipcc_sector or "?"})'
+
+    @classmethod
+    def sector_for(cls, code):
+        """(group, label) for an IPCC code: the longest listed prefix, else other with the code itself as the label."""
+        code = (code or '').strip().upper()
+        if not code:
+            return cls.Group.OTHER, 'Unknown sector'
+        for prefix in sorted(cls.SECTORS, key=len, reverse=True):
+            if code.startswith(prefix):
+                return cls.SECTORS[prefix]
+        return cls.Group.OTHER, code
+
+    @property
+    def group(self):
+        return self.sector_for(self.ipcc_sector)[0]
+
+    @property
+    def viewer_url(self):
+        return self.VIEWER_URL.format(lat=self.point.y, lng=self.point.x)
+
+    @property
+    def rate_text(self):
+        """`120 ± 40 kg/h`; without an uncertainty `120 kg/h`; without a rate `rate not estimated`. Always shown beside "Carbon Mapper estimate"."""
+        if self.emission_kg_h is None:
+            return 'rate not estimated'
+        text = f'{self.emission_kg_h:,.0f}'
+        if self.uncertainty_kg_h is not None:
+            text += f' ± {self.uncertainty_kg_h:,.0f}'
+        return f'{text} kg/h'
