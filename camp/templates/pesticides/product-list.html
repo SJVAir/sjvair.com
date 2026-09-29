@@ -41,7 +41,7 @@
                             {% else %}
                             <div class="tags">
                                 {% if product.is_fumigant %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-warning is-light" href="{% url 'pesticides:product-list' %}?fumigant=true" data-tooltip="{% if product.fumigant %}{{ 'fumigant'|note_summary }}{% else %}Not flagged as a fumigant by CDPR; its active ingredient is almost always applied as a fumigant.{% endif %}">Fumigant</a>{% endif %}
-                                {% if product.is_restricted %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-danger is-light" href="{% url 'pesticides:product-list' %}?california_restricted=true" data-tooltip="{{ 'restricted_material'|note_summary }}">CA restricted</a>{% endif %}
+                                {% if product.is_restricted %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-warning is-light" href="{% url 'pesticides:product-list' %}?california_restricted=true" data-tooltip="{{ 'restricted_material'|note_summary }}">Restricted</a>{% endif %}
                             </div>
                             {% endif %}
                         </td>

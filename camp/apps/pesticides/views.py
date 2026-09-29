@@ -1154,8 +1154,10 @@ class CommodityDetail(ExplorerDetailMixin, vanilla.DetailView):
     def summary_top(self, context):
         return context['related_a']['rows']
 
-    def get_summary_sentence(self, totals, label, top, verb=None):
-        return super().get_summary_sentence(totals, label, top, verb=None)
+    def get_summary_sentence(self, totals, label, top, verb='with'):
+        # "Applied ..., mostly with Mineral oil and Glyphosate": the chemicals
+        # applied to this commodity, not what it was applied on.
+        return super().get_summary_sentence(totals, label, top, verb='with')
 
 
 SJV_CENTER = '36.75,-119.80'

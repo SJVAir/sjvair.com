@@ -5,13 +5,34 @@
 {% block breadcrumb-list %}<li class="is-active"><a aria-current="page">About this data</a></li>{% endblock %}
 
 {% block explorer-content %}
+<div class="columns about-layout">
+{# The contents first in the markup: at the top on a phone, a sticky column #}
+{# beside the text on a desktop. #}
+<nav class="column is-3-desktop about-toc" aria-label="On this page">
+    <p class="menu-label">On this page</p>
+    <ul class="menu-list">
+        <li><a href="#pur">Pesticide Use Reporting</a></li>
+        <li><a href="#spraydays">SprayDays notices of intent</a></li>
+        <li><a href="#categories">DPR chemical categories</a></li>
+        <li><a href="#concern">Flagged chemicals</a></li>
+        <li><a href="#prop65">Proposition 65</a></li>
+        <li><a href="#iarc">IARC groups</a></li>
+        <li><a href="#tac">CARB Toxic Air Contaminants</a></li>
+        <li><a href="#restricted">California restricted materials</a></li>
+        <li><a href="#fumigant">Fumigants</a></li>
+        <li><a href="#methodology">How these numbers are made</a></li>
+        <li><a href="#caveats">Caveats</a></li>
+    </ul>
+</nav>
+<div class="column about-main">
 <div class="content explainer" id="about">
     <h1 class="title is-3">About this data</h1>
 
     <h3 id="pur">Pesticide Use Reporting (PUR)</h3>
     <p>California requires agricultural pesticide applications to be reported to the county agricultural commissioner, who forwards them to the Department of Pesticide Regulation (DPR). DPR checks and publishes each year's records well after the fact, often more than a year later. Each record gives the product, active ingredient, crop or use site, county, one-square-mile section, date, and amount. The commodity list therefore includes non-crop sites alongside crops: rights of way, public health treatments such as mosquito control, structural and landscape work, food processing plants, and commodity fumigation chambers. This explorer loads the records for Fresno, Kern, Kings, Madera, Merced, San Joaquin, Stanislaus, and Tulare counties{% if years %} for {{ years.0 }}–{{ years.1 }}{% endif %}.</p>
 
-    <h3 id="spraydays">SprayDays notices of intent</h3>
+    {# #notices is the anchor the notice help links use; this section covers them. #}
+    <h3 id="spraydays"><span id="notices"></span>SprayDays notices of intent</h3>
     <p>Growers must file a notice of intent before applying a California-restricted material. DPR's SprayDays system publishes those notices 48 hours ahead for fumigants and 24 hours ahead for other restricted materials, and the grower then has up to four days after the scheduled date to begin. Notices cover only restricted materials, list the product and chemical but not the crop, and are not confirmation that the application happened. To be notified about notices near an address, <a href="https://spraydays.cdpr.ca.gov/" target="_blank" rel="noopener">sign up with SprayDays</a>.</p>
 
     <h3 id="categories">DPR chemical categories</h3>
@@ -62,14 +83,6 @@
     {% health_note 'carb_tac' as carb_tac_note %}
     <p>{{ carb_tac_note.summary }}</p>
 
-    <h3 id="shades">Reading the maps</h3>
-    {% health_note 'shades' as shades_note %}
-    <p>{{ shades_note.summary }}</p>
-
-    <h3 id="notices">Notices of intent</h3>
-    {% health_note 'noi_meaning' as noi_note %}
-    <p>{{ noi_note.summary }}{% if noi_note.detail %} {{ noi_note.detail }}{% endif %}</p>
-
     <h3 id="restricted">California restricted materials</h3>
     {% health_note 'california_restricted' as restricted_note %}
     <p>{{ restricted_note.summary }}{% if restricted_note.detail %} {{ restricted_note.detail }}{% endif %}</p>
@@ -94,7 +107,7 @@
     <ul>
         <li><strong>Fumigants are decided over every loaded year, not one at a time.</strong> A product is a fumigant if CDPR flags it as one, or if it contains a fumigant active ingredient. An ingredient counts once it has at least 100 pounds applied across all loaded years (since 2014) and at least 90 percent of those pounds came from CDPR-flagged fumigant products or were applied by field fumigation.</li>
         <li><strong>CDPR&rsquo;s flag has gaps.</strong> Telone, a soil fumigant, was re-registered in 2021 under new registration numbers that the flag does not cover, so from 2021 on it was missing from the Fumigants figures. The earlier Fumigants totals for 2021 onward were roughly 30&ndash;40 percent low. A product marked Fumigant that CDPR has not flagged says so in its badge.</li>
-        <li><strong>How a field fumigation was done is recorded only in some places.</strong> Since 2008, CDPR has required the fumigation method (tarp, deep injection, drip and so on) for field fumigations in the state&rsquo;s five air-quality non-attainment areas, the San Joaquin Valley among them, and each report carries a code for it. Fumigant pages show it under &ldquo;How it was fumigated&rdquo;. It is blank for fumigations outside those areas and before 2008, and those show as &ldquo;Not recorded&rdquo;; that means no code was filed, not that no method was used. The bracketed number after a technique is the section of the fumigation regulations (3 CCR 6447&ndash;6450) that governs it.</li>
+        <li><strong>How a field fumigation was done is recorded only in some places.</strong> Since 2008, CDPR has required the fumigation method (tarp, deep injection, drip and so on) for field fumigations in the state&rsquo;s five air-quality non-attainment areas, the San Joaquin Valley among them, and each report carries a code for it. Fumigant pages show it under &ldquo;How it was fumigated&rdquo;. It is blank for fumigations outside those areas and before 2008, and those show as &ldquo;Not recorded&rdquo;; that means no code was filed, not that no method was used. The number under a technique is the section of the fumigation regulations (3 CCR 6447&ndash;6450) that governs it.</li>
     </ul>
 
     <h4>What the units mean</h4>
@@ -112,7 +125,7 @@
         <li><strong>A comparison between two years applies the same filters to both.</strong> The change you see is the change in what you are looking at, not the section's overall change.</li>
     </ul>
 
-    <h4>Reading the maps</h4>
+    <h4 id="shades">Reading the maps</h4>
     <ul>
         <li><strong>Shades are relative to what is on the screen.</strong> Squares are sorted into classes against each other, so the same colour means different amounts on different maps, and a map of one county is not comparable to a map of the valley by colour alone. The legend gives the actual range.</li>
         <li><strong>&ldquo;No data&rdquo; is not &ldquo;no change&rdquo;.</strong> When comparing two years, a square with nothing reported in either year is drawn as having no data; a square that reported the same amount in both is drawn as unchanged. They look different on purpose.</li>
@@ -124,5 +137,7 @@
         <li>Absence of a record is not proof that nothing was applied. Reporting gaps, late filings and corrections all exist, and a section with no use reported is not the same as a section where nothing happened.</li>
         <li>Developers can pull the underlying records through the <a href="{{ api_docs_url }}" hx-boost="false">pesticides API</a> or the <a href="{{ client_docs_url }}" target="_blank" rel="noopener">Python client</a>.</li>
     </ul>
+</div>
+</div>
 </div>
 {% endblock %}

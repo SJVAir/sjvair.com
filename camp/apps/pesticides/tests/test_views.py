@@ -667,7 +667,7 @@ class ProductDetailTests(RollupTestMixin, TestCase):
         html = self.client.get(self.product.get_absolute_url()).content.decode()
         assert 'CARB TAC' in html
         assert 'Fumigant' in html
-        assert 'CA restricted' in html
+        assert '>Restricted</a>' in html
 
     def test_badge_tooltips_come_from_the_notes_datafile(self):
         from camp.apps.pesticides import notes
@@ -700,7 +700,7 @@ class CommodityDetailTests(RollupTestMixin, TestCase):
 
     def test_summary_sentence_uses_chemicals(self):
         ctx = self.client.get(self.commodity.get_absolute_url()).context
-        assert ctx['summary_sentence'] == 'Applied in 1 of 8 SJV counties in 2023, mostly Sulfur and Glyphosate.'
+        assert ctx['summary_sentence'] == 'Applied in 1 of 8 SJV counties in 2023, mostly with Sulfur and Glyphosate.'
 
     def test_no_notice_section(self):
         html = self.client.get(self.commodity.get_absolute_url()).content.decode()

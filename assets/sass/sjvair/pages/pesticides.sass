@@ -44,15 +44,24 @@ body.pesticides
         .explorer-nav.tabs
             margin-top: $size-6
             margin-bottom: 0
-            // Six boxed tabs don't fit a phone; the coloured icons carry them.
+            // Seven boxed tabs don't fit a phone; the coloured icons carry
+            // them, and the current one keeps its name so the page says
+            // where you are.
             +mobile
                 .tab-label
                     display: none
                 .icon.is-small
                     margin: 0
+                ul
+                    gap: 0.2rem
                 li a
-                    padding-left: 0.75em
-                    padding-right: 0.75em
+                    padding-left: 0.45em
+                    padding-right: 0.45em
+                li.is-active
+                    .tab-label
+                        display: inline
+                        margin-left: 0.35em
+                        font-size: $size-7
             ul
                 border-bottom: 0
                 gap: 0.35rem
@@ -489,6 +498,36 @@ body.pesticides
         tbody tr:hover, tbody tr:focus-within, tbody tr.is-hovered
             background-color: rgba($link, 0.1)
 
+    // Intros at a readable measure rather than the page's full width.
+    .intro, .map-intro
+        max-width: 50rem
+    +mobile
+        .intro .is-size-5
+            font-size: $size-6 !important
+
+    // About: a readable measure, with its contents beside it on a desktop.
+    .about-layout
+        .explainer
+            max-width: 46rem
+            h3
+                scroll-margin-top: 5rem
+            h4
+                scroll-margin-top: 5rem
+        +desktop
+            // The text at its measure and the contents right beside it, not
+            // across the empty half of a wide screen.
+            .about-main
+                flex: 0 1 48rem
+            .about-toc
+                order: 2
+                align-self: flex-start
+                position: sticky
+                top: 5rem
+        +touch
+            .about-toc
+                border-bottom: 1px solid $grey-lighter
+                margin-bottom: 1rem
+
     .explorer-filters, .records-filters, .notice-filters
         padding: 1.25rem
         .label
@@ -529,7 +568,7 @@ body.pesticides
     // block whose cells flow as text, rather than nine columns scrolling off
     // the right edge. The header keeps only its sort links, as a row of its own.
     +mobile
-        .records-table, .notice-rows, .chemical-table
+        .records-table, .notice-rows, .day-notices, .chemical-table
             // A table sizes itself to its widest row; as blocks, the rows
             // take the phone's width and wrap inside it.
             &, thead, tbody
@@ -575,7 +614,7 @@ body.pesticides
             td:nth-child(n+7)
                 order: 7
                 font-size: $size-7
-        .notice-rows tbody tr
+        .notice-rows tbody tr, .day-notices tbody tr
             td:first-child
                 font-weight: 600
             td:last-child
@@ -965,6 +1004,15 @@ body.pesticides
                     flex-wrap: wrap
                     vertical-align: middle
                     margin-bottom: 0
+                    // Inline after a name on a phone the box shrinks to the
+                    // end of the name's line, one badge a row. A row of its own
+                    // (!important against the markup's Bulma .is-inline).
+                    +mobile
+                        display: flex !important
+                        margin-left: 0 !important
+                        gap: 0.25rem 0.3rem
+                        .tag
+                            margin: 0 !important
             .lbs
                 @extend .has-text-grey
                 // A fixed column, not auto: sized to the value it holds, the

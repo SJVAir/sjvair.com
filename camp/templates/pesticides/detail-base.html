@@ -57,13 +57,14 @@ doesn't render as one row of content beside ten and a screen of whitespace.
     <h2 class="title is-4">
         Planned applications
         <small class="has-text-grey is-size-6">SprayDays notices of intent</small>
-        <span class="tag is-info is-light is-medium ml-2">{{ upcoming_count }} scheduled</span>
+        {% if upcoming %}<span class="tag is-info is-light is-medium ml-2">{{ upcoming_count }} scheduled</span>{% endif %}
     </h2>
-    <p class="mb-3"><a href="{{ notices_url }}">See all notices for this {{ section|slice:":-1" }}</a></p>
     {% if upcoming %}
+        <p class="mb-3"><a href="{{ notices_url }}">See all notices for this {{ section|slice:":-1" }}</a></p>
         {% include 'pesticides/includes/upcoming-notices.html' %}
     {% else %}
-        <p class="has-text-grey">No upcoming notices.</p>
+        {# One line, not a "0 scheduled" badge over "No upcoming notices". #}
+        <p class="has-text-grey">None scheduled right now. <a href="{{ notices_url }}">See all notices for this {{ section|slice:":-1" }}</a>.</p>
     {% endif %}
 </section>
 {% endif %}
