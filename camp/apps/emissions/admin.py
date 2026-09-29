@@ -10,7 +10,7 @@ from camp.utils.admin import MapFigureMixin, ReadOnlyAdminMixin
 
 from .models import (
     AirComplianceFacility, ComplianceEvent, CountyInventory, CountyNEI, EmissionsRecord, Facility,
-    SourceImport, ToxicEmission, ToxicPollutant, Well,
+    GHGReport, SourceImport, ToxicEmission, ToxicPollutant, Well,
 )
 
 
@@ -253,3 +253,12 @@ class WellAdmin(ReadOnlyAdminMixin, base_admin.ModelAdmin):
     list_display = ['api', 'lease_name', 'well_number', 'status', 'well_type_label', 'operator_name', 'field_name', 'county', 'in_hpz', 'spud_date']
     list_filter = ['status', 'in_hpz', 'county', 'directional']
     search_fields = ['api', 'lease_name', 'operator_name', 'field_name']
+
+
+@admin.register(GHGReport)
+class GHGReportAdmin(ReadOnlyAdminMixin, base_admin.ModelAdmin):
+    list_display = ['name', 'program', 'year', 'county', 'facility', 'match_method', 'basin_wide', 'co2e', 'ch4']
+    list_filter = ['program', 'year', 'match_method', 'basin_wide', 'county']
+    search_fields = ['name', 'external_id', 'frs_id', 'facility__name']
+    raw_id_fields = ['facility']
+    ordering = ['-co2e']
