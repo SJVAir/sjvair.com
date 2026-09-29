@@ -12,9 +12,10 @@ class ImportIcisAirTaskTests(TestCase):
         call_command.assert_called_once_with('import_icis_air')
 
     def test_schedule(self):
-        # Monthly, the 2nd at 11:00 UTC: ECHO refreshes weekly, the district's feed monthly at best.
+        # Weekly, Mondays at 12:00 UTC: the day after ECHO's weekly refresh.
         from datetime import datetime
         task_class = tasks.import_icis_air.task_class
-        assert task_class.validate_datetime(task_class, datetime(2026, 10, 2, 11, 0))
-        assert not task_class.validate_datetime(task_class, datetime(2026, 10, 3, 11, 0))
-        assert not task_class.validate_datetime(task_class, datetime(2026, 10, 2, 12, 0))
+        assert task_class.validate_datetime(task_class, datetime(2026, 10, 5, 12, 0))  # a Monday
+        assert task_class.validate_datetime(task_class, datetime(2026, 10, 12, 12, 0))
+        assert not task_class.validate_datetime(task_class, datetime(2026, 10, 6, 12, 0))  # Tuesday
+        assert not task_class.validate_datetime(task_class, datetime(2026, 10, 5, 11, 0))
