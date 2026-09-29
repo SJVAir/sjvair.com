@@ -87,6 +87,15 @@ class PlaceSearchTests(ListTestCase):
         assert response.status_code == 200
         return response.json()['results']
 
+    def test_ab617_communities_are_found_and_labelled(self):
+        community = make(Region.Type.AB617_COMMUNITY, 'Plantville', AROUND_PLANT)
+        make(Region.Type.CITY, 'Plantville', AROUND_PLANT)
+        results = self.search('plantv')
+        assert ('Plantville', 'AB 617 community') in [(r['name'], r['detail']) for r in results]
+        assert community.sqid in [r['id'] for r in results]
+        # The id works as the facility list's ?region= filter.
+        assert self.client.get(reverse('emissions:facility-list'), {'region': community.sqid}).status_code == 200
+
     def test_cities_urban_areas_cdps_and_zips_prefix_first(self):
         zipcode = make(Region.Type.ZIPCODE, '93999', AROUND_PLANT)
         make(Region.Type.CDP, 'West Plantville', AROUND_PLANT)

@@ -151,6 +151,7 @@ class Home(ScopeMixin, vanilla.TemplateView):
             by_year=stats.by_year(scope),
             find_area_places=find_area_places(),
             find_area_counties=[p for p in find_area_places() if p['type'] == Region.Type.COUNTY],
+            find_area_ab617=[p for p in find_area_places() if p['type'] == Region.Type.AB617_COMMUNITY],
             focus_find=self.request.GET.get('find') == '1',
             # The jump links go to county pages: the page is the county, so no ?county=.
             find_area_qs=scope.query(county=None),
@@ -591,7 +592,7 @@ FIND_AREA_TYPE_LABELS = {
     Region.Type.AB617_COMMUNITY: 'AB 617 community',
 }
 # :v2 -- the synthetic places are gone; a list cached before then must not be served.
-FIND_AREA_PLACES_KEY = f'emissions:v{stats.CACHE_VERSION}:find-area-places:v2'
+FIND_AREA_PLACES_KEY = f'emissions:v{stats.CACHE_VERSION}:find-area-places:v3'
 RADIUS_CHOICES = (1, 3, 5)
 RADIUS_ZOOMS = {1: 13, 3: 12, 5: 11}
 MAX_LABEL = 120

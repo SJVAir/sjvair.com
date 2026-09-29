@@ -15,6 +15,12 @@
             {% for county in find_area_counties %}<a href="{{ county.url }}{{ find_area_qs }}">{{ county.short_name }}</a>{% if not forloop.last %}<span class="find-area-sep" aria-hidden="true">·</span>{% endif %}{% endfor %}
         </p>
     {% endif %}
+    {% if find_area_ab617 %}
+        <p class="find-area-counties">
+            <span class="has-text-grey"><span class="icon is-small has-tooltip-multiline has-tooltip-arrow" data-tooltip="Communities CARB has selected under AB 617 (2017) for community air monitoring and emissions-reduction plans, run with the Valley Air District."><span class="fa-regular fa-circle-info" aria-hidden="true"></span></span> AB 617 communities:</span>
+            {% for community in find_area_ab617 %}<a href="{{ community.url }}{{ find_area_qs }}">{{ community.name }}</a>{% if not forloop.last %}<span class="find-area-sep" aria-hidden="true">·</span>{% endif %}{% endfor %}
+        </p>
+    {% endif %}
     <p class="is-size-7 has-text-grey">Address searches are sent to MapTiler; place names are matched here in your browser. We don't store locations.</p>
     {{ find_area_places|json_script:"find-area-places" }}
 </section>

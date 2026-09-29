@@ -170,6 +170,7 @@ def area_values(scope, level, sector=None, compare=None):
 # (cities, urban areas and CDPs, each as-is) and ZIP codes.
 FILTER_REGION_TYPES = {
     **Region.COMMUNITY_LABELS,
+    Region.Type.AB617_COMMUNITY: 'AB 617 community',
     Region.Type.ZIPCODE: 'ZIP',
 }
 

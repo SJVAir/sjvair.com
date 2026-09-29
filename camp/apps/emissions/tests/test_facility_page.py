@@ -69,6 +69,18 @@ class HomeSearchTests(TestCase):
         assert '<input type="hidden" name="minor" value="1">' in row[:row.index('Top 10 facilities')]
         assert content.count('id="facility-search"') == 1
 
+    def test_ab617_communities_are_listed_under_the_counties(self):
+        cache.clear()
+        from django.urls import reverse
+
+        community = make(Region.Type.AB617_COMMUNITY, 'Plantville', AROUND_PLANT)
+        content = self.client.get(reverse('emissions:home')).content.decode()
+        counties = content.index('Or jump to a county:')
+        ab617 = content.index('AB 617 communities:')
+        assert counties < ab617
+        assert f'href="{community.get_emissions_url()}' in content[ab617:]
+        assert 'data-tooltip="Communities CARB has selected under AB 617' in content
+
 
 class FacilityToxicsTests(TestCase):
     fixtures = ['regions.yaml', 'emissions.yaml']

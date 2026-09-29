@@ -32,8 +32,12 @@ class PlaceSearch(generics.Endpoint):
             limit = DEFAULT_LIMIT
         regions = (
             Region.objects.filter(type__in=FILTER_REGION_TYPES, boundary__isnull=False, name__icontains=query)
-            .annotate(prefix=Case(When(Q(name__istartswith=query), then=0), default=1))
-            .order_by('prefix', 'name', 'type')
+            .annotate(
+                prefix=Case(When(Q(name__istartswith=query), then=0), default=1),
+                # Same-named layers in FILTER_REGION_TYPES order: the city before its AB 617 community.
+                type_rank=Case(*[When(type=t, then=i) for i, t in enumerate(FILTER_REGION_TYPES)], default=len(FILTER_REGION_TYPES)),
+            )
+            .order_by('prefix', 'name', 'type_rank')
         )
         county = request.GET.get('county')
         if county:
