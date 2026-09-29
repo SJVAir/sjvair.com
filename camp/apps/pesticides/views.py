@@ -794,14 +794,34 @@ class ExplorerDetailMixin:
     concern = False
     concern_excluded = False
     concern_active = ''
+    # The one square-mile section a map click narrowed the page to
+    # (?section=): None, a Region, or MISSING for a sqid that isn't one.
+    mtrs = None
 
     def get_rollup(self):
         rows = PesticideUseRollup.objects.filter(**{self.use_field: self.object})
+        if self.mtrs is MISSING:
+            return rows.none()
+        if self.mtrs is not None:
+            rows = rows.filter(mtrs=self.mtrs)
         if self.county is not None:
             rows = rows.filter(county=self.county)
         if self.concern_active:
             rows = stats.narrow_rows(rows, self.concern_active)
         return rows
+
+    def section_param(self):
+        """'section=<sqid>' when the page is narrowed to a section, else ''."""
+        return f'section={self.mtrs.sqid}' if self.mtrs not in (None, MISSING) else ''
+
+    def section_map_kwargs(self):
+        """Frame a fresh load of a narrowed page on its section, outlined."""
+        if self.mtrs in (None, MISSING):
+            return {}
+        kwargs = {'highlight': self.mtrs.sqid}
+        if self.mtrs.boundary_id:
+            kwargs['center'], kwargs['zoom'] = centroid(self.mtrs), 13
+        return kwargs
 
     def concern_applies(self):
         """
@@ -836,6 +856,8 @@ class ExplorerDetailMixin:
         the seasonality grid -- which are the expensive kind on a year-scoped
         page too.
         """
+        if self.mtrs is not None:
+            return build()
         if not (always or self.all_years):
             return build()
         scope = self.county.slug if self.county is not None else ''
@@ -866,6 +888,12 @@ class ExplorerDetailMixin:
         if complete is None:
             complete = len(rows) < limit
         scope = stats.scope_param(self.year, self.all_years, self.county, self.concern)
+        if self.section_param():
+            # The list pages don't take a section; the records browser does.
+            show_all_url = reverse('pesticides:records') + f'?{self.use_field}={self.object.sqid}&{self.section_param()}'
+        else:
+            show_all_url = reverse(list_url_name) + f'?{param}={self.object.sqid}'
+        show_all_url += f'&{scope}' if scope else ''
         return {
             'title': title,
             'kind': kind,
@@ -874,9 +902,7 @@ class ExplorerDetailMixin:
             'show_lbs': show_lbs and not self.hide_lbs(),
             'complete': complete,
             'compact': compact,
-            'show_all_url': reverse(list_url_name) + f'?{param}={self.object.sqid}' + (
-                f'&{scope}' if scope else ''
-            ),
+            'show_all_url': show_all_url,
         }
 
     def hide_lbs(self):
@@ -886,7 +912,9 @@ class ExplorerDetailMixin:
     def get_summary_sentence(self, totals, label, top, verb='on'):
         if not totals['applications'] or not label:
             return ''
-        if self.county is not None:
+        if self.mtrs not in (None, MISSING):
+            sentence = f'Applied in Section {self.mtrs.external_id} in {label}'
+        elif self.county is not None:
             sentence = f'Applied in {self.county.name} in {label}'
         else:
             sentence = f'Applied in {totals["counties"]} of {stats.SJV_COUNTY_COUNT} SJV counties in {label}'
@@ -901,6 +929,8 @@ class ExplorerDetailMixin:
         year, all_years = stats.resolve_year_param(self.request.GET.get('year'))
         self.year, self.all_years = year, all_years
         self.county = scope_county(self.request)
+        self.mtrs = resolve_related(self.request.GET, {'section': SECTION_REGIONS}).get('section')
+        narrowed = self.mtrs is not None
         # The toggle stays on in the links and the scope bar even where it
         # can't narrow this page; `concern_excluded` is what says so.
         self.concern = scope_concern(self.request)
@@ -911,6 +941,11 @@ class ExplorerDetailMixin:
         self.concern_active = '' if self.concern_excluded else self.concern
         rows = self.get_rollup()
         notices = self.get_notices()
+        if self.mtrs is MISSING:
+            notices = notices.none()
+        elif narrowed:
+            notices = notices.filter(mtrs=self.mtrs)
+        section_qs = f'&{self.section_param()}' if self.section_param() else ''
         scope = stats.scope_param(year, all_years, self.county, self.concern)
         totals = self.cached_stat('totals', lambda: stats.year_totals(rows, year, self.lbs_field, all_years=all_years))
         if not self.shows_lbs_per_acre:
@@ -925,19 +960,20 @@ class ExplorerDetailMixin:
             concern_excluded=self.concern_excluded,
             totals=totals,
             by_year=stats.by_year(rows, self.lbs_field),
-            by_county=self.cached_stat('by_county', lambda: stats.by_county(rows, year, self.lbs_field, all_years=all_years)),
+            # A section lies in one county; there is nothing to compare.
+            by_county=[] if narrowed else self.cached_stat('by_county', lambda: stats.by_county(rows, year, self.lbs_field, all_years=all_years)),
             by_month=self.cached_stat('by_month', lambda: stats.by_month(rows, year, self.lbs_field, all_years=all_years)) if (year or all_years) else [],
             # Always every year: seasonality only reads as a shift across them.
             by_year_month=self.cached_stat(
                 'by_year_month', lambda: stats.by_year_month(rows, self.lbs_field), always=True),
             related_a=related_a,
             related_b=related_b,
-            records_url=reverse('pesticides:records') + f'?{self.use_field}={self.object.sqid}' + (
+            records_url=reverse('pesticides:records') + f'?{self.use_field}={self.object.sqid}' + section_qs + (
                 f'&{scope}' if scope else ''
             ),
             has_notices=self.has_notices,
             notices_url=(
-                reverse('pesticides:notice-list') + f'?{self.use_field}={self.object.sqid}'
+                reverse('pesticides:notice-list') + f'?{self.use_field}={self.object.sqid}' + section_qs
                 + (f'&county={self.county.slug}' if self.county is not None else '')
                 + (f'&{stats.CONCERN_PARAM}=1' if self.concern else '')
             ) if self.has_notices else '',
@@ -953,6 +989,8 @@ class ExplorerDetailMixin:
             hide_lbs=self.hide_lbs(),
             **kwargs,
         )
+        context['section_filter'] = section_filter_context(self.request, self.mtrs, scope) if self.mtrs not in (None, MISSING) else None
+        context['section_missing'] = self.mtrs is MISSING
         context['summary_sentence'] = self.get_summary_sentence(totals, context['year_label'], self.summary_top(context))
         # The section map, filtered to this entity, shows where it's applied;
         # the county choropleth stays as the map's noscript fallback.
@@ -960,15 +998,17 @@ class ExplorerDetailMixin:
             year, all_years=all_years, show_notices=False,
             county=self.county.slug if self.county is not None else None,
             concern=self.concern_active,
+            select='filter',
+            **self.section_map_kwargs(),
             **{self.use_field: self.object},
         )
-        context['full_map_url'] = reverse('pesticides:map') + f'?{self.use_field}={self.object.sqid}' + (
+        context['full_map_url'] = reverse('pesticides:map') + f'?{self.use_field}={self.object.sqid}' + section_qs + (
             f'&{scope}' if scope else ''
         )
         county_rank = maps.county_metric(self.request.GET.get('rank'), hide_lbs=self.hide_lbs())
         ramp = maps.ramp_for(self.request.GET.get('ramp'))
         # The axis flips on an entity page: which counties moved for this one.
-        context['movers'] = movers_context(rows, year, all_years, 'county', self.lbs_field)
+        context['movers'] = None if narrowed else movers_context(rows, year, all_years, 'county', self.lbs_field)
         context['by_county'] = maps.rank_counties(
             stats.with_rates(context['by_county'], year, all_years, self.concern), county_rank, ramp=ramp)
         context['county_rank'] = county_rank
@@ -1116,7 +1156,7 @@ def page_url_pattern(name):
 MAP_STYLE = mapfigure.MAP_STYLE
 
 
-def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None):
+def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None, select=None):
     year = year or stats.latest_year()
     scope = stats.scope_param(year, all_years, county, concern)
     scope_suffix = f'&{scope}' if scope else ''
@@ -1174,6 +1214,9 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # no other page offers it or carries it in a link.
         'compare': str(compare) if compare else '',
         'highlight': highlight or '',
+        # 'filter': a click on a section narrows the page to it (the map
+        # page and the entity pages) instead of opening its popup.
+        'select': select or '',
         # A regions-API URL whose boundary the map draws and fits to (place pages).
         'outline_url': outline_url or '',
     }
@@ -1212,6 +1255,14 @@ class MapPage(vanilla.TemplateView):
         county = scope_county(request)
         concern = scope_concern(request)
 
+        # `?section=` narrows the map's own filter to one square mile and
+        # renders a panel for it. Any unresolved filter or section renders no
+        # panel: one that ignored a bad `?chemical=` would read as "that
+        # chemical, in this section".
+        section = resolve_related(request.GET, {'section': SECTION_REGIONS}).get('section')
+        no_matches = no_matches or section is MISSING
+        selected = section if section not in (None, MISSING) and not no_matches else None
+
         compare = stats.resolve_compare_param(request.GET.get('compare'), year, all_years)
         map_config = section_map_config(
             year,
@@ -1223,6 +1274,10 @@ class MapPage(vanilla.TemplateView):
             concern=concern,
             compare=compare,
             toolbar=True,
+            select='filter',
+            highlight=selected.sqid if selected else None,
+            center=centroid(selected) if selected and selected.boundary_id else None,
+            zoom=13 if selected and selected.boundary_id else None,
         )
 
         filters = []
@@ -1236,6 +1291,31 @@ class MapPage(vanilla.TemplateView):
                 'label': getattr(obj, 'display_name', obj.name),
                 'clear_url': f'?{encoded}' if encoded else '?',
             })
+
+        panel = {}
+        if selected:
+            rows = PesticideUseRollup.objects.filter(mtrs=selected, **resolved)
+            if county is not None:
+                rows = rows.filter(county=county)
+            if concern:
+                rows = stats.narrow_rows(rows, concern)
+            scope = stats.scope_param(year, all_years, county, concern)
+            entity_qs = ''.join(f'&{param}={obj.sqid}' for param, obj in resolved.items())
+            records_url = reverse('pesticides:records') + f'?section={selected.sqid}' + entity_qs + (
+                f'&{scope}' if scope else '')
+            notices = PesticideNotice.objects.filter(mtrs=selected)
+            if resolved.get('chemical'):
+                notices = notices.filter(chemicals=resolved['chemical'])
+            if resolved.get('product'):
+                notices = notices.filter(products=resolved['product'])
+            upcoming_days = stats.upcoming_by_day(notices)
+            panel = {
+                **section_summary(rows, year, all_years, records_url,
+                    lbs_field='lbs_product' if resolved.get('product') else 'lbs_chemical'),
+                'upcoming': stats.notices_in_days(upcoming_days),
+                'upcoming_days': upcoming_days,
+                'upcoming_count': stats.upcoming_count(notices),
+            }
 
         county_map = None
         if (year or all_years) and not no_matches:
@@ -1257,6 +1337,8 @@ class MapPage(vanilla.TemplateView):
                 ('commodity', 'Commodity', 'fa-seedling', 'is-commodities'),
             ],
             no_matches=no_matches,
+            selected_section=section_filter_context(request, selected, stats.scope_param(year, all_years, county, concern)) if selected else None,
+            **panel,
             county_map=county_map,
             compare=compare,
             # Every other loaded year, newest first, for the toolbar's picker.
@@ -1642,6 +1724,76 @@ class RecordsBrowser(vanilla.ListView):
         )
 
 
+def section_county_name(section):
+    """The county a section's use was reported in, off its rollup rows."""
+    return (
+        PesticideUseRollup.objects.filter(mtrs=section)
+        .exclude(county__isnull=True)
+        .order_by('county__name')
+        .values_list('county__name', flat=True)
+        .first()
+    )
+
+
+def section_filter_context(request, section, scope=''):
+    """What a page narrowed to one section says about it: the banner (entity
+    pages) and the panel heading (map page)."""
+    return {
+        'sqid': section.sqid,
+        'external_id': section.external_id,
+        'county': section_county_name(section),
+        'page_url': reverse('pesticides:section-detail', kwargs={'sqid': section.sqid}) + (f'?{scope}' if scope else ''),
+        'clear_url': clear_url(request, 'section'),
+    }
+
+
+def section_summary(rows, year, all_years, records_url, lbs_field='lbs_chemical'):
+    """
+    The section page's numbers for `rows`: rollup rows already narrowed to
+    one section, and on the map page to its entity filter and scope too.
+    SectionDetail and the map page's section panel both render them, through
+    includes/section-stats.html and includes/section-summary.html.
+    A single section is at most a few thousand rollup rows even across every
+    loaded year, so these stay live aggregates.
+    """
+    if year or all_years:
+        totals = stats.year_totals(rows, year, lbs_field, all_years=all_years)
+        by_month = stats.by_month(rows, year, lbs_field, all_years=all_years)
+        chemical_count = (
+            stats.real_chemicals(stats.in_year(rows, year, all_years))
+            .filter(chemical__isnull=False).values('chemical').distinct().count()
+        )
+    else:
+        totals = {'lbs': 0, 'applications': 0, 'counties': 0}
+        by_month = []
+        chemical_count = 0
+
+    peak_month = None
+    if by_month and any(month['lbs'] for month in by_month):
+        peak = max(by_month, key=lambda month: month['lbs'])
+        peak_month = calendar.month_name[peak['month']]
+
+    top_chemicals = stats.top_related(rows, year, 'chemical', limit=stats.RELATED_LIMIT, all_years=all_years)
+    top_products = stats.top_related(rows, year, 'product', lbs_field='lbs_product', limit=stats.RELATED_LIMIT, all_years=all_years)
+    top_commodities = stats.top_related(rows, year, 'commodity', limit=stats.RELATED_LIMIT, all_years=all_years)
+    return {
+        'totals': totals,
+        'chemical_count': chemical_count,
+        'years': stats.years_loaded(),
+        'by_year': stats.by_year(rows, lbs_field),
+        'by_month': by_month,
+        'by_year_month': stats.by_year_month(rows, lbs_field),
+        'peak_month': peak_month,
+        'top_chemicals': top_chemicals,
+        'top_products': top_products,
+        'top_commodities': top_commodities,
+        'chemicals_card': _section_card('Top chemicals', 'chemicals', top_chemicals, records_url),
+        'products_card': _section_card('Top products', 'products', top_products, records_url),
+        'commodities_card': _section_card('Top commodities', 'commodities', top_commodities, records_url),
+        'records_url': records_url,
+    }
+
+
 def _section_card(title, kind, rows, show_all_url, limit=stats.RELATED_LIMIT):
     """
     related-card.html dict for a section page's top lists. Unlike
@@ -1707,40 +1859,8 @@ class SectionDetail(vanilla.DetailView):
         if concern:
             rows = stats.narrow_rows(rows, concern)
 
-        county_name = (
-            rows.exclude(county__isnull=True)
-            .order_by('county__name')
-            .values_list('county__name', flat=True)
-            .first()
-        )
-
-        # A single section is at most a few thousand rollup rows even across
-        # every loaded year, so these stay live aggregates.
-        if year or all_years:
-            totals = stats.year_totals(rows, year, all_years=all_years)
-            by_month = stats.by_month(rows, year, all_years=all_years)
-            chemical_count = (
-                stats.real_chemicals(stats.in_year(rows, year, all_years))
-                .filter(chemical__isnull=False).values('chemical').distinct().count()
-            )
-        else:
-            totals = {'lbs': 0, 'applications': 0, 'counties': 0}
-            by_month = []
-            chemical_count = 0
-
-        peak_month = None
-        if by_month and any(month['lbs'] for month in by_month):
-            peak = max(by_month, key=lambda month: month['lbs'])
-            peak_month = calendar.month_name[peak['month']]
-
-        top_chemicals = stats.top_related(rows, year, 'chemical', limit=stats.RELATED_LIMIT, all_years=all_years)
-        top_products = stats.top_related(rows, year, 'product', lbs_field='lbs_product', limit=stats.RELATED_LIMIT, all_years=all_years)
-        top_commodities = stats.top_related(rows, year, 'commodity', limit=stats.RELATED_LIMIT, all_years=all_years)
-
         notices = PesticideNotice.objects.filter(mtrs=section)
         upcoming_days = stats.upcoming_by_day(notices)
-        upcoming = stats.notices_in_days(upcoming_days)
-        upcoming_count = stats.upcoming_count(notices)
 
         year_param = stats.year_param(year, all_years)
         records_url = reverse('pesticides:records') + f'?section={section.sqid}' + (
@@ -1756,25 +1876,12 @@ class SectionDetail(vanilla.DetailView):
 
         return super().get_context_data(
             section='sections',
-            county_name=county_name,
-            years=stats.years_loaded(),
+            county_name=section_county_name(section),
             **year_context(year, all_years, scope_county(self.request), county_scope=False, concern=concern),
-            totals=totals,
-            chemical_count=chemical_count,
-            by_year=stats.by_year(rows),
-            by_month=by_month,
-            by_year_month=stats.by_year_month(rows),
-            peak_month=peak_month,
-            top_chemicals=top_chemicals,
-            top_products=top_products,
-            top_commodities=top_commodities,
-            chemicals_card=_section_card('Top chemicals', 'chemicals', top_chemicals, records_url),
-            products_card=_section_card('Top products', 'products', top_products, records_url),
-            commodities_card=_section_card('Top commodities', 'commodities', top_commodities, records_url),
-            upcoming=upcoming,
+            **section_summary(rows, year, all_years, records_url),
+            upcoming=stats.notices_in_days(upcoming_days),
             upcoming_days=upcoming_days,
-            upcoming_count=upcoming_count,
-            records_url=records_url,
+            upcoming_count=stats.upcoming_count(notices),
             map_config=map_config,
             api_docs_url=API_DOCS_URL,
             client_docs_url=CLIENT_DOCS_URL,

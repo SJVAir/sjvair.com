@@ -1093,6 +1093,8 @@ def check_lens_popup(page):
     another township leaves the lens and its popup in place. Escape closes
     the popup, which releases the lens: the next township hovered gets its
     own."""
+    if page.instance_js('return inst.data.select') == 'filter':
+        return None, 'filter-mode map: a click filters (skipped)'
     if not page.instance_js('return inst.lensFeatures.length'):
         return None, 'no lens up (skipped)'
     lens_id = page.instance_js('return inst.lensId')
@@ -1332,6 +1334,8 @@ def check_township_popup(page):
 def check_section_popup(page):
     """At the section zoom a click opens the section popup, selects the
     section (outline source), and fills in the top chemicals with links."""
+    if page.instance_js('return inst.data.select') == 'filter':
+        return None, 'filter-mode map: a click filters (skipped)'
     ok, _ = page.wait_grid('section', 10)
     if not ok:
         return False, 'not at the section grid'
@@ -1376,6 +1380,8 @@ def check_section_popup(page):
 def check_selection_survives_metric(page):
     """With a section popup open, a metric change reclasses the grid but
     keeps the popup, the selection and its outline; `?metric=` follows."""
+    if page.instance_js('return inst.data.select') == 'filter':
+        return None, 'filter-mode map: a click filters (skipped)'
     before = page.instance_js("return inst.selectedSectionId")
     if not before:
         return False, 'no section selected'
@@ -1404,6 +1410,8 @@ def check_popup_clear(page):
     """A section popup opened beside the legend panel (where its box would
     lie over the panel) is panned clear: after the map settles the popup
     sits inside the map, under the toolbar band, and off the legend."""
+    if page.instance_js('return inst.data.select') == 'filter':
+        return None, 'filter-mode map: a click filters (skipped)'
     ok, _ = page.wait_grid('section', 10)
     if not ok:
         return False, 'not at the section grid'
@@ -1469,6 +1477,177 @@ window.fetch = function (url, opts) {
 };
 """
 JS_RESTORE_FETCH = "if (window.__realFetch) { window.fetch = window.__realFetch; window.__realFetch = null; }"
+
+
+def check_filter_click(page):
+    """Filter-mode maps (the map page, entity pages): a section click narrows
+    the page to it over htmx. Same map instance, camera unmoved, the URL and
+    the outline carry the section, the label popup is up; its Clear drops the
+    section; the back button brings it back."""
+    if page.instance_js('return inst.data.select') != 'filter':
+        return None, 'not a filter-mode map (skipped)'
+    ok, _ = page.wait_grid('section', 10)
+    if not ok:
+        return False, 'not at the section grid'
+    target = page.pick('inst.sourceData.grid.features')
+    if not target:
+        return False, 'no section with data on bare canvas to click'
+    page.js("window.__smokeInstance = (function () { %s })();" % JS_INSTANCE)
+    camera = page.instance_js('var c = inst.map.getCenter(); return [c.lng, c.lat, inst.map.getZoom()];')
+    history_before = page.js('return window.history.length;')
+    page.click_map(target['dx'], target['dy'], settle=0.5)
+    problems = []
+    narrowed = page.wait_for("""
+        var inst = (function () { %s })();
+        return location.search.indexOf('section=' + arguments[0]) !== -1 && !!inst && inst.data.highlight === arguments[0];
+    """ % JS_INSTANCE, SWAP_TIMEOUT, target['id'])
+    if not narrowed:
+        return False, 'URL/highlight never carried section %s' % target['id']
+    time.sleep(1.5)  # a grid rebuild after the swap must not navigate again
+    state = page.instance_js("""
+        var c = inst.map.getCenter();
+        return {
+            same: inst === window.__smokeInstance,
+            history: window.history.length,
+            camera: [c.lng, c.lat, inst.map.getZoom()],
+            key: inst.popupKey,
+            search: location.search,
+            narrowed: !!document.querySelector('.section-filter-banner, #section-panel'),
+        };
+    """)
+    if not state['same']:
+        problems.append('a new map instance on the swap')
+    if state['history'] != history_before + 1:
+        problems.append('history grew %s -> %s (want +1)' % (history_before, state['history']))
+    if any(abs(a - b) > 1e-6 for a, b in zip(camera, state['camera'])):
+        problems.append('camera moved %s -> %s' % (camera, state['camera']))
+    if state['key'] != 'openFilterId':
+        problems.append('label popup not open (popupKey %r)' % state['key'])
+    if not state['narrowed']:
+        problems.append('no banner / section panel on the page')
+    if state['search'].count('section=') != 1:
+        problems.append('URL %r' % state['search'])
+    page.js("var b = document.querySelector('.section-filter-clear'); if (b) b.click();")
+    cleared = page.wait_for("""
+        var inst = (function () { %s })();
+        return location.search.indexOf('section=') === -1 && !!inst && !inst.data.highlight;
+    """ % JS_INSTANCE, SWAP_TIMEOUT)
+    if not cleared:
+        problems.append('Clear did not drop the section')
+    page.js('window.history.back();')
+    back = page.wait_for("""
+        var inst = (function () { %s })();
+        return location.search.indexOf('section=' + arguments[0]) !== -1 && !!inst && inst.data.highlight === arguments[0];
+    """ % JS_INSTANCE, SWAP_TIMEOUT, target['id'])
+    if not back:
+        problems.append('back did not restore the section')
+    count = page.js("var mod = window.PesticidesSectionMap; return mod ? mod.instances().length : null;")
+    if count != 1:
+        problems.append('%s live instance(s) after back' % count)
+    # Clicking the selected section again lets it go. (The label sits on the
+    # section; closing it doesn't clear, and uncovers the click point.)
+    time.sleep(1.0)
+    page.instance_js('inst.closePopup();')
+    page.click_map(target['dx'], target['dy'], settle=0.5)
+    reclicked = page.wait_for("""
+        var inst = (function () { %s })();
+        return location.search.indexOf('section=') === -1 && !!inst && !inst.data.highlight;
+    """ % JS_INSTANCE, SWAP_TIMEOUT)
+    if not reclicked:
+        problems.append('re-clicking the selected section did not clear it')
+    detail = 'section %s: narrowed in place (+1 history), cleared, restored by back, cleared by re-click' % target['id']
+    return (not problems), (detail if not problems else '; '.join(problems))
+
+
+def check_filter_clear_link(page):
+    """A page's own Clear link (the entity banner's, or the map panel's) drops
+    the section without the camera easing back to the valley."""
+    if page.instance_js('return inst.data.select') != 'filter':
+        return None, 'not a filter-mode map (skipped)'
+    ok, _ = page.wait_grid('section', 10)
+    if not ok:
+        return False, 'not at the section grid'
+    target = page.pick('inst.sourceData.grid.features')
+    if not target:
+        return False, 'no section with data on bare canvas to click'
+    page.click_map(target['dx'], target['dy'], settle=0.5)
+    narrowed = page.wait_for("""
+        var inst = (function () { %s })();
+        return location.search.indexOf('section=' + arguments[0]) !== -1 && !!inst && inst.data.highlight === arguments[0];
+    """ % JS_INSTANCE, SWAP_TIMEOUT, target['id'])
+    if not narrowed:
+        return False, 'URL/highlight never carried section %s' % target['id']
+    time.sleep(1.5)
+    camera = page.instance_js('var c = inst.map.getCenter(); return [c.lng, c.lat, inst.map.getZoom()];')
+    clicked = page.js("""
+        var link = Array.from(document.querySelectorAll('.section-filter-banner a, #section-panel a'))
+            .filter(function (a) { return a.textContent.trim() === 'Clear'; })[0];
+        if (!link) return null;
+        link.click();
+        return link.textContent.trim();
+    """)
+    if not clicked:
+        return False, 'no Clear link in the banner or panel'
+    cleared = page.wait_for("""
+        var inst = (function () { %s })();
+        return location.search.indexOf('section=') === -1 && !!inst && !inst.data.highlight;
+    """ % JS_INSTANCE, SWAP_TIMEOUT)
+    if not cleared:
+        return False, 'Clear did not drop the section'
+    time.sleep(1.5)
+    after = page.instance_js('var c = inst.map.getCenter(); return [c.lng, c.lat, inst.map.getZoom()];')
+    if any(abs(a - b) > 1e-6 for a, b in zip(camera, after)):
+        return False, 'camera moved %s -> %s' % (camera, after)
+    return True, 'Clear link (%s) dropped the section, camera unmoved' % clicked
+
+
+def check_cross_mode(page):
+    """A section popup open on a non-filter page, then a boosted link in the
+    page followed to a filter page (the live map is adopted across the swap):
+    the stale selection must not navigate the new page to that section once
+    the grid settles."""
+    if page.instance_js('return inst.data.select') == 'filter':
+        return None, 'filter-mode map (skipped)'
+    ok, _ = page.wait_grid('section', 10)
+    if not ok:
+        return False, 'not at the section grid'
+    # A page link, not the popup's own (the popup's DOM isn't htmx-processed,
+    # so following one of those is a full load).
+    link_js = """
+        var links = Array.from(document.querySelectorAll('#explorer-body a[href*="/chemicals/"]'));
+        return links.filter(function (a) { return !a.closest('.maplibregl-popup'); })[0] || null;
+    """
+    href = page.js("var a = (function () { %s })(); return a ? a.getAttribute('href') : null;" % link_js)
+    if not href:
+        return None, 'no chemical link in the page body (skipped)'
+    target = page.pick('inst.sourceData.grid.features')
+    if not target:
+        return False, 'no section with data on bare canvas to click'
+    page.click_map(target['dx'], target['dy'], settle=0.5)
+    opened = page.instance_js('return inst.selectedSectionId;')
+    if opened != target['id']:
+        return False, 'section popup did not select %s' % target['id']
+    origin = page.js('return location.pathname + location.search;')
+    # (`return 1`: hand selenium a number, not the whole map.)
+    page.js('window.__smokeInstance = (function () { %s })(); return 1;' % JS_INSTANCE)
+    page.js("var a = (function () { %s })(); a.click(); return 1;" % link_js)
+    arrived = page.wait_for("""
+        var inst = (function () { %s })();
+        return location.pathname.indexOf('/chemicals/') !== -1 && !!inst && inst.data.select === 'filter';
+    """ % JS_INSTANCE, SWAP_TIMEOUT)
+    if not arrived:
+        return False, 'never reached a filter-mode chemical page'
+    time.sleep(3.0)  # the grid rebuilds; a stale reopen would navigate here
+    state = page.instance_js("return {search: location.search, selected: inst.selectedSectionId, same: inst === window.__smokeInstance};")
+    problems = []
+    if not state['same']:
+        problems.append('map was not adopted across the swap (test does not exercise it)')
+    if 'section=' in state['search']:
+        problems.append('chemical page navigated to %s with no click' % state['search'])
+    if state['selected']:
+        problems.append('stale selection %s survived into filter mode' % state['selected'])
+    detail = 'section %s selected, boosted link to a chemical page: adopted, no section= after the grid settled' % target['id']
+    return (not problems), (detail if not problems else '; '.join(problems))
 
 
 def check_year_swap(page, year):
@@ -1852,6 +2031,9 @@ CHECKS = [
     ('section popup', check_section_popup),
     ('selection', check_selection_survives_metric),
     ('popup clear', check_popup_clear),
+    ('filter click', check_filter_click),
+    ('filter clear link', check_filter_clear_link),
+    ('cross mode', check_cross_mode),
     ('year swap', check_year_swap),
     ('wheel zoom across swap', check_wheel_zoom_across_swap),
     ('expand', check_expand),
