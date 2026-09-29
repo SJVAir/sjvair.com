@@ -37,6 +37,7 @@ class Region(TimeStampedModel):
         URBAN_AREA = 'urban_area', _('Urban Area')
         LAND_USE = 'land_use', _('Land Use')
         PROTECTED = 'protected', _('Protected Area')
+        AB617_COMMUNITY = 'ab617', _('AB 617 Community')
 
         # Agricultural survey geography (PLSS / MTRS)
         MTRS = 'mtrs', _('MTRS Section')
@@ -73,6 +74,7 @@ class Region(TimeStampedModel):
         Type.URBAN_AREA: Category.ENVIRONMENTAL,
         Type.LAND_USE: Category.ENVIRONMENTAL,
         Type.PROTECTED: Category.ENVIRONMENTAL,
+        Type.AB617_COMMUNITY: Category.ENVIRONMENTAL,
 
         Type.MTRS: Category.AGRICULTURAL,
 
