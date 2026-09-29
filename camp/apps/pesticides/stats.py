@@ -950,14 +950,17 @@ def county_totals(year=None, all_years=False, concern=False):
     )
 
 
-def commodity_chemical_counts(county=None, concern=False):
+def commodity_chemical_counts(county=None, concern=False, year=None):
     """
-    {commodity_id: distinct chemicals applied to it, across every loaded
-    year}. One group-by over the rollup, cached -- the per-commodity
-    correlated subquery the single-year list uses has no usable index without
-    a year to lead with.
+    {commodity_id: distinct chemicals applied to it} in `year`, or across
+    every loaded year when no year is given. One group-by over the rollup,
+    cached: the per-commodity correlated subquery it replaces ran once per
+    commodity on the page -- ~0.3 s for one year, and with no usable index
+    across every year.
     """
     rows = real_chemicals(PesticideUseRollup.objects.filter(commodity__isnull=False, chemical__isnull=False))
+    if year is not None:
+        rows = rows.filter(year=year)
     if county is not None:
         rows = rows.filter(county=county)
     if concern:
@@ -965,6 +968,8 @@ def commodity_chemical_counts(county=None, concern=False):
     parts = ['commodity-chemicals', county.pk if county is not None else ALL_YEARS]
     if concern:
         parts.append(concern if concern in NARROW_VALUES else CONCERN_PARAM)
+    if year is not None:
+        parts.append(year)
     return cached(
         all_years_key(*parts),
         lambda: dict(

@@ -747,32 +747,20 @@ class CommodityList(ExplorerListMixin, vanilla.ListView):
 
     def chemical_count(self, year):
         """
-        Distinct chemicals applied to each commodity, still sortable in SQL.
-        For one year that's a correlated subquery on the (year, county,
-        commodity, chemical) index. Across every year there's no year to lead
-        with, so the counts come from one cached group-by, inlined here as a
-        CASE over the ~250 commodities that have any use at all.
+        Distinct chemicals applied to each commodity, still sortable in SQL:
+        one cached group-by (for the year, or every year), inlined as a CASE
+        over the ~250 commodities that have any use at all. A correlated
+        count per commodity was the list's whole cost.
         """
-        if self.all_years:
-            counts = stats.commodity_chemical_counts(self.county, self.concern)
-            if not counts:
-                return Value(0, output_field=IntegerField())
-            return Case(
-                *[When(pk=pk, then=Value(n)) for pk, n in counts.items()],
-                default=Value(0),
-                output_field=IntegerField(),
-            )
-        rows = PesticideUseRollup.objects.filter(commodity=OuterRef('pk'), year=year)
-        if self.county is not None:
-            rows = rows.filter(county=self.county)
-        if self.concern:
-            rows = stats.narrow_rows(rows, self.concern)
-        return Coalesce(Subquery(
-            rows
-            .values('commodity')
-            .annotate(n=Count('chemical', distinct=True))
-            .values('n'),
-        ), 0)
+        counts = stats.commodity_chemical_counts(
+            self.county, self.concern, year=None if self.all_years else year)
+        if not counts:
+            return Value(0, output_field=IntegerField())
+        return Case(
+            *[When(pk=pk, then=Value(n)) for pk, n in counts.items()],
+            default=Value(0),
+            output_field=IntegerField(),
+        )
 
 
 class ExplorerDetailMixin:

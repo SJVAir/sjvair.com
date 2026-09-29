@@ -409,6 +409,29 @@ class CommodityListTests(RollupTestMixin, TestCase):
     def test_search_site_code(self):
         assert self.names(self.client.get(self.url, {'q': '2500'})) == ['COTTON']
 
+    def test_single_year_chemical_counts_come_from_one_cached_group_by(self):
+        # The per-commodity correlated count was the list's whole cost
+        # (~0.3 s warm); one year now reads the same cached group-by the
+        # all-years list does.
+        fresno = Region.objects.get(pk=9001)
+        for year, county in ((2023, None), (2022, None), (2023, fresno)):
+            rows = PesticideUseRollup.objects.filter(year=year, commodity__isnull=False, chemical__isnull=False)
+            if county is not None:
+                rows = rows.filter(county=county)
+            expected = {}
+            for commodity, chemical in rows.values_list('commodity', 'chemical').distinct():
+                expected[commodity] = expected.get(commodity, 0) + 1
+            assert stats.commodity_chemical_counts(county, year=year) == expected
+        with self.assertNumQueries(0):
+            stats.commodity_chemical_counts(None, year=2023)
+
+    def test_chemical_count_for_a_past_year_and_county(self):
+        response = self.client.get(self.url, {'year': 2022, 'county': 'fresno'})
+        counts = {c.name: c.chemical_count for c in response.context['object_list']}
+        rows = PesticideUseRollup.objects.filter(year=2022, county__slug='fresno', chemical__isnull=False)
+        for name, n in counts.items():
+            assert n == rows.filter(commodity__name=name).values('chemical').distinct().count()
+
     def test_related_chemical(self):
         chem = Chemical.objects.get(pk=2)
         assert set(self.names(self.client.get(self.url, {'chemical': chem.sqid}))) == {'ALMOND', 'COTTON'}
