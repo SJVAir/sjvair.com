@@ -5,6 +5,7 @@
 - name: Central California Environmental Justice Network
   logo: img/logo/ccejn.png
   url: https://ccejn.org/
+  size: seal
 
 - name: Valley Improvement Projects
   logo: img/logo/vip.jpg
@@ -17,6 +18,7 @@
 - name: Madera Coalition for Community Justice
   logo: img/logo/mccj.jpg
   url: http://www.maderaccj.org/
+  size: seal
 
 - name: The Center on Race, Poverty & the Environment
   logo: img/logo/crpe.png
@@ -45,10 +47,12 @@
 - name: Parent Institute for Quality Education
   logo: img/logo/piqe.png
   url: https://www.piqe.org/
+  size: seal
 
 - name: University of California, Merced
   logo: img/logo/ucmerced.png
   url: https://www.ucmerced.edu/
+  size: compact
 
 - name: University of California, Berkeley
   logo: img/logo/ucberkeley.svg
