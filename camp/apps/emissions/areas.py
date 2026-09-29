@@ -39,6 +39,7 @@ NEXT_LEVEL = {
 }
 SQ_METERS_PER_SQ_MILE = 2_589_988.110336
 MILES_PER_DEGREE = 69.0
+METERS_PER_MILE = 1609.344
 
 
 def _key(name, *parts):
@@ -237,6 +238,12 @@ class RadiusArea:
     @property
     def point(self):
         return Point(self.lng, self.lat, srid=EPSG_LATLON)
+
+    @property
+    def geometry(self):
+        """The circle as a polygon in WGS84, buffered in California Albers so a mile is a mile (for CES tract membership)."""
+        albers = self.point.transform(EPSG_CALIFORNIA_ALBERS, clone=True)
+        return albers.buffer(self.radius * METERS_PER_MILE).transform(EPSG_LATLON, clone=True)
 
     def _within(self, field):
         # A bounding-box prefilter first, so the index does the work and the

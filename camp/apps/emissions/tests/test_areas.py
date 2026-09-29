@@ -119,3 +119,12 @@ class ScopeAreaTests(AreaTestCase):
         tract = make(Region.Type.TRACT, 'T1', AROUND_PLANT)
         assert areas.facility_areas(self.plant) == [self.plant.county, zipcode, tract]
         assert areas.facility_areas(self.cement) == [self.cement.county]
+
+
+class RadiusGeometryTests(TestCase):
+    def test_a_mile_is_a_mile(self):
+        area = areas.RadiusArea(36.75, -119.75, 1)
+        geometry = area.geometry
+        assert geometry.srid == 4326 and geometry.contains(area.point)
+        sq_miles = geometry.transform(areas.EPSG_CALIFORNIA_ALBERS, clone=True).area / areas.SQ_METERS_PER_SQ_MILE
+        assert abs(sq_miles - area.sq_miles) / area.sq_miles < 0.01

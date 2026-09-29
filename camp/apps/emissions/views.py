@@ -14,6 +14,7 @@ from django.urls import reverse
 
 import vanilla
 
+from camp.apps.ces import stats as ces_stats
 from camp.apps.emissions import areas, dairies, schools, stats
 from camp.apps.emissions.models import Facility, SourceImport
 from camp.apps.emissions.pollutants import CRITERIA
@@ -605,6 +606,12 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
         # A region page overrides this with its own "In and around" lists;
         # a near-me page (a point, not a region) has none.
         kwargs.setdefault('within', None)
+        # The Community card (CalEnviroScreen): a summary of the tracts the
+        # area covers, or on a tract page the tract's own row. Subclasses set
+        # them; None hides the card.
+        kwargs.setdefault('community', None)
+        kwargs.setdefault('tract_ces', None)
+        kwargs.setdefault('show_top_tracts', False)
         return super().get_context_data(
             area=area,
             county_region=county,
@@ -707,6 +714,11 @@ class RegionPage(RegionLookupMixin, AreaPage):
         if region.type == Region.Type.COUNTY:
             # The context bar names `county`; on a county page that's the page's own.
             extra['county'] = region
+        if region.type == Region.Type.TRACT:
+            extra['tract_ces'] = ces_stats.tract_record(region)
+        elif region.boundary_id:
+            extra['community'] = ces_stats.tract_summary(region.boundary.geometry)
+            extra['show_top_tracts'] = region.type == Region.Type.COUNTY
         return super().get_context_data(
             # `name` is the plain heading (h1); `title` (the <title> tag and
             # the breadcrumb, which have no identifiers line under them to
@@ -858,5 +870,6 @@ class NearMe(NearLookupMixin, AreaPage):
             context_bar=None,
             radius_options=self.radius_options(),
             privacy_note=True,
+            community=ces_stats.tract_summary(self.near.geometry),
             **kwargs,
         )
