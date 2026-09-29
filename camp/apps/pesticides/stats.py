@@ -320,9 +320,12 @@ NOTICE_METHOD_LABELS = {'Aircraft': 'Air'}
 def by_method(rows, year, lbs_field='lbs_chemical', all_years=False, apps_field='records'):
     """
     How the scope's use was applied, from CDPR's per-record method
-    (aer_gnd_ind): pounds, applications and their shares per method, in
-    a fixed order. Blank stays as "Not reported" -- mostly the monthly
-    summaries of structural and landscape use -- rather than being dropped.
+    (aer_gnd_ind): pounds, applications and their shares per method,
+    largest first (by pounds, then applications, for a scope without
+    pounds). Other and Not reported stay last whatever their size: they're
+    what's left over, not methods to rank. Blank stays as "Not reported" --
+    mostly the monthly summaries of structural and landscape use -- rather
+    than being dropped.
     """
     totals = {}
     for r in in_year(rows, year, all_years).values('method').annotate(
@@ -345,7 +348,9 @@ def by_method(rows, year, lbs_field='lbs_chemical', all_years=False, apps_field=
             'applications': r['applications'],
             'app_share': r['applications'] / total_apps if total_apps else 0,
         })
-    return out
+    leftover = ('O', '')
+    ranked = sorted((r for r in out if r['method'] not in leftover), key=lambda r: (-r['lbs'], -r['applications']))
+    return ranked + [r for r in out if r['method'] in leftover]
 
 
 NOT_RECORDED = 'Not recorded'

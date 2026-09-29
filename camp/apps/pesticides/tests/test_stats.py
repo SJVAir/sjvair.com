@@ -652,6 +652,26 @@ class ByMethodTests(RollupTestMixin, TestCase):
     def test_no_year_is_empty(self):
         assert stats.by_method(PesticideUseRollup.objects.all(), None) == []
 
+    def test_methods_are_biggest_first_with_other_and_not_reported_last(self):
+        # Field fumigation outweighs Air, which outweighs Ground; Not reported
+        # is the biggest of all and still goes last.
+        PesticideUseRollup.objects.filter(year=2023, method='A').update(lbs_chemical=5000)
+        PesticideUseRollup.objects.create(
+            year=2023, month=1, county_id=PesticideUseRollup.objects.first().county_id,
+            method='F', lbs_chemical=50000, applications=1, records=1)
+        PesticideUseRollup.objects.create(
+            year=2023, month=2, county_id=PesticideUseRollup.objects.first().county_id,
+            method='', lbs_chemical=90000, applications=1, records=1)
+        out = stats.by_method(PesticideUseRollup.objects.all(), 2023)
+        assert [r['method'] for r in out] == ['F', 'A', 'G', '']
+
+    def test_without_pounds_methods_rank_by_applications(self):
+        # A placeholder chemical has no pounds; applications decide instead.
+        PesticideUseRollup.objects.filter(year=2023).update(lbs_chemical=0)
+        PesticideUseRollup.objects.filter(year=2023, method='A').update(records=50)
+        out = stats.by_method(PesticideUseRollup.objects.all(), 2023)
+        assert [r['method'] for r in out] == ['A', 'G']
+
     def test_unknown_code_counts_as_other(self):
         PesticideUseRollup.objects.filter(year=2023, method='A').update(method='X')
         out = stats.by_method(PesticideUseRollup.objects.all(), 2023)
