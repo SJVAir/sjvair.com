@@ -14,7 +14,7 @@ from camp.apps.regions.models import Region
 WITHIN_TTL = 60 * 60 * 24
 
 
-def regions_within(region, *, url_method, cache_prefix):
+def regions_within(region, *, url_method, cache_prefix, ab617=False):
     """
     {'counties', 'communities', 'school_districts', 'zipcodes', 'any'} for a
     place page: for a county that is everything whose boundary centroid
@@ -28,14 +28,24 @@ def regions_within(region, *, url_method, cache_prefix):
     share a cached result).
 
     `url_method` is the name of the `Region` method that builds each
-    entry's link ('get_pesticides_url' or 'get_emissions_url').
+    entry's link ('get_pesticides_url' or 'get_emissions_url'). `ab617`
+    (the emissions explorer only -- pesticides has no AB 617 pages) folds
+    AB 617 communities into the 'communities' group too, labelled with
+    their own `type_label` ("AB 617 Community"): the AB 617 community a
+    region overlaps, or, on an AB 617 community's own page, the city/county
+    it's in (already covered by 'communities'/'counties').
     """
+    # cache_prefix is always paired with the same ab617 value by its caller
+    # (region_within passes True, region_within_dairies leaves it False), so
+    # the key needn't carry it too.
     key = f'{cache_prefix}:{region.pk}'
     data = cache.get(key)
     if data is not None:
         return data
     geometry = region.boundary.geometry
     kinds = (*Region.COMMUNITY_TYPES, Region.Type.SCHOOL_DISTRICT, Region.Type.ZIPCODE)
+    if ab617:
+        kinds = (*kinds, Region.Type.AB617_COMMUNITY)
     if region.type == Region.Type.COUNTY:
         rows = (
             Region.objects.filter(type__in=kinds, boundary__isnull=False)
