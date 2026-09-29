@@ -172,6 +172,14 @@ class TractSummaryTests(TestCase):
         assert [row['region'].external_id for row in summary['tracts']] == ['06019000101', '06019000102']
         assert summary['highest']['region'].external_id == '06019000101' and summary['lowest']['region'].external_id == '06019000102'
 
+    def test_an_import_orphans_cached_summaries(self):
+        area = bbox(-119.79, 36.71, -119.77, 36.73)
+        assert stats.tract_summary(area)['containing']['ci_score_p'] == 89.2
+        CES5.objects.filter(boundary__region__external_id='06019000101').update(ci_score_p=12.5)
+        assert stats.tract_summary(area)['containing']['ci_score_p'] == 89.2
+        stats.clear_caches()
+        assert stats.tract_summary(area)['containing']['ci_score_p'] == 12.5
+
     def test_a_shared_border_is_not_membership(self):
         # Exactly tract 1.01: 1.02 touches it along one edge (intersects, overlap 0).
         summary = stats.tract_summary(bbox(-119.8, 36.7, -119.7, 36.8))
