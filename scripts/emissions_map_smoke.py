@@ -12,7 +12,9 @@ a near-me page (its circle), and checks the scope bar's boosted swaps carry
 the map's current state (back to Facilities, a cleared sector, no repeated
 parameters). The toxics scope: the cancer-weighted default (legend, a popup
 as a percent of the Valley total, Areas limited to Total) and benzene in
-pounds. Then the Dairies tab: its two views (dairies drawn, counties
+pounds. The Oil & gas wells overlay: off until ticked, clusters over Kern, a
+cluster zoom, a well's popup with its as-of date, the legend's snapshot note,
+and Kern County's page with it on and its wells section. Then the Dairies tab: its two views (dairies drawn, counties
 shaded), an Options menu with Tiles only (a size filter surviving the style
 swap, tiles= in the URL), a measure change redrawing the legend, a sort (a
 boosted swap) keeping Counties and its measure, a table row's name zooming to its dairy
@@ -523,6 +525,65 @@ def main():
         driver.get(args.base + '/tools/emissions/map/?toxics=1&pollutant=benzene')
         check(results, 'benzene in pounds', wait_loaded(driver) and 'lbs/yr' in driver.execute_script("return document.querySelector('.facility-map-legend').textContent;"))
 
+        # The Oil & gas wells overlay: off on the map page until ticked, then
+        # clustered over Kern; a cluster click zooms, a well click fetches its
+        # record; the state lands in the URL; Kern County's page has it on.
+        driver.get(args.base + '/tools/emissions/map/')
+        check(results, 'map loads with the wells overlay off', wait_loaded(driver)
+              and driver.execute_script("return window.EmissionsFacilityMap.instances()[0].wells;") is False
+              and driver.execute_script("return !!document.querySelector('.facility-map-legend [data-wells]');"))
+        driver.execute_script("window.EmissionsFacilityMap.instances()[0].setWells(true);")
+        deadline = time.time() + MAP_TIMEOUT
+        while time.time() < deadline and driver.execute_script(
+                "return document.querySelector('.facility-map').dataset.wellsLoaded;") != '1':
+            time.sleep(0.25)
+        check(results, 'ticking the overlay loads the wells and writes wells=1',
+              driver.execute_script("return document.querySelector('.facility-map').dataset.wellsLoaded;") == '1'
+              and query(driver).get('wells') == ['1'], driver.current_url)
+        driver.execute_script("window.EmissionsFacilityMap.instances()[0].map.jumpTo({center: [-119.1, 35.4], zoom: 9});")
+        time.sleep(1.5)
+        clusters = driver.execute_script(
+            "var m = window.EmissionsFacilityMap.instances()[0];"
+            "return m.map.queryRenderedFeatures({layers: ['wells-clusters']}).length;")
+        check(results, 'clusters render over Kern at zoom 9', clusters > 0, f'{clusters} clusters')
+        zoom_before = driver.execute_script("return window.EmissionsFacilityMap.instances()[0].map.getZoom();")
+        driver.execute_script(
+            "var m = window.EmissionsFacilityMap.instances()[0];"
+            "var f = m.map.queryRenderedFeatures({layers: ['wells-clusters']})[0]; if (f) m.zoomToCluster(f);")
+        time.sleep(1.5)
+        zoom_after = driver.execute_script("return window.EmissionsFacilityMap.instances()[0].map.getZoom();")
+        check(results, 'a cluster click zooms in', zoom_after > zoom_before, f'{zoom_before:.1f} -> {zoom_after:.1f}')
+        driver.execute_script("window.EmissionsFacilityMap.instances()[0].map.jumpTo({center: [-119.02, 35.42], zoom: 13.5});")
+        time.sleep(1.5)
+        popup = driver.execute_script("""
+            var m = window.EmissionsFacilityMap.instances()[0];
+            var f = m.map.queryRenderedFeatures({layers: ['wells']})[0];
+            if (!f) return '';
+            m.openWellPopup(f, f.geometry.coordinates);
+            return 'opened';
+        """)
+        deadline = time.time() + 10
+        text = ''
+        while time.time() < deadline and 'CalGEM record' not in text:
+            text = driver.execute_script("var el = document.querySelector('.well-popup'); return el ? el.textContent : '';")
+            time.sleep(0.25)
+        check(results, 'a well click shows its record, its as-of date and the CalGEM link',
+              popup == 'opened' and 'CalGEM record' in text and 'Current status, as of' in text, text[:160])
+        legend = driver.execute_script("return document.querySelector('.facility-map-legend').textContent;")
+        check(results, "the legend keys the statuses and the HPZ ring, and says it's today's wells",
+              'Active' in legend and 'health-protection zone' in legend and "Today's wells, as of" in legend and 'not by year' in legend, legend[-200:])
+        driver.execute_script("window.EmissionsFacilityMap.instances()[0].setWells(false);")
+        time.sleep(0.3)
+        check(results, 'unticking clears wells= and hides the layer', 'wells' not in query(driver)
+              and driver.execute_script("return window.EmissionsFacilityMap.instances()[0].map.getLayoutProperty('wells', 'visibility');") == 'none')
+        # Kern County's page (its link from the home page): on by default, the wells section and its snapshot notice.
+        driver.get(args.base + '/tools/emissions/')
+        kern_url = driver.execute_script("var a = document.querySelector('a[href*=\"/region/\"][href$=\"/kern/\"]'); return a ? a.href : '';")
+        driver.get(kern_url)
+        check(results, "Kern County's page has the overlay on by default and the wells section",
+              wait_loaded(driver) and driver.execute_script("return document.querySelector('.facility-map').dataset.wells;") == '1'
+              and driver.execute_script("return !!document.getElementById('wells') && !!document.querySelector('#wells .wells-snapshot');"), kern_url)
+
         driver.get(args.base + '/tools/emissions/dairies/')
         check(results, 'dairies tab loads', wait_dairies(driver))
         drawn = settled_count(driver, dairy_count)
@@ -801,8 +862,8 @@ def main():
         check(results, "'Dairies in Tulare County →' goes to the dairy page", bool(link) and link.split('?')[0] == tulare, str(link))
         nav = driver.execute_script(
             "return Array.prototype.map.call(document.querySelectorAll('.section-nav a'), function (a) { return a.getAttribute('href'); });")
-        check(results, 'its section nav links Facilities, Community, Dairies, In and around',
-              nav == ['#facilities', '#community', '#dairies', '#in-and-around'], str(nav))
+        check(results, 'its section nav links Facilities, Community, Wells, Dairies, In and around',
+              nav == ['#facilities', '#community', '#wells', '#dairies', '#in-and-around'], str(nav))
         # A boosted swap would replace #explorer-body, and the mark with it.
         driver.execute_script("document.getElementById('explorer-body').dataset.smoke = '1'; window.scrollTo(0, 0);")
         driver.find_element(By.CSS_SELECTOR, '.section-nav a[href="#dairies"]').click()
