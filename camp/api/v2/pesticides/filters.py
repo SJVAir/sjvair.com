@@ -58,6 +58,7 @@ class PesticideUseFilter(FilterSet):
     chemical = django_filters.NumberFilter(field_name='chemical__chem_code')
     commodity = django_filters.CharFilter(field_name='commodity__site_code')
     product = django_filters.NumberFilter(field_name='product__prodno')
+    fume_method = django_filters.NumberFilter(field_name='fume_method__code')
     region_id = django_filters.CharFilter(method='filter_region_id')
 
     def filter_region_id(self, queryset, name, value):

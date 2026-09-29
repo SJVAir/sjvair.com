@@ -1,8 +1,9 @@
 from django import forms
+from django.db.models import Exists, OuterRef
 from django.core.cache import cache
 from django.utils.translation import gettext_lazy as _
 
-from camp.apps.pesticides.models import Chemical, PesticideNotice
+from camp.apps.pesticides.models import Chemical, FumigationMethod, PesticideNotice, PesticideUse
 from camp.apps.pesticides.stats import METHOD_LABELS, METHOD_ORDER
 from camp.apps.pesticides.places import RADIUS_CHOICES as RADIUS_MILES
 
@@ -93,6 +94,7 @@ class RecordsFilterForm(forms.Form):
         required=False,
         choices=[('', _('Any'))] + METHOD_CHOICES,
     )
+    fume_method = forms.ChoiceField(label=_('Fumigation method'), required=False)
 
     # Carried as hidden inputs -- set by the section map / entity pages, not
     # edited directly in this form. (chemical/product/commodity are filters
@@ -103,6 +105,13 @@ class RecordsFilterForm(forms.Form):
     lat = forms.FloatField(required=False, widget=forms.HiddenInput)
     lng = forms.FloatField(required=False, widget=forms.HiddenInput)
     radius = forms.ChoiceField(required=False, choices=RADIUS_CHOICES, widget=forms.HiddenInput)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Only the techniques some record carries; the code is the value.
+        used = FumigationMethod.objects.filter(
+            Exists(PesticideUse.objects.filter(fume_method=OuterRef('pk')))).order_by('name')
+        self.fields['fume_method'].choices = [('', _('Any'))] + [(str(m.code), m.name) for m in used]
 
     def set_bounds(self, low, high):
         """Bound the date inputs to the scope's range (the browser's picker greys out the rest)."""

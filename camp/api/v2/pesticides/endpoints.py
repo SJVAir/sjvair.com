@@ -104,7 +104,7 @@ class PesticideUseMixin:
         # annotation; prefetching its chemicals instead makes is_restricted's
         # fallback one query for the page rather than one per row.
         return (super().get_queryset()
-            .select_related('county', 'mtrs', 'product', 'chemical', 'commodity')
+            .select_related('county', 'mtrs', 'product', 'chemical', 'commodity', 'fume_method')
             .prefetch_related('product__chemicals'))
 
 

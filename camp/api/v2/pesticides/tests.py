@@ -340,7 +340,7 @@ class PesticideUseListTests(TestCase):
         assert set(item.keys()) == {
             'id', 'year', 'use_no', 'comtrs', 'lbs_chemical', 'acres_treated',
             'application_date', 'aerial_ground', 'county', 'mtrs',
-            'product', 'chemical', 'commodity',
+            'product', 'chemical', 'commodity', 'fume_method',
         }
 
     def test_nested_fk_fields(self):
@@ -411,7 +411,7 @@ class PesticideUseDetailTests(TestCase):
         assert set(item.keys()) == {
             'id', 'year', 'use_no', 'comtrs', 'lbs_chemical', 'acres_treated',
             'application_date', 'aerial_ground', 'county', 'mtrs',
-            'product', 'chemical', 'commodity',
+            'product', 'chemical', 'commodity', 'fume_method',
         }
 
 

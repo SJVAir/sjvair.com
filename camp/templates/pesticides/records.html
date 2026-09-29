@@ -31,6 +31,12 @@
                     <div class="select is-fullwidth">{{ form.method }}</div>
                 </div>
             </div>
+            <div class="field">
+                <label class="label" for="{{ form.fume_method.id_for_label }}">{{ form.fume_method.label }}</label>
+                <div class="control">
+                    <div class="select is-fullwidth">{{ form.fume_method }}</div>
+                </div>
+            </div>
             {# Entity pickers; this form submits on Apply only. #}
             {% include 'pesticides/includes/entity-picker.html' with kind='product' label='Product' selected=related.product autosubmit=0 %}
             {% include 'pesticides/includes/entity-picker.html' with kind='chemical' label='Chemical' selected=related.chemical autosubmit=0 %}

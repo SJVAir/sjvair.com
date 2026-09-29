@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product, ProductChemical
+from camp.apps.pesticides.models import Chemical, Commodity, FumigationMethod, PesticideNotice, PesticideUse, Product, ProductChemical
 from camp.utils.admin import ReadOnlyAdminMixin, admin_change_link
 
 
@@ -23,6 +23,14 @@ class CommodityAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     search_fields = ['name', 'site_code']
 
 
+@admin.register(FumigationMethod)
+class FumigationMethodAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ['code', 'name', 'active']
+    list_filter = ['active']
+    search_fields = ['code', 'name']
+    ordering = ['code']
+
+
 @admin.register(Product)
 class ProductAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ['name', 'prodno', 'reg_number', 'is_fumigant', 'fumigant']
@@ -35,7 +43,7 @@ class ProductAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 class PesticideUseAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     date_hierarchy = 'application_date'
     list_display = ['year', 'use_no', 'get_county', 'get_mtrs', 'get_commodity', 'get_product', 'get_chemical', 'lbs_chemical', 'acres_treated', 'application_date']
-    list_filter = ['aerial_ground', 'county', 'product__is_fumigant']
+    list_filter = ['aerial_ground', 'fume_method', 'county', 'product__is_fumigant']
     list_select_related = ['county', 'mtrs', 'commodity', 'product', 'chemical']
     ordering = ['-application_date']
     raw_id_fields = ['county', 'mtrs', 'product', 'chemical', 'commodity']

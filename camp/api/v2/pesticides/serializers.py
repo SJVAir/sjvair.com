@@ -67,6 +67,14 @@ class ProductDetailSerializer(ProductSerializer):
     )
 
 
+class FumigationMethodSerializer(serializers.Serializer):
+    fields = (
+        ('id', lambda m: m.sqid),
+        'code',
+        'name',
+    )
+
+
 class PesticideUseSerializer(serializers.Serializer):
     fields = (
         ('id', lambda r: r.sqid),
@@ -82,6 +90,7 @@ class PesticideUseSerializer(serializers.Serializer):
         ('product', ProductSerializer),
         ('chemical', ChemicalSerializer),
         ('commodity', CommoditySerializer),
+        ('fume_method', FumigationMethodSerializer),
     )
 
 

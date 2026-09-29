@@ -38,7 +38,7 @@
                 </td>
                 <td class="has-text-right">{{ use.lbs_chemical|lbs }}</td>
                 <td class="has-text-right">{{ use.acres_treated|lbs }}</td>
-                <td>{{ use.aerial_ground|method_label }}</td>
+                <td>{% if use.fume_method %}<span title="{{ use.fume_method.name }}">{{ use.aerial_ground|method_label }} — {{ use.fume_method.short_name }}</span>{% else %}{{ use.aerial_ground|method_label }}{% endif %}</td>
             </tr>
             {% empty %}
             <tr><td colspan="9" class="has-text-centered has-text-grey">No records match.</td></tr>

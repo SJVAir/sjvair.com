@@ -340,6 +340,33 @@ class ProductChemical(models.Model):
         return f'{self.product} / {self.chemical}'
 
 
+class FumigationMethod(TimeStampedModel):
+    """
+    CDPR's field-fumigation technique code (`fume_cd`): the method the
+    fumigation regulations (3 CCR 6447-6450) require for a field fumigation
+    in the non-attainment areas, the San Joaquin Valley among them.
+    """
+    sqid = SqidsField(alphabet=shuffle_alphabet('pesticides.FumigationMethod'))
+
+    code = models.IntegerField(_('Code'), unique=True)
+    # CDPR's text verbatim, citation included: "Tarpaulin/Deep/Broadcast [6447.3(a)(5)]".
+    name = models.CharField(_('Name'), max_length=256)
+    active = models.BooleanField(_('Active'), default=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = _('Fumigation Method')
+        verbose_name_plural = _('Fumigation Methods')
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def short_name(self):
+        """The technique without its trailing regulation citation."""
+        return re.sub(r'\s*\[[^\]]*\]\s*$', '', self.name)
+
+
 class PesticideUse(TimeStampedModel):
     class AerialGround(models.TextChoices):
         AERIAL      = 'A', _('Aerial')
@@ -406,6 +433,18 @@ class PesticideUse(TimeStampedModel):
     application_date = models.DateField(_('Application Date'), null=True, blank=True)
     aerial_ground = models.CharField(_('Aerial/Ground'), max_length=1, blank=True, choices=AerialGround.choices)
     record_id = models.CharField(_('Record ID'), max_length=4, blank=True)
+    # Only field fumigations in the non-attainment areas carry one, and only
+    # from 2008; everything else stays null. Set by import_pur from the
+    # statewide PUR file, which is the only place CDPR publishes it.
+    fume_method = models.ForeignKey(
+        'pesticides.FumigationMethod',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_index=False,
+        related_name='uses',
+        verbose_name=_('Fumigation Method'),
+    )
 
     class Meta:
         ordering = ['-application_date', '-year']
@@ -420,6 +459,9 @@ class PesticideUse(TimeStampedModel):
             models.Index(fields=['chemical', 'year']),
             models.Index(fields=['product', 'year']),
             models.Index(fields=['commodity', 'year']),
+            # Nearly every record has no technique, so the FK's own index
+            # would be ~16M entries of NULL; this holds only the coded ones.
+            models.Index(fields=['fume_method'], condition=models.Q(fume_method__isnull=False), name='pesticide_use_fume_idx'),
         ]
         verbose_name = _('Pesticide Use')
         verbose_name_plural = _('Pesticide Uses')

@@ -15,7 +15,7 @@ from django.db.models import Case, Count, F, FloatField, Max, Min, Q, Sum, When
 from django.utils import timezone
 
 from camp.apps.pesticides.models import (
-    Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, PesticideUseTotal, Product,
+    Chemical, Commodity, FumigationMethod, PesticideNotice, PesticideUse, PesticideUseRollup, PesticideUseTotal, Product,
 )
 from camp.apps.pesticides.townships import township_index
 from camp.apps.regions.models import Region
@@ -341,6 +341,39 @@ def by_method(rows, year, lbs_field='lbs_chemical', all_years=False):
             'applications': r['applications'],
             'app_share': r['applications'] / total_apps if total_apps else 0,
         })
+    return out
+
+
+NOT_RECORDED = 'Not recorded'
+
+
+def by_fume_method(uses, lbs_field='lbs_chemical'):
+    """
+    How field fumigations were done, from CDPR's fumigation-method code
+    (fume_cd): pounds, records and their shares per technique, largest
+    first, with records that carry no code as one "Not recorded" row last.
+
+    `uses` is PesticideUse rows already narrowed to field fumigation and to
+    the page's scope. The code lives on the raw records only (the rollup
+    doesn't carry it). Applications count rows, one per active ingredient,
+    exactly as the rollup's `applications` does, so this table agrees with
+    "How it was applied" beside it.
+    """
+    found = list(uses.order_by().values('fume_method').annotate(
+        lbs=Sum(lbs_field), applications=Count('pk')))
+    methods = FumigationMethod.objects.in_bulk([r['fume_method'] for r in found if r['fume_method']])
+    total = sum(r['lbs'] or 0 for r in found)
+    total_apps = sum(r['applications'] for r in found)
+    out = [{
+        'method': methods.get(r['fume_method']),
+        'label': methods[r['fume_method']].name if r['fume_method'] else NOT_RECORDED,
+        'lbs': r['lbs'] or 0,
+        'share': (r['lbs'] or 0) / total if total else 0,
+        'applications': r['applications'],
+        'app_share': r['applications'] / total_apps if total_apps else 0,
+    } for r in found]
+    # Recorded techniques by pounds, the unrecorded remainder last.
+    out.sort(key=lambda row: (row['method'] is None, -row['lbs'], row['label']))
     return out
 
 

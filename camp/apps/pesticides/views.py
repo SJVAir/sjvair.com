@@ -27,7 +27,7 @@ from camp.apps.pesticides.forms import (
     ChemicalFilterForm, CommodityFilterForm, NO_METHOD, NoticeFilterForm, ProductFilterForm, RecordsFilterForm,
 )
 from camp.apps.pesticides.models import (
-    Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, PesticideUseTotal,
+    Chemical, Commodity, FumigationMethod, PesticideNotice, PesticideUse, PesticideUseRollup, PesticideUseTotal,
     Product, ProductChemical,
 )
 from camp.apps.regions.models import Region
@@ -810,6 +810,28 @@ class ExplorerDetailMixin:
             rows = stats.narrow_rows(rows, self.concern_active)
         return rows
 
+    def shows_fume_methods(self):
+        """Whether this page breaks field fumigation down by technique: fumigants only."""
+        return False
+
+    def get_fume_uses(self):
+        """
+        The raw field-fumigation records in this page's scope (entity, county,
+        narrowing). The technique code lives on the records, not the rollup.
+        """
+        uses = PesticideUse.objects.filter(**{self.use_field: self.object}, aerial_ground='F')
+        if self.county is not None:
+            uses = uses.filter(county=self.county)
+        if self.concern_active:
+            uses = stats.narrow_rows(uses, self.concern_active, method_field='aerial_ground')
+        return uses
+
+    def by_fume_method(self, year, all_years):
+        if not self.shows_fume_methods():
+            return []
+        return self.cached_stat('by_fume_method', lambda: stats.by_fume_method(
+            stats.in_year(self.get_fume_uses(), year, all_years), self.lbs_field))
+
     def concern_applies(self):
         """
         Does the chemicals-of-concern scope narrow this page, or exclude the
@@ -934,6 +956,7 @@ class ExplorerDetailMixin:
             by_year=stats.by_year(rows, self.lbs_field),
             by_county=self.cached_stat('by_county', lambda: stats.by_county(rows, year, self.lbs_field, all_years=all_years)),
             by_method=self.cached_stat('by_method', lambda: stats.by_method(rows, year, self.lbs_field, all_years=all_years)),
+            by_fume_method=self.by_fume_method(year, all_years),
             by_month=self.cached_stat('by_month', lambda: stats.by_month(rows, year, self.lbs_field, all_years=all_years)) if (year or all_years) else [],
             # Always every year: seasonality only reads as a shift across them.
             by_year_month=self.cached_stat(
@@ -1008,6 +1031,9 @@ class ChemicalDetail(ExplorerDetailMixin, vanilla.DetailView):
     def get_notices(self):
         return PesticideNotice.objects.filter(chemicals=self.object)
 
+    def shows_fume_methods(self):
+        return Chemical.Category.FUMIGANT in (self.object.categories or [])
+
     def concern_applies(self):
         if self.concern == stats.NARROW_CONCERN:
             return self.object.is_of_concern
@@ -1044,6 +1070,9 @@ class ProductDetail(ExplorerDetailMixin, vanilla.DetailView):
 
     def get_notices(self):
         return PesticideNotice.objects.filter(products=self.object)
+
+    def shows_fume_methods(self):
+        return self.object.is_fumigant
 
     def concern_applies(self):
         # A product whose active ingredients are all off the lists has no
@@ -1478,6 +1507,12 @@ class RecordsBrowser(vanilla.ListView):
         if data.get('method'):
             queryset = queryset.filter(aerial_ground='' if data['method'] == NO_METHOD else data['method'])
 
+        if data.get('fume_method'):
+            # The pk first, so the filter is a plain column match on the
+            # (partial) index rather than a join.
+            method_id = FumigationMethod.objects.filter(code=data['fume_method']).values_list('pk', flat=True).first()
+            queryset = queryset.filter(fume_method_id=method_id) if method_id else queryset.none()
+
         for param in ('chemical', 'product', 'commodity'):
             obj = self.related.get(param)
             if obj:
@@ -1521,7 +1556,7 @@ class RecordsBrowser(vanilla.ListView):
         page = super().paginate_queryset(queryset, page_size)
         page_pks = [obj.pk for obj in page.object_list]
         objects = PesticideUse.objects.select_related(
-            'county', 'mtrs', 'chemical', 'product', 'commodity',
+            'county', 'mtrs', 'chemical', 'product', 'commodity', 'fume_method',
         ).in_bulk(page_pks)
         # A row deleted between the pk query above and this hydration query
         # (an import can delete/reimport a year mid-request) is dropped from
@@ -1537,6 +1572,7 @@ class RecordsBrowser(vanilla.ListView):
             'end': end,
             'county': data.get('county'),
             'method': data.get('method'),
+            'fume_method': data.get('fume_method'),
             'region': self.request.GET.get('region', ''),
             'section': self.request.GET.get('section', ''),
             'chemical': self.request.GET.get('chemical', ''),
