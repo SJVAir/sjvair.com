@@ -1,6 +1,10 @@
+from django.contrib.gis.geos import MultiPolygon, Point, Polygon
+from django.core.cache import cache
 from django.test import TestCase
 
+from camp.apps.ces import stats
 from camp.apps.ces.models import CES4, CES5, DACCategory
+from camp.apps.regions.models import Boundary, Region
 
 
 class CES4ModelTests(TestCase):
@@ -120,3 +124,102 @@ class CES5ModelTests(TestCase):
         record = self.get_tract('06019000101')
         assert isinstance(record.sqid, str)
         assert record.sqid
+
+
+def bbox(west, south, east, north):
+    return MultiPolygon(Polygon.from_bbox((west, south, east, north)), srid=4326)
+
+
+def make_tract(geoid, west, east, **ces5_fields):
+    """A 2020 tract between longitudes west..east, latitude 36.7..36.8 (like the fixture tracts), with a CES5 row."""
+    region = Region.objects.create(name=f'Census Tract {geoid[-4:]}', slug=f'tract-{geoid}', type=Region.Type.TRACT, external_id=geoid)
+    boundary = Boundary.objects.create(region=region, version='2020', geometry=bbox(west, 36.7, east, 36.8))
+    region.boundary = boundary
+    region.save(update_fields=['boundary'])
+    CES5.objects.create(boundary=boundary, **ces5_fields)
+    return region
+
+
+class TractSummaryTests(TestCase):
+    """Fixture tracts: 1.01 is -119.8..-119.7 (89.2, DAC, pop 4650); 1.02 is -119.7..-119.6 (51.0, not DAC, pop 3350)."""
+    fixtures = ['regions.yaml', 'calenviroscreen.yaml']
+
+    def setUp(self):
+        cache.clear()
+
+    def test_current_model_prefers_ces5_then_ces4(self):
+        assert stats.current_model() == (CES5, '2020')
+        CES5.objects.all().delete()
+        assert stats.current_model() == (CES4, '2020')
+        CES4.objects.all().delete()
+        assert stats.current_model() == (None, None)
+        assert stats.tract_summary(bbox(-119.8, 36.7, -119.6, 36.8)) is None
+
+    def test_a_small_place_falls_to_its_containing_tract(self):
+        # Inside tract 1.01 but clear of its centroid (-119.75, 36.75), and 4% of its area.
+        summary = stats.tract_summary(bbox(-119.79, 36.71, -119.77, 36.73))
+        assert summary['count'] == 0 and summary['tracts'] == [] and summary['scored'] == 0
+        assert summary['containing']['region'].external_id == '06019000101'
+        assert summary['containing']['ci_score_p'] == 89.2 and summary['containing']['dac'] is True
+        assert summary['dac_share'] is None and summary['min_p'] is None
+
+    def test_overlap_rule(self):
+        # 5% of tract 1.01 (its centroid is outside): only 1.02 counts.
+        summary = stats.tract_summary(bbox(-119.705, 36.7, -119.6, 36.8))
+        assert [row['region'].external_id for row in summary['tracts']] == ['06019000102']
+        # 40% of tract 1.01: both count, highest first.
+        summary = stats.tract_summary(bbox(-119.74, 36.7, -119.6, 36.8))
+        assert [row['region'].external_id for row in summary['tracts']] == ['06019000101', '06019000102']
+        assert summary['highest']['region'].external_id == '06019000101' and summary['lowest']['region'].external_id == '06019000102'
+
+    def test_a_shared_border_is_not_membership(self):
+        # Exactly tract 1.01: 1.02 touches it along one edge (intersects, overlap 0).
+        summary = stats.tract_summary(bbox(-119.8, 36.7, -119.7, 36.8))
+        assert summary['count'] == 1 and summary['population'] == 4650
+
+    def test_no_score_tracts_count_but_are_not_scored(self):
+        make_tract('06019000103', -119.6, -119.5, population=1000, ci_score_p=-999, dac_sb535=True)
+        summary = stats.tract_summary(bbox(-119.8, 36.7, -119.5, 36.8))
+        assert summary['model'] == 'CES5' and summary['version'] == '2020' and summary['label'] == 'CalEnviroScreen 5.0'
+        assert summary['count'] == 3 and summary['scored'] == 2
+        assert summary['dac_tracts'] == 2 and summary['dac_population'] == 5650 and summary['population'] == 9000
+        assert abs(summary['dac_share'] - 5650 / 9000) < 1e-9
+        assert summary['min_p'] == 51.0 and summary['max_p'] == 89.2 and abs(summary['mean_p'] - 70.1) < 1e-9
+        assert summary['top25_tracts'] == 1
+        assert summary['tracts'][-1]['ci_score_p'] is None  # the unscored tract sorts last
+        assert [row['region'].external_id for row in summary['top']] == ['06019000101', '06019000102']
+
+    def test_cached_per_geometry(self):
+        geometry = bbox(-119.8, 36.7, -119.6, 36.8)
+        assert stats.tract_summary(geometry)['count'] == 2
+        CES5.objects.filter(boundary__region__external_id='06019000102').delete()
+        assert stats.tract_summary(geometry)['count'] == 2
+        cache.clear()
+        assert stats.tract_summary(geometry)['count'] == 1
+
+    def test_ces4_when_asked(self):
+        summary = stats.tract_summary(bbox(-119.8, 36.7, -119.6, 36.8), model=CES4)
+        assert summary['model'] == 'CES4' and summary['max_p'] == 87.9
+
+
+class TractRecordTests(TestCase):
+    fixtures = ['regions.yaml', 'calenviroscreen.yaml']
+
+    def setUp(self):
+        cache.clear()
+
+    def test_the_tracts_own_row(self):
+        tract = Region.objects.get(external_id='06019000101', type=Region.Type.TRACT)
+        record = stats.tract_record(tract)
+        assert record['ci_score_p'] == 89.2 and record['pollution_p'] == 83.0
+        assert record['dac'] is True and record['dac_category'] == 'Top 25% CES overall score'
+        assert record['label'] == 'CalEnviroScreen 5.0' and record['region'] == tract
+
+    def test_not_a_tract_or_no_data(self):
+        fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        assert stats.tract_record(fresno) is None
+        assert stats.tract_record(None) is None
+        tract = Region.objects.get(external_id='06019000101', type=Region.Type.TRACT)
+        CES5.objects.all().delete()
+        CES4.objects.all().delete()
+        assert stats.tract_record(tract) is None
