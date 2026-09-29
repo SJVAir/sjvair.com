@@ -98,7 +98,11 @@ def near(facility):
             'within_quarter_mile': [row for row in rows if row['feet'] > NOTICE_FT],
         }
 
-    return cache.get_or_set(f'emissions:v{CACHE_VERSION}:schools:{facility.pk}', compute, CACHE_TIMEOUT)
+    # Keyed on the point too, so a regeocoded facility isn't served its old distances.
+    point = facility.point
+    return cache.get_or_set(
+        f'emissions:v{CACHE_VERSION}:schools:{facility.pk}:{point.x:.6f},{point.y:.6f}', compute, CACHE_TIMEOUT,
+    )
 
 
 def geojson(result):
