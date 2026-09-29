@@ -1,10 +1,12 @@
 from django.urls import path
 
-from camp.apps.emissions import dairy_views, views
+from camp.apps.emissions import dairy_views, methane_views, views
 
 urlpatterns = [
     path('', views.Home.as_view(), name='home'),
     path('about/', views.About.as_view(), name='about'),
+    # Our maps' methane overlay (Carbon Mapper, non-commercial terms): not a public API. See methane_views.
+    path('methane/geojson/', methane_views.MethaneGeoJSON.as_view(), name='methane-geojson'),
     path('map/', views.MapPage.as_view(), name='map'),
     path('near/', views.NearMe.as_view(), name='near-me'),
     path('near/dairies/', dairy_views.NearMeDairies.as_view(), name='near-me-dairies'),
