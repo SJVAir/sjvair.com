@@ -550,6 +550,15 @@ class PesticideUseRollup(models.Model):
     lbs_product = models.FloatField(_('Pounds of Product'), default=0)
     acres_treated = models.FloatField(_('Acres Treated'), default=0)
     applications = models.IntegerField(_('Applications'), default=0)
+    # `applications` and `lbs_product` sum every ingredient row, so a use record
+    # with two active ingredients counts twice. Only right when the rows are
+    # restricted to one chemical (`acres_treated` likewise). `records`,
+    # `lbs_product_once` and `acres_once` count each
+    # use record once, on its designated row (see rollup.REBUILD_SQL), and are
+    # what any sum across chemicals must read.
+    records = models.IntegerField(_('Records'), default=0)
+    lbs_product_once = models.FloatField(_('Pounds of Product, once per record'), default=0)
+    acres_once = models.FloatField(_('Acres Treated, once per record'), default=0)
 
     class Meta:
         verbose_name = _('Pesticide Use Rollup')
@@ -612,6 +621,9 @@ class PesticideSectionTotal(models.Model):
     lbs_product = models.FloatField(_('Pounds of Product'), default=0)
     acres_treated = models.FloatField(_('Acres Treated'), default=0)
     applications = models.IntegerField(_('Applications'), default=0)
+    records = models.IntegerField(_('Records'), default=0)
+    lbs_product_once = models.FloatField(_('Pounds of Product, once per record'), default=0)
+    acres_once = models.FloatField(_('Acres Treated, once per record'), default=0)
 
     class Meta:
         verbose_name = _('Pesticide Section Total')
@@ -625,7 +637,7 @@ class PesticideSectionTotal(models.Model):
             # rather than a heap fetch per section.
             models.Index(
                 fields=['year', 'mtrs'],
-                include=['lbs_chemical', 'lbs_product', 'acres_treated', 'applications'],
+                include=['lbs_chemical', 'lbs_product', 'acres_treated', 'applications', 'records', 'lbs_product_once', 'acres_once'],
                 name='pesticides_section_total_cov',
             ),
         ]
@@ -656,6 +668,9 @@ class PesticideUseTotal(models.Model):
     lbs_product = models.FloatField(_('Pounds of Product'), default=0)
     acres_treated = models.FloatField(_('Acres Treated'), default=0)
     applications = models.IntegerField(_('Applications'), default=0)
+    records = models.IntegerField(_('Records'), default=0)
+    lbs_product_once = models.FloatField(_('Pounds of Product, once per record'), default=0)
+    acres_once = models.FloatField(_('Acres Treated, once per record'), default=0)
 
     class Meta:
         verbose_name = _('Pesticide Use Total')

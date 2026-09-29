@@ -16,7 +16,7 @@ from camp.apps.regions.models import Region
 NARROWS = ('aerial', 'fumigant', 'restricted', 'concern')
 LIST_SPECS = (
     ('pesticides:chemical-list', 'chemical', 'lbs_chemical'),
-    ('pesticides:product-list', 'product', 'lbs_product'),
+    ('pesticides:product-list', 'product', 'lbs_product_once'),
     ('pesticides:commodity-list', 'commodity', 'lbs_chemical'),
 )
 

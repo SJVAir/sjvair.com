@@ -175,6 +175,8 @@ class MethodBreakdownPageTests(RollupTestMixin, TestCase):
             row.lbs_chemical = 0
             row.lbs_product = 0
             row.applications = apps
+            row.records = apps
+            row.lbs_product_once = 0
             row.save()
         response = self.client.get(placeholder.get_absolute_url(), {'year': 2023})
         assert [(r['label'], r['app_share']) for r in response.context['by_method']] == [('Ground', 0.75), ('Air', 0.25)]

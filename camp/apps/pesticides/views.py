@@ -11,8 +11,8 @@ from django.contrib.gis.geos import Point
 from django.contrib.gis.measure import D
 from django.core.cache import cache
 from django.core.paginator import Paginator
-from django.db.models import Case, Count, F, FloatField, IntegerField, OuterRef, Prefetch, Q, Subquery, Sum, Value, When
-from django.db.models.functions import Coalesce, Lower, TruncMonth
+from django.db.models import Case, CharField, Count, F, FloatField, IntegerField, Min, OuterRef, Prefetch, Q, Subquery, Sum, Value, When
+from django.db.models.functions import Coalesce, Concat, Lower, TruncMonth
 from django.http import Http404
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -713,7 +713,7 @@ class ProductList(ExplorerListMixin, vanilla.ListView):
         )
         if year or self.all_years:
             queryset = queryset.annotate(
-                lbs_applied=self.lbs_annotation(year, 'lbs_product')
+                lbs_applied=self.lbs_annotation(year, stats.product_lbs_field('chemical' in self.related_filters()))
             )
         else:
             queryset = queryset.annotate(lbs_applied=F('prodno') * 0.0)
@@ -802,6 +802,15 @@ class ExplorerDetailMixin:
     concern_excluded = False
     concern_active = ''
 
+    @property
+    def chemical_scoped(self):
+        """Whether every row on this page is one chemical's, so per-row measures are right."""
+        return self.use_field == 'chemical'
+
+    @property
+    def apps_field(self):
+        return stats.apps_field_for(self.chemical_scoped)
+
     def get_rollup(self):
         rows = PesticideUseRollup.objects.filter(**{self.use_field: self.object})
         if self.county is not None:
@@ -830,7 +839,9 @@ class ExplorerDetailMixin:
         if not self.shows_fume_methods():
             return []
         return self.cached_stat('by_fume_method', lambda: stats.by_fume_method(
-            stats.in_year(self.get_fume_uses(), year, all_years), self.lbs_field))
+            stats.in_year(self.get_fume_uses(), year, all_years),
+            'lbs_product' if self.lbs_field == 'lbs_product_once' else self.lbs_field,
+            chemical_scoped=self.chemical_scoped, once=self.lbs_field == 'lbs_product_once'))
 
     def concern_applies(self):
         """
@@ -941,7 +952,7 @@ class ExplorerDetailMixin:
         rows = self.get_rollup()
         notices = self.get_notices()
         scope = stats.scope_param(year, all_years, self.county, self.concern)
-        totals = self.cached_stat('totals', lambda: stats.year_totals(rows, year, self.lbs_field, all_years=all_years))
+        totals = self.cached_stat('totals', lambda: stats.year_totals(rows, year, self.lbs_field, all_years=all_years, apps_field=self.apps_field))
         if not self.shows_lbs_per_acre:
             totals = {**totals, 'lbs_per_acre': None}
         related_a, related_b = self.get_related()
@@ -953,14 +964,14 @@ class ExplorerDetailMixin:
             county_total=stats.SJV_COUNTY_COUNT,
             concern_excluded=self.concern_excluded,
             totals=totals,
-            by_year=stats.by_year(rows, self.lbs_field),
-            by_county=self.cached_stat('by_county', lambda: stats.by_county(rows, year, self.lbs_field, all_years=all_years)),
-            by_method=self.cached_stat('by_method', lambda: stats.by_method(rows, year, self.lbs_field, all_years=all_years)),
+            by_year=stats.by_year(rows, self.lbs_field, self.apps_field),
+            by_county=self.cached_stat('by_county', lambda: stats.by_county(rows, year, self.lbs_field, all_years=all_years, apps_field=self.apps_field)),
+            by_method=self.cached_stat('by_method', lambda: stats.by_method(rows, year, self.lbs_field, all_years=all_years, apps_field=self.apps_field)),
             by_fume_method=self.by_fume_method(year, all_years),
-            by_month=self.cached_stat('by_month', lambda: stats.by_month(rows, year, self.lbs_field, all_years=all_years)) if (year or all_years) else [],
+            by_month=self.cached_stat('by_month', lambda: stats.by_month(rows, year, self.lbs_field, all_years=all_years, apps_field=self.apps_field)) if (year or all_years) else [],
             # Always every year: seasonality only reads as a shift across them.
             by_year_month=self.cached_stat(
-                'by_year_month', lambda: stats.by_year_month(rows, self.lbs_field), always=True),
+                'by_year_month', lambda: stats.by_year_month(rows, self.lbs_field, self.apps_field), always=True),
             related_a=related_a,
             related_b=related_b,
             records_url=reverse('pesticides:records') + f'?{self.use_field}={self.object.sqid}' + (
@@ -1059,7 +1070,7 @@ class ProductDetail(ExplorerDetailMixin, vanilla.DetailView):
     template_name = 'pesticides/product-detail.html'
     section = 'products'
     use_field = 'product'
-    lbs_field = 'lbs_product'
+    lbs_field = 'lbs_product_once'
     api_param = 'product'
 
     def get_queryset(self):
@@ -1137,7 +1148,7 @@ class CommodityDetail(ExplorerDetailMixin, vanilla.DetailView):
     def get_related(self):
         return (
             self.related_card('Chemicals applied', 'chemicals', self.top_related('chemical'), 'pesticides:chemical-list', 'commodity'),
-            self.related_card('Products applied', 'products', self.top_related('product', 'lbs_product'), 'pesticides:product-list', 'commodity'),
+            self.related_card('Products applied', 'products', self.top_related('product', 'lbs_product_once'), 'pesticides:product-list', 'commodity'),
         )
 
     def summary_top(self, context):
@@ -1585,7 +1596,7 @@ class RecordsBrowser(vanilla.ListView):
         }
         normalized = sorted((key, str(value)) for key, value in params.items())
         digest = hashlib.sha1(repr(normalized).encode()).hexdigest()
-        return f'pesticides:records-totals:{digest}'
+        return f'pesticides:records-totals:v2:{digest}'
 
     def get_totals(self):
         key = self._totals_cache_key()
@@ -1593,11 +1604,31 @@ class RecordsBrowser(vanilla.ListView):
         if totals is None:
             aggregate = self.get_filtered_queryset().order_by().aggregate(
                 applications=Count('id'), lbs=Sum('lbs_chemical'), acres=Sum('acres_treated'),
+                # A record with several active ingredients is several rows
+                # sharing (year, county, use_no); `applications` counts rows
+                # (what the paginator pages through), `records` counts each
+                # use report once.
+                records=Count(
+                    Concat('year', Value('-'), 'county_id', Value('-'), 'use_no', output_field=CharField()),
+                    distinct=True,
+                ),
             )
+            chemical = self.related.get('chemical')
+            scoped = bool(chemical and chemical is not MISSING)
+            queryset = self.get_filtered_queryset().order_by()
+            if scoped:
+                acres = aggregate['acres']
+            else:
+                # Acres repeat on every ingredient row of a record: sum one
+                # (the lowest pk) row per record.
+                first_rows = queryset.values('year', 'county_id', 'use_no').annotate(first=Min('pk')).values('first')
+                acres = PesticideUse.objects.filter(pk__in=first_rows).aggregate(a=Sum('acres_treated'))['a']
             totals = {
                 'applications': aggregate['applications'] or 0,
+                # Rows are one chemical's, one per record, when filtered to a chemical.
+                'records': (aggregate['applications'] if scoped else aggregate['records']) or 0,
                 'lbs': aggregate['lbs'] or 0,
-                'acres': aggregate['acres'] or 0,
+                'acres': acres or 0,
             }
             cache.set(key, totals, RECORDS_TOTALS_TTL)
         return totals
@@ -1623,7 +1654,7 @@ class RecordsBrowser(vanilla.ListView):
 
     def get_summary_sentence(self, totals):
         sentence = (
-            f"{totals['applications']:,} applications, "
+            f"{totals['records']:,} applications, "
             f"{totals['lbs']:,.0f} lbs, "
             f"{totals['acres']:,.0f} acres treated"
         )
@@ -1734,7 +1765,7 @@ def section_summary(rows, year, all_years, records_url, lbs_field='lbs_chemical'
         peak_month = calendar.month_name[peak['month']]
 
     top_chemicals = stats.top_related(rows, year, 'chemical', limit=stats.RELATED_LIMIT, all_years=all_years)
-    top_products = stats.top_related(rows, year, 'product', lbs_field='lbs_product', limit=stats.RELATED_LIMIT, all_years=all_years)
+    top_products = stats.top_related(rows, year, 'product', lbs_field='lbs_product_once', limit=stats.RELATED_LIMIT, all_years=all_years)
     top_commodities = stats.top_related(rows, year, 'commodity', limit=stats.RELATED_LIMIT, all_years=all_years)
     return {
         'totals': totals,

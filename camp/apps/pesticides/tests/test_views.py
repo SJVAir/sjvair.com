@@ -232,7 +232,7 @@ class ChemicalListTests(RollupTestMixin, TestCase):
     def test_related_filter_is_scoped_to_the_year(self):
         # Sulfur shared records with LORSBAN only in 2022: the 2023 list under
         # that product filter leaves sulfur out rather than showing a dash.
-        PesticideUseRollup.objects.create(year=2022, month=1, county_id=9001, chemical_id=3, product_id=2, lbs_chemical=5, applications=1)
+        PesticideUseRollup.objects.create(year=2022, month=1, county_id=9001, chemical_id=3, product_id=2, lbs_chemical=5, applications=1, records=1)
         product = Product.objects.get(pk=2)
         assert self.names(self.client.get(self.url, {'product': product.sqid, 'year': '2023'})) == ['CHLORPYRIFOS']
         assert set(self.names(self.client.get(self.url, {'product': product.sqid, 'year': '2022'}))) == {'CHLORPYRIFOS', 'SULFUR'}
@@ -251,7 +251,7 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         # of the chemical's pounds, not the chemical's total.
         product = Product.objects.get(pk=2)
         # Some chlorpyrifos applied through another product, so the pair and the total differ.
-        PesticideUseRollup.objects.create(year=2023, month=1, county_id=9001, chemical_id=2, product_id=1, lbs_chemical=25, applications=1)
+        PesticideUseRollup.objects.create(year=2023, month=1, county_id=9001, chemical_id=2, product_id=1, lbs_chemical=25, applications=1, records=1)
         response = self.client.get(self.url, {'product': product.sqid})
         chemical = response.context['object_list'][0]
         pair = PesticideUseRollup.objects.filter(year=2023, chemical=chemical, product=product).aggregate(Sum('lbs_chemical'))
@@ -288,8 +288,8 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         # Lists only show entities with use in the year, and read their pounds
         # off the totals table, so give each a rollup row and its total.
         chemical = Chemical.objects.create(**fields)
-        PesticideUseRollup.objects.create(year=2023, month=1, county_id=9001, chemical=chemical, lbs_chemical=1, applications=1)
-        PesticideUseTotal.objects.create(year=2023, county_id=9001, chemical=chemical, lbs_chemical=1, applications=1)
+        PesticideUseRollup.objects.create(year=2023, month=1, county_id=9001, chemical=chemical, lbs_chemical=1, applications=1, records=1)
+        PesticideUseTotal.objects.create(year=2023, county_id=9001, chemical=chemical, lbs_chemical=1, applications=1, records=1)
         return chemical
 
     def test_pagination_links_keep_filters(self):

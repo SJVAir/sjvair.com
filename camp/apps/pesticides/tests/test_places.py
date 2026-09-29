@@ -315,7 +315,7 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         section.save()
         PesticideUseRollup.objects.create(
             year=2023, month=8, county_id=9001, mtrs=section,
-            lbs_chemical=lbs, applications=applications,
+            lbs_chemical=lbs, applications=applications, records=applications,
         )
         return section
 

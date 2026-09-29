@@ -35,7 +35,7 @@ class StatsTests(RollupTestMixin, TestCase):
         ]
 
     def test_by_year_uses_lbs_product_for_products(self):
-        rows = stats.by_year(PesticideUseRollup.objects.filter(product_id=1), lbs_field='lbs_product')
+        rows = stats.by_year(PesticideUseRollup.objects.filter(product_id=1), lbs_field='lbs_product_once')
         assert rows[0]['lbs'] == 450.0
 
     def test_by_county(self):
@@ -94,7 +94,7 @@ class StatsTests(RollupTestMixin, TestCase):
         # Including undated rows in the total would leave a row claiming more
         # than the twelve cells beside it can account for.
         PesticideUseRollup.objects.create(
-            year=2023, month=0, county_id=9001, chemical_id=1, lbs_chemical=999.0, applications=1)
+            year=2023, month=0, county_id=9001, chemical_id=1, lbs_chemical=999.0, applications=1, records=1)
         grid = stats.by_year_month(PesticideUseRollup.objects.filter(chemical_id=1))
         assert grid[0]['lbs'] == 180.0
         assert grid[0]['lbs'] == sum(cell['lbs'] for cell in grid[0]['months'])

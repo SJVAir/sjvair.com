@@ -3,6 +3,7 @@ import io
 
 from django.core.management.base import BaseCommand
 
+from camp.apps.pesticides import rollup
 from camp.apps.pesticides.models import Chemical
 
 # Download manually from: https://oehha.ca.gov/proposition-65/proposition-65-list
@@ -82,3 +83,4 @@ class Command(BaseCommand):
         self.stdout.write(
             f'Matched {cas_matched:,} by CAS, {name_matched:,} by name, updated {updated:,}'
         )
+        self.stdout.write(rollup.REBUILD_REMINDER)

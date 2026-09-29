@@ -14,10 +14,41 @@ from camp.apps.pesticides.models import (
     PesticideSectionTotal, PesticideUse, PesticideUseRollup, PesticideUseTotal,
 )
 
+# Printed by the commands that change the flagged/restricted chemical lists.
+REBUILD_REMINDER = (
+    'Narrowed application counts (restricted, chemicals of concern) are exact after the '
+    'next `rebuild_pesticide_rollup --all`: the rollup picks each record\'s counted '
+    'ingredient from these lists.'
+)
+
 REBUILD_SQL = """
+-- A use record with several active ingredients is several rows sharing
+-- (year, county_id, use_no). Exactly one of them is `designated`; `records`,
+-- `lbs_product_once` and `acres_once` count only that row, so sums across chemicals see the
+-- record once. The designated row is the record's California-restricted
+-- ingredient if it has one, else a chemical of concern, else the lowest
+-- chemical_id (NULL chemicals last), so a chemical-based narrowing
+-- (restricted / concern) keeps every record it should, exactly once. The two
+-- id lists are parameters (restricted, then concern); they are read at
+-- rebuild time, so when the lists change (import_prop65, import_carbtac,
+-- import_comptox hazard, import_restricted_materials) narrowed application
+-- counts are exact again after the next full rollup rebuild.
+WITH uses AS (
+    SELECT *,
+        row_number() OVER (
+            PARTITION BY year, county_id, use_no
+            ORDER BY
+                CASE WHEN chemical_id = ANY(%s::integer[]) THEN 0
+                     WHEN chemical_id = ANY(%s::integer[]) THEN 1
+                     ELSE 2 END,
+                chemical_id NULLS LAST, id
+        ) = 1 AS designated
+    FROM pesticides_pesticideuse
+    WHERE year = %s
+)
 INSERT INTO pesticides_pesticideuserollup
     (year, month, county_id, mtrs_id, chemical_id, product_id, commodity_id, method,
-     lbs_chemical, lbs_product, acres_treated, applications)
+     lbs_chemical, lbs_product, acres_treated, applications, records, lbs_product_once, acres_once)
 SELECT
     year,
     COALESCE(EXTRACT(MONTH FROM application_date)::int, 0) AS month,
@@ -30,9 +61,11 @@ SELECT
     COALESCE(SUM(lbs_chemical), 0),
     COALESCE(SUM(lbs_product), 0),
     COALESCE(SUM(acres_treated), 0),
-    COUNT(*)
-FROM pesticides_pesticideuse
-WHERE year = %s
+    COUNT(*),
+    COUNT(*) FILTER (WHERE designated),
+    COALESCE(SUM(lbs_product) FILTER (WHERE designated), 0),
+    COALESCE(SUM(acres_treated) FILTER (WHERE designated), 0)
+FROM uses
 -- `month` and `method` here resolve to the SELECT aliases, not source columns --
 -- pesticides_pesticideuse has no `month` or `method` column of its own. If one is ever
 -- added, this GROUP BY silently starts grouping by the real column instead
@@ -48,7 +81,7 @@ GROUP BY year, month, county_id, mtrs_id, chemical_id, product_id, commodity_id,
 TOTALS_SQL = """
 INSERT INTO pesticides_pesticideusetotal
     (year, county_id, chemical_id, product_id, commodity_id,
-     lbs_chemical, lbs_product, acres_treated, applications)
+     lbs_chemical, lbs_product, acres_treated, applications, records, lbs_product_once, acres_once)
 SELECT
     year,
     county_id,
@@ -56,7 +89,10 @@ SELECT
     COALESCE(SUM(lbs_chemical), 0),
     COALESCE(SUM(lbs_product), 0),
     COALESCE(SUM(acres_treated), 0),
-    COALESCE(SUM(applications), 0)
+    COALESCE(SUM(applications), 0),
+    COALESCE(SUM(records), 0),
+    COALESCE(SUM(lbs_product_once), 0),
+    COALESCE(SUM(acres_once), 0)
 FROM pesticides_pesticideuserollup
 WHERE year = %s AND {field} IS NOT NULL
 GROUP BY year, county_id, {field}
@@ -75,14 +111,17 @@ def totals_sql(field):
 # section totals, and twice that when two years are compared.
 SECTION_TOTALS_SQL = """
 INSERT INTO pesticides_pesticidesectiontotal
-    (year, mtrs_id, lbs_chemical, lbs_product, acres_treated, applications)
+    (year, mtrs_id, lbs_chemical, lbs_product, acres_treated, applications, records, lbs_product_once, acres_once)
 SELECT
     year,
     mtrs_id,
     COALESCE(SUM(lbs_chemical), 0),
     COALESCE(SUM(lbs_product), 0),
     COALESCE(SUM(acres_treated), 0),
-    COALESCE(SUM(applications), 0)
+    COALESCE(SUM(applications), 0),
+    COALESCE(SUM(records), 0),
+    COALESCE(SUM(lbs_product_once), 0),
+    COALESCE(SUM(acres_once), 0)
 FROM pesticides_pesticideuserollup
 WHERE year = %s AND mtrs_id IS NOT NULL
 GROUP BY year, mtrs_id
@@ -138,8 +177,12 @@ def rebuild_year(year):
     """Replace the rollup rows (and their totals) for `year`. Returns the number of rollup rows written."""
     with transaction.atomic():
         PesticideUseRollup.objects.filter(year=year).delete()
+        # Lazy: stats imports the models, and a module-level import here is circular.
+        from camp.apps.pesticides import stats
+        restricted = list(stats.restricted_chemicals().values_list('pk', flat=True))
+        concern = list(stats.of_concern_chemicals().values_list('pk', flat=True))
         with connection.cursor() as cursor:
-            cursor.execute(REBUILD_SQL, [year])
+            cursor.execute(REBUILD_SQL, [restricted, concern, year])
             written = cursor.rowcount
         rebuild_totals_year(year, atomic=False)
         return written

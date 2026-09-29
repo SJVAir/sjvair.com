@@ -76,6 +76,7 @@ NARROW_HELP = {
 BLOCK_MILES = 1.5
 BLOCK_RADIUS_M = 2414
 TOWNSHIP_FIELDS = ('lbs_chemical', 'lbs_product', 'acres_treated', 'applications')
+
 _MISSING = object()
 
 
@@ -313,7 +314,7 @@ METHOD_LABELS = {'G': 'Ground', 'A': 'Air', 'F': 'Field fumigation', 'O': 'Other
 METHOD_ORDER = ('G', 'A', 'F', 'O', '')
 
 
-def by_method(rows, year, lbs_field='lbs_chemical', all_years=False):
+def by_method(rows, year, lbs_field='lbs_chemical', all_years=False, apps_field='records'):
     """
     How the scope's use was applied, from CDPR's per-record method
     (aer_gnd_ind): pounds, applications and their shares per method, in
@@ -322,7 +323,7 @@ def by_method(rows, year, lbs_field='lbs_chemical', all_years=False):
     """
     totals = {}
     for r in in_year(rows, year, all_years).values('method').annotate(
-            lbs=Sum(lbs_field), applications=Sum('applications')):
+            lbs=Sum(lbs_field), applications=Sum(apps_field)):
         # A code CDPR adds later counts as Other, so shares still add to 1.
         method = r['method'] if r['method'] in METHOD_LABELS else 'O'
         t = totals.setdefault(method, {'lbs': 0, 'applications': 0})
@@ -347,7 +348,7 @@ def by_method(rows, year, lbs_field='lbs_chemical', all_years=False):
 NOT_RECORDED = 'Not recorded'
 
 
-def by_fume_method(uses, lbs_field='lbs_chemical'):
+def by_fume_method(uses, lbs_field='lbs_chemical', chemical_scoped=False, once=False):
     """
     How field fumigations were done, from CDPR's fumigation-method code
     (fume_cd): pounds, records and their shares per technique, largest
@@ -355,12 +356,27 @@ def by_fume_method(uses, lbs_field='lbs_chemical'):
 
     `uses` is PesticideUse rows already narrowed to field fumigation and to
     the page's scope. The code lives on the raw records only (the rollup
-    doesn't carry it). Applications count rows, one per active ingredient,
-    exactly as the rollup's `applications` does, so this table agrees with
-    "How it was applied" beside it.
+    doesn't carry it). Within one chemical, applications count rows, as the
+    rollup's `applications` does. Otherwise a record with several active
+    ingredients is several rows, so applications count each (year, county, use_no)
+    once and product pounds, which every row of a record repeats, once per
+    record -- as the rollup's `records` and `lbs_product_once` do -- so this
+    table agrees with "How it was applied" beside it. `once` says the pounds
+    are product pounds (`lbs_field` is then the raw `lbs_product` column) to
+    count once per record rather than summed over its rows.
     """
-    found = list(uses.order_by().values('fume_method').annotate(
-        lbs=Sum(lbs_field), applications=Count('pk')))
+    if chemical_scoped:
+        found = list(uses.order_by().values('fume_method').annotate(
+            lbs=Sum(lbs_field), applications=Count('pk')))
+    else:
+        per_record = uses.order_by().values('fume_method', 'year', 'county_id', 'use_no').annotate(
+            lbs=Max('lbs_product') if once else Sum(lbs_field))
+        grouped = {}
+        for r in per_record:
+            g = grouped.setdefault(r['fume_method'], {'fume_method': r['fume_method'], 'lbs': 0, 'applications': 0})
+            g['lbs'] += r['lbs'] or 0
+            g['applications'] += 1
+        found = list(grouped.values())
     methods = FumigationMethod.objects.in_bulk([r['fume_method'] for r in found if r['fume_method']])
     total = sum(r['lbs'] or 0 for r in found)
     total_apps = sum(r['applications'] for r in found)
@@ -377,18 +393,43 @@ def by_fume_method(uses, lbs_field='lbs_chemical'):
     return out
 
 
-def _totals(lbs_field):
+def apps_field_for(chemical_scoped):
+    """
+    The application count to sum. A use record with two active ingredients is
+    two rows, so `applications` counts it twice; that is right only when the
+    rows are restricted to one chemical. Everywhere else `records` counts each
+    record once (see rollup.REBUILD_SQL).
+    """
+    return 'applications' if chemical_scoped else 'records'
+
+
+def product_lbs_field(chemical_scoped):
+    """Product pounds: per row within one chemical, once per record otherwise."""
+    return 'lbs_product' if chemical_scoped else 'lbs_product_once'
+
+
+def acres_field_for(chemical_scoped):
+    """Acres treated: per row within one chemical, once per record otherwise (acres repeat on every ingredient row)."""
+    return 'acres_treated' if chemical_scoped else 'acres_once'
+
+
+def _acres(apps_field):
+    """The acres column that goes with an application-count column."""
+    return acres_field_for(apps_field == 'applications')
+
+
+def _totals(lbs_field, apps_field='records'):
     return {
         'lbs': Sum(lbs_field),
-        'acres': Sum('acres_treated'),
-        'applications': Sum('applications'),
+        'acres': Sum(_acres(apps_field)),
+        'applications': Sum(apps_field),
     }
 
 
-def by_year(rows, lbs_field='lbs_chemical'):
+def by_year(rows, lbs_field='lbs_chemical', apps_field='records'):
     return list(
         rows.values('year')
-        .annotate(**_totals(lbs_field))
+        .annotate(**_totals(lbs_field, apps_field))
         .order_by('-year')
     )
 
@@ -466,11 +507,11 @@ def trend_deltas(by_year, year, field='lbs'):
     }
 
 
-def by_county(rows, year, lbs_field='lbs_chemical', all_years=False):
+def by_county(rows, year, lbs_field='lbs_chemical', all_years=False, apps_field='records'):
     counties = list(
         in_year(rows, year, all_years)
         .values('county_id', 'county__name', 'county__slug')
-        .annotate(**_totals(lbs_field))
+        .annotate(**_totals(lbs_field, apps_field))
         .order_by(F('lbs').desc(nulls_last=True), 'county__name')
     )
     # sqid isn't a DB column, so it can't come off the aggregate above --
@@ -554,14 +595,14 @@ def with_rates(by_county, year, all_years=False, concern=False):
     ]
 
 
-def by_month(rows, year, lbs_field='lbs_chemical', all_years=False):
+def by_month(rows, year, lbs_field='lbs_chemical', all_years=False, apps_field='records'):
     """
     Twelve entries, one per month, zero-filled. Month 0 (undated) is folded
     into the totals elsewhere, not shown here.
     """
     found = {
         row['month']: row
-        for row in in_year(rows, year, all_years).filter(month__gte=1).values('month').annotate(**_totals(lbs_field))
+        for row in in_year(rows, year, all_years).filter(month__gte=1).values('month').annotate(**_totals(lbs_field, apps_field))
     }
     return [
         {
@@ -574,7 +615,7 @@ def by_month(rows, year, lbs_field='lbs_chemical', all_years=False):
     ]
 
 
-def by_year_month(rows, lbs_field='lbs_chemical'):
+def by_year_month(rows, lbs_field='lbs_chemical', apps_field='records'):
     """
     Lbs per (year, month) as one row per year, newest first, each carrying
     twelve zero-filled months. Feeds the seasonality heatmap.
@@ -591,7 +632,7 @@ def by_year_month(rows, lbs_field='lbs_chemical'):
     found = {}
     for row in (rows.filter(month__gte=1)
             .values('year', 'month')
-            .annotate(**_totals(lbs_field))):
+            .annotate(**_totals(lbs_field, apps_field))):
         found[(row['year'], row['month'])] = row
 
     grid = []
@@ -614,10 +655,10 @@ def by_year_month(rows, lbs_field='lbs_chemical'):
     return grid
 
 
-def by_section(rows, year, lbs_field='lbs_chemical'):
+def by_section(rows, year, lbs_field='lbs_chemical', apps_field='records'):
     return [
         {'mtrs_id': r['mtrs'], 'lbs': r['lbs'] or 0, 'acres': r['acres'] or 0, 'applications': r['applications'] or 0}
-        for r in rows.filter(year=year, mtrs__isnull=False).values('mtrs').annotate(**_totals(lbs_field)).order_by(F('lbs').desc(nulls_last=True), 'mtrs')
+        for r in rows.filter(year=year, mtrs__isnull=False).values('mtrs').annotate(**_totals(lbs_field, apps_field)).order_by(F('lbs').desc(nulls_last=True), 'mtrs')
     ]
 
 
@@ -669,7 +710,7 @@ def block_totals(rows, point, year, all_years=False):
         return {'lbs': 0, 'applications': 0, 'section': None}
     data = in_year(rows.filter(mtrs__in=pks), year, all_years).aggregate(
         lbs=Sum('lbs_chemical'),
-        applications=Sum('applications'),
+        applications=Sum('records'),
     )
     return {
         'lbs': data['lbs'] or 0,
@@ -678,7 +719,7 @@ def block_totals(rows, point, year, all_years=False):
     }
 
 
-def by_township(rows, year, all_years=False):
+def by_township(rows, year, all_years=False, chemical_scoped=False):
     """
     {township: {'lbs_chemical', 'lbs_product', 'acres_treated', 'applications'}}.
 
@@ -696,9 +737,9 @@ def by_township(rows, year, all_years=False):
         .values('mtrs')
         .annotate(
             lbs_chemical=Sum('lbs_chemical'),
-            lbs_product=Sum('lbs_product'),
-            acres_treated=Sum('acres_treated'),
-            applications=Sum('applications'),
+            lbs_product=Sum(product_lbs_field(chemical_scoped)),
+            acres_treated=Sum(acres_field_for(chemical_scoped)),
+            applications=Sum(apps_field_for(chemical_scoped)),
         )
     )
     for row in section_rows:
@@ -711,11 +752,11 @@ def by_township(rows, year, all_years=False):
     return totals
 
 
-def year_totals(rows, year, lbs_field='lbs_chemical', all_years=False):
+def year_totals(rows, year, lbs_field='lbs_chemical', all_years=False, apps_field='records'):
     data = in_year(rows, year, all_years).aggregate(
         lbs=Sum(lbs_field),
-        acres=Sum('acres_treated'),
-        applications=Sum('applications'),
+        acres=Sum(_acres(apps_field)),
+        applications=Sum(apps_field),
         counties=Count('county', distinct=True),
     )
     return {
@@ -1071,7 +1112,7 @@ def commodity_concern_lbs(year=None, all_years=False, county=None):
     return narrowed_lbs('commodity', 'lbs_chemical', NARROW_CONCERN, year, all_years, county)
 
 
-NARROWED_LBS_FIELDS = {'chemical': 'lbs_chemical', 'product': 'lbs_product', 'commodity': 'lbs_chemical'}
+NARROWED_LBS_FIELDS = {'chemical': 'lbs_chemical', 'product': 'lbs_product_once', 'commodity': 'lbs_chemical'}
 
 
 def narrowed_lbs(field, lbs_field, narrow, year=None, all_years=False, county=None):
@@ -1242,8 +1283,8 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
     }
     sums = {
         'lbs': Sum('lbs_chemical'),
-        'applications': Sum('applications'),
-        'acres': Sum('acres_treated'),
+        'applications': Sum('records'),
+        'acres': Sum('acres_once'),
     }
     if from_totals:
         year_totals_ = year_uses.aggregate(**counts)
@@ -1276,8 +1317,8 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
         # Each board's rows carry their own by-year series, for the
         # sparkline that says whether a big number is growing or receding.
         'top_products': with_series(uses, 'product',
-            top_related(uses, year, 'product', lbs_field='lbs_product',
-                limit=RELATED_LIMIT, all_years=all_years), 'lbs_product',
+            top_related(uses, year, 'product', lbs_field='lbs_product_once',
+                limit=RELATED_LIMIT, all_years=all_years), 'lbs_product_once',
             year=year, all_years=all_years),
         'top_chemicals': with_series(uses, 'chemical', top_chemicals, year=year, all_years=all_years),
         'top_commodities': with_series(uses, 'commodity',

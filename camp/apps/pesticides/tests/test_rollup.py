@@ -3,9 +3,12 @@ from unittest import mock
 
 import pytest
 from django.db import IntegrityError, transaction
+from django.db.models import Sum
 from django.test import TestCase
 
-from camp.apps.pesticides.models import PesticideSectionTotal, PesticideUseRollup, PesticideUseTotal
+from camp.apps.pesticides.models import (
+    Chemical, PesticideSectionTotal, PesticideUseRollup, PesticideUseTotal,
+)
 
 
 class RollupModelTests(TestCase):
@@ -225,3 +228,111 @@ class MixinTests(RollupTestMixin, TestCase):
 
     def test_mixin_builds_totals_before_tests(self):
         assert PesticideUseTotal.objects.filter(year=2023, county_id=9001, chemical_id=1).get().lbs_chemical == 150.0
+
+
+class OncePerRecordTests(TestCase):
+    """
+    A use record with two active ingredients is two PesticideUse rows (same
+    year and use_no). The rollup designates one row per record so cross-chemical
+    sums can count it once, while per-row measures stay right per chemical.
+    """
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        self.product = Product.objects.create(prodno=95001, reg_number='95001-1', name='MULTI PRODUCT')
+        self.low = Chemical.objects.create(chem_code=8001, name='LOW CHEM')
+        self.high = Chemical.objects.create(chem_code=8002, name='HIGH CHEM')
+        # Created high-first, so the designated row is chosen by chemical_id, not insertion order.
+        self.multi = [
+            self.use(use_no=7001, chemical=self.high),
+            self.use(use_no=7001, chemical=self.low),
+        ]
+        self.single = self.use(use_no=7002, chemical=self.low)
+        rollup.rebuild_year(2023)
+
+    def use(self, use_no, chemical, **kwargs):
+        kwargs.setdefault('lbs_product', 100)
+        return PesticideUse.objects.create(
+            year=2023, use_no=use_no, county_id=9001, mtrs_id=9101, product=self.product,
+            chemical=chemical, application_date='2023-07-05', **kwargs,
+        )
+
+    def rows(self):
+        return PesticideUseRollup.objects.filter(year=2023, month=7, product=self.product)
+
+    def test_records_counts_each_use_record_once(self):
+        totals = self.rows().aggregate(records=Sum('records'), applications=Sum('applications'))
+        assert totals == {'records': 2, 'applications': 3}
+
+    def test_product_pounds_once_per_record(self):
+        totals = self.rows().aggregate(once=Sum('lbs_product_once'), per_row=Sum('lbs_product'))
+        assert totals == {'once': 200.0, 'per_row': 300.0}
+
+    def test_acres_once_per_record(self):
+        for use in self.multi + [self.single]:
+            PesticideUse.objects.filter(pk=use.pk).update(acres_treated=10)
+        rollup.rebuild_year(2023)
+        totals = self.rows().aggregate(once=Sum('acres_once'), per_row=Sum('acres_treated'))
+        assert totals == {'once': 20.0, 'per_row': 30.0}
+        row = PesticideUseTotal.objects.get(year=2023, county_id=9001, product=self.product)
+        assert row.acres_once == 20.0
+        assert PesticideSectionTotal.objects.get(year=2023, mtrs_id=9101).acres_once >= 20.0
+
+    def test_each_chemical_keeps_its_own_application(self):
+        assert self.rows().get(chemical=self.low).applications == 2
+        assert self.rows().get(chemical=self.high).applications == 1
+
+    def test_designated_row_is_the_lower_chemical_id_among_unflagged(self):
+        assert self.rows().get(chemical=self.low).records == 2   # the multi record and the single one
+        assert self.rows().get(chemical=self.high).records == 0
+        assert self.rows().get(chemical=self.high).lbs_product_once == 0
+
+    def test_flagged_ingredient_beats_a_lower_chemical_id(self):
+        plain = Chemical.objects.create(chem_code=8003, name='PLAIN CHEM')
+        flagged = Chemical.objects.create(
+            chem_code=8004, name='FLAGGED CHEM', categories=[Chemical.Category.TOXIC_AIR_CONTAMINANT])
+        restricted = Chemical.objects.create(
+            chem_code=8005, name='RESTRICTED CHEM', categories=[Chemical.Category.CALIFORNIA_RESTRICTED])
+        for chemical in (restricted, flagged, plain):
+            self.use(use_no=7005, chemical=chemical)
+        rollup.rebuild_year(2023)
+        # Restricted first, then other chemicals of concern, then the rest.
+        assert self.rows().get(chemical=restricted).records == 1
+        assert self.rows().get(chemical=flagged).records == 0
+        assert self.rows().get(chemical=plain).records == 0
+        # Without the restricted one, the flagged one beats the lower id.
+        self.use(use_no=7006, chemical=flagged)
+        self.use(use_no=7006, chemical=plain)
+        rollup.rebuild_year(2023)
+        assert self.rows().get(chemical=flagged).records == 1
+        assert self.rows().get(chemical=plain).records == 0
+
+    def test_null_chemical_row_is_designated_last(self):
+        self.use(use_no=7003, chemical=None)
+        self.use(use_no=7003, chemical=self.high)
+        rollup.rebuild_year(2023)
+        assert self.rows().get(chemical=self.high).records == 1
+        assert self.rows().get(chemical=None).records == 0
+
+    def test_null_chemical_only_record_still_counts(self):
+        self.use(use_no=7004, chemical=None)
+        rollup.rebuild_year(2023)
+        assert self.rows().get(chemical=None).records == 1
+
+    def test_product_totals_carry_the_once_measures(self):
+        row = PesticideUseTotal.objects.get(year=2023, county_id=9001, product=self.product)
+        assert (row.records, row.lbs_product_once, row.lbs_product) == (2, 200.0, 300.0)
+
+    def test_chemical_totals_sum_designated_rows(self):
+        row = PesticideUseTotal.objects.get(year=2023, county_id=9001, chemical=self.low)
+        assert (row.applications, row.records) == (2, 2)
+
+    def test_section_totals_records_match_the_rollup(self):
+        total = PesticideSectionTotal.objects.get(year=2023, mtrs_id=9101)
+        expected = PesticideUseRollup.objects.filter(year=2023, mtrs_id=9101).aggregate(
+            records=Sum('records'), once=Sum('lbs_product_once'),
+        )
+        assert (total.records, total.lbs_product_once) == (expected['records'], expected['once'])
+
+    def test_rebuild_year_still_returns_rollup_rows_written(self):
+        assert rollup.rebuild_year(2023) == PesticideUseRollup.objects.filter(year=2023).count()

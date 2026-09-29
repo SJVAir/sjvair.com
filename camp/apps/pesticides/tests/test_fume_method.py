@@ -230,14 +230,30 @@ class ByFumeMethodTests(TestCase):
         assert abs(sum(r['share'] for r in rows) - 1) < 1e-9
         assert abs(sum(r['app_share'] for r in rows) - 1) < 1e-9
 
-    def test_applications_count_rows_like_the_rollup_does(self):
-        # One record, three active ingredients: three rows, as the rollup's
-        # COUNT(*) has it, so the two adjacent tables agree.
+    def test_applications_count_rows_within_one_chemical(self):
+        # One record, three active ingredients: three rows. A chemical's own
+        # page sees one of them, so it counts rows, as the rollup's
+        # `applications` does.
         for _ in range(3):
             self.use(1, 10, self.tarp)
-        rows = stats.by_fume_method(PesticideUse.objects.all())
+        rows = stats.by_fume_method(PesticideUse.objects.all(), chemical_scoped=True)
         assert rows[0]['applications'] == 3
         assert rows[0]['lbs'] == 30
+
+    def test_applications_count_each_record_once_across_chemicals(self):
+        # The same record on a product or commodity page: one application,
+        # chemical pounds still summed over its ingredients, product pounds
+        # (repeated on every row) counted once.
+        for _ in range(3):
+            PesticideUse.objects.create(
+                year=2023, use_no=1, county=self.fresno, aerial_ground='F',
+                lbs_chemical=10, lbs_product=100, fume_method=self.tarp)
+        rows = stats.by_fume_method(PesticideUse.objects.all())
+        assert rows[0]['applications'] == 1
+        assert rows[0]['lbs'] == 30
+        rows = stats.by_fume_method(PesticideUse.objects.all(), 'lbs_product', once=True)
+        assert rows[0]['applications'] == 1
+        assert rows[0]['lbs'] == 100
 
     def test_the_lbs_field_is_selectable(self):
         PesticideUse.objects.create(

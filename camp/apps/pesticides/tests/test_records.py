@@ -27,7 +27,7 @@ class RecordsBrowserTests(RollupTestMixin, TestCase):
         assert response.status_code == 200
         self.assertTemplateUsed(response, 'pesticides/records.html')
         assert self.pks(response) == [6, 5, 4, 3, 2, 1]
-        assert response.context['totals'] == {'applications': 6, 'lbs': 740.0, 'acres': 74.0}
+        assert response.context['totals'] == {'applications': 6, 'records': 6, 'lbs': 740.0, 'acres': 74.0}
         assert response.context['form']['start'].value() == date(2023, 1, 1)
 
     def test_year_param_sets_range(self):
@@ -40,7 +40,7 @@ class RecordsBrowserTests(RollupTestMixin, TestCase):
         assert response.context['form']['start'].value() == date(2022, 1, 1)
         assert response.context['form']['end'].value() == date(2023, 12, 31)
         assert self.pks(response) == [6, 5, 4, 3, 2, 1, 9, 8, 7]
-        assert response.context['totals'] == {'applications': 9, 'lbs': 1280.0, 'acres': 128.0}
+        assert response.context['totals'] == {'applications': 9, 'records': 9, 'lbs': 1280.0, 'acres': 128.0}
         assert '2022\u20132023' in response.context['summary_sentence']
         # The map sums every loaded year too, and its popups say so.
         assert response.context['map_config']['year'] == 'all'
@@ -196,7 +196,7 @@ class RecordsConcernScopeTests(RollupTestMixin, TestCase):
     def test_rows_and_totals_narrow(self):
         response = self.client.get(self.url, {'concern': '1'})
         assert [u.pk for u in response.context['object_list']] == [5, 4, 3, 2, 1]
-        assert response.context['totals'] == {'applications': 5, 'lbs': 240.0, 'acres': 24.0}
+        assert response.context['totals'] == {'applications': 5, 'records': 5, 'lbs': 240.0, 'acres': 24.0}
         assert response.context['concern'] == stats.NARROW_CONCERN
         assert response.context['map_config']['narrow'] == 'concern'
 

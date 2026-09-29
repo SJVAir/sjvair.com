@@ -1533,7 +1533,8 @@ class SectionTotalsTableTests(TestCase):
         for mtrs, p in served.items():
             row = PesticideSectionTotal.objects.get(year=2023, mtrs__external_id=mtrs)
             assert p['lbs_chemical'] == row.lbs_chemical
-            assert p['applications'] == row.applications
+            assert p['applications'] == row.records
+            assert p['lbs_product'] == row.lbs_product_once
 
     def test_the_two_paths_agree(self):
         # `month=1..12` covers every row the fixture has, so filtering by it

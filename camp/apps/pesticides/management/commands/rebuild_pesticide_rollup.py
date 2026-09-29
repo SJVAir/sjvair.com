@@ -6,7 +6,13 @@ from camp.apps.pesticides import rollup
 
 
 class Command(BaseCommand):
-    help = 'Rebuild the per-section, per-month PesticideUse rollup for one year or all loaded years.'
+    help = (
+        'Rebuild the per-section, per-month PesticideUse rollup for one year or all loaded years. '
+        'Rerun with --all after the flagged/restricted chemical lists change (import_prop65, '
+        'import_carbtac, import_comptox hazard, import_restricted_materials): the rollup picks '
+        'each record\'s counted ingredient from them, so narrowed application counts are only '
+        'exact after a full rebuild.'
+    )
 
     def add_arguments(self, parser):
         group = parser.add_mutually_exclusive_group(required=True)

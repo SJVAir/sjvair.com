@@ -550,7 +550,7 @@ def _place_stats(area, year, all_years, concern=False):
         'peak_month': peak_month,
         'top_chemicals': top_chemicals[:stats.RELATED_LIMIT],
         'top_commodities': stats.top_related(rows, year, 'commodity', limit=stats.RELATED_LIMIT, all_years=all_years),
-        'top_products': stats.top_related(rows, year, 'product', lbs_field='lbs_product', limit=stats.RELATED_LIMIT, all_years=all_years),
+        'top_products': stats.top_related(rows, year, 'product', lbs_field='lbs_product_once', limit=stats.RELATED_LIMIT, all_years=all_years),
     }
 
     # Under the concern scope every board is already of concern, so the

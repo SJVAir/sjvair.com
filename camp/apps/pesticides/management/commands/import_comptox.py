@@ -9,6 +9,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Count
 
+from camp.apps.pesticides import rollup
 from camp.apps.pesticides.models import Chemical
 
 BATCH_SIZE = 200
@@ -376,6 +377,7 @@ class Command(BaseCommand):
                     self.stdout.write(f'  {completed:,} / {len(chemicals):,}', ending='\r')
 
         self.stdout.write(f'\n  Updated {updated:,} chemicals with IARC group')
+        self.stdout.write(rollup.REBUILD_REMINDER)
 
     def _get_iarc_group(self, dtxsid):
         try:
