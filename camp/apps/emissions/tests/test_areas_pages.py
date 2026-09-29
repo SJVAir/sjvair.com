@@ -119,6 +119,64 @@ class RegionPageTests(TestCase):
         assert response.status_code == 404
 
 
+class AB617PageTests(TestCase):
+    """
+    An AB 617 community's own region page: it gets the same page as a city
+    or CDP (membership by point, map level, community card, etc. all come
+    from RegionPage/AreaPage/RegionArea for free), plus its own top-of-page
+    notice.
+    """
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def setUp(self):
+        cache.clear()
+
+    def make_community(self, **metadata):
+        return make(Region.Type.AB617_COMMUNITY, 'Shafter', AROUND_PLANT, metadata=metadata)
+
+    def test_page_renders_like_any_other_area_page(self):
+        community = self.make_community(cerp_selected_year='2018')
+        response = self.client.get(community.get_emissions_url(), {'year': '2024'})
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert '<h1 class="title is-3 mb-1">Shafter</h1>' in content
+        assert '<p class="heading">AB 617 Community' in content
+        assert 'TEST PLANT' in content
+        assert map_data(content, 'level') == 'tract'
+        # Shafter the city (fixture) and Shafter the AB 617 community share a
+        # name -- the <title>/breadcrumb disambiguates, the h1 doesn't.
+        assert f'<title>Shafter (AB 617 Community) | ' in content
+        assert '<a aria-current="page">Shafter (AB 617 Community)</a>' in content
+
+    def test_notice_with_year_and_both_links(self):
+        community = self.make_community(
+            cerp_selected_year='2018', community_url='https://community.valleyair.org/shafter',
+            storymaps_url='https://storymaps.arcgis.com/shafter',
+        )
+        content = self.client.get(community.get_emissions_url(), {'year': '2024'}).content.decode()
+        assert 'selected by CARB in 2018' in content
+        assert 'href="https://community.valleyair.org/shafter"' in content
+        assert 'Community page at the Valley Air District' in content
+        assert 'href="https://storymaps.arcgis.com/shafter"' in content
+
+    def test_notice_omits_missing_year_and_empty_storymaps(self):
+        community = self.make_community(cerp_selected_year='', community_url='https://community.valleyair.org/shafter', storymaps_url='')
+        content = self.client.get(community.get_emissions_url(), {'year': '2024'}).content.decode()
+        assert 'An AB 617 community,' in content
+        assert 'selected by CARB in' not in content
+        assert 'storymaps.arcgis.com' not in content
+
+    def test_no_notice_off_an_ab617_page(self):
+        fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        content = self.client.get(fresno.get_emissions_url(), {'year': '2024'}).content.decode()
+        assert 'ab617-notice' not in content
+
+    def test_dairies_subpage_also_exists(self):
+        community = self.make_community()
+        response = self.client.get(community.get_emissions_dairies_url())
+        assert response.status_code == 200
+
+
 class WithinSectionTests(TestCase):
     """
     The shared "In and around" include (camp/templates/regions/includes/
@@ -158,6 +216,20 @@ class WithinSectionTests(TestCase):
         )
         content = response.content.decode()
         assert 'class="within' not in content
+
+    def test_a_region_page_lists_an_overlapping_ab617_community(self):
+        community = make(Region.Type.AB617_COMMUNITY, 'Shafter', AROUND_PLANT)
+        content = self.client.get(self.fresno_city.get_emissions_url(), {'year': '2024'}).content.decode()
+        section = self.within_section(content)
+        assert 'Shafter' in section and community.get_emissions_url() in section
+        assert 'AB 617' in section
+
+    def test_an_ab617_page_lists_the_city_and_county_it_is_in(self):
+        community = make(Region.Type.AB617_COMMUNITY, 'Shafter', AROUND_PLANT)
+        content = self.client.get(community.get_emissions_url(), {'year': '2024'}).content.decode()
+        section = self.within_section(content)
+        assert self.fresno_city.name in section and self.fresno_city.get_emissions_url() in section
+        assert self.fresno.name in section and self.fresno.get_emissions_url() in section
 
 
 class NearMeTests(TestCase):
@@ -223,6 +295,12 @@ class FindAreaTests(TestCase):
         jumps = re.search(r'<p class="find-area-counties">(.*?)</p>', content, re.S).group(1)
         hrefs = re.findall(r'href="([^"]*)"', jumps)
         assert hrefs and all('county=' not in href for href in hrefs)
+
+    def test_ab617_community_is_findable_and_labelled_distinctly(self):
+        cache.clear()
+        make(Region.Type.AB617_COMMUNITY, 'Shafter', AROUND_PLANT)
+        labels = {(place['name'], place['type_label']) for place in views.find_area_places()}
+        assert ('Shafter', 'AB 617 community') in labels
 
     def test_places_per_url_name_are_cached_apart(self):
         cache.clear()

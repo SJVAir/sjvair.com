@@ -29,7 +29,11 @@ WITHIN_KEY = 'emissions:within:v1'
 
 
 def region_within(region):
-    return nearby.regions_within(region, url_method='get_emissions_url', cache_prefix=WITHIN_KEY)
+    # ab617=True: the emissions explorer's "In and around" lists an AB 617
+    # community a region overlaps (and, on an AB 617 page, the city/county
+    # it's in) -- the pesticides explorer, sharing nearby.regions_within(),
+    # doesn't have AB 617 pages and leaves this off.
+    return nearby.regions_within(region, url_method='get_emissions_url', cache_prefix=WITHIN_KEY, ab617=True)
 
 
 # The dairy region pages' own lists, linking other areas' dairy pages.
@@ -291,6 +295,7 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
             health_values=SourceImport.latest('contable'),
             area_links=area_links(facility_regions),
             facility_ces=ces_stats.tract_record(tract),
+            ab617_region=areas.facility_ab617_region(facility),
             compliance_card=compliance.facility_card(facility),
             ghg_card=ghg.facility_card(facility),
             methane_sources=methane.near_facility(facility) if methane.enabled() else [],
@@ -573,7 +578,7 @@ class MapPage(ScopeMixin, vanilla.TemplateView):
 
 AREA_PAGE_TYPES = (
     Region.Type.COUNTY, *Region.COMMUNITY_TYPES, Region.Type.ZIPCODE,
-    Region.Type.SCHOOL_DISTRICT, Region.Type.TRACT,
+    Region.Type.SCHOOL_DISTRICT, Region.Type.TRACT, Region.Type.AB617_COMMUNITY,
 )
 # The search box lists every page type but tracts: a tract's name is its GEOID.
 # Each community layer (city, urban area, CDP) is listed as-is, labelled, so
@@ -583,6 +588,7 @@ FIND_AREA_TYPE_LABELS = {
     **Region.COMMUNITY_LABELS,
     Region.Type.ZIPCODE: 'ZIP',
     Region.Type.SCHOOL_DISTRICT: 'School district',
+    Region.Type.AB617_COMMUNITY: 'AB 617 community',
 }
 # :v2 -- the synthetic places are gone; a list cached before then must not be served.
 FIND_AREA_PLACES_KEY = f'emissions:v{stats.CACHE_VERSION}:find-area-places:v2'
@@ -623,17 +629,34 @@ def region_title(region):
 def region_page_title(region):
     """
     The <title> and breadcrumb text: `region_title()`, plus its type for a
-    community region (city, urban area, CDP) -- Fresno the city and Fresno
-    the urban area otherwise both read as plain "Fresno" in a browser tab or
-    a breadcrumb, where the page's own heading line (type · county ·
-    population) isn't visible. Counties, ZIPs, tracts, and school districts
-    are already unambiguous on their own. The visible h1 stays the plain
-    name (AreaPage's `name`).
+    community region (city, urban area, CDP) or an AB 617 community --
+    Fresno the city and Fresno the urban area otherwise both read as plain
+    "Fresno" in a browser tab or a breadcrumb, where the page's own heading
+    line (type · county · population) isn't visible; Shafter the city and
+    Shafter the AB 617 community share a name the same way. Counties, ZIPs,
+    tracts, and school districts are already unambiguous on their own. The
+    visible h1 stays the plain name (AreaPage's `name`).
     """
     name = region_title(region)
-    if region.type in Region.COMMUNITY_TYPES:
+    if region.type in Region.COMMUNITY_TYPES or region.type == Region.Type.AB617_COMMUNITY:
         return f'{name} ({region.type_label})'
     return name
+
+
+def ab617_notice(region):
+    """
+    The top-of-page notice on an AB 617 community's own page (its metadata,
+    from import_ab617_communities: cerp_selected_year, community_url,
+    storymaps_url), or None off one.
+    """
+    if region.type != Region.Type.AB617_COMMUNITY:
+        return None
+    metadata = region.metadata or {}
+    return {
+        'year': metadata.get('cerp_selected_year') or '',
+        'community_url': metadata.get('community_url') or '',
+        'storymaps_url': metadata.get('storymaps_url') or '',
+    }
 
 
 def area_links(regions):
@@ -761,6 +784,9 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
         # near-me page's own get_context_data sets it, so this default only
         # matters for whichever subclass doesn't.
         kwargs.setdefault('wells_block', None)
+        # The AB 617 top-of-page notice (RegionPage sets it on an AB 617
+        # community's own page); a near-me page has none.
+        kwargs.setdefault('ab617', None)
         return super().get_context_data(
             area=area,
             county_region=county,
@@ -872,6 +898,7 @@ class RegionPage(RegionLookupMixin, AreaPage):
             extra['community'] = ces_stats.tract_summary(region.boundary.geometry)
             extra['show_top_tracts'] = region.type == Region.Type.COUNTY
         extra['wells_block'] = wells_block(areas.RegionArea(region), self.get_scope(), kern=is_kern(region))
+        extra['ab617'] = ab617_notice(region)
         county_scope = stats.Scope(
             year=self.get_scope().year, county=region, pollutant=self.get_scope().pollutant, minor=self.get_scope().minor,
         ) if region.type == Region.Type.COUNTY else None

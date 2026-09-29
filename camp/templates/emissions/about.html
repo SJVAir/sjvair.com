@@ -9,6 +9,7 @@
 <h2 id="coverage">What this covers</h2>
 <p>The Facility Emissions Explorer shows air pollution reported by <strong>permitted stationary sources</strong> in the San Joaquin Valley's eight counties: power plants, glass and cement plants, oil fields, food processors, dairies with permits, landfills, hospitals, gas stations and thousands more. The data is the California Air Resources Board's facility inventory (CEIDARS), which the air districts report to CARB every year. For the Valley's dairies, permitted or not, see <a href="#dairies">Dairies</a>.</p>
 <p>It does <strong>not</strong> cover cars and trucks, farm equipment, trains, most farming and dust, consumer products, wildfires, or facilities too small to need a permit. Those are most of the valley's air pollution; see <a href="#carb-estimates">CARB's estimates of all sources</a>.</p>
+<p>Alongside counties, cities, ZIP areas, census tracts and school districts, the Valley's four <strong>AB 617 communities</strong> -- Arvin/Lamont, South Central Fresno, Shafter and Stockton, selected by CARB for community air monitoring and emissions-reduction planning -- have their own pages too, each linking to its page at the Valley Air District.</p>
 
 <h2 id="districts">Two air districts</h2>
 <p>Seven of the eight counties are entirely within the San Joaquin Valley Air Pollution Control District. Kern County is split: its desert and mountain east is the Eastern Kern Air Pollution Control District, which regulates Kern's largest cement plants, US Borax at Boron and Edwards Air Force Base. Each facility's page names the district that regulates it and how to report a problem to them.</p>
@@ -36,7 +37,7 @@
 
 <h2 id="dairies">Dairies</h2>
 <p>The <a href="{% url 'emissions:dairy-list' %}">Dairies</a> tab covers what the facility inventory barely sees. CEIDARS lists a handful of permitted livestock facilities; CARB's <strong>California Dairy &amp; Livestock Database (CADD)</strong> locates every dairy CARB tracks, {{ dairy_count|intcomma }} of them in the eight Valley counties.</p>
-<p>Every county, city, community, ZIP area, census tract and school district has its own dairy page, scoped to that area's dairies. Reach one from its area page, or from the Dairies tab's find box.</p>
+<p>Every county, city, community, ZIP area, census tract, school district and AB 617 community has its own dairy page, scoped to that area's dairies. Reach one from its area page, or from the Dairies tab's find box.</p>
 <ul>
     <li><strong>Counted, not modelled.</strong> CADD gives each dairy's location, its herd by year ({{ dairy_span }}) and its anaerobic digesters. No public dataset reports emissions dairy by dairy, and the explorer doesn't estimate them.</li>
     <li><strong>Herd size and EPA size classes.</strong> Herds are counted in head: <em>mature dairy cows</em> (milking and dry cows) and <em>other cattle</em> (heifers, calves and beef cattle). Each dairy gets the U.S. EPA's size class for animal feeding operations (<a href="https://www.ecfr.gov/current/title-40/chapter-I/subchapter-D/part-122/subpart-B/section-122.23">40 CFR 122.23</a>) from its counts that year, the larger of the two counts' classes:

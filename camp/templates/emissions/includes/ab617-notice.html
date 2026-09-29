@@ -1,0 +1,11 @@
+{% comment %}
+The top-of-page notice on an AB 617 community's own region page (context:
+`ab617`, views.ab617_notice()). Renders nothing off an AB 617 page.
+{% endcomment %}
+{% if ab617 %}
+<div class="notification is-light ab617-notice">
+    <p class="mb-0">An AB 617 community{% if ab617.year %}, selected by CARB in {{ ab617.year }}{% endif %}, for community air monitoring and emissions-reduction planning under the Community Air Protection Program.
+        {% if ab617.community_url %}<a href="{{ ab617.community_url }}" target="_blank" rel="noopener">Community page at the Valley Air District →</a>{% endif %}
+        {% if ab617.storymaps_url %}{% if ab617.community_url %} ·{% endif %} <a href="{{ ab617.storymaps_url }}" target="_blank" rel="noopener">CARB story map →</a>{% endif %}</p>
+</div>
+{% endif %}

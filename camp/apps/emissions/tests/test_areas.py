@@ -12,8 +12,8 @@ WEST_OF_PLANT = 'MULTIPOLYGON(((-119.8 36.72, -119.787 36.72, -119.787 36.75, -1
 EAST_OF_PLANT = 'MULTIPOLYGON(((-119.787 36.72, -119.77 36.72, -119.77 36.75, -119.787 36.75, -119.787 36.72)))'
 
 
-def make(region_type, name, wkt, *, version='2020', population=None):
-    metadata = {'population': population} if population is not None else {}
+def make(region_type, name, wkt, *, version='2020', population=None, metadata=None):
+    metadata = {**(metadata or {}), **({'population': population} if population is not None else {})}
     region = Region.objects.create(name=name, slug=name.lower().replace(' ', '-'), type=region_type,
                                    external_id=name, metadata=metadata)
     boundary = Boundary.objects.create(region=region, version=version, geometry=GEOSGeometry(wkt, srid=4326))
@@ -119,6 +119,23 @@ class ScopeAreaTests(AreaTestCase):
         tract = make(Region.Type.TRACT, 'T1', AROUND_PLANT)
         assert areas.facility_areas(self.plant) == [self.plant.county, zipcode, tract]
         assert areas.facility_areas(self.cement) == [self.cement.county]
+
+
+class AB617AreaTests(AreaTestCase):
+    def test_ab617_region_scopes_like_any_other_non_county_area(self):
+        community = make(Region.Type.AB617_COMMUNITY, 'Shafter', AROUND_PLANT)
+        scope = stats.Scope(year=2024, county=None, pollutant=self.scope.pollutant, area=areas.RegionArea(community))
+        assert stats.totals(scope)['facilities'] == 1
+
+    def test_facility_ab617_region_is_point_in_boundary(self):
+        community = make(Region.Type.AB617_COMMUNITY, 'Shafter', AROUND_PLANT)
+        assert areas.facility_ab617_region(self.plant) == community
+        assert areas.facility_ab617_region(self.cement) is None
+
+    def test_no_point_no_region(self):
+        make(Region.Type.AB617_COMMUNITY, 'Shafter', AROUND_PLANT)
+        self.plant.point = None
+        assert areas.facility_ab617_region(self.plant) is None
 
 
 class RadiusGeometryTests(TestCase):

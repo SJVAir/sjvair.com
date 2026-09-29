@@ -4,6 +4,8 @@ from django.core.cache import cache
 from django.test import TestCase
 
 from camp.apps.emissions.models import EmissionsRecord, Facility, ToxicEmission
+from camp.apps.emissions.tests.test_areas import AROUND_PLANT, make
+from camp.apps.regions.models import Region
 
 
 class FacilityHeaderTests(TestCase):
@@ -40,6 +42,17 @@ class FacilityHeaderTests(TestCase):
         content = self.detail('TEST CEMENT')
         assert 'href="tel:6618625250"' in content
         assert 'Report an air pollution problem' not in content
+
+    def test_inside_an_ab617_community_is_linked(self):
+        community = make(Region.Type.AB617_COMMUNITY, 'Shafter', AROUND_PLANT)
+        content = self.detail('TEST PLANT')
+        assert f'Inside the <a href="{community.get_emissions_url()}' in content
+        assert 'Shafter AB 617 community' in content
+
+    def test_no_ab617_line_outside_a_community(self):
+        make(Region.Type.AB617_COMMUNITY, 'Shafter', AROUND_PLANT)
+        content = self.detail('TEST CEMENT')
+        assert 'AB 617 community' not in content
 
 
 class HomeSearchTests(TestCase):

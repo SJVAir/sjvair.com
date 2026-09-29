@@ -44,6 +44,10 @@
                 <p class="heading mt-4 mb-1">Community</p>
                 <p>In <a href="{{ facility_ces.region.get_emissions_url }}">a tract {% if facility_ces.ci_score_p is not None %}at the {{ facility_ces.ci_score_p|percentile }} percentile{% else %}OEHHA doesn't score{% endif %}</a> ({{ facility_ces.label }}){% if facility_ces.dac %} · SB 535 disadvantaged community{% endif %}</p>
                 {% endif %}
+                {% if ab617_region %}
+                <p class="heading mt-4 mb-1">AB 617</p>
+                <p>Inside the <a href="{{ ab617_region.get_emissions_url }}{{ scope_qs }}">{{ ab617_region.name }} AB 617 community</a></p>
+                {% endif %}
             </div>
         </div>
     </div>

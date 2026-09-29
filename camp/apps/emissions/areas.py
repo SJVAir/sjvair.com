@@ -36,6 +36,7 @@ NEXT_LEVEL = {
     Region.Type.CDP: Region.Type.TRACT,
     Region.Type.ZIPCODE: Region.Type.TRACT,
     Region.Type.SCHOOL_DISTRICT: Region.Type.TRACT,
+    Region.Type.AB617_COMMUNITY: Region.Type.TRACT,
 }
 SQ_METERS_PER_SQ_MILE = 2_589_988.110336
 MILES_PER_DEGREE = 69.0
@@ -278,3 +279,20 @@ def facility_areas(facility):
             pks.append(pk)
     regions = Region.objects.in_bulk(pks)
     return [regions[pk] for pk in pks if pk in regions]
+
+
+def facility_ab617_region(facility):
+    """
+    The AB 617 community whose boundary contains the facility's point, or
+    None (no point, or the point falls outside every community). Point-in-
+    boundary, like every other non-county area -- a facility isn't indexed
+    by AB 617 community in region_index() since there are only a handful of
+    communities and this is only ever called once, on a facility's own page.
+    """
+    if facility.point is None:
+        return None
+    return (
+        Region.objects.filter(type=Region.Type.AB617_COMMUNITY, boundary__isnull=False)
+        .filter(boundary__geometry__intersects=facility.point)
+        .select_related('boundary').first()
+    )

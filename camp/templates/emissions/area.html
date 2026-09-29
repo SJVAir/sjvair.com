@@ -8,6 +8,7 @@
 <div class="content">
     <h1 class="title is-3 mb-1">{{ name }}</h1>
     <p class="heading">{{ kind }}{% if county_region and county_region != area.region %} · {{ county_region.name }}{% endif %}{% if population %} · {{ population|whole }} people{% endif %}</p>
+    {% include 'emissions/includes/ab617-notice.html' %}
     {# In-page links (plain anchors, which htmx doesn't boost); only when there's more than the facilities to jump to. #}
     {% if dairy_block.has_dairies or within.any or community or tract_ces or wells_block or ghg_table.rows %}
     <nav class="section-nav is-size-7" aria-label="On this page">
