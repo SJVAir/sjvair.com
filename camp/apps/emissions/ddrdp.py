@@ -38,12 +38,14 @@ CACHE_TIMEOUT = 60 * 60 * 24
 
 # Words normalise_name() drops so name variants ("Lakeside Dairy, LLC",
 # "LAKESIDE DAIRY") meet -- unless dropping them would leave nothing, in
-# which case the full word list is kept. "digester" is deliberately NOT
-# here: a project title is often just a dairy's given name plus "Digester"
-# (no separate dairy name in the PDF at all -- see the module docstring),
-# and keeping "digester" in the normalised form is what lets a crosswalk
-# entry keyed on the full project title ("mystery digester") find it.
-STOP_WORDS = {'dairy', 'dairies', 'farm', 'farms', 'ranch', 'llc', 'inc', 'lp', 'and', 'the', 'of'}
+# which case the full word list is kept.
+# CDFA's project titles add grant words to the dairy's name ("Scheenstra
+# Dairy Biogas", "Fern Oaks Dairy Digester Pipeline Project"), and CADD has
+# only "Scheenstra Dairy", so those words go too.
+STOP_WORDS = {
+    'dairy', 'dairies', 'farm', 'farms', 'ranch', 'llc', 'inc', 'lp', 'and', 'the', 'of',
+    'biogas', 'digester', 'digesters', 'pipeline', 'project', 'centralized', 'fuel', 'demo', 'ddrdp',
+}
 
 # The model field each column maps to, by a keyword found (case-insensitively,
 # whitespace-collapsed) in the header cell. Every page of the PDF repeats the
@@ -154,8 +156,8 @@ def parse(path):
             mapping = _map_columns(header)
             for raw in body:
                 project_name = (raw[mapping['project_name']] or '').strip()
-                if not project_name or _clean_header(project_name) == 'project title':
-                    continue  # a repeated header row pdfplumber counted as data
+                if not project_name or _clean_header(project_name) in ('project title', 'total'):
+                    continue  # a repeated header row, or the PDF's closing Total row
                 rows.append({
                     'project_name': project_name,
                     'dairy_name': project_name,

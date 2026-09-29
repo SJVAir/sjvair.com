@@ -59,10 +59,11 @@ class ParseTests(TestCase):
         # llc) are dropped unless nothing would be left. "j d farms" isn't
         # asserted here -- naive stopword-dropping gives "j d" instead, which
         # the plan's own docstring flags as an open call; this project keeps
-        # the naive rule (it's what match()'s crosswalk lookup needs: see
-        # test_two_match_paths_and_unmatched, which relies on "digester"
-        # staying in a normalised project title).
+        # the naive rule.
         assert ddrdp.normalise_name('Lakeside Dairy, LLC') == 'lakeside'
+        # CDFA's grant words go too, so a project title meets its CADD dairy.
+        assert ddrdp.normalise_name('Scheenstra Dairy Biogas') == ddrdp.normalise_name('Scheenstra Dairy') == 'scheenstra'
+        assert ddrdp.normalise_name('Fern Oaks Dairy Digester Pipeline Project') == 'fern oaks'
         assert ddrdp.normalise_name('LAKESIDE DAIRY') == 'lakeside'
         assert ddrdp.normalise_name('J & D Farms Inc.') == 'j d'
         assert ddrdp.normalise_name('Big Dairy #2') == 'big 2'
@@ -86,7 +87,7 @@ class MatchAndApplyTests(TestCase):
 
     def test_two_match_paths_and_unmatched(self):
         from camp.apps.emissions import ddrdp_crosswalk
-        ddrdp_crosswalk.CROSSWALK['mystery digester'] = self.small.cadd_id
+        ddrdp_crosswalk.CROSSWALK['mystery'] = self.small.cadd_id
         try:
             rows = ddrdp.match([
                 self.row(),
@@ -94,7 +95,7 @@ class MatchAndApplyTests(TestCase):
                 self.row(project_name='Lost', dairy_name='Lost Dairy', city='Nowhere'),
             ])
         finally:
-            del ddrdp_crosswalk.CROSSWALK['mystery digester']
+            del ddrdp_crosswalk.CROSSWALK['mystery']
         assert [(r['dairy'], r['match_method']) for r in rows] == [(self.big, 'auto'), (self.small, 'manual'), (None, '')]
 
     def test_apply_replaces_and_stamps(self):
