@@ -10,7 +10,7 @@ from camp.utils.admin import MapFigureMixin, ReadOnlyAdminMixin
 
 from .models import (
     AirComplianceFacility, ComplianceEvent, CountyInventory, CountyNEI, EmissionsRecord, Facility,
-    SourceImport, ToxicEmission, ToxicPollutant,
+    SourceImport, ToxicEmission, ToxicPollutant, Well,
 )
 
 
@@ -246,3 +246,10 @@ class CountyNEIAdmin(ReadOnlyAdminMixin, base_admin.ModelAdmin):
     list_display = ['county', 'year', 'pollutant', 'sector', 'subsector', 'tons']
     list_filter = ['year', 'pollutant', 'county', 'sector']
     search_fields = ['sector', 'subsector']
+
+
+@admin.register(Well)
+class WellAdmin(ReadOnlyAdminMixin, base_admin.ModelAdmin):
+    list_display = ['api', 'lease_name', 'well_number', 'status', 'well_type_label', 'operator_name', 'field_name', 'county', 'in_hpz', 'spud_date']
+    list_filter = ['status', 'in_hpz', 'county', 'directional']
+    search_fields = ['api', 'lease_name', 'operator_name', 'field_name']

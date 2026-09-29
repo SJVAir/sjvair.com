@@ -10,3 +10,11 @@ from huey import crontab
 def import_icis_air():
     with get_queue('primary').lock_task('import-icis-air'):
         call_command('import_icis_air')
+
+
+# CalGEM's WellSTAR layer is live; weekly keeps the map within a week of it.
+# Sundays at 12:00 UTC.
+@db_periodic_task(crontab(day_of_week='0', hour='12', minute='0'), priority=20)
+def import_wells():
+    with get_queue('primary').lock_task('import-wells'):
+        call_command('import_wells')
