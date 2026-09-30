@@ -465,11 +465,11 @@
   // on it (SprayDays only places a notice to its square-mile section, so
   // they'd otherwise stack on one point).
   var NOTICE_GROUP_RADIUS = 11;
-  // Zoomed out, neighbouring sections' markers pile onto each other, so they
-  // merge into one bubble carrying the total number of notices under it;
-  // a click zooms in until it splits. From SECTION_ZOOM, where the grid is
-  // sections, every section keeps its own marker again.
-  var NOTICE_CLUSTER = { maxZoom: SECTION_ZOOM - 1, radius: 30, small: 13, large: 16, largeFrom: 10 };
+  // At the township level a township's notices share one bubble on its
+  // square, carrying how many there are (a section's marker would sit on
+  // its neighbours' otherwise); at the section level each section has its
+  // own marker again.
+  var NOTICE_TOWNSHIP = { small: 13, large: 16, largeFrom: 10 };
   var NOTICE_COUNT_FALLBACK_FONT = ['Noto Sans Bold'];
   // How many of a section's notices its popup lists before "N more".
   var SECTION_POPUP_NOTICES = 3;
@@ -793,6 +793,8 @@
     // by id: a click gives the feature's id, and the popups read the
     // nested lists (products, chemicals) the SDK can't hand back.
     this.noticeById = {};
+    this.noticeFeatures = [];
+    this.noticeTownshipById = {};
     this.locationById = {};
     // The one popup on the map, and whose it is (see openPopup).
     this.popup = null;
@@ -1057,13 +1059,7 @@
     this.ensureSource('outline');
     this.ensureSource('outline-mask');
     this.ensureSource('locations');
-    this.ensureSource('notices', {
-      cluster: true,
-      clusterMaxZoom: NOTICE_CLUSTER.maxZoom,
-      clusterRadius: NOTICE_CLUSTER.radius,
-      // Notices, not markers: each marker is already a section's worth.
-      clusterProperties: { total: ['+', ['get', 'count']] },
-    });
+    this.ensureSource('notices');
 
     this.ensureLayer({
       id: 'radius-fill', type: 'fill', source: 'radius',
@@ -1181,24 +1177,25 @@
       id: 'notices-circle', type: 'circle', source: 'notices',
       paint: {
         'circle-radius': ['case',
-          ['has', 'point_count'], ['case', ['>=', ['get', 'total'], NOTICE_CLUSTER.largeFrom], NOTICE_CLUSTER.large, NOTICE_CLUSTER.small],
-          ['>', ['get', 'count'], 1], NOTICE_GROUP_RADIUS,
-          NOTICE_MARKER.radius],
+          ['<=', ['get', 'count'], 1], NOTICE_MARKER.radius,
+          ['!=', ['get', 'kind'], 'township'], NOTICE_GROUP_RADIUS,
+          ['>=', ['get', 'count'], NOTICE_TOWNSHIP.largeFrom], NOTICE_TOWNSHIP.large,
+          NOTICE_TOWNSHIP.small],
         'circle-color': NOTICE_COLOR,
         'circle-opacity': NOTICE_MARKER.opacity,
         'circle-stroke-color': '#fff',
         'circle-stroke-width': NOTICE_MARKER.stroke,
       },
     });
-    // The count, where a marker stands for more than one notice: a
-    // cluster's total, or a section's own count. The font is borrowed from
-    // the basemap style's own labels, since that is what its glyph server is
-    // known to serve.
+    // The count, where a marker stands for more than one notice (a
+    // township's, or a section's). The font is borrowed from the basemap
+    // style's own labels, since that is what its glyph server is known to
+    // serve.
     this.ensureLayer({
       id: 'notices-count', type: 'symbol', source: 'notices',
-      filter: ['any', ['has', 'point_count'], ['>', ['get', 'count'], 1]],
+      filter: ['>', ['get', 'count'], 1],
       layout: {
-        'text-field': ['to-string', ['case', ['has', 'point_count'], ['get', 'total'], ['get', 'count']]],
+        'text-field': ['to-string', ['get', 'count']],
         'text-font': this.styleTextFont(),
         'text-size': 11,
         'text-allow-overlap': true,
@@ -1366,6 +1363,8 @@
     this.gridFeatures = [];
     this.gridById = {};
     this.noticeById = {};
+    this.noticeFeatures = [];
+    this.noticeTownshipById = {};
     this.locationById = {};
     // The shell removes the map (and its WebGL context) after this.
     this.map = null;
@@ -1864,6 +1863,7 @@
     this.updateHighlight();
     this.updateLegend();
     this.reopenGridPopup(reopenId);
+    this.drawNotices();
     if (level === 'section') {
       this.reopenSelectedSection(features, 'grid');
       this.resolvePendingLocate();
@@ -1980,31 +1980,15 @@
   SectionMap.prototype.bindMarkerEvents = function () {
     var self = this;
     var map = this.map;
-    var onNoticeMove = function (event) {
-      var feature = event.features[0];
-      // A cluster has no id of its own (the source promotes `id`, which only
-      // a section's marker carries), so it gets the pointer and no hover state.
-      if (feature.properties.cluster) {
-        self.clearHover('notices');
-        map.getCanvas().style.cursor = 'pointer';
-        return;
-      }
-      self.setHover('notices', feature.id);
-    };
-    var onNoticeLeave = function () {
-      self.clearHover('notices');
-      if (!Object.keys(self.hoverIds).length) map.getCanvas().style.cursor = '';
-    };
+    var onNoticeMove = function (event) { self.setHover('notices', event.features[0].id); };
+    var onNoticeLeave = function () { self.clearHover('notices'); };
     var onNoticeClick = function (event) {
       if (event.originalEvent.sectionMapTaken) return;
       var clicked = event.features[0];
-      if (clicked.properties.cluster) {
-        // A cluster opens nothing: it zooms in to where it comes apart.
+      var township = self.noticeTownshipById[clicked.id];
+      if (township) {
         event.originalEvent.sectionMapTaken = true;
-        var center = clicked.geometry.coordinates;
-        map.getSource('notices').getClusterExpansionZoom(clicked.properties.cluster_id).then(function (zoom) {
-          map.easeTo({ center: center, zoom: zoom });
-        });
+        self.openNoticeTownship(township);
         return;
       }
       var feature = self.noticeById[clicked.id];
@@ -3152,6 +3136,8 @@
   SectionMap.prototype.clearNotices = function () {
     this.clearHover('notices');
     this.noticeById = {};
+    this.noticeFeatures = [];
+    this.noticeTownshipById = {};
     if (this.popup && this.popupKey === 'openNoticeId') this.closePopup();
     this.setSourceData('notices', EMPTY);
     this.refreshSectionPopup();
@@ -3165,7 +3151,8 @@
     this.clearHover('notices');
     this.noticeById = {};
     for (var i = 0; i < features.length; i++) this.noticeById[features[i].id] = features[i];
-    this.setSourceData('notices', { type: 'FeatureCollection', features: features });
+    this.noticeFeatures = features;
+    this.drawNotices();
     if (reopenId) {
       var feature = this.noticeById[reopenId];
       if (feature) {
@@ -3210,6 +3197,74 @@
         },
       };
     });
+  };
+
+  // The markers for the grid's level: a township's notices as one bubble on
+  // its square at the township level, each section's at the section level.
+  // Run when the notices arrive and when the grid changes level.
+  SectionMap.prototype.drawNotices = function () {
+    var features = this.noticeFeatures || [];
+    this.noticeTownshipById = {};
+    if (this.level === 'township') features = this.groupNoticesByTownship(features);
+    this.clearHover('notices');
+    this.setSourceData('notices', { type: 'FeatureCollection', features: features });
+  };
+
+  // "MDM-T15S-R19E-28" -> "MDM-T15S-R19E": the township's id on the grid.
+  function townshipOf(section) {
+    var cut = section ? section.lastIndexOf('-') : -1;
+    return cut > 0 ? section.slice(0, cut) : null;
+  }
+
+  // Section markers gathered by township, each placed on its township's
+  // square (or, before that square is on the grid, the middle of its
+  // sections). `count` is notices, not sections.
+  SectionMap.prototype.groupNoticesByTownship = function (sectionFeatures) {
+    var self = this;
+    var groups = {};
+    var order = [];
+    sectionFeatures.forEach(function (f) {
+      var key = townshipOf(f.properties.section) || f.properties.id;
+      if (!groups[key]) {
+        groups[key] = { sections: [], count: 0 };
+        order.push(key);
+      }
+      groups[key].sections.push(f);
+      groups[key].count += f.properties.count;
+    });
+    return order.map(function (key) {
+      var group = groups[key];
+      var square = self.gridById[key];
+      var point;
+      if (square) {
+        point = boundsCenter(featureBounds(square));
+      } else {
+        var lng = 0, lat = 0;
+        group.sections.forEach(function (f) { lng += f.geometry.coordinates[0]; lat += f.geometry.coordinates[1]; });
+        point = [lng / group.sections.length, lat / group.sections.length];
+      }
+      var id = 'township:' + key;
+      var feature = {
+        type: 'Feature',
+        id: id,
+        geometry: { type: 'Point', coordinates: point },
+        properties: { id: id, kind: 'township', township: key, count: group.count },
+      };
+      self.noticeTownshipById[id] = { feature: feature, sections: group.sections };
+      return feature;
+    });
+  };
+
+  // A township's bubble: with every notice in one section, that section's
+  // popup (zooming in to it, as a lone marker does); otherwise in to the
+  // township's sections, where each has its own marker.
+  SectionMap.prototype.openNoticeTownship = function (township) {
+    if (township.sections.length === 1) {
+      this.openNoticeSection(township.sections[0]);
+      return;
+    }
+    if (this.popup) this.closePopup();
+    this.map.easeTo({ center: township.feature.geometry.coordinates, zoom: this.sectionZoom(), animate: !this.reducedMotion });
   };
 
   SectionMap.prototype.openNoticePopup = function (feature) {

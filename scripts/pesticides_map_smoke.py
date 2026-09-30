@@ -154,6 +154,7 @@ return best;
 
 
 POPUP = '.maplibregl-popup.section-popup-wrap .section-popup'
+POPUP_CLEAR_EDGE = 10  # maps/chrome.js
 LOCATIONS_ZOOM_NOTE = 'Zoom in to see schools and child care.'
 LEGEND_ROWS = ".section-map-legend li:not(.is-marker)"
 
@@ -824,8 +825,22 @@ def check_notices(page):
         # opens -- with the notices block up top and the SprayDays pill.
         # Zoomed out the map first zooms in to the section grid.
         target = page.pick_point('notices', 'notices-circle')
+        township = None
+        if target and target['id'].startswith('township:'):
+            # At the township level a bubble stands for a township's notices:
+            # with several sections it zooms in to them, where the section
+            # markers are picked from; with one it opens that section.
+            township = page.instance_js("var t = inst.noticeTownshipById[arguments[0]]; return t ? { sections: t.sections.length, count: t.feature.properties.count, only: t.sections[0].id } : null;", target['id'])
+            if township and township['sections'] > 1:
+                page.click_map(target['dx'], target['dy'], settle=0.8, instant=True)
+                ok, _ = page.wait_grid('section', 40)
+                if not ok or page.js("return !!document.querySelector('.maplibregl-popup')"):
+                    problems.append('township bubble %s (%s sections) did not zoom in to its sections without a popup' % (target['id'], township['sections']))
+                target = page.pick_point('notices', 'notices-circle')
+            elif township:
+                target = dict(target, id=township['only'])
         if not target:
-            popup_detail = 'no unclustered notice marker on bare canvas (popup check skipped)'
+            popup_detail = 'no notice marker on bare canvas (popup check skipped)'
         else:
             count = page.instance_js("var f = inst.noticeById[arguments[0]]; return f ? f.properties.count : 0;", target['id'])
             page.click_map(target['dx'], target['dy'], settle=0.8, instant=True)
@@ -849,7 +864,8 @@ def check_notices(page):
             if not outlined:
                 problems.append('the section popup left its section unoutlined')
             opened_section = target['id']
-            popup_detail = 'marker %s opened its section popup (%s level) listing %s of %s notices' % (target['id'], result['level'], result['rows'], count)
+            popup_detail = '%smarker %s opened its section popup (%s level) listing %s of %s notices' % (
+                'township bubble (%s sections) then ' % township['sections'] if township else '', target['id'], result['level'], result['rows'], count)
     # Off: markers, legend row and the popup's notices go; the URL says so
     # against the default.
     page.set_control('input[name="notices"]', False)
@@ -1693,9 +1709,15 @@ def check_phone_layout(page):
                 problems.append('popup runs off the map: %s vs %s' % (popup, box))
             if popup['top'] < band:
                 problems.append('popup under the toolbar band (top %.0f < %.0f)' % (popup['top'], band))
-            if legend and popup['left'] < legend['right'] and popup['right'] > legend['left'] and popup['top'] < legend['bottom'] and popup['bottom'] > legend['top']:
+            over_legend = legend and popup['left'] < legend['right'] and popup['right'] > legend['left'] and popup['top'] < legend['bottom'] and popup['bottom'] > legend['top']
+            # A popup taller than the room between the toolbar and the legend
+            # (less the gap the map keeps from each, POPUP_CLEAR_EDGE in
+            # maps/chrome.js) keeps its top clear and covers the folded
+            # legend instead.
+            too_tall = legend and popup['bottom'] - popup['top'] > legend['top'] - band - 2 * POPUP_CLEAR_EDGE
+            if over_legend and not too_tall:
                 problems.append('popup over the legend panel: %s vs %s' % (popup, legend))
-            clear = 'popup %.0fpx wide, clear' % (popup['right'] - popup['left'])
+            clear = 'popup %.0fpx wide, %s' % (popup['right'] - popup['left'], 'taller than the room, over the folded legend' if over_legend else 'clear')
     page.screenshot('-phone')
     detail = '%dpx: legend folded, %d filter label(s) hidden, attribution folded, status centred, close button %s px^2, %s' % (
         result['width'], result['filters'], 'n/a' if close is None else '%.0f' % close, clear)
