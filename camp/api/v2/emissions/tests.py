@@ -581,6 +581,20 @@ class MethaneEndpointTests(TestCase):
         assert set(body) == {'source', 'plumes'}
         assert body['source'] == self.source.sqid
 
+    def test_geojson_features_carry_their_newest_imaged_plume(self):
+        # The overlay draws each source as its newest plume image.
+        assert self.client.get(reverse('api:v2:emissions:methane-geojson')).json()['features'][0]['properties']['plume'] is None
+        with patch('camp.apps.emissions.importers.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
+            carbonmapper.apply_plumes([
+                plume_item(plume_id='older', lnglat=NEAR_BOTH, scene_timestamp='2026-01-01T00:00:00.000Z', bounds=[-119.79, 36.73, -119.78, 36.74]),
+                plume_item(plume_id='newer', lnglat=NEAR_BOTH, scene_timestamp='2026-06-01T00:00:00.000Z', bounds=[-119.8, 36.72, -119.77, 36.75]),
+            ])
+        methane.clear_caches()  # as an import does (apply() bumps the generation)
+        plume = self.client.get(reverse('api:v2:emissions:methane-geojson')).json()['features'][0]['properties']['plume']
+        assert plume['date'] == '2026-06-01'
+        assert plume['bbox'] == [-119.8, 36.72, -119.77, 36.75]
+        assert plume['image_url'] == MethanePlume.objects.get(plume_id='newer').image.url
+
     def test_plume_with_no_image_is_null(self):
         with patch('camp.apps.emissions.importers.carbonmapper.fetch_plume_image', return_value=None):
             carbonmapper.apply_plumes([plume_item(plume_id='noimg', lnglat=NEAR_BOTH)])

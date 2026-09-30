@@ -1,8 +1,13 @@
 /*
  * The "Methane sources (Carbon Mapper)" overlay, shared by facility-map.js
- * and dairy-map.js: one circle per Carbon Mapper CH4 source from
- * data-methane-url (/api/2.0/emissions/methane/geojson/), sized by the
- * square root of its rate and coloured by sector group; a legend checkbox
+ * and dairy-map.js: each Carbon Mapper CH4 source from data-methane-url
+ * (/api/2.0/emissions/methane/geojson/) drawn as its newest plume image, all
+ * of them painted onto one canvas that spans the view (a single MapLibre
+ * canvas source, redrawn after each pan or zoom, rather than hundreds of
+ * image layers). A plume is a few hundred metres across, so zoomed out each
+ * is drawn at least PLUME_MIN_PX wide, centred on its box, and at its true
+ * footprint once that's bigger. An invisible circle per source takes the
+ * clicks; a source with no stored image is a small dot. A legend checkbox
  * row toggles it and ?methane= carries it. The source carries a MapLibre
  * attribution, so the map's attribution control shows "Data by Carbon
  * Mapper®" whenever the layer is on; the popup repeats it with the
@@ -23,10 +28,12 @@
   if (!M) return;
 
   var COLORS = { livestock: '#7c3aed', 'oil-gas': '#0f766e', waste: '#b45309', other: '#6b7280' };
-  var GROUPS = [['livestock', 'Livestock'], ['oil-gas', 'Oil & gas'], ['waste', 'Waste & wastewater'], ['other', 'Other']];
   var TERMS_URL = 'https://carbonmapper.org/terms';
   var PLUME_SOURCE = 'methane-plume-image';
   var PLUME_LAYER = 'methane-plume-image';
+  var PLUMES_SOURCE = 'methane-plumes';
+  var PLUMES_LAYER = 'methane-plumes';
+  var PLUME_MIN_PX = 18;
 
   var escapeHtml = M.escapeHtml;
   var getJson = M.getJson;
@@ -41,8 +48,12 @@
     this.plumeIndex = 0;
     this.plumeRequest = 0;
     this.activePopup = null;
+    this.activeSource = null;
+    this.canvas = document.createElement('canvas');
+    this.images = {};
     this.read();
     var self = this;
+    host.map.on('moveend', function () { self.redraw(); });
     host.map.on('click', 'methane', function (evt) { self.openPopup(evt.features[0], evt.lngLat); });
     host.map.on('mouseenter', 'methane', function () { host.map.getCanvas().style.cursor = 'pointer'; });
     host.map.on('mouseleave', 'methane', function () { host.map.getCanvas().style.cursor = ''; });
@@ -55,30 +66,48 @@
     this.on = this.enabled && d.methane === '1';
   };
 
-  // Under the host's own points (`before`), so a dairy or facility circle on
-  // top of a plume stays clickable. The attribution is the licence's.
+  // The click targets go under the host's own points (`before`), so a dairy
+  // or facility circle over a source still takes its own clicks; the plume
+  // images go on top. The attribution is the licence's.
   Overlay.prototype.addLayers = function () {
     var d = this.host.data;
     this.host.shell.ensureSource('methane', {
       attribution: '<a href="' + escapeHtml(d.methaneHome || 'https://carbonmapper.org') + '">' + escapeHtml(d.methaneAttribution || 'Data by Carbon Mapper®') + '</a>',
     });
-    if (!this.host.map.getLayer('methane')) {
-      this.host.map.addLayer({
+    var map = this.host.map;
+    var before = this.before && map.getLayer(this.before) ? this.before : undefined;
+    // The plume images go on top of the map's own points: they're the point
+    // of turning the overlay on, mostly transparent, and a raster layer
+    // doesn't take clicks, so a dairy or facility under one stays clickable.
+    if (!map.getSource(PLUMES_SOURCE)) {
+      map.addSource(PLUMES_SOURCE, { type: 'canvas', canvas: this.canvas, coordinates: this.viewCorners(), animate: false });
+    }
+    if (!map.getLayer(PLUMES_LAYER)) {
+      map.addLayer({ id: PLUMES_LAYER, type: 'raster', source: PLUMES_SOURCE, paint: { 'raster-opacity': 0.9, 'raster-fade-duration': 0 } });
+    }
+    // The click target: invisible over a plume image, a small dot for a
+    // source with no stored image (so it isn't lost).
+    if (!map.getLayer('methane')) {
+      map.addLayer({
         id: 'methane', type: 'circle', source: 'methane',
         paint: {
-          'circle-radius': ['interpolate', ['linear'], ['sqrt', ['coalesce', ['get', 'rate'], 0]], 0, 4, 5, 6, 15, 10, 30, 16, 60, 22],
+          'circle-radius': ['case', ['to-boolean', ['get', 'plume']], 11, 4],
           'circle-color': ['match', ['get', 'group'], 'livestock', COLORS.livestock, 'oil-gas', COLORS['oil-gas'], 'waste', COLORS.waste, COLORS.other],
-          'circle-opacity': 0.55,
-          'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1,
+          'circle-opacity': ['case', ['to-boolean', ['get', 'plume']], 0, 0.8],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': ['case', ['to-boolean', ['get', 'plume']], 0, 1],
         },
-      }, this.before && this.host.map.getLayer(this.before) ? this.before : undefined);
+      }, before);
     }
     this.apply();
+    this.redraw();
   };
 
   Overlay.prototype.apply = function () {
     var map = this.host.map;
-    if (map && map.getLayer('methane')) map.setLayoutProperty('methane', 'visibility', this.enabled && this.on ? 'visible' : 'none');
+    var visibility = this.enabled && this.on ? 'visible' : 'none';
+    if (map && map.getLayer('methane')) map.setLayoutProperty('methane', 'visibility', visibility);
+    if (map && map.getLayer(PLUMES_LAYER)) map.setLayoutProperty(PLUMES_LAYER, 'visibility', visibility);
     if (!this.enabled || !this.on) this.removePlumeLayer();
   };
 
@@ -95,6 +124,7 @@
         self.collection = collection;
         self.host.shell.setSourceData('methane', collection);
         self.host.shell.updateLegend();
+        self.redraw();
         self.host.el.dataset.methaneLoaded = '1';
       })
       .catch(function (err) { if (request === self.request && self.host.map) logError('failed to load the methane sources', err); });
@@ -109,13 +139,76 @@
     this.load();
   };
 
+  // The view's corners, top-left first, as a canvas source wants them. The
+  // maps are flat and north-up, so the view is a lng/lat rectangle.
+  Overlay.prototype.viewCorners = function () {
+    var b = this.host.map.getBounds();
+    return [[b.getWest(), b.getNorth()], [b.getEast(), b.getNorth()], [b.getEast(), b.getSouth()], [b.getWest(), b.getSouth()]];
+  };
+
+  Overlay.prototype.image = function (url) {
+    var self = this;
+    var img = this.images[url];
+    if (!img) {
+      img = this.images[url] = new Image();
+      img.crossOrigin = 'anonymous'; // drawn to a canvas WebGL reads back
+      img.onload = function () { self.scheduleRedraw(); };
+      img.onerror = function () { img.failed = true; };
+      img.src = url;
+    }
+    return img.complete && img.naturalWidth && !img.failed ? img : null;
+  };
+
+  // Images arrive one by one; draw them in a batch on the next frame.
+  Overlay.prototype.scheduleRedraw = function () {
+    var self = this;
+    if (this.redrawQueued) return;
+    this.redrawQueued = true;
+    window.requestAnimationFrame(function () { self.redrawQueued = false; self.redraw(); });
+  };
+
+  // Paints every plume in view onto the canvas, then points the canvas
+  // source at the view. A static canvas source only re-reads its pixels
+  // while playing, so it plays for the one frame that picks them up.
+  Overlay.prototype.redraw = function () {
+    var map = this.host.map;
+    var source = map && map.getSource(PLUMES_SOURCE);
+    if (!source || !this.collection || !this.enabled || !this.on) return;
+    var view = map.getCanvas();
+    var ratio = window.devicePixelRatio || 1;
+    var width = view.clientWidth, height = view.clientHeight;
+    this.canvas.width = Math.max(1, Math.round(width * ratio));
+    this.canvas.height = Math.max(1, Math.round(height * ratio));
+    var ctx = this.canvas.getContext('2d');
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    var bounds = map.getBounds();
+    var self = this;
+    this.collection.features.forEach(function (feature) {
+      var plume = feature.properties.plume;
+      if (!plume || !plume.bbox || feature.id === self.activeSource) return;
+      var west = plume.bbox[0], south = plume.bbox[1], east = plume.bbox[2], north = plume.bbox[3];
+      if (east < bounds.getWest() || west > bounds.getEast() || north < bounds.getSouth() || south > bounds.getNorth()) return;
+      var img = self.image(plume.image_url);
+      if (!img) return;
+      var topLeft = map.project([west, north]);
+      var bottomRight = map.project([east, south]);
+      var w = bottomRight.x - topLeft.x, h = bottomRight.y - topLeft.y;
+      var scale = Math.max(1, PLUME_MIN_PX / Math.max(w, h, 0.01));
+      var cx = topLeft.x + w / 2, cy = topLeft.y + h / 2;
+      ctx.drawImage(img, cx - (w * scale) / 2, cy - (h * scale) / 2, w * scale, h * scale);
+    });
+    source.setCoordinates(this.viewCorners());
+    source.play();
+    map.once('render', function () { if (map.getSource(PLUMES_SOURCE) === source) source.pause(); });
+    map.triggerRepaint();
+  };
+
   Overlay.prototype.legendHtml = function () {
     if (!this.enabled) return '';
     var html = '<div class="legend-overlay"><label class="legend-toggle"><input type="checkbox" data-methane' + (this.on ? ' checked' : '') + '> Methane sources (Carbon Mapper)</label>';
     if (this.on) {
-      html += '<p class="legend-wells">' + GROUPS.map(function (g) {
-        return '<span class="legend-well"><span class="legend-swatch is-well is-methane" style="background: ' + COLORS[g[0]] + '"></span>' + g[1] + '</span>';
-      }).join('') + '</p><p class="legend-note">Circle area by Carbon Mapper\'s estimated rate (kg/h). Snapshots from overflights, not annual totals. <a href="' + escapeHtml(this.host.data.methaneHome || 'https://carbonmapper.org') + '">' + escapeHtml(this.host.data.methaneAttribution || 'Data by Carbon Mapper®') + '</a>, non-commercial use.</p>';
+      html += '<p class="legend-note">Each source\'s newest plume image from Carbon Mapper, shaded by methane concentration; drawn larger than life when zoomed out. Click one for its estimated rate (kg/h) and other passes. Snapshots from overflights, not annual totals. <a href="' + escapeHtml(this.host.data.methaneHome || 'https://carbonmapper.org') + '">' + escapeHtml(this.host.data.methaneAttribution || 'Data by Carbon Mapper®') + '</a>, non-commercial use.</p>';
     }
     return html + '</div>';
   };
@@ -140,6 +233,10 @@
     this.plumes = null;
     this.plumeIndex = 0;
     this.activePopup = popup;
+    // The popup drapes this source's plumes itself; its newest plume steps
+    // aside from the canvas so a stepped-to older pass isn't drawn over it.
+    this.activeSource = p.id;
+    this.redraw();
     popup.on('close', function () { self.closePlumePanel(popup); });
     this.loadPlumes(p.id, popup);
   };
@@ -243,10 +340,12 @@
   Overlay.prototype.closePlumePanel = function (popup) {
     if (this.activePopup !== popup) return;
     this.activePopup = null;
+    this.activeSource = null;
     this.plumes = null;
     this.plumeIndex = 0;
     this.plumeRequest += 1;
     this.removePlumeLayer();
+    this.redraw();
   };
 
   Overlay.prototype.writeState = function (params) {

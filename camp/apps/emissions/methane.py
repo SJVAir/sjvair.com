@@ -10,10 +10,10 @@ import time
 
 from django.core.cache import cache
 
-from camp.apps.emissions.models import Facility, MethaneSource, SourceImport
+from camp.apps.emissions.models import Facility, MethanePlume, MethaneSource, SourceImport
 
 SOURCE = 'carbon-mapper'
-CACHE_VERSION = 1
+CACHE_VERSION = 2  # 2: GeoJSON features carry their newest plume
 GENERATION_KEY = 'emissions:methane:generation'
 CACHE_TIMEOUT = 60 * 60 * 24
 
@@ -54,7 +54,27 @@ def sources():
     return MethaneSource.objects.filter(gas=MethaneSource.Gas.CH4).select_related('county', 'dairy', 'facility')
 
 
-def feature(source):
+def newest_plumes():
+    """{source pk: its newest plume with a stored image}, one query (DISTINCT ON the source)."""
+    plumes = (
+        MethanePlume.objects.exclude(image='').filter(source__isnull=False)
+        .order_by('source_id', '-observed_at').distinct('source_id')
+    )
+    return {plume.source_id: plume for plume in plumes}
+
+
+def plume_summary(plume):
+    """A source's newest plume for the overlay to draw: its image, box ([west, south, east, north]) and date."""
+    if plume is None:
+        return None
+    return {
+        'image_url': plume.image.url,
+        'bbox': [round(v, 5) for v in plume.bounds_bbox],
+        'date': plume.observed_at.date().isoformat(),
+    }
+
+
+def feature(source, plume=None):
     return {
         'type': 'Feature',
         'id': source.sqid,
@@ -67,6 +87,7 @@ def feature(source):
             'dairy': {'id': source.dairy.sqid, 'name': source.dairy.name} if source.dairy else None,
             'facility': {'id': source.facility.sqid, 'name': source.facility.name, 'url': source.facility.get_absolute_url()} if source.facility else None,
             'viewer_url': source.viewer_url,
+            'plume': plume_summary(plume),
         },
     }
 
@@ -74,7 +95,8 @@ def feature(source):
 def collection():
     """The overlay's GeoJSON: every CH4 source. Cached a day; an import invalidates it. Attribution is on the pages and the map, not in the payload."""
     def compute():
-        features = [feature(source) for source in sources().order_by('pk')]
+        plumes = newest_plumes()
+        features = [feature(source, plumes.get(source.pk)) for source in sources().order_by('pk')]
         imported = stamp()
         return {
             'type': 'FeatureCollection',

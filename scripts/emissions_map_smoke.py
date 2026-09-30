@@ -689,7 +689,14 @@ def main():
             count = settled_count(driver, lambda d: d.execute_script("var m = window.EmissionsDairyMap.instances()[0]; return m.map.querySourceFeatures('methane').length;"))
             check(results, 'the methane layer loads and ?methane=1 lands in the URL', loaded and count > 0 and 'methane=1' in driver.current_url, f'{count} sources; {driver.current_url}')
             legend = driver.execute_script("return document.querySelector('.dairy-map-legend').textContent;")
-            check(results, 'the methane legend carries the attribution', 'Data by Carbon Mapper' in legend and 'Livestock' in legend)
+            check(results, 'the methane legend carries the attribution', 'Data by Carbon Mapper' in legend and 'newest plume image' in legend)
+            # The sources are drawn as their plume images, painted onto one
+            # canvas source: wait for some non-transparent pixels on it.
+            painted = wait_for(driver,
+                "var m = window.EmissionsDairyMap.instances()[0]; if (!m.map.getLayer('methane-plumes')) return false;"
+                "var c = m.methane.canvas, ctx = c.getContext('2d'); if (!c.width) return false;"
+                "var d = ctx.getImageData(0, 0, c.width, c.height).data; for (var i = 3; i < d.length; i += 4) { if (d[i]) return true; } return false;")
+            check(results, 'the methane sources are drawn as plume images', painted)
             attribution = driver.execute_script("var el = document.querySelector('.maplibregl-ctrl-attrib-inner, .maptiler-ctrl-attrib-inner'); return el ? el.textContent : '';")
             check(results, "the map's attribution control names Carbon Mapper", 'Carbon Mapper' in attribution, attribution[:120])
             opened = driver.execute_script(
