@@ -471,6 +471,8 @@
   // sections, every section keeps its own marker again.
   var NOTICE_CLUSTER = { maxZoom: SECTION_ZOOM - 1, radius: 30, small: 13, large: 16, largeFrom: 10 };
   var NOTICE_COUNT_FALLBACK_FONT = ['Noto Sans Bold'];
+  // How many of a section's notices its popup lists before "N more".
+  var SECTION_POPUP_NOTICES = 3;
   var LOCATION_MARKER = { radius: 5, opacity: 0.95, stroke: 1.5 };
   // An invisible disc under each marker, wide enough for a finger, that
   // takes the marker's hover and click (see addLayers, bindMarkerEvents).
@@ -1908,7 +1910,7 @@
   };
 
   // Reclasses the grid (a metric, ramp, or bins change) and reshades it in
-  // place; a township popup's headline follows the metric.
+  // place.
   SectionMap.prototype.restyle = function () {
     if (!this.map || !this.gridFeatures.length) return;
     var self = this;
@@ -1918,10 +1920,6 @@
     this.setSourceData('grid', { type: 'FeatureCollection', features: this.gridFeatures });
     this.applyGridPaint();
     this.updateHighlight();
-    if (this.level === 'township' && this.popup && this.popupKey === 'openGridId') {
-      var feature = this.gridById[this.popupId];
-      if (feature) this.popup.setHTML(this.townshipPopupHtml(feature.properties, latLngOf(boundsCenter(featureBounds(feature)))));
-    }
     // A lens that's up (a metric change under it, possibly pinned by one
     // of its popups) is reclassed in place rather than left in the old
     // metric's shades over townships that just got their fill back.
@@ -2012,7 +2010,7 @@
       var feature = self.noticeById[clicked.id];
       if (!feature) return;
       event.originalEvent.sectionMapTaken = true;
-      self.openNoticePopup(feature);
+      self.openNoticeSection(feature);
     };
     var onLocationMove = function (event) { self.setHover('locations', event.features[0].id); };
     var onLocationLeave = function () { self.clearHover('locations'); };
@@ -2089,7 +2087,10 @@
     map.on('mouseleave', 'all-sections-fill', function () { self.clearHover('all-sections'); });
     // Sections drawn over the townships take the click; a township is
     // reached where no section covers it. Layer listeners fire in the order
-    // they're bound, so the section ones mark the event as taken.
+    // they're bound, so the section ones mark the event as taken. Zoomed
+    // out, a township's click is a touch screen's tap (a mouse has already
+    // raised the lens by hovering): it raises the lens the same way, and
+    // the next tap, on one of the lens sections, opens that section.
     map.on('click', 'lens-fill', function (event) {
       if (event.originalEvent.sectionMapTaken) return; // a marker's
       var feature = findFeature(self.lensFeatures, event.features[0].id);
@@ -2109,7 +2110,8 @@
       var feature = self.gridById[event.features[0].id];
       if (!feature) return;
       if (self.level === 'township') {
-        self.openTownshipPopup(feature);
+        self.cancelLensClear();
+        if (self.lensId !== feature.properties.id) self.showLens(feature);
       } else {
         self.showSectionPopup(feature, 'grid');
       }
@@ -2148,8 +2150,8 @@
     var self = this;
     if (this.popupKey && this[this.popupKey] === this.popupId) this[this.popupKey] = null;
     // Opening another feature's popup is letting go of this one: a
-    // selected section loses its selection (a township popup replacing a
-    // lens or all-sections section's; a section's own reopen keeps it).
+    // selected section loses its selection (another section's popup, or a
+    // marker's, replacing it; a section's own reopen keeps it).
     if (this.popupId && this.popupId !== id && this.selectedSectionId === this.popupId) this.clearSelection();
     this.popupKey = key;
     this.popupId = id;
@@ -2239,7 +2241,7 @@
       if (!isFinite(lat) || !isFinite(lng)) return;
       // A section popup rides through the zoom: the section grid that
       // loads at the new zoom re-opens the popup for this id (see
-      // reopenGridPopup). A township popup just closes.
+      // reopenGridPopup).
       var sectionId = button.getAttribute('data-id');
       if (sectionId) {
         self.openGridId = sectionId;
@@ -2295,31 +2297,11 @@
     );
   };
 
-  SectionMap.prototype.townshipPopupHtml = function (props, center) {
-    var sections = props.sections || 0;
-    // The target is carried on the button so the popup's own listener (see
-    // bindPopupButtons) can serve it after the content is replaced.
-    return (
-      '<div class="section-popup">' +
-      '<h4>' + escapeHtml(props.name || props.id) + '</h4>' +
-      '<p class="section-popup-sub">Township · ' + formatNumber(sections) + ' square-mile section' + (sections === 1 ? '' : 's') + '</p>' +
-      this.metricLine(props) +
-      '<div class="section-popup-actions"><button type="button" class="section-popup-action section-map-zoom" data-lat="' + center.lat + '" data-lng="' + center.lng + '">' +
-      '<span class="fa-regular fa-fw fa-magnifying-glass-plus"></span> Zoom in to sections</button></div>' +
-      '</div>'
-    );
-  };
-
-  SectionMap.prototype.openTownshipPopup = function (feature) {
-    var center = boundsCenter(featureBounds(feature));
-    this.openPopup(center, this.townshipPopupHtml(feature.properties, latLngOf(center)), 'openGridId', feature.properties.id);
-  };
-
   // `detailHtml` is the top-chemicals block: a list once loaded, a loading
   // or empty note otherwise.
-  // `center` is passed when the popup was opened from the lens; the
-  // township popup is unreachable there (the sections cover it),
-  // so its "zoom in" action rides along on the section popup instead.
+  // `center` is passed when the popup was opened from the lens, which is
+  // still the township view: the popup carries a "zoom in" action to the
+  // section grid.
   SectionMap.prototype.sectionPopupHtml = function (props, detailHtml, center) {
     var sub = 'Square-mile section' + (props.county ? ' · ' + escapeHtml(shortCounty(props.county)) : '');
     var url = this.sectionUrl(props.id);
@@ -2340,16 +2322,101 @@
       links += '<button type="button" class="section-popup-action section-map-zoom" data-id="' + escapeHtml(props.id) + '" data-lat="' + center.lat + '" data-lng="' + center.lng + '">' +
         '<span class="fa-regular fa-fw fa-magnifying-glass-plus"></span> Zoom in</button>';
     }
+    var notices = this.sectionNoticesHtml(props.id);
+    if (notices) {
+      links += '<a class="section-popup-action" href="' + SPRAYDAYS_URL + '" target="_blank" rel="noopener"><span class="fa-regular fa-fw fa-bell"></span> Sign up with SprayDays</a>';
+    }
     return (
       '<div class="section-popup">' +
       '<h4>' + escapeHtml(props.mtrs || props.id) + '</h4>' +
       '<p class="section-popup-sub">' + sub + '</p>' +
       this.metricLine(props) +
+      notices +
       '<p class="section-popup-label">Top chemicals</p>' +
       detailHtml +
       '<div class="section-popup-actions">' + links + '</div>' +
       '</div>'
     );
+  };
+
+  // What SprayDays has scheduled in this square mile, for its popup, from
+  // the notice markers the map already holds (so nothing with the notices
+  // layer off): soonest first, the first few in full, the rest a link away.
+  // Up top, under the headline -- a spray that may start this week is the
+  // most pressing thing a section's popup can say.
+  SectionMap.prototype.sectionNoticesHtml = function (id) {
+    var group = this.noticeById ? this.noticeById[id] : null;
+    var notices = (group && group.properties.notices) || [];
+    if (!notices.length) return '';
+    var self = this;
+    var more = notices.length - SECTION_POPUP_NOTICES;
+    var moreUrl = this.data.sectionNoticesUrl ? fillUrl(this.data.sectionNoticesUrl, id) : '';
+    return (
+      '<div class="section-popup-notices">' +
+      '<p class="section-popup-label">' + (notices.length === 1 ? 'Notice of intent' : notices.length + ' notices of intent') + '</p>' +
+      notices.slice(0, SECTION_POPUP_NOTICES).map(function (n) { return self.sectionNoticeRowHtml(n); }).join('') +
+      (more > 0 ? '<p class="section-popup-note">' + linkHtml(moreUrl, more + ' more') + '</p>' : '') +
+      '</div>'
+    );
+  };
+
+  // One notice in a section popup: when (linking the notice), how much and
+  // how, and its chemicals, flagged ones marked.
+  SectionMap.prototype.sectionNoticeRowHtml = function (n) {
+    var self = this;
+    var when = linkHtml(n.id ? this.noticeUrl(n.id) : '', formatDateTime(n.scheduled_application));
+    var treated = n.treated_amount ? formatNumber(n.treated_amount) + ' ' + escapeHtml((n.treated_units || '').toLowerCase()) : '';
+    var method = n.application_method ? escapeHtml(n.application_method.toLowerCase()) : '';
+    var how = treated && method ? treated + ' by ' + method : treated || method;
+    var chemicals = (n.chemicals || []).map(function (c) {
+      return '<span class="name' + (c.is_of_concern ? ' is-of-concern' : '') + '">' +
+        linkHtml(self.chemicalUrl(c.id), c.display_name || c.name) + '</span>';
+    }).join(', ');
+    return (
+      '<div class="section-popup-notice">' +
+      '<p><strong>' + when + '</strong>' + (how ? ' · ' + how : '') + '</p>' +
+      (chemicals ? '<p class="section-popup-notice-chems">' + chemicals + '</p>' : '') +
+      '</div>'
+    );
+  };
+
+  // A notice marker opens its section's popup -- the same one a click on the
+  // square opens, so the small marker needn't be hit to see what's planned.
+  // Where the section isn't on the map as a square (zoomed out, no lens over
+  // it) the map zooms in to the section grid, which opens it on arrival
+  // (openGridId; see reopenGridPopup). A notice with no section keeps a
+  // popup of its own.
+  SectionMap.prototype.openNoticeSection = function (feature) {
+    var id = feature.properties.section_id;
+    if (!id) {
+      this.openNoticePopup(feature);
+      return;
+    }
+    if (this.level === 'section' && this.gridById[id]) {
+      this.showSectionPopup(this.gridById[id], 'grid');
+      return;
+    }
+    var lensFeature = this.lensFeatures && this.lensFeatures.length ? findFeature(this.lensFeatures, id) : null;
+    if (lensFeature) {
+      this.showSectionPopup(lensFeature, 'lens');
+      return;
+    }
+    if (this.allSectionsActive() && this.allSectionsById[id]) {
+      this.showSectionPopup(this.allSectionsById[id], 'all-sections');
+      return;
+    }
+    if (this.popup) this.closePopup();
+    this.openGridId = id;
+    this.map.easeTo({ center: feature.geometry.coordinates, zoom: this.sectionZoom(), animate: !this.reducedMotion });
+  };
+
+  // Rebuilds an open section popup in place (the notices under it changed),
+  // keeping the top chemicals it already loaded.
+  SectionMap.prototype.refreshSectionPopup = function () {
+    var state = this.sectionPopupState;
+    if (!this.popup || !state || state.props.id !== this.popupId) return;
+    if (['openGridId', 'openLensId', 'openAllSectionsId'].indexOf(this.popupKey) === -1) return;
+    this.popup.setHTML(this.sectionPopupHtml(state.props, state.detailHtml, state.latlng));
   };
 
   // The open popup's section wears SELECTED_LINE (the `selected` source's
@@ -2392,13 +2459,12 @@
   // drops it (see renderNotices, renderLocations).
   SectionMap.prototype.reopenGridPopup = function (id) {
     var feature = id ? this.gridById[id] : null;
-    if (feature) {
-      if (this.level === 'township') {
-        this.openTownshipPopup(feature);
-      } else {
-        this.showSectionPopup(feature, 'grid');
-      }
-    } else if (this.popup && !this.isMarkerPopup()) {
+    // Townships have no popup of their own (the lens's sections do).
+    if (feature && this.level !== 'township') {
+      this.showSectionPopup(feature, 'grid');
+    } else if (this.popup && this.popupKey === 'openGridId') {
+      this.closePopup();
+    } else if (!feature && this.popup && !this.isMarkerPopup()) {
       this.closePopup();
     }
   };
@@ -2415,7 +2481,8 @@
     var center = boundsCenter(featureBounds(feature));
     var latlng = latLngOf(center);
     var key = source === 'grid' ? 'openGridId' : (source === 'lens' ? 'openLensId' : 'openAllSectionsId');
-    this.openPopup(center, this.sectionPopupHtml(props, '<p class="section-popup-note">Loading…</p>', latlng), key, props.id);
+    this.sectionPopupState = { props: props, detailHtml: '<p class="section-popup-note">Loading…</p>', latlng: latlng };
+    this.openPopup(center, this.sectionPopupHtml(props, this.sectionPopupState.detailHtml, latlng), key, props.id);
     this.selectSection(props.id, feature);
 
     if (!this.data.sectionUrlPattern) return;
@@ -2433,13 +2500,15 @@
               '</li>';
           }).join('') + '</ul>';
         }
+        self.sectionPopupState = { props: props, detailHtml: detailHtml, latlng: latlng };
         self.popup.setHTML(self.sectionPopupHtml(props, detailHtml, latlng));
         self.panPopupIntoView();
       })
       .catch(function (err) {
         logError('failed to load section detail', err);
         if (!self.popup || self.popupId !== props.id) return;
-        self.popup.setHTML(self.sectionPopupHtml(props, '<p class="section-popup-note">Couldn\'t load the top chemicals.</p>', latlng));
+        self.sectionPopupState = { props: props, detailHtml: '<p class="section-popup-note">Couldn\'t load the top chemicals.</p>', latlng: latlng };
+        self.popup.setHTML(self.sectionPopupHtml(props, self.sectionPopupState.detailHtml, latlng));
       });
   };
 
@@ -3085,6 +3154,7 @@
     this.noticeById = {};
     if (this.popup && this.popupKey === 'openNoticeId') this.closePopup();
     this.setSourceData('notices', EMPTY);
+    this.refreshSectionPopup();
   };
 
   // Puts a response's notices on the map, one marker per section, reopening
@@ -3104,6 +3174,7 @@
         this.closePopup();
       }
     }
+    this.refreshSectionPopup();
   };
 
   // SprayDays only places a notice to its section, and the API pins every
