@@ -88,10 +88,23 @@ class HomeSearchTests(TestCase):
 
         content = self.client.get(reverse('emissions:home'), {'minor': '1'}).content.decode()
         row = content[content.index('class="columns find-row"'):]
-        assert row.index('id="find"') < row.index('class="box find-facility"') < row.index('Top 10 facilities')
+        assert row.index('id="find"') < row.index('class="box find-facility"') < row.index('Top facilities · ')
         # The search keeps the scope, and there's only one facility search on the page.
-        assert '<input type="hidden" name="minor" value="1">' in row[:row.index('Top 10 facilities')]
+        assert '<input type="hidden" name="minor" value="1">' in row[:row.index('Top facilities · ')]
         assert content.count('id="facility-search"') == 1
+
+    def test_top_facilities_and_sectors_are_cards(self):
+        cache.clear()
+        from django.urls import reverse
+
+        content = self.client.get(reverse('emissions:home')).content.decode()
+        facilities = content[content.index('Top facilities · 2024'):content.index('Top sectors · 2024')]
+        # TEST PLANT is the fixture's top NOx emitter; the card links it and the full list.
+        assert '>TEST PLANT</a>' in facilities
+        assert f'href="{reverse("emissions:facility-list")}">View all</a>' in facilities
+        sectors = content[content.index('Top sectors · 2024'):]
+        assert f'href="{reverse("emissions:sector-list")}">View all</a>' in sectors
+        assert '<table class="table is-fullwidth is-hoverable is-narrow facility-table' not in content
 
     def test_ab617_communities_are_listed_under_the_counties(self):
         cache.clear()

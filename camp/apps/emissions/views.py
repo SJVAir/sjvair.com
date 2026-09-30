@@ -140,16 +140,16 @@ class Home(ScopeMixin, vanilla.TemplateView):
     def get_context_data(self, **kwargs):
         scope = self.get_scope()
         totals = stats.totals(scope)
-        top_rows = stats.with_ranks(stats.facility_table(scope)[:10], stats.ranks(scope))
+        top_sectors = reporting_sectors(scope)[:6]
         return super().get_context_data(
             totals=totals,
             total=totals['value'],
             context_bar=stats.county_context(scope),
             nei_context=nei.context(scope),
             toxics_breakdown=stats.toxics_breakdown(scope) if scope.toxics else None,
-            top_rows=top_rows,
-            top_columns=uniform_columns(top_rows),
-            top_sectors=reporting_sectors(scope)[:6],
+            top_sectors=top_sectors,
+            facility_board=facility_board(scope),
+            sector_board=sector_board(scope, top_sectors),
             by_year=stats.by_year(scope),
             find_area_places=find_area_places(),
             find_area_counties=[p for p in find_area_places() if p['type'] == Region.Type.COUNTY],
@@ -475,6 +475,33 @@ def methane_map_data(overlay):
         'methane_attribution': MethaneSource.ATTRIBUTION,
         'methane_home': MethaneSource.HOME_URL,
     }
+
+
+HOME_BOARD_ROWS = 5
+
+
+def series(points):
+    """A by-year series' values in year order, for a sparkline."""
+    return [row['value'] for row in sorted(points, key=lambda row: row['year'])]
+
+
+def facility_board(scope):
+    """The home page's top facilities card: each one's link, its value and its by-year line."""
+    return [
+        {'label': record.facility.name, 'url': record.facility.get_absolute_url(), 'value': record.value,
+         'series': series(stats.by_year(scope, facility=record.facility))}
+        for record in stats.facility_table(scope)[:HOME_BOARD_ROWS]
+    ]
+
+
+def sector_board(scope, rows):
+    """The home page's top sectors card, from reporting_sectors() rows, with each sector's line and share."""
+    trends = stats.sector_trends(scope)
+    return [
+        {'label': row['label'], 'url': reverse('emissions:sector-detail', args=[row['sector']]), 'value': row['value'],
+         'share': row['share'], 'series': series(trends.get(row['sector'], []))}
+        for row in rows[:HOME_BOARD_ROWS]
+    ]
 
 
 def uniform_columns(rows):

@@ -26,22 +26,20 @@
     <div class="column is-half">{% include 'emissions/includes/find-facility.html' %}</div>
 </div>
 
-{% if context_bar %}{% include 'emissions/includes/context-bar.html' %}{% endif %}
-{% if nei_context %}{% include 'emissions/includes/nei-context-bar.html' %}{% endif %}
-{% if toxics_breakdown %}{% include 'emissions/includes/toxics-breakdown.html' %}{% endif %}
+{% url 'emissions:facility-list' as facility_list_url %}{% url 'emissions:sector-list' as sector_list_url %}
+<div class="columns leaderboards">
+    <div class="column is-half-tablet">{% include 'emissions/includes/board.html' with title='Top facilities' rows=facility_board view_all_url=facility_list_url %}</div>
+    <div class="column is-half-tablet">{% include 'emissions/includes/board.html' with title='Top sectors' rows=sector_board view_all_url=sector_list_url %}</div>
+</div>
 
-<h2 class="title is-4">Top 10 facilities</h2>
-{% include 'emissions/includes/facility-table.html' with rows=top_rows sortable=False hide_city=top_columns.hide_city hide_county=top_columns.hide_county %}
-<p class="mb-5"><a href="{% url 'emissions:facility-list' %}{{ scope_qs }}">All facilities →</a></p>
-
+{# The trend and the context for it (all sources, ammonia's sources, or the toxics breakdown) side by side. #}
 <div class="columns">
-    <div class="column">
-        <h2 class="title is-4">Top sectors</h2>
-        {% include 'emissions/includes/sector-rows.html' with rows=top_sectors %}
-        <p><a href="{% url 'emissions:sector-list' %}{{ scope_qs }}">All sectors →</a></p>
-    </div>
-    <div class="column">
-        {% emissions_trend_chart by_year pollutant year heading="Over time" %}
+    <div class="column is-half-desktop">{% emissions_trend_chart by_year pollutant year heading="Over time" %}</div>
+    <div class="column is-half-desktop">
+        {% if context_bar or nei_context or toxics_breakdown %}<h2 class="title is-4">In context</h2>{% endif %}
+        {% if context_bar %}{% include 'emissions/includes/context-bar.html' %}{% endif %}
+        {% if nei_context %}{% include 'emissions/includes/nei-context-bar.html' %}{% endif %}
+        {% if toxics_breakdown %}{% include 'emissions/includes/toxics-breakdown.html' %}{% endif %}
     </div>
 </div>
 
