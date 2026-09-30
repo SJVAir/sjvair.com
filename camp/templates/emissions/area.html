@@ -12,7 +12,7 @@
     {# In-page links (plain anchors, which htmx doesn't boost); only when there's more than the facilities to jump to. #}
     {% if dairy_block.has_dairies or within.any or community or tract_ces or wells_block or ghg_table.rows %}
     <nav class="section-nav is-size-7" aria-label="On this page">
-        <a href="#facilities">Facilities</a>{% if community or tract_ces %} · <a href="#community">Community</a>{% endif %}{% if wells_block %} · <a href="#wells">Oil &amp; gas wells</a>{% endif %}{% if ghg_table.rows %} · <a href="#greenhouse-gases">Greenhouse gases</a>{% endif %}{% if dairy_block.has_dairies %} · <a href="#dairies">Dairies</a>{% endif %}{% if within.any %} · <a href="#in-and-around">In and around</a>{% endif %}
+        <a href="#facilities">Facilities</a>{% if community or tract_ces %} · <a href="#community">Community</a>{% endif %}{% if ghg_table.rows %} · <a href="#greenhouse-gases">Greenhouse gases</a>{% endif %}{% if wells_block %} · <a href="#wells">Oil &amp; gas wells</a>{% endif %}{% if dairy_block.has_dairies %} · <a href="#dairies">Dairies</a>{% endif %}{% if within.any %} · <a href="#in-and-around">In and around</a>{% endif %}
     </nav>
     {% endif %}
     {% if radius_options %}
@@ -36,8 +36,6 @@
     <div class="level-item has-text-centered"><div><p class="heading">Share of {{ county_region.name }}</p><p class="title">{{ county_share|percent }}</p><p class="stat-note"></p></div></div>
     {% endif %}
 </div>
-
-{% include 'emissions/includes/community-card.html' %}
 
 {% include 'emissions/includes/facility-map.html' %}
 
@@ -64,6 +62,7 @@
         {% emissions_trend_chart by_year pollutant year heading="Over time" %}
     </div>
 </div>
+{% include 'emissions/includes/community-card.html' %}
 {% if ghg_table.rows %}{% include 'emissions/includes/ghg-table.html' %}{% endif %}
 {% if wells_block %}{% include 'emissions/includes/wells-block.html' %}{% endif %}
 {% if dairy_block %}{% include 'emissions/includes/dairy-summary.html' %}{% endif %}

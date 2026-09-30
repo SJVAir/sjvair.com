@@ -9,7 +9,12 @@ distance), the ten with the most wells listed. Nothing when the area has no well
 <section class="wells-block mt-5" id="wells">
     <h2 class="title is-4">Oil &amp; gas wells</h2>
     {% with s=wells_block.summary %}
-    <p class="wells-line">{{ s.active|intcomma }} active · {{ s.idle|intcomma }} idle{% if s.new %} · {{ s.new|intcomma }} new{% endif %} · {{ s.hpz|intcomma }} in a verified health-protection zone (3,200 ft of homes or schools)</p>
+    <div class="level is-mobile stat-row box wells-line is-grid-mobile" aria-label="{{ s.active|intcomma }} active · {{ s.idle|intcomma }} idle{% if s.new %} · {{ s.new|intcomma }} new{% endif %} · {{ s.hpz|intcomma }} in a verified health-protection zone (3,200 ft of homes or schools)">
+        <div class="level-item has-text-centered"><div><p class="heading">Active</p><p class="title is-4">{{ s.active|intcomma }}</p><p class="stat-note"></p></div></div>
+        <div class="level-item has-text-centered"><div><p class="heading">Idle</p><p class="title is-4">{{ s.idle|intcomma }}</p><p class="stat-note">can still leak</p></div></div>
+        {% if s.new %}<div class="level-item has-text-centered"><div><p class="heading">New</p><p class="title is-4">{{ s.new|intcomma }}</p><p class="stat-note"></p></div></div>{% endif %}
+        <div class="level-item has-text-centered"><div><p class="heading">In a health-protection zone</p><p class="title is-4">{{ s.hpz|intcomma }}</p><p class="stat-note">3,200 ft of homes or schools</p></div></div>
+    </div>
     {% endwith %}
     {% with imported=wells_block.stamp.imported_at|date:"N j, Y" %}
     <div class="notification is-warning is-light wells-snapshot">
@@ -24,9 +29,14 @@ distance), the ten with the most wells listed. Nothing when the area has no well
     {% with schools=wells_block.schools %}
     {% if schools.count %}
     <p><strong>{{ schools.count|intcomma }}</strong> {% if schools.count == 1 %}school or child-care center here has{% else %}schools and child-care centers here have{% endif %} an active or idle well within 3,200 ft{% if schools.top|length < schools.count %} (the {{ schools.top|length }} with the most wells){% endif %}:</p>
-    <ul class="wells-schools">
-        {% for row in schools.top %}<li>{{ row.name }} <span class="has-text-grey is-size-7">{{ row.type_label }} · {{ row.wells|intcomma }} well{{ row.wells|pluralize }}</span></li>{% endfor %}
-    </ul>
+    <div class="table-container">
+    <table class="table is-fullwidth is-narrow wells-schools is-stacked-mobile">
+        <thead><tr><th>School or child care</th><th>Type</th><th class="has-text-right">Wells within 3,200 ft</th></tr></thead>
+        <tbody>
+        {% for row in schools.top %}<tr><td class="cell-name">{{ row.name }}</td><td class="cell-meta">{{ row.type_label }}</td><td class="has-text-right cell-value" data-unit="well{{ row.wells|pluralize }}">{{ row.wells|intcomma }}</td></tr>{% endfor %}
+        </tbody>
+    </table>
+    </div>
     {% else %}
     <p>No school or child-care center here has a well within 3,200 ft.</p>
     {% endif %}

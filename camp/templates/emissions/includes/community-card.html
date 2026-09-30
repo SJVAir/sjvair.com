@@ -7,19 +7,25 @@ nothing when both are None. Percentiles are OEHHA's for tracts; anything for a
 larger area is SJVAir's summary of the tracts inside it.
 {% endcomment %}
 {% if tract_ces %}
-<div class="box community-card" id="community">
-    <p class="heading mb-2">Community · {{ tract_ces.label }}</p>
+<section class="community-card mt-5" id="community">
+    <h2 class="title is-4">Community <span class="has-text-grey is-size-6 has-text-weight-normal">{{ tract_ces.label }}</span></h2>
     <ul>
         <li>Overall: {% if tract_ces.ci_score_p is not None %}<strong>{{ tract_ces.ci_score_p|percentile }} percentile</strong> of California's census tracts{% else %}<strong>no score</strong> (OEHHA doesn't score tracts with too few people or missing data){% endif %}</li>
         {% if tract_ces.pollution_p is not None %}<li>Pollution burden: <strong>{{ tract_ces.pollution_p|percentile }} percentile</strong></li>{% endif %}
         {% if tract_ces.popchar_p is not None %}<li>Population characteristics: <strong>{{ tract_ces.popchar_p|percentile }} percentile</strong></li>{% endif %}
         <li>{% if tract_ces.dac %}SB 535 disadvantaged community{% if tract_ces.dac_category %} ({{ tract_ces.dac_category }}){% endif %}{% else %}Not on the SB 535 disadvantaged-community list{% endif %}</li>
     </ul>
-    <p class="is-size-7 has-text-grey mb-0"><a href="https://oehha.ca.gov/calenviroscreen">OEHHA's CalEnviroScreen</a> scores and ranks every California census tract; the SB 535 list shown is CalEPA's 2026 draft until it is final. <a href="{% url 'emissions:about' %}#calenviroscreen">About</a></p>
-</div>
+    <details class="data-notes">
+        <summary>What this is, and isn't</summary>
+        <ul>
+            <li><a href="https://oehha.ca.gov/calenviroscreen">OEHHA's CalEnviroScreen</a> scores and ranks every California census tract.</li>
+            <li>The SB 535 list shown is CalEPA's 2026 draft until it is final. <a href="{% url 'emissions:about' %}#calenviroscreen">More on CalEnviroScreen</a></li>
+        </ul>
+    </details>
+</section>
 {% elif community %}
-<div class="box community-card" id="community">
-    <p class="heading mb-2">Community · {{ community.label }}</p>
+<section class="community-card mt-5" id="community">
+    <h2 class="title is-4">Community <span class="has-text-grey is-size-6 has-text-weight-normal">{{ community.label }}</span></h2>
     {% if community.count %}
     <ul>
         {% if community.dac_share is not None %}<li><strong>{{ community.dac_share|percent }}</strong> of residents live in state-designated disadvantaged communities (SB 535).</li>{% endif %}
@@ -41,6 +47,12 @@ larger area is SJVAir's summary of the tracts inside it.
     {% else %}
     <p class="has-text-grey">No CalEnviroScreen tracts here.</p>
     {% endif %}
-    <p class="is-size-7 has-text-grey mb-0">Percentiles are OEHHA's, for census tracts, ranked against all of California; figures for this area are SJVAir's summary of the tracts inside it, not an OEHHA score. <a href="{% url 'emissions:about' %}#calenviroscreen">About</a></p>
-</div>
+    <details class="data-notes">
+        <summary>What this is, and isn't</summary>
+        <ul>
+            <li><strong>Percentiles are OEHHA's, for census tracts</strong>, ranked against all of California.</li>
+            <li><strong>Figures for this area are SJVAir's summary</strong> of the tracts inside it, not an OEHHA score. <a href="{% url 'emissions:about' %}#calenviroscreen">More on CalEnviroScreen</a></li>
+        </ul>
+    </details>
+</section>
 {% endif %}

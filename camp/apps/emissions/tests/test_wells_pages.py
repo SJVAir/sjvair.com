@@ -83,7 +83,7 @@ class WellsBlockTests(WellsPagesTestCase):
         assert '<a href="#wells">Oil &amp; gas wells</a>' in content
         assert '2 active · 0 idle · 0 in a verified health-protection zone (3,200 ft of homes or schools)' in block
         assert '<strong>1</strong> school or child-care center here has an active or idle well within 3,200 ft' in block
-        assert re.search(r'PLANT ELEMENTARY.*?Public school · 2 wells', block, re.S)
+        assert re.search(r'PLANT ELEMENTARY</td><td class="cell-meta">Public school</td><td[^>]*data-unit="wells">2</td>', block)
         assert 'Oil &amp; gas facilities reported' not in block  # the Kern sentence is Kern's
         assert 'href="/tools/emissions/about/#oil-gas"' in block
 

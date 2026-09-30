@@ -690,6 +690,14 @@ body.pesticides
                     border-left: 1px solid $grey-lighter
         .within-panel
             padding: 0.75rem 1.25rem
+        // Past the first dozen, hidden until "Show all" (explorer.js).
+        .is-collapsed:not(.is-revealed)
+            display: none
+        .within-toggle
+            margin-top: 0.25rem
+            padding-left: 0
+            text-decoration: none
+            color: $link
         .within-heading
             display: flex
             align-items: center

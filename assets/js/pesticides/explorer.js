@@ -73,6 +73,21 @@
   // from the document so it survives the htmx swaps a filter or sort makes,
   // and driven off the button's own data attributes so a re-render comes
   // back collapsed without any state to restore.
+  // The same, for any list: [data-collapse-toggle] shows or hides the
+  // .is-collapsed items inside its nearest [data-collapse-scope].
+  document.addEventListener('click', function (evt) {
+    var button = evt.target.closest ? evt.target.closest('[data-collapse-toggle]') : null;
+    if (!button) return;
+    var scope = button.closest('[data-collapse-scope]');
+    if (!scope) return;
+    var expanded = button.getAttribute('aria-expanded') === 'true';
+    scope.querySelectorAll('.is-collapsed').forEach(function (item) {
+      item.classList.toggle('is-revealed', !expanded);
+    });
+    button.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+    button.textContent = expanded ? button.getAttribute('data-show-label') : button.getAttribute('data-hide-label');
+  });
+
   document.addEventListener('click', function (evt) {
     var button = evt.target.closest ? evt.target.closest('[data-schools-toggle]') : null;
     if (!button) return;
