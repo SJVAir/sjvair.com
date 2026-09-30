@@ -1,5 +1,6 @@
 {% extends 'emissions/base.html' %}
-{% load humanize emissions_explorer pesticides_explorer %}
+{# emissions_explorer last: its percent and signed_pct (whole percents) win over the pesticides ones of the same name. #}
+{% load humanize pesticides_explorer emissions_explorer %}
 
 {% block title %}{{ sector.label }} | {{ block.super }}{% endblock %}
 {% block breadcrumb-list %}

@@ -1,4 +1,5 @@
-{% load humanize emissions_explorer pesticides_explorer %}
+{# emissions_explorer last: its percent and signed_pct (whole percents) win over the pesticides ones of the same name. #}
+{% load humanize pesticides_explorer emissions_explorer %}
 {% comment %}
 Dairies (DairyHerd rows from dairies.table) as a table. On the Dairies tab it's
 `sortable`, and with `zoom` a name moves the tab's map to the dairy

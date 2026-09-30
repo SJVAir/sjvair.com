@@ -310,6 +310,16 @@ body.emissions
       letter-spacing: normal
       font-weight: normal
   // A phone number never breaks across lines.
+  // "Regulated by ... · phone" and the complaint button on one centred row
+  // (the button is taller than the line, and hung below it on the baseline).
+  .facility-regulator
+    display: flex
+    flex-wrap: wrap
+    align-items: center
+    column-gap: 0.25em
+    row-gap: 0.5rem
+    .button
+      margin-left: 0.75rem !important
   .facility-regulator a[href^="tel:"]
     white-space: nowrap
   // Home: "Find your area" and "Find a facility" side by side, the same height.

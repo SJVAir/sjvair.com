@@ -1,5 +1,6 @@
 {% extends 'emissions/base.html' %}
-{% load humanize emissions_explorer pesticides_explorer %}
+{# emissions_explorer last: its percent and signed_pct (whole percents) win over the pesticides ones of the same name. #}
+{% load humanize pesticides_explorer emissions_explorer %}
 {% comment %}
 One area's dairies (dairy_views.DairyAreaPage): a region's or a near-me
 point's. The region page's header, the Dairies tab's tiles, map, table and

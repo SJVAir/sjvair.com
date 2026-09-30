@@ -1,4 +1,5 @@
-{% load emissions_explorer pesticides_explorer %}
+{# emissions_explorer last: its percent and signed_pct (whole percents) win over the pesticides ones of the same name. #}
+{% load pesticides_explorer emissions_explorer %}
 {% comment %}
 "What drives it": the scope's cancer-weighted toxics by pollutant (stats.toxics_breakdown), on the home and area pages in the toxics scope.
 {% endcomment %}

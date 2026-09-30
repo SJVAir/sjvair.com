@@ -1,3 +1,4 @@
+from django.template.loader import render_to_string
 from django.test import TestCase
 
 from camp.apps.emissions.pollutants import CANCER, POLLUTANTS, toxic_pollutant
@@ -38,6 +39,15 @@ class PercentTests(TestCase):
         assert tags.width_pct(0.12345) == '12.35%'
         assert tags.signed_pct(100.0) == '+100%'
         assert tags.signed_pct(-62.4) == '−62%'
+
+    def test_templates_use_the_emissions_percent_not_the_pesticides_one(self):
+        # Both libraries define `percent`; the pesticides one gives a decimal
+        # ("41.9%"). Emissions templates load emissions_explorer last so theirs wins.
+        html = render_to_string('emissions/includes/sector-rows.html', {
+            'rows': [{'sector': 'glass', 'label': 'Glass', 'facilities': 1, 'value': 1.0, 'share': 0.419}],
+            'pollutant': POLLUTANTS['nox'],
+        })
+        assert '42%' in html and '41.9%' not in html
 
 
 class TrendChartTests(TestCase):
