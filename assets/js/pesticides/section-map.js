@@ -465,6 +465,11 @@
   // on it (SprayDays only places a notice to its square-mile section, so
   // they'd otherwise stack on one point).
   var NOTICE_GROUP_RADIUS = 11;
+  // Zoomed out, neighbouring sections' markers pile onto each other, so they
+  // merge into one bubble carrying the total number of notices under it;
+  // a click zooms in until it splits. From SECTION_ZOOM, where the grid is
+  // sections, every section keeps its own marker again.
+  var NOTICE_CLUSTER = { maxZoom: SECTION_ZOOM - 1, radius: 30, small: 13, large: 16, largeFrom: 10 };
   var NOTICE_COUNT_FALLBACK_FONT = ['Noto Sans Bold'];
   var LOCATION_MARKER = { radius: 5, opacity: 0.95, stroke: 1.5 };
   // An invisible disc under each marker, wide enough for a finger, that
@@ -1015,7 +1020,7 @@
 
   // GeoJSON sources are keyed on our own feature ids (`promoteId`), so
   // feature state (hover, selection) can address them by id.
-  SectionMap.prototype.ensureSource = function (id) { this.shell.ensureSource(id); };
+  SectionMap.prototype.ensureSource = function (id, extra) { this.shell.ensureSource(id, extra); };
 
   // Added on top of the whole basemap, labels included: the reader is here
   // for the data, and a place name or a road drawn over a shaded section
@@ -1050,7 +1055,13 @@
     this.ensureSource('outline');
     this.ensureSource('outline-mask');
     this.ensureSource('locations');
-    this.ensureSource('notices');
+    this.ensureSource('notices', {
+      cluster: true,
+      clusterMaxZoom: NOTICE_CLUSTER.maxZoom,
+      clusterRadius: NOTICE_CLUSTER.radius,
+      // Notices, not markers: each marker is already a section's worth.
+      clusterProperties: { total: ['+', ['get', 'count']] },
+    });
 
     this.ensureLayer({
       id: 'radius-fill', type: 'fill', source: 'radius',
@@ -1167,21 +1178,25 @@
     this.ensureLayer({
       id: 'notices-circle', type: 'circle', source: 'notices',
       paint: {
-        'circle-radius': ['case', ['>', ['get', 'count'], 1], NOTICE_GROUP_RADIUS, NOTICE_MARKER.radius],
+        'circle-radius': ['case',
+          ['has', 'point_count'], ['case', ['>=', ['get', 'total'], NOTICE_CLUSTER.largeFrom], NOTICE_CLUSTER.large, NOTICE_CLUSTER.small],
+          ['>', ['get', 'count'], 1], NOTICE_GROUP_RADIUS,
+          NOTICE_MARKER.radius],
         'circle-color': NOTICE_COLOR,
         'circle-opacity': NOTICE_MARKER.opacity,
         'circle-stroke-color': '#fff',
         'circle-stroke-width': NOTICE_MARKER.stroke,
       },
     });
-    // The count, only where a section has more than one notice. The font is
-    // borrowed from the basemap style's own labels, since that is what its
-    // glyph server is known to serve.
+    // The count, where a marker stands for more than one notice: a
+    // cluster's total, or a section's own count. The font is borrowed from
+    // the basemap style's own labels, since that is what its glyph server is
+    // known to serve.
     this.ensureLayer({
       id: 'notices-count', type: 'symbol', source: 'notices',
-      filter: ['>', ['get', 'count'], 1],
+      filter: ['any', ['has', 'point_count'], ['>', ['get', 'count'], 1]],
       layout: {
-        'text-field': ['to-string', ['get', 'count']],
+        'text-field': ['to-string', ['case', ['has', 'point_count'], ['get', 'total'], ['get', 'count']]],
         'text-font': this.styleTextFont(),
         'text-size': 11,
         'text-allow-overlap': true,
@@ -1967,11 +1982,34 @@
   SectionMap.prototype.bindMarkerEvents = function () {
     var self = this;
     var map = this.map;
-    var onNoticeMove = function (event) { self.setHover('notices', event.features[0].id); };
-    var onNoticeLeave = function () { self.clearHover('notices'); };
+    var onNoticeMove = function (event) {
+      var feature = event.features[0];
+      // A cluster has no id of its own (the source promotes `id`, which only
+      // a section's marker carries), so it gets the pointer and no hover state.
+      if (feature.properties.cluster) {
+        self.clearHover('notices');
+        map.getCanvas().style.cursor = 'pointer';
+        return;
+      }
+      self.setHover('notices', feature.id);
+    };
+    var onNoticeLeave = function () {
+      self.clearHover('notices');
+      if (!Object.keys(self.hoverIds).length) map.getCanvas().style.cursor = '';
+    };
     var onNoticeClick = function (event) {
       if (event.originalEvent.sectionMapTaken) return;
-      var feature = self.noticeById[event.features[0].id];
+      var clicked = event.features[0];
+      if (clicked.properties.cluster) {
+        // A cluster opens nothing: it zooms in to where it comes apart.
+        event.originalEvent.sectionMapTaken = true;
+        var center = clicked.geometry.coordinates;
+        map.getSource('notices').getClusterExpansionZoom(clicked.properties.cluster_id).then(function (zoom) {
+          map.easeTo({ center: center, zoom: zoom });
+        });
+        return;
+      }
+      var feature = self.noticeById[clicked.id];
       if (!feature) return;
       event.originalEvent.sectionMapTaken = true;
       self.openNoticePopup(feature);
@@ -2980,7 +3018,9 @@
     if (!this.legendEl) return;
     var rows = [];
     if (this.showLocations) rows = rows.concat(MARKER_LEGEND);
-    if (this.showNotices) rows.push({ color: NOTICE_COLOR, label: 'Notice of intent' });
+    // A number on a marker is how many notices it stands for; zoomed out a marker
+    // can gather several sections, and a click zooms in to them.
+    if (this.showNotices) rows.push({ color: NOTICE_COLOR, label: 'Notice of intent (numbered: how many)' });
     for (var i = 0; i < rows.length; i++) {
       var li = document.createElement('li');
       li.className = 'is-marker';
