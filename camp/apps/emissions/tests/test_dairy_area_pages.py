@@ -88,7 +88,7 @@ class RouteTests(DairyAreaTestCase):
             make_dairy(n, f'DAIRY {n}', (-119.786, 36.736), self.fresno, herds={2023: {'milk_cows': n}})
         dairies.clear_caches()
         content = self.near({'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'year': '2023', 'page': '2'}).content.decode()
-        scope = re.search(r'<div class="buttons has-addons explorer-scope">(.*?)</div>', content, re.S).group(1)
+        scope = re.search(r'<nav class="radius-switcher"[^>]*>(.*?)</nav>', content, re.S).group(1)
         assert 'page=' not in scope
         assert 'radius=3' in scope
 

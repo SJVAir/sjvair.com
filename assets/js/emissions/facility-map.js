@@ -297,7 +297,8 @@
       self.map.on('mouseleave', layer, function () { self.map.getCanvas().style.cursor = ''; });
     });
     this.methane = window.EmissionsMethaneOverlay ? new window.EmissionsMethaneOverlay(this, { before: 'facilities' }) : null;
-    // The scope bar's links (year, pollutant, toggles) were rendered before
+    // The scope bar's links (year, pollutant, toggles) and the near-me radius
+    // buttons were rendered before
     // the reader switched view, level, measure or sector here, and carry the
     // page's original values. Rewrite the boosted request's URL (htmx reads
     // detail.path back after this event) so the next page opens the way the
@@ -305,7 +306,7 @@
     this.onConfigRequest = function (event) {
       var detail = event.detail;
       var elt = detail && detail.elt;
-      if (!elt || !elt.closest || !elt.closest('.explorer-scope') || typeof detail.path !== 'string') return;
+      if (!elt || !elt.closest || !elt.closest('.explorer-scope, .radius-switcher') || typeof detail.path !== 'string') return;
       if (!self.areasEnabled && self.data.mode !== 'full') return;
       var path = M.rewriteQuery(detail.path, self.writeState.bind(self));
       if (path !== null) detail.path = path;

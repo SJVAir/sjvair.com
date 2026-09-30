@@ -32,7 +32,8 @@
   // "107M", "88.5M", "45.2k" for axis ticks; small numbers written out.
   function compact(value) {
     var size = Math.abs(value);
-    if (size < 10000) return full(value);
+    // A whole tick is written whole: "5", not "5.0", on a count axis.
+    if (size < 10000) return Number.isInteger(value) ? value.toLocaleString('en-US') : full(value);
     var steps = [[1e6, 'M'], [1e3, 'k']];
     for (var i = 0; i < steps.length; i++) {
       if (size >= steps[i][0]) {

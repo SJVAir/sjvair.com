@@ -146,6 +146,19 @@
   max-width: 17rem;
 }
 
+/* A panel never grows past the map: it stops below the toolbar row and its
+   body scrolls, rather than rising out of the map over the page above. */
+.map-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100% - 3.5rem);
+}
+
+.map-panel-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
 /* Expanded: the map takes the viewport below the site navbar; panels ride
    along. The script refines `top` to the navbar's measured edge. */
 .map-wrap.is-expanded {

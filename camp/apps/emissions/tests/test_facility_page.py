@@ -54,6 +54,17 @@ class FacilityHeaderTests(TestCase):
         content = self.detail('TEST CEMENT')
         assert 'AB 617 community' not in content
 
+    def test_a_placed_facility_gets_its_map(self):
+        content = self.detail('TEST PLANT')
+        assert 'class="facility-map' in content
+        assert 'No map:' not in content
+
+    def test_an_unplaced_facility_gets_a_line_not_a_valley_map(self):
+        Facility.objects.filter(name='TEST PLANT').update(point=None)
+        content = self.detail('TEST PLANT')
+        assert 'class="facility-map' not in content
+        assert "No map: this facility's address couldn't be placed" in content
+
 
 class HomeSearchTests(TestCase):
     fixtures = ['regions.yaml', 'emissions.yaml']

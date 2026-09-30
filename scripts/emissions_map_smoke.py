@@ -506,7 +506,7 @@ def main():
         # the scope bar: switch to Areas, then follow a radius button.
         driver.execute_script("document.querySelector('.facility-map-view [data-view=areas]').click()")
         wait_areas(driver)
-        driver.find_element(By.CSS_SELECTOR, '.buttons.explorer-scope a').click()
+        driver.find_element(By.CSS_SELECTOR, '.radius-switcher a').click()
         time.sleep(1)
         stayed = wait_areas(driver) and driver.execute_script(
             "var list = window.EmissionsFacilityMap.instances(); return list.length === 1 && list[0].view === 'areas';")
@@ -899,7 +899,7 @@ def main():
         near = wait_dairies(driver) and driver.execute_script(
             "var m = window.EmissionsDairyMap.instances()[0]; return !!m.outlineBounds;")
         check(results, 'near-me dairy page loads, with its circle', near)
-        driver.find_element(By.CSS_SELECTOR, '.buttons.explorer-scope a').click()
+        driver.find_element(By.CSS_SELECTOR, '.radius-switcher a').click()
         time.sleep(1)
         stayed = wait_dairies(driver) and '/near/dairies/' in driver.current_url and 'radius=1' in driver.current_url
         check(results, 'a radius button keeps the page and redraws', stayed, driver.current_url)

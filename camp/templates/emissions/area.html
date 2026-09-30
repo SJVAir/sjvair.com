@@ -16,9 +16,13 @@
     </nav>
     {% endif %}
     {% if radius_options %}
-    <div class="buttons has-addons explorer-scope">
-        {% for option in radius_options %}<a class="button is-small{% if option.current %} is-link is-selected{% endif %}" href="{{ option.url }}">{{ option.miles }} mi</a>{% endfor %}
-    </div>
+    <nav class="radius-switcher" aria-label="Radius">
+        <div class="buttons has-addons are-small">
+            {% for option in radius_options %}
+            <a class="button{% if option.current %} is-selected is-primary{% endif %}" href="{{ option.url }}"{% if option.current %} aria-current="page"{% endif %}>{{ option.miles }} mi</a>
+            {% endfor %}
+        </div>
+    </nav>
     {% endif %}
 </div>
 

@@ -52,6 +52,11 @@ class TrendChartTests(TestCase):
     def test_empty(self):
         assert tags.emissions_trend_chart([], POLLUTANTS['nox'])['has_data'] is False
 
+    def test_all_zeros_is_no_chart(self):
+        # A facility that never reported the pollutant: a flat line at 0 says nothing.
+        points = [{'year': 2023, 'value': 0.0}, {'year': 2024, 'value': 0.0}]
+        assert tags.emissions_trend_chart(points, POLLUTANTS['nox'])['has_data'] is False
+
 
 class DairyChartTests(TestCase):
     def test_emissions_chart_readout_notes_the_share(self):

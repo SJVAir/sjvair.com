@@ -18,7 +18,7 @@
 
 <div class="columns mt-4">
     <div class="column is-3-desktop">
-        {% include 'emissions/includes/find-area.html' %}
+        {% include 'emissions/includes/find-area.html' with compact=True %}
         <form method="get" class="explorer-filters box" hx-trigger="submit, change delay:250ms">
             {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
             <input type="hidden" name="sort" value="{{ sort }}">

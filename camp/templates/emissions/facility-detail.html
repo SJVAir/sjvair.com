@@ -68,7 +68,11 @@
     </div>
     {% endif %}
 </div>
+{% if facility.point %}
 {% include 'emissions/includes/facility-map.html' %}
+{% else %}
+<p class="has-text-grey mb-5">No map: this facility's address couldn't be placed on a street, and CARB gives no coordinates for it.</p>
+{% endif %}
 
 {% if shown_year != year %}
 <div class="notification is-light">This facility has no emissions reported for {{ year }}; showing {{ shown_year }}.</div>
@@ -76,7 +80,7 @@
 
 <h3 class="title is-4">Emissions in {{ shown_year }}</h3>
 <div class="table-container">
-<table class="table is-fullwidth is-narrow">
+<table class="table is-fullwidth is-narrow facility-ranks-table is-stacked-mobile">
     {% with county_name=facility.county.name|cut:" County" %}
     <thead><tr>
         <th>Pollutant</th>
@@ -92,11 +96,11 @@
     <tbody>
         {% for row in ranks %}
         <tr>
-            <td><a href="{% qs_replace pollutant=row.pollutant.key toxics=None %}">{{ row.pollutant.label }}</a>{% if row.pollutant.label != row.pollutant.name %} <span class="has-text-grey is-size-7">{{ row.pollutant.name }}</span>{% endif %}</td>
-            <td class="has-text-right">{{ row.value|amount:row.pollutant }}</td>
-            <td>{% if row.county_rank %}#{{ row.county_rank|intcomma }} <span class="has-text-grey is-size-7">of {{ row.county_count|intcomma }}</span>{% else %}—{% endif %}</td>
-            <td>{% if row.sector_rank %}#{{ row.sector_rank|intcomma }} <span class="has-text-grey is-size-7">of {{ row.sector_count|intcomma }}</span>{% else %}—{% endif %}</td>
-            <td>{{ row.county_share|percent }}</td>
+            <td class="cell-name"><a href="{% qs_replace pollutant=row.pollutant.key toxics=None %}">{{ row.pollutant.label }}</a>{% if row.pollutant.label != row.pollutant.name %} <span class="has-text-grey is-size-7">{{ row.pollutant.name }}</span>{% endif %}</td>
+            <td class="has-text-right cell-value"{% if row.value is not None %} data-unit="{{ row.pollutant.unit_label }}"{% endif %}>{{ row.value|amount:row.pollutant }}</td>
+            <td class="cell-meta{% if not row.county_rank %} is-none{% endif %}" data-label="County rank">{% if row.county_rank %}#{{ row.county_rank|intcomma }} <span class="has-text-grey is-size-7">of {{ row.county_count|intcomma }}</span>{% else %}—{% endif %}</td>
+            <td class="cell-meta{% if not row.sector_rank %} is-none{% endif %}" data-label="Sector rank">{% if row.sector_rank %}#{{ row.sector_rank|intcomma }} <span class="has-text-grey is-size-7">of {{ row.sector_count|intcomma }}</span>{% else %}—{% endif %}</td>
+            <td class="cell-meta{% if row.county_share is None %} is-none{% endif %}" data-label="Share of county">{{ row.county_share|percent }}</td>
         </tr>
         {% endfor %}
     </tbody>
@@ -115,7 +119,7 @@
 {% if toxics_rows %}
 <h3 class="title is-4">Toxic air contaminants in {{ shown_year }}</h3>
 <div class="table-container">
-<table class="table is-fullwidth is-narrow toxics-table">
+<table class="table is-fullwidth is-narrow toxics-table is-stacked-mobile">
     <thead><tr>
         <th>Contaminant</th>
         <th class="has-text-right">Lbs/yr</th>
@@ -128,11 +132,11 @@
     <tbody>
         {% for row in toxics_rows %}
         <tr>
-            <td><a href="{% qs_replace toxics=1 pollutant=row.pollutant.slug %}">{{ row.pollutant.name }}</a></td>
-            <td class="has-text-right">{{ row.value|quantity }}</td>
-            <td class="has-text-right">{% if row.previous is not None %}{{ row.previous|quantity }}{% else %}—{% endif %}</td>
-            <td class="has-text-right">{% if row.has_cancer_value %}{{ row.share|share_pct }}{% else %}<span class="has-text-grey">no OEHHA cancer value</span>{% endif %}</td>
-            <td>{% if row.hazard %}<span class="hazard-dot" title="Has a chronic reference exposure level" aria-label="non-cancer hazard"></span>{% endif %}</td>
+            <td class="cell-name"><a href="{% qs_replace toxics=1 pollutant=row.pollutant.slug %}">{{ row.pollutant.name }}</a></td>
+            <td class="has-text-right cell-value" data-unit="lbs/yr">{{ row.value|quantity }}</td>
+            <td class="has-text-right cell-meta{% if row.previous is None %} is-none{% endif %}" data-label="Year before">{% if row.previous is not None %}{{ row.previous|quantity }}{% else %}—{% endif %}</td>
+            <td class="has-text-right cell-meta" data-label="Cancer-weighted share">{% if row.has_cancer_value %}{{ row.share|share_pct }}{% else %}<span class="has-text-grey">no OEHHA cancer value</span>{% endif %}</td>
+            <td class="cell-meta">{% if row.hazard %}<span class="hazard-dot" title="Has a chronic reference exposure level" aria-label="non-cancer hazard"></span>{% endif %}</td>
         </tr>
         {% endfor %}
     </tbody>

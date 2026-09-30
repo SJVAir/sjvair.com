@@ -507,7 +507,7 @@ class DairyTableCityLinkTests(DairyPageTestCase):
         # The city wins over a CDP of the same name; a city without a page stays text.
         # The link carries the tab's scope, like the county link beside it.
         assert f'<a href="{city.get_emissions_dairies_url()}?year=2023&amp;pollutant=rog">Dairyville</a>' in content
-        assert '<td>Nowhere Special</td>' in content
+        assert '<td class="cell-meta">Nowhere Special</td>' in content
 
     def test_an_aliased_city_links_to_its_cdp_and_keeps_its_name(self):
         cdp = make(Region.Type.CDP, 'Hilmar-Irwin', AROUND_PLANT)
@@ -559,6 +559,17 @@ class MethaneTests(DairyPageTestCase):
         assert 'Data by Carbon Mapper' in content
         content = self.get({'year': '2023', 'methane': '1'}).content.decode()
         assert 'BIG DAIRY' in content and 'SMALL DAIRY' not in content and 'checked' in content
+
+    def test_a_source_without_a_rate_shows_its_detections_alone(self):
+        from camp.apps.emissions import dairies
+        from camp.apps.emissions.importers import carbonmapper
+        from camp.apps.emissions.tests.test_carbonmapper import NEAR_BOTH, row
+        carbonmapper.apply([row(name='a', lnglat=NEAR_BOTH, rate='', unc='', detection_date_count='1')])
+        dairies.clear_caches()
+        content = self.get({'year': '2023'}).content.decode()
+        big_row = content[content.index('BIG DAIRY</a>'):]
+        big_row = big_row[:big_row.index('</tr>')]
+        assert '1 detection' in big_row and 'kg/h' not in big_row
 
     def test_no_import_shows_nothing(self):
         from camp.apps.emissions import dairies, methane

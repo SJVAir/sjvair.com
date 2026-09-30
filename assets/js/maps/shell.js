@@ -321,7 +321,10 @@
   };
 
   Shell.prototype.updateLegend = function () {
-    if (this.module.legend && this.legendBodyEl) this.module.legend(this.legendBodyEl);
+    if (this.module.legend && this.legendBodyEl) {
+      this.module.legend(this.legendBodyEl);
+      M.chrome.fitPanels(this);
+    }
   };
 
   // The toolbar's own controls matching `selector`. Not the whole wrap: the

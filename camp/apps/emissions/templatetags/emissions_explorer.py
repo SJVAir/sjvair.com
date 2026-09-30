@@ -131,7 +131,8 @@ def emissions_trend_chart(points, pollutant, year=None, title=None):
             'y': values,
             'selected': year if year in years else None,
         },
-        'has_data': bool(rows),
+        # A series of zeros (a facility that never reported the pollutant) is no chart.
+        'has_data': any(values),
         'title': title or default_title,
         'sentence': _change_sentence(dict(zip(years, values)), year),
         'first_year': years[0] if years else None,

@@ -55,14 +55,32 @@
     return PANEL_FEATURES.some(function (feature) { return features[feature]; });
   }
 
+  // Once, when a panel the reader hasn't folded first has content: fold it
+  // if, open, it would take more than half the map's height. Its own
+  // scrolling body keeps it inside the map either way (map.css).
+  function fitPanels(shell) {
+    if (!shell.wrap || !shell.wrap.clientHeight) return;
+    var panels = shell.wrap.querySelectorAll('.map-panel[data-autofit]');
+    Array.prototype.forEach.call(panels, function (panel) {
+      var body = panel.querySelector('.map-panel-body');
+      if (!body || !body.childElementCount) return;
+      panel.removeAttribute('data-autofit');
+      var height = panel.offsetHeight + body.scrollHeight - body.clientHeight;
+      if (height > shell.wrap.clientHeight * 0.5) setPanelCollapsed(panel, true);
+    });
+  }
+
   function bindPanels(shell) {
     var panels = shell.wrap.querySelectorAll('.map-panel[data-panel]');
     Array.prototype.forEach.call(panels, function (panel) {
       var key = panelKey(shell, panel.getAttribute('data-panel'));
       // Until the reader folds it, a panel starts open on a desktop and
-      // folded on a phone, where it would cover the map.
+      // folded on a phone, where it would cover the map. An open one is
+      // checked again once it has content (fitPanels): on a map too short
+      // for it, it folds too.
       var stored = readPanelState(key);
       setPanelCollapsed(panel, stored === null ? M.isPhone() : stored);
+      if (stored === null && !M.isPhone()) panel.setAttribute('data-autofit', '1');
       var toggle = panel.querySelector('.map-panel-toggle');
       if (!toggle || toggle.getAttribute('data-bound')) return;
       toggle.setAttribute('data-bound', '1');
@@ -362,6 +380,7 @@
     unbindDocument: unbindDocument,
     closeDropdowns: closeDropdowns,
     setStatus: setStatus,
+    fitPanels: fitPanels,
     setExpanded: setExpanded,
     fitBelowNavbar: fitBelowNavbar,
     popupMaxWidth: popupMaxWidth,

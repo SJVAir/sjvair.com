@@ -218,6 +218,9 @@ body.emissions
       list-style: disc
   .oil-gas-callout
     margin: 0.5rem 0 1rem
+  // The bar and its percent stay on one line; the sector name takes the wrap.
+  .share-cell
+    white-space: nowrap
   .share-bar
     background: #deebf7
     height: 0.5rem
@@ -280,3 +283,70 @@ body.emissions
         margin: 0 0.15rem
       > span:first-child
         margin-right: 0.25rem
+
+  // On a phone the wide tables become stacked rows, as the pesticides tables
+  // do: the name and its value on one line, everything else a small line
+  // under them, rather than columns scrolling off the right edge. Cells say
+  // their role (cell-rank, -name, -value, -meta), not their column number,
+  // since some columns come and go. The header keeps only its sort links.
+  +mobile
+    .table-container:has(> .is-stacked-mobile)
+      overflow: visible
+    table.is-stacked-mobile
+      &, thead, tbody
+        display: block
+      thead tr
+        display: flex
+        flex-wrap: wrap
+        gap: 0 1rem
+        th
+          border: none
+          padding: 0 0 0.5rem
+          &:not(:has(a))
+            display: none
+      tbody tr
+        display: flex
+        flex-wrap: wrap
+        align-items: baseline
+        gap: 0.1rem 0.5rem
+        padding: 0.6rem 0.25rem
+        border-bottom: 1px solid $grey-lighter
+        // A full-width, zero-height break between the first line (rank, name,
+        // value) and the small lines under it.
+        &::after
+          content: ""
+          order: 4
+          flex-basis: 100%
+          height: 0
+        td
+          display: block
+          border: none
+          padding: 0
+          white-space: normal
+          &[colspan]
+            flex-basis: 100%
+      td.cell-rank
+        order: 1
+        color: $grey
+      td.cell-name
+        order: 2
+        flex: 1 1 0
+        min-width: 0
+      td.cell-value
+        order: 3
+        font-weight: 600
+        white-space: nowrap
+      td.cell-meta
+        order: 5
+        font-size: $size-7
+        color: $grey-dark
+        // An empty or "—" cell is a column's placeholder; stacked, it's noise.
+        &:empty, &.is-none
+          display: none
+      td[data-unit]::after
+        content: " " attr(data-unit)
+        font-weight: normal
+        color: $grey
+      td[data-label]::before
+        content: attr(data-label) ": "
+        color: $grey
