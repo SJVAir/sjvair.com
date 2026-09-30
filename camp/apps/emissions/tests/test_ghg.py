@@ -439,13 +439,13 @@ class GHGPageTests(GHGTestCase):
         report('ghgrp', '501', 2023, facility=self.plant, county=self.fresno, co2e=71574.356, ch4=0.97, n2o=0.097, co2e_biogenic=12.4)
         content = self.detail(self.plant)
         card = content[content.index('id="greenhouse-gases"'):content.index('Source: California Air Resources Board')]
-        assert '<h3 class="title is-4">Greenhouse gases</h3>' in card
+        assert '<h2 class="title is-4">Greenhouse gases</h2>' in card
         assert '2024: 87,635 t CO2e (CH4 1.2 t, N2O 0.1 t)' in card
         assert '2023: 71,574 t CO2e (CH4 1.0 t, N2O 0.1 t), plus 12 t biogenic CO2' in card
         assert card.index('2024:') < card.index('2023:')
         assert 'href="https://ww2.arb.ca.gov/mrr-data">CARB MRR →</a>' in card
         assert 'href="https://ghgdata.epa.gov/ghgp/service/facilityDetail/2023?id=501&amp;et=undefined">EPA GHGRP →</a>' in card
-        assert "Dairies don't report to either program." in card
+        assert "dairies don't report to either program." in card
         # A report with no per-gas figures has no parenthetical.
         GHGReport.objects.filter(external_id='900001').update(ch4=None, n2o=None)
         assert '2024: 87,635 t CO2e ·' in self.detail(self.plant)
@@ -459,12 +459,12 @@ class GHGPageTests(GHGTestCase):
         table = content[content.index('id="greenhouse-gases"'):]
         assert '<h2 class="title is-4">Largest greenhouse-gas reporters</h2>' in table
         assert '<th class="has-text-right">CARB MRR 2024</th>' in table and '<th class="has-text-right">EPA GHGRP 2023</th>' in table
-        assert table.index('Valley Oil') < table.index('Test Plant') < table.index('Lonely Landfill')
+        assert table.index('Valley Oil') < table.index('TEST PLANT') < table.index('Lonely Landfill')
         assert 'basin-wide, not one site' in table
-        assert f'href="{self.plant.get_absolute_url()}' in table and '>Test Plant</a>' in table
+        assert f'href="{self.plant.get_absolute_url()}' in table and '>TEST PLANT</a>' in table
         assert 'not matched to a permitted facility' in table
         assert '2,898,915' in table and '87,635' in table and '71,574' in table and '1,478' in table
-        assert 'Only large emitters (about 10,000 t CO2e a year and up) report' in table
+        assert '<strong>Only large emitters report</strong> (about 10,000 t CO2e a year and up)' in table
         assert '<a href="#greenhouse-gases">Greenhouse gases</a>' in content
         # Other counties and non-county pages have no table.
         assert 'greenhouse-gas reporters' not in self.client.get(self.kern.get_emissions_url(), {'year': '2024'}).content.decode()

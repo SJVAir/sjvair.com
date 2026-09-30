@@ -218,6 +218,38 @@ body.emissions
       list-style: disc
   .oil-gas-callout
     margin: 0.5rem 0 1rem
+  // "What this is, and isn't": one folded panel at the foot of a section,
+  // the same on every section that has caveats.
+  .data-notes
+    margin: 0.75rem 0 1.5rem
+    font-size: $size-7
+    color: $grey-dark
+    summary
+      cursor: pointer
+      color: $grey
+      font-weight: 600
+      width: fit-content
+      &:hover
+        color: $link
+    ul
+      list-style: disc
+      margin: 0.5rem 0 0 1.25rem
+    li + li
+      margin-top: 0.25rem
+  .toxics-lead
+    font-size: $size-7
+    color: $grey-dark
+    margin: 0.75rem 0 0
+    + .data-notes
+      margin-top: 0.25rem
+  // A table's supporting links (city, county, sector) read as text until
+  // hovered, so the row's own link, the facility or dairy, is what stands out.
+  .facility-table, .dairy-table
+    td.cell-meta a
+      color: inherit
+      &:hover
+        color: $link
+        text-decoration: underline
   // The bar and its percent stay on one line; the sector name takes the wrap.
   .share-cell
     white-space: nowrap

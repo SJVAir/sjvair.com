@@ -78,7 +78,8 @@
 <div class="notification is-light">This facility has no emissions reported for {{ year }}; showing {{ shown_year }}.</div>
 {% endif %}
 
-<h3 class="title is-4">Emissions in {{ shown_year }}</h3>
+<h2 class="title is-4">Emissions in {{ shown_year }}</h2>
+{% if ranks %}
 <div class="table-container">
 <table class="table is-fullwidth is-narrow facility-ranks-table is-stacked-mobile">
     {% with county_name=facility.county.name|cut:" County" %}
@@ -106,8 +107,10 @@
     </tbody>
 </table>
 </div>
+{% endif %}
+{% if unreported %}<p class="has-text-grey is-size-7 mb-5">Not reported in {{ shown_year }}: {% for pollutant in unreported %}{{ pollutant.label }}{% if not forloop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
 
-{% if not pollutant.toxic %}{% emissions_trend_chart trend pollutant shown_year %}{% endif %}
+{% if not pollutant.toxic %}{% emissions_trend_chart trend pollutant shown_year heading="Over time" %}{% endif %}
 
 {% if changes %}
 <div class="notification is-warning is-light">
@@ -117,7 +120,7 @@
 {% endif %}
 
 {% if toxics_rows %}
-<h3 class="title is-4">Toxic air contaminants in {{ shown_year }}</h3>
+<h2 class="title is-4">Toxic air contaminants in {{ shown_year }}</h2>
 <div class="table-container">
 <table class="table is-fullwidth is-narrow toxics-table is-stacked-mobile">
     <thead><tr>

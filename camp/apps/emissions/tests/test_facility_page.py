@@ -105,7 +105,7 @@ class FacilityToxicsTests(TestCase):
 
     def test_toxics_table_order_flags_and_links(self):
         content = self.detail(self.plant)
-        table = content[content.index('toxics-table'):content.index('toxics-caveats')]
+        table = content[content.index('toxics-table'):content.index('toxics-lead')]
         assert table.index('Benzene') < table.index('Isopropyl alcohol')
         assert 'pollutant=benzene' in table and 'no OEHHA cancer value' in table
         assert table.count('hazard-dot') == 1
@@ -114,7 +114,7 @@ class FacilityToxicsTests(TestCase):
 
     def test_ammonia_row_is_not_in_the_toxics_table(self):
         content = self.detail(self.plant)
-        table = content[content.index('toxics-table'):content.index('toxics-caveats')]
+        table = content[content.index('toxics-table'):content.index('toxics-lead')]
         assert 'Ammonia' not in table
 
     def test_hot_spots_card_and_its_absence(self):
@@ -195,14 +195,16 @@ class FacilityAmmoniaRowTests(TestCase):
 
     def test_ammonia_row_in_the_emissions_table(self):
         content = self.client.get(Facility.objects.get(name='TEST PLANT').get_absolute_url()).content.decode()
-        table = content[content.index('Emissions in 2024'):content.index('Toxic air contaminants in 2024')]
+        section = content[content.index('Emissions in 2024'):]
+        table = section[:section.index('</table>')]
         assert 'pollutant=nh3' in table and 'Ammonia' in table
-        assert table.index('TOG') < table.index('Ammonia')
         content = self.client.get(Facility.objects.get(name='TEST CEMENT').get_absolute_url()).content.decode()
-        # TEST CEMENT reported no ammonia: no row for it, though the scope
-        # bar (every page) still offers nh3 as a pollutant to switch to.
-        table = content[content.index('Emissions in 2024'):content.index('Toxic air contaminants in 2024')]
+        # TEST CEMENT reported no ammonia: no row for it. The criteria
+        # pollutants it didn't report are named in one line under the table.
+        section = content[content.index('Emissions in 2024'):]
+        table = section[:section.index('</table>')]
         assert 'Ammonia' not in table
+        assert 'Not reported in 2024: ROG, SOx, CO, TOG.' in section
 
 
 class MethaneCardTests(TestCase):

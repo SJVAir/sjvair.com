@@ -7,11 +7,12 @@ dairy-cattle emissions in the scope pollutant. Greyed outside CADD's years,
 with a link to the dairy page at CADD's last year. Keeps `id="dairies"` and
 the `dairy-block` class for the section nav and the greyed style.
 {% endcomment %}
-<section class="dairy-block mt-5{% if not dairy_block.in_range %} is-greyed{% endif %}" id="dairies">
-    <h2 class="title is-4"><span class="icon"><span class="fa-duotone fa-fw fa-cow explorer-icon is-dairies" aria-hidden="true"></span></span> Dairies</h2>
-    {% if not dairy_block.in_range %}
-    <p>No dairy data for {{ year }}. CARB's dairy database covers {{ dairy_block.first_year }}–{{ dairy_block.last_year }}. <a href="{{ dairy_block.last_year_url }}">See {{ dairy_block.last_year }} →</a></p>
-    {% else %}
+{% if not dairy_block.in_range %}
+{# Outside CADD's years there's no section to show, just where to find one. #}
+<p class="dairy-block is-greyed mt-5" id="dairies">Dairies: no data for {{ year }}; CARB's dairy database covers {{ dairy_block.first_year }}–{{ dairy_block.last_year }}. <a href="{{ dairy_block.last_year_url }}">See {{ dairy_block.last_year }} →</a></p>
+{% else %}
+<section class="dairy-block mt-5" id="dairies">
+    <h2 class="title is-4">Dairies</h2>
     {% if dairy_block.is_county %}
     {% if not dairy_block.county_pollutant %}
     <p class="dairy-county-line is-greyed">No {{ pollutant.label }} data for dairies.</p>
@@ -27,5 +28,5 @@ the `dairy-block` class for the section nav and the greyed style.
     <p class="has-text-grey">No dairies in CARB's dairy database here.</p>
     {% endif %}
     {% endwith %}
-    {% endif %}
 </section>
+{% endif %}

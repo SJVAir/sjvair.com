@@ -27,13 +27,13 @@
 </div>
 
 <div class="level stat-row box" id="facilities">
-    <div class="level-item has-text-centered"><div><p class="heading">Facilities in {{ year }}</p><p class="title">{{ totals.facilities|intcomma }}</p></div></div>
-    <div class="level-item has-text-centered"><div><p class="heading">{% if pollutant.weighted %}Share of the Valley's {{ pollutant.label|lower }} toxics{% else %}{{ pollutant.name }}{% endif %}</p><p class="title">{{ total|amount:pollutant }}{% if not pollutant.weighted %} <span class="is-size-5">{{ pollutant.unit_label }}</span>{% endif %}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Facilities in {{ year }}</p><p class="title">{{ totals.facilities|intcomma }}</p><p class="stat-note"></p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">{% if pollutant.weighted %}Share of the Valley's {{ pollutant.label|lower }} toxics{% else %}{{ pollutant.name }}{% endif %}</p><p class="title">{{ total|amount:pollutant }}{% if not pollutant.weighted %} <span class="is-size-5">{{ pollutant.unit_label }}</span>{% endif %}</p><p class="stat-note">{{ by_year|year_change:year }}</p></div></div>
     {% if not share_unit %}
-    <div class="level-item has-text-centered"><div><p class="heading">Per square mile</p><p class="title">{{ per_sq_mi|amount:pollutant }} <span class="is-size-5">{{ pollutant.unit }}/yr</span></p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Per square mile</p><p class="title">{{ per_sq_mi|amount:pollutant }} <span class="is-size-5">{{ pollutant.unit }}/yr</span></p><p class="stat-note"></p></div></div>
     {% endif %}
     {% if county_share is not None and county_region != area.region %}
-    <div class="level-item has-text-centered"><div><p class="heading">Share of {{ county_region.name }}</p><p class="title">{{ county_share|percent }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Share of {{ county_region.name }}</p><p class="title">{{ county_share|percent }}</p><p class="stat-note"></p></div></div>
     {% endif %}
 </div>
 
@@ -46,7 +46,7 @@
 
 <h2 class="title is-4 mt-5">Top facilities</h2>
 {% if top_rows %}
-{% include 'emissions/includes/facility-table.html' with rows=top_rows sortable=False %}
+{% include 'emissions/includes/facility-table.html' with rows=top_rows sortable=False hide_city=top_columns.hide_city hide_county=top_columns.hide_county %}
 {% else %}
 <p class="has-text-grey">No facilities here reported {{ pollutant.name }} in {{ year }}.</p>
 {% endif %}
@@ -61,7 +61,7 @@
         {% include 'emissions/includes/sector-rows.html' with rows=top_sectors %}
     </div>
     <div class="column">
-        {% emissions_trend_chart by_year pollutant year %}
+        {% emissions_trend_chart by_year pollutant year heading="Over time" %}
     </div>
 </div>
 {% if ghg_table.rows %}{% include 'emissions/includes/ghg-table.html' %}{% endif %}

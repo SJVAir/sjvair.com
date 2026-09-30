@@ -123,7 +123,8 @@ class PageTests(ComplianceTestCase):
         assert 'as reported to EPA: TEST PLANT INC' in content
         table = content[content.index('compliance-events'):]
         assert table.index('Administrative - Formal') < table.index('FCE On-Site') < table.index('Notice of Violation')
-        assert '<details' not in content
+        # Few enough events to list: no Show all toggle (the caveats' own <details> aside).
+        assert 'Show all' not in content
 
     def test_show_all_and_addressed_badge(self):
         row = track(self.plant, 'CASJV00006019C0001', hpv='Addressed-EPA', reported_through=date(2024, 1, 1))

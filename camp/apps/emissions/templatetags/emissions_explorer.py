@@ -14,14 +14,17 @@ register = template.Library()
 @register.filter
 def quantity(value):
     """
-    A number already in its display unit, always to one decimal so a column
-    of them lines up: '1,456.4', '214.0', '8.2', '<0.1', '0.0', '—'.
+    A number already in its display unit: whole from 100 up, where a decimal
+    on an inventory estimate is false precision ('1,456', '214'), else to one
+    decimal ('8.2', '<0.1', '0.0'); '—' for none.
     """
     if value is None:
         return '—'
     value = float(value)
     if value and abs(value) < 0.05:
         return '<0.1'
+    if abs(value) >= 99.95:
+        return f'{value:,.0f}'
     return f'{value:,.1f}'
 
 
@@ -105,11 +108,23 @@ def _change_sentence(by_year, year):
     return f"{'Up' if pct > 0 else 'Down'} {abs(pct):.0f}% from {year - 1}"
 
 
+@register.filter
+def year_change(points, year):
+    """
+    A stat's subtext from a by-year series: "down 6% from 2023", "unchanged
+    from 2023", or '' when the year before has nothing to compare with.
+    """
+    by_year = {row['year']: row['value'] for row in points or []}
+    sentence = _change_sentence(by_year, year)
+    return sentence[:1].lower() + sentence[1:]
+
+
 @register.inclusion_tag('pesticides/includes/trend-chart.html')
-def emissions_trend_chart(points, pollutant, year=None, title=None):
+def emissions_trend_chart(points, pollutant, year=None, title=None, heading=None):
     """
     The by-year trend, drawn by js/pesticides/charts.js from the payload this
-    embeds (same markup and chart type as the pesticides trend).
+    embeds (same markup and chart type as the pesticides trend). `heading`, if
+    given, is an h2 over it that goes when the chart does (no data).
     """
     rows = sorted(points, key=lambda row: row['year'])
     years = [row['year'] for row in rows]
@@ -134,6 +149,7 @@ def emissions_trend_chart(points, pollutant, year=None, title=None):
         # A series of zeros (a facility that never reported the pollutant) is no chart.
         'has_data': any(values),
         'title': title or default_title,
+        'heading': heading,
         'sentence': _change_sentence(dict(zip(years, values)), year),
         'first_year': years[0] if years else None,
         'last_year': years[-1] if years else None,

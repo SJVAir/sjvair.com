@@ -2,6 +2,8 @@ import csv
 import io
 import re
 
+from types import SimpleNamespace
+
 from urllib.parse import parse_qs
 
 from django.core.cache import cache
@@ -369,3 +371,20 @@ class AmmoniaPagesTests(ViewTestCase):
         rows = list(csv.DictReader(io.StringIO(self.get('facility-list', params={'format': 'csv', 'pollutant': 'nh3'}).content.decode())))
         assert float(rows[0]['nh3_tons']) == 0.05 and rows[0]['facility'] == 'TEST PLANT'
         assert 'nh3_tons' not in list(csv.DictReader(io.StringIO(self.get('facility-list', params={'format': 'csv'}).content.decode())))[0]
+
+
+class UniformColumnsTests(TestCase):
+    def rows(self, *places):
+        return [
+            (n, SimpleNamespace(facility=SimpleNamespace(city_id=city, county_id=county, address={'city': 'X'})))
+            for n, (city, county) in enumerate(places, 1)
+        ]
+
+    def test_a_column_every_row_repeats_is_hidden(self):
+        assert views.uniform_columns(self.rows((1, 10), (1, 10))) == {'hide_city': True, 'hide_county': True}
+        assert views.uniform_columns(self.rows((1, 10), (2, 10))) == {'hide_city': False, 'hide_county': True}
+        assert views.uniform_columns(self.rows((1, 10), (2, 11))) == {'hide_city': False, 'hide_county': False}
+
+    def test_one_row_keeps_every_column(self):
+        assert views.uniform_columns(self.rows((1, 10))) == {'hide_city': False, 'hide_county': False}
+        assert views.uniform_columns([]) == {'hide_city': False, 'hide_county': False}

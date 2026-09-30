@@ -332,10 +332,11 @@ class DairyBlockTests(DairyPageTestCase):
         assert 'CARB estimate' not in content
         assert f'href="{self.fresno.get_emissions_dairies_url()}?year=2023"' in content
 
-    def test_a_year_outside_cadd_greys_the_block(self):
+    def test_a_year_outside_cadd_is_one_greyed_line(self):
         content = self.region_page(self.fresno)  # 2024, the explorer's latest year
-        assert 'class="dairy-block mt-5 is-greyed"' in content
-        assert "No dairy data for 2024. CARB's dairy database covers 2022–2023." in content
+        assert '<p class="dairy-block is-greyed mt-5" id="dairies">' in content
+        assert "Dairies: no data for 2024; CARB's dairy database covers 2022–2023." in content
+        assert '<h2 class="title is-4">Dairies</h2>' not in content
         assert f'<a href="{self.fresno.get_emissions_dairies_url()}?year=2023">See 2023 →</a>' in content
         assert '1 dairy ·' not in content and 'Dairies in Fresno County' not in content
 

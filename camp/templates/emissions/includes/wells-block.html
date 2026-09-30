@@ -7,7 +7,7 @@ the schools and child-care centers with a well within 3,200 ft (SB 1137's
 distance), the ten with the most wells listed. Nothing when the area has no wells.
 {% endcomment %}
 <section class="wells-block mt-5" id="wells">
-    <h2 class="title is-4"><span class="icon"><span class="fa-duotone fa-fw fa-oil-well explorer-icon is-wells" aria-hidden="true"></span></span> Oil &amp; gas wells</h2>
+    <h2 class="title is-4">Oil &amp; gas wells</h2>
     {% with s=wells_block.summary %}
     <p class="wells-line">{{ s.active|intcomma }} active · {{ s.idle|intcomma }} idle{% if s.new %} · {{ s.new|intcomma }} new{% endif %} · {{ s.hpz|intcomma }} in a verified health-protection zone (3,200 ft of homes or schools)</p>
     {% endwith %}
@@ -31,5 +31,11 @@ distance), the ten with the most wells listed. Nothing when the area has no well
     <p>No school or child-care center here has a well within 3,200 ft.</p>
     {% endif %}
     {% endwith %}
-    <p class="is-size-7 has-text-grey">CalGEM's records: counts of wells, not emissions; idle wells can still leak; plugged wells aren't shown; distances are straight lines from the school's map point. <a href="{% url 'emissions:about' %}#oil-gas">About</a></p>
+    <details class="data-notes">
+        <summary>What this is, and isn't</summary>
+        <ul>
+            <li><strong>Counts of wells, not emissions.</strong> CalGEM's records; idle wells can still leak, and plugged wells aren't shown.</li>
+            <li><strong>Distances are straight lines</strong> from the school's map point to the well's. <a href="{% url 'emissions:about' %}#oil-gas">More on oil and gas</a></li>
+        </ul>
+    </details>
 </section>

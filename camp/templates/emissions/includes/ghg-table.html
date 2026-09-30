@@ -6,7 +6,7 @@ facility page, basin-wide oil & gas rows and unmatched reporters labelled.
 {% endcomment %}
 <section class="ghg-table mt-5" id="greenhouse-gases">
     <h2 class="title is-4">Largest greenhouse-gas reporters</h2>
-    <p class="is-size-7 has-text-grey">Metric tons CO2e a year, as reported to CARB and EPA. Greenhouse gases warm the climate; they aren't a local health measure. Only large emitters (about 10,000 t CO2e a year and up) report, so most facilities have none. Oil and gas production reports for a whole basin, not one site. Fuel sold by suppliers isn't counted here. Dairies don't report to either program.</p>
+    <p class="has-text-grey">Metric tons CO2e a year, as reported to CARB and EPA.</p>
     <div class="table-container">
     <table class="table is-fullwidth is-narrow">
         <thead><tr>
@@ -18,7 +18,7 @@ facility page, basin-wide oil & gas rows and unmatched reporters labelled.
         <tbody>
         {% for row in ghg_table.rows %}
         <tr>
-            <td>{% if row.facility %}<a href="{{ row.facility.get_absolute_url }}{{ scope_qs }}">{{ row.name|title }}</a>{% else %}{{ row.name }} {% if row.basin_wide %}<span class="tag is-light">basin-wide, not one site</span>{% else %}<span class="has-text-grey is-size-7">not matched to a permitted facility</span>{% endif %}{% endif %}</td>
+            <td>{% if row.facility %}<a href="{{ row.facility.get_absolute_url }}{{ scope_qs }}">{{ row.name }}</a>{% else %}{{ row.name }} {% if row.basin_wide %}<span class="tag is-light">basin-wide, not one site</span>{% else %}<span class="has-text-grey is-size-7">not matched to a permitted facility</span>{% endif %}{% endif %}</td>
             <td>{{ row.sector }}</td>
             {% if ghg_table.years.mrr %}<td class="has-text-right">{% if row.mrr is not None %}{{ row.mrr|whole }}{% else %}—{% endif %}</td>{% endif %}
             {% if ghg_table.years.ghgrp %}<td class="has-text-right">{% if row.ghgrp is not None %}{{ row.ghgrp|whole }}{% else %}—{% endif %}</td>{% endif %}
@@ -28,4 +28,5 @@ facility page, basin-wide oil & gas rows and unmatched reporters labelled.
         </tbody>
     </table>
     </div>
+    {% include 'emissions/includes/ghg-notes.html' %}
 </section>

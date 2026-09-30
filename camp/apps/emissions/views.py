@@ -140,14 +140,16 @@ class Home(ScopeMixin, vanilla.TemplateView):
     def get_context_data(self, **kwargs):
         scope = self.get_scope()
         totals = stats.totals(scope)
+        top_rows = stats.with_ranks(stats.facility_table(scope)[:10], stats.ranks(scope))
         return super().get_context_data(
             totals=totals,
             total=totals['value'],
             context_bar=stats.county_context(scope),
             nei_context=nei.context(scope),
             toxics_breakdown=stats.toxics_breakdown(scope) if scope.toxics else None,
-            top_rows=stats.with_ranks(stats.facility_table(scope)[:10], stats.ranks(scope)),
-            top_sectors=stats.sector_breakdown(scope)[:6],
+            top_rows=top_rows,
+            top_columns=uniform_columns(top_rows),
+            top_sectors=reporting_sectors(scope)[:6],
             by_year=stats.by_year(scope),
             find_area_places=find_area_places(),
             find_area_counties=[p for p in find_area_places() if p['type'] == Region.Type.COUNTY],
@@ -284,11 +286,14 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
         nearby = schools.near(facility)
         facility_regions = areas.facility_areas(facility)
         tract = next((region for region in facility_regions if region.type == Region.Type.TRACT), None)
+        ranks = stats.facility_ranks(facility, shown_year)
         return super().get_context_data(
             facility=facility,
             district=facility.air_district,
             shown_year=shown_year,
-            ranks=stats.facility_ranks(facility, shown_year),
+            # Pollutants it reported get a row; the rest are named in one line under the table.
+            ranks=[row for row in ranks if row['value']],
+            unreported=[row['pollutant'] for row in ranks if not row['value']],
             trend=stats.by_year(scope, facility=facility),
             toxics_rows=stats.facility_toxics(facility, shown_year),
             changes=stats.large_changes(facility, shown_year),
@@ -345,12 +350,14 @@ class SectorDetail(ScopeMixin, vanilla.TemplateView):
         scope = self.get_scope()
         summary = next((row for row in stats.sector_breakdown(scope) if row['sector'] == self.sector), None)
         table = stats.facility_table(scope, sector=self.sector)
+        rows = stats.with_ranks(table[:SECTOR_PAGE_ROWS], stats.ranks(scope))
         return super().get_context_data(
             sector=self.sector,
             summary=summary,
             trend=stats.by_year(scope, sector=self.sector),
             counties=stats.county_breakdown(scope, sector=self.sector),
-            rows=stats.with_ranks(table[:SECTOR_PAGE_ROWS], stats.ranks(scope)),
+            rows=rows,
+            columns=dict(uniform_columns(rows), hide_sector=True),
             facility_count=table.count(),
             map_config=facility_map_config(
                 scope, mode='compact', sector=self.sector,
@@ -462,6 +469,24 @@ def methane_map_data(overlay):
         'methane_attribution': MethaneSource.ATTRIBUTION,
         'methane_home': MethaneSource.HOME_URL,
     }
+
+
+def uniform_columns(rows):
+    """
+    The facility table's columns to hide because every row says the same
+    thing (a city page's City, a county page's County): {'hide_city': bool,
+    'hide_county': bool}. Decided from the rows, not the page type, since a
+    school district or a ZIP can cross a county line.
+    """
+    facilities = [record.facility for _, record in rows]
+    cities = {facility.city_id or (facility.address.get('city') or '').lower() for facility in facilities}
+    counties = {facility.county_id for facility in facilities}
+    return {'hide_city': len(facilities) > 1 and len(cities) == 1, 'hide_county': len(facilities) > 1 and len(counties) == 1}
+
+
+def reporting_sectors(scope):
+    """sector_breakdown() without the sectors that reported none of the pollutant (a row of 0.0 and 0%)."""
+    return [row for row in stats.sector_breakdown(scope) if row['value']]
 
 
 def facility_map_config(scope, *, mode='full', highlight=None, sector=None, params=None, areas_view=None,
@@ -771,6 +796,7 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
         county = self.get_county()
         county_scope = stats.Scope(year=base.year, county=county, pollutant=base.pollutant, minor=base.minor)
         county_total = stats.totals(county_scope)['value'] if county else None
+        top_rows = stats.with_ranks(stats.facility_table(scope)[:10], stats.ranks(scope))
         # A region page overrides this with its own "In and around" lists;
         # a near-me page (a point, not a region) has none.
         kwargs.setdefault('within', None)
@@ -795,8 +821,9 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
             total=total,
             per_sq_mi=total / area.sq_miles if area.sq_miles else None,
             county_share=total / county_total if county_total else None,
-            top_rows=stats.with_ranks(stats.facility_table(scope)[:10], stats.ranks(scope)),
-            top_sectors=stats.sector_breakdown(scope),
+            top_rows=top_rows,
+            top_columns=uniform_columns(top_rows),
+            top_sectors=reporting_sectors(scope),
             by_year=stats.by_year(scope),
             map_config=self.get_map_config(base),
             compliance_line=compliance_line,

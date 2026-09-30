@@ -9,7 +9,7 @@ stamp. Nothing is rendered for a facility with no row -- absence isn't complianc
 {% endcomment %}
 {% with card=compliance_card icis=compliance_card.primary %}
 <section class="compliance-card mt-5" id="compliance">
-    <h3 class="title is-4">Compliance (federal Clean Air Act reporting)</h3>
+    <h2 class="title is-4">Compliance (federal Clean Air Act reporting)</h2>
     <div class="tags are-medium">
         {% if icis.title_v %}<span class="tag">Title V</span>{% endif %}
         {% if icis.pollutant_class %}<span class="tag">{{ icis.pollutant_class }}</span>{% endif %}
@@ -40,12 +40,14 @@ stamp. Nothing is rendered for a facility with no row -- absence isn't complianc
     </div>
     {% endif %}
     <p><a href="{{ icis.dfr_url }}">Full record at EPA ECHO →</a>{% if card.reported_through %} <span class="has-text-grey">· Reported to EPA through {{ card.reported_through|date:"F j, Y" }}.</span>{% endif %}</p>
-    <div class="compliance-caveats is-size-7">
-        <p class="heading">What this is, and isn't</p>
-        <p><strong>Only large sources are here.</strong> About 660 of the Valley's 11,000 permitted facilities are tracked in EPA's air compliance system. Smaller sources' inspections and violations aren't published anywhere. A facility with no compliance card isn't known to be in compliance.</p>
-        <p><strong>The record runs late.</strong> The district reports to EPA roughly a year or more behind. Recent quarters look quiet because they haven't been reported yet, not because violations stopped.{% if card.reported_through %} Reported through {{ card.reported_through|date:"F j, Y" }}.{% endif %}</p>
-        <p><strong>A notice of violation is an allegation.</strong> Many are settled without any admission, and penalties are negotiated amounts.</p>
-        <p><strong>Names are as reported to EPA</strong> and may be a previous owner's.</p>
-    </div>
+    <details class="data-notes">
+        <summary>What this is, and isn't</summary>
+        <ul>
+            <li><strong>Only large sources are here.</strong> About 660 of the Valley's 11,000 permitted facilities are tracked in EPA's air compliance system. Smaller sources' inspections and violations aren't published anywhere. A facility with no compliance card isn't known to be in compliance.</li>
+            <li><strong>The record runs late.</strong> The district reports to EPA roughly a year or more behind. Recent quarters look quiet because they haven't been reported yet, not because violations stopped.</li>
+            <li><strong>A notice of violation is an allegation.</strong> Many are settled without any admission, and penalties are negotiated amounts.</li>
+            <li><strong>Names are as reported to EPA</strong> and may be a previous owner's.</li>
+        </ul>
+    </details>
 </section>
 {% endwith %}

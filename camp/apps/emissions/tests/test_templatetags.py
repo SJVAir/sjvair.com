@@ -7,10 +7,12 @@ from camp.apps.emissions.templatetags.emissions_explorer import amount, share_pc
 
 class AmountTests(TestCase):
     def test_tons(self):
-        # One decimal everywhere, so a column of values lines up and reads the same.
+        # Whole from 100 up (a decimal there is false precision), else one decimal.
         nox = POLLUTANTS['nox']
-        assert tags.amount(1456.4, nox) == '1,456.4'
-        assert tags.amount(214, nox) == '214.0'
+        assert tags.amount(1456.4, nox) == '1,456'
+        assert tags.amount(214, nox) == '214'
+        assert tags.amount(99.94, nox) == '99.9'
+        assert tags.amount(99.96, nox) == '100'
         assert tags.amount(8.25, nox) == '8.2'
         assert tags.amount(0.25, nox) == '0.2'
         assert tags.amount(0.001, nox) == '<0.1'
@@ -18,7 +20,7 @@ class AmountTests(TestCase):
         assert tags.amount(None, nox) == '—'
 
     def test_quantity(self):
-        assert tags.quantity(50547.57) == '50,547.6'
+        assert tags.quantity(50547.57) == '50,548'
         assert tags.quantity(0.01) == '<0.1'
         assert tags.quantity(None) == '—'
 
