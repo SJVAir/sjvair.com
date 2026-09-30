@@ -21,6 +21,7 @@
     <div class="column is-3-desktop">
         <form method="GET" class="notice-filters box" hx-trigger="submit, change delay:250ms">
             {% if county %}<input type="hidden" name="county" value="{{ county.slug }}">{% endif %}
+            {% if concern %}<input type="hidden" name="narrow" value="{{ concern }}">{% endif %}
             {{ form.chemical }}
             {{ form.product }}
             {{ form.region }}
@@ -37,10 +38,8 @@
                 <label class="label" for="{{ form.method.id_for_label }}">{{ form.method.label }}</label>
                 <div class="control"><div class="select is-fullwidth">{{ form.method }}</div></div>
             </div>
-            <div class="field is-grouped">
-                <div class="control"><button class="button is-link" type="submit">Apply</button></div>
-                <div class="control"><a class="button is-light" href="{% if mode == 'past' %}?past=1{% else %}{{ request.path }}{% endif %}">Clear</a></div>
-            </div>
+            {# The method applies itself as it changes; there's nothing to Apply. #}
+            <p class="filters-clear"><a href="{% if mode == 'past' %}?past=1{% else %}{{ request.path }}{% endif %}">Clear filters</a></p>
         </form>
 
         {% if mode == 'past' and archive_months %}
@@ -62,13 +61,14 @@
         </div>
         {% endif %}
         {% include 'pesticides/includes/section-map.html' %}
-        <p class="summary-sentence mt-4 mb-3">
-            {{ count }} notice{{ count|pluralize }}
-            {% if mode == 'active' %}currently scheduled{% else %}in the archive{% endif %}.
-        </p>
-        {% include 'pesticides/includes/notice-rows.html' %}
-        {% include 'pesticides/includes/pagination.html' %}
     </div>
 </div>
+{# Full width under the filters and map, as on the records page. #}
+<p class="summary-sentence mt-4 mb-3">
+    {{ count }} notice{{ count|pluralize }}
+    {% if mode == 'active' %}currently scheduled{% else %}in the archive{% endif %}.
+</p>
+{% include 'pesticides/includes/notice-rows.html' %}
+{% include 'pesticides/includes/pagination.html' %}
 
 {% endblock %}

@@ -235,7 +235,7 @@
     if (this.input) this.input.setAttribute('aria-expanded', 'true');
   };
 
-  // The page's year, county and concern scope, so the suggestions are names with use in
+  // The page's year, county and narrowing, so the suggestions are names with use in
   // the same scope the list shows: the enclosing form's fields when it has
   // them (the lists), else the page's ?year=.
   EntityPicker.prototype.scopeParams = function () {
@@ -255,17 +255,22 @@
     if (year) params += '&year=' + encodeURIComponent(year);
     var county = form && form.elements.county ? form.elements.county.value : '';
     if (county) params += '&county=' + encodeURIComponent(county);
-    // The chemicals-of-concern scope, from the same three places as the year.
-    var concern = form && form.elements.concern ? form.elements.concern.value : '';
-    if (!concern) {
-      var concernMatch = /[?&]concern=([^&]+)/.exec(window.location.search || '');
-      concern = concernMatch ? decodeURIComponent(concernMatch[1]) : '';
+    // The narrowing, from the same three places as the year.
+    var narrow = form && form.elements.narrow ? form.elements.narrow.value : '';
+    if (!narrow) {
+      var narrowMatch = /[?&]narrow=([^&]+)/.exec(window.location.search || '');
+      narrow = narrowMatch ? decodeURIComponent(narrowMatch[1]) : '';
     }
-    if (!concern) {
-      var concernMap = document.querySelector('.section-map[data-concern]');
-      concern = concernMap ? concernMap.dataset.concern : '';
+    if (!narrow) {
+      // Links that shipped with ?concern=1 are the flagged-chemicals narrowing.
+      var legacyMatch = /[?&]concern=([^&]+)/.exec(window.location.search || '');
+      narrow = legacyMatch && legacyMatch[1] === '1' ? 'concern' : '';
     }
-    if (concern) params += '&concern=' + encodeURIComponent(concern);
+    if (!narrow) {
+      var narrowMap = document.querySelector('.section-map[data-narrow]');
+      narrow = narrowMap ? narrowMap.dataset.narrow : '';
+    }
+    if (narrow) params += '&narrow=' + encodeURIComponent(narrow);
     return params;
   };
 

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product, ProductChemical
+from camp.apps.pesticides.models import Chemical, Commodity, FumigationMethod, PesticideNotice, PesticideUse, Product, ProductChemical
 from camp.utils.admin import ReadOnlyAdminMixin, admin_change_link
 
 
@@ -23,11 +23,19 @@ class CommodityAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     search_fields = ['name', 'site_code']
 
 
+@admin.register(FumigationMethod)
+class FumigationMethodAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ['code', 'name', 'active']
+    list_filter = ['active']
+    search_fields = ['code', 'name']
+    ordering = ['code']
+
+
 @admin.register(Product)
 class ProductAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
-    list_display = ['name', 'prodno', 'reg_number', 'fumigant']
+    list_display = ['name', 'prodno', 'reg_number', 'is_fumigant', 'fumigant']
     search_fields = ['name', 'prodno', 'reg_number']
-    list_filter = ['fumigant']
+    list_filter = ['is_fumigant', 'fumigant']
     inlines = [ProductChemicalInline]
 
 
@@ -35,7 +43,7 @@ class ProductAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 class PesticideUseAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     date_hierarchy = 'application_date'
     list_display = ['year', 'use_no', 'get_county', 'get_mtrs', 'get_commodity', 'get_product', 'get_chemical', 'lbs_chemical', 'acres_treated', 'application_date']
-    list_filter = ['aerial_ground', 'county', 'product__fumigant']
+    list_filter = ['aerial_ground', 'fume_method', 'county', 'product__is_fumigant']
     list_select_related = ['county', 'mtrs', 'commodity', 'product', 'chemical']
     ordering = ['-application_date']
     raw_id_fields = ['county', 'mtrs', 'product', 'chemical', 'commodity']
@@ -67,7 +75,7 @@ class PesticideUseAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 class PesticideNoticeAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     date_hierarchy = 'scheduled_application'
     list_display = ['application_id', 'comtrs', 'get_county', 'scheduled_application', 'treated_amount', 'treated_units', 'application_method']
-    list_filter = ['county', 'application_method', 'products__fumigant']
+    list_filter = ['county', 'application_method', 'products__is_fumigant']
     list_select_related = ['county', 'mtrs']
     ordering = ['-scheduled_application']
     raw_id_fields = ['county', 'mtrs']

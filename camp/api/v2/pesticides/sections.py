@@ -19,7 +19,7 @@ from camp.apps.pesticides import maps, stats
 from camp.apps.pesticides.models import (
     PesticideNotice, PesticideSectionTotal, PesticideUseRollup,
 )
-from camp.apps.pesticides.townships import round_coords, township_geometries
+from camp.apps.pesticides.townships import township_geometries
 from camp.apps.regions.models import Region
 from camp.utils.gis import round_coords
 from camp.utils.views import CachedEndpointMixin
@@ -27,12 +27,23 @@ from camp.utils.views import CachedEndpointMixin
 MAX_SECTIONS = 2500
 MAX_NOTICES = 2000
 NOTICE_CACHE_TTL = 300
-TOTALS = {
-    'lbs_chemical': Sum('lbs_chemical'),
-    'lbs_product': Sum('lbs_product'),
-    'acres_treated': Sum('acres_treated'),
-    'applications': Sum('applications'),
-}
+def totals_aggregates(chemical_scoped=False):
+    """
+    The per-feature sums. The output names are the API's; which column feeds
+    `applications` and `lbs_product` depends on the rows. A use record with
+    several active ingredients is several rows, so once the rows span more
+    than one chemical the once-per-record columns count it once; within one
+    chemical the per-row columns are right (see rollup.REBUILD_SQL).
+    """
+    return {
+        'lbs_chemical': Sum('lbs_chemical'),
+        'lbs_product': Sum(stats.product_lbs_field(chemical_scoped)),
+        'acres_treated': Sum(stats.acres_field_for(chemical_scoped)),
+        'applications': Sum(stats.apps_field_for(chemical_scoped)),
+    }
+
+
+TOTALS = totals_aggregates()
 ZERO = {'lbs_chemical': 0, 'lbs_product': 0, 'acres_treated': 0, 'applications': 0}
 
 
@@ -53,7 +64,7 @@ def bad_request(message):
 
 
 def apply_filters(rows, params):
-    """Entity/county/month/concern filters shared by both endpoints. Returns (rows, error)."""
+    """Entity/county/month/narrowing filters shared by both endpoints. Returns (rows, error)."""
     if params.get('month'):
         try:
             month = int(params['month'])
@@ -118,7 +129,7 @@ def section_totals(section_pks, year, all_years):
         return {}
     return {
         r['mtrs']: r
-        for r in rows.filter(year=year).values('mtrs', *TOTALS)
+        for r in rows.filter(year=year).values('mtrs').annotate(**TOTALS)
     }
 
 
@@ -292,14 +303,15 @@ class SectionListBase(generics.Endpoint):
             rows, error = apply_filters(rows, params)
             if error:
                 return bad_request(error)
-            totals = {r['mtrs']: r for r in rows.values('mtrs').annotate(**TOTALS)}
+            scoped = bool(params.get('chemical'))
+            totals = {r['mtrs']: r for r in rows.values('mtrs').annotate(**totals_aggregates(scoped))}
             previous = {}
             if compare:
                 # The same filters over the compared year, so the change is
                 # the one the reader's filters describe and not the section's
                 # total.
                 compare_rows, _ = apply_filters(stats.in_year(in_bbox, compare), params)
-                previous = {r['mtrs']: r for r in compare_rows.values('mtrs').annotate(**TOTALS)}
+                previous = {r['mtrs']: r for r in compare_rows.values('mtrs').annotate(**totals_aggregates(scoped))}
         counties = county_name_for(section_pks, year, all_years)
 
         # Section outlines never change, so a reader who already has them --
@@ -339,8 +351,8 @@ class SectionList(CachedEndpointMixin, SectionListBase):
 
     Give either `bbox=west,south,east,north` or `lat`, `lng`, `radius` (miles: 1, 3, or 5).
     Filters: `year` (default latest), `month`, `chemical` (chem code), `product`
-    (prodno), `commodity` (site code), `county` (slug), and `concern=1` to
-    count only the chemicals of concern (Prop 65, CARB TAC, IARC 1/2A/2B,
+    (prodno), `commodity` (site code), `county` (slug), and `narrow=concern|restricted|fumigant|aerial` (or the legacy `concern=1`) to
+    count only what that narrowing keeps, e.g. the chemicals of concern (Prop 65, CARB TAC, IARC 1/2A/2B,
     California restricted materials).
     """
     cache_timeout = 60 * 60
@@ -388,13 +400,13 @@ class SectionDetailBase(generics.Endpoint):
                 for m in months
             ],
             'top_chemicals': top('chemical'),
-            'top_products': top('product', lbs_field='lbs_product'),
+            'top_products': top('product', lbs_field='lbs_product_once'),
             'top_commodities': top('commodity'),
         }
 
 
 class SectionDetail(CachedEndpointMixin, SectionDetailBase):
-    """One MTRS section: geometry, totals by year and by month, and top chemicals, products, and commodities for `year` (default latest). `concern=1` counts only the chemicals of concern."""
+    """One MTRS section: geometry, totals by year and by month, and top chemicals, products, and commodities for `year` (default latest). `narrow=concern|restricted|fumigant|aerial` (or legacy `concern=1`) counts only what that narrowing keeps."""
     cache_timeout = 60 * 60
 
 
@@ -412,6 +424,9 @@ class ActiveNoticeListBase(generics.Endpoint):
             if error:
                 return bad_request(error)
             notices = notices.filter(point__bboverlaps=Polygon.from_bbox(bbox))
+        narrow = stats.resolve_narrow(params)
+        if narrow:
+            notices = stats.narrow_notices(notices, narrow)
         for param, lookup, cast in (
             ('chemical', 'chemicals__chem_code', int),
             ('product', 'products__prodno', int),
@@ -475,12 +490,13 @@ class TownshipListBase(generics.Endpoint):
         rows, error = apply_filters(rows, params)
         if error:
             return bad_request(error)
-        totals = stats.by_township(rows, year, all_years)
+        scoped = bool(params.get('chemical'))
+        totals = stats.by_township(rows, year, all_years, chemical_scoped=scoped)
         previous = {}
         if compare:
             compare_rows, _ = apply_filters(
                 stats.in_year(PesticideUseRollup.objects.all(), compare), params)
-            previous = stats.by_township(compare_rows, compare)
+            previous = stats.by_township(compare_rows, compare, chemical_scoped=scoped)
 
         # The map keeps township outlines from its first load and asks for
         # `geometry=0` after that (a year or filter change only moves the
@@ -528,11 +544,11 @@ class TownshipList(CachedEndpointMixin, TownshipListBase):
     a client that already holds the outlines.
     Filters: `year` (default latest), `month`, `chemical` (chem code),
     `product` (prodno), `commodity` (site code), `county` (slug), and
-    `concern=1` to count only the chemicals of concern.
+    `narrow=concern|restricted|fumigant|aerial` (or legacy `concern=1`) to count only what that narrowing keeps.
     """
     cache_timeout = 60 * 60
 
 
 class ActiveNoticeList(CachedEndpointMixin, ActiveNoticeListBase):
-    """Active SprayDays notices of intent (scheduled from four days ago onward) as GeoJSON points. Optional `bbox=west,south,east,north`, `chemical` (chem code), `product` (prodno), `county` (slug). A request matching more than 2000 notices returns 400; narrow it with a bbox or a filter."""
+    """Active SprayDays notices of intent (scheduled from four days ago onward) as GeoJSON points. Optional `bbox=west,south,east,north`, `chemical` (chem code), `product` (prodno), `county` (slug), `narrow=concern|restricted|fumigant|aerial`. A request matching more than 2000 notices returns 400; narrow it with a bbox or a filter."""
     cache_timeout = NOTICE_CACHE_TTL

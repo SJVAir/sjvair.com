@@ -36,9 +36,9 @@
                         <div class="tags is-inline">{% include 'pesticides/includes/classification-badges.html' with chemical=use.chemical hide_iarc=True %}</div>
                     {% else %}—{% endif %}
                 </td>
-                <td class="has-text-right">{{ use.lbs_chemical|lbs }}</td>
-                <td class="has-text-right">{{ use.acres_treated|lbs }}</td>
-                <td>{{ use.get_aerial_ground_display|default:'—' }}</td>
+                <td class="has-text-right"{% if use.lbs_chemical is not None %} data-unit="lbs"{% endif %}>{{ use.lbs_chemical|lbs }}</td>
+                <td class="has-text-right"{% if use.acres_treated is not None %} data-unit="acres"{% endif %}>{{ use.acres_treated|lbs }}</td>
+                <td>{% if use.fume_method %}<span title="{{ use.fume_method.name }}">{{ use.aerial_ground|method_label }} — {{ use.fume_method.short_name }}</span>{% else %}{{ use.aerial_ground|method_label }}{% endif %}</td>
             </tr>
             {% empty %}
             <tr><td colspan="9" class="has-text-centered has-text-grey">No records match.</td></tr>

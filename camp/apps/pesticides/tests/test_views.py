@@ -1,4 +1,5 @@
 import re
+from unittest import mock
 
 from django.core.cache import cache
 from django.db.models import Sum
@@ -231,7 +232,7 @@ class ChemicalListTests(RollupTestMixin, TestCase):
     def test_related_filter_is_scoped_to_the_year(self):
         # Sulfur shared records with LORSBAN only in 2022: the 2023 list under
         # that product filter leaves sulfur out rather than showing a dash.
-        PesticideUseRollup.objects.create(year=2022, month=1, county_id=9001, chemical_id=3, product_id=2, lbs_chemical=5, applications=1)
+        PesticideUseRollup.objects.create(year=2022, month=1, county_id=9001, chemical_id=3, product_id=2, lbs_chemical=5, applications=1, records=1)
         product = Product.objects.get(pk=2)
         assert self.names(self.client.get(self.url, {'product': product.sqid, 'year': '2023'})) == ['CHLORPYRIFOS']
         assert set(self.names(self.client.get(self.url, {'product': product.sqid, 'year': '2022'}))) == {'CHLORPYRIFOS', 'SULFUR'}
@@ -250,7 +251,7 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         # of the chemical's pounds, not the chemical's total.
         product = Product.objects.get(pk=2)
         # Some chlorpyrifos applied through another product, so the pair and the total differ.
-        PesticideUseRollup.objects.create(year=2023, month=1, county_id=9001, chemical_id=2, product_id=1, lbs_chemical=25, applications=1)
+        PesticideUseRollup.objects.create(year=2023, month=1, county_id=9001, chemical_id=2, product_id=1, lbs_chemical=25, applications=1, records=1)
         response = self.client.get(self.url, {'product': product.sqid})
         chemical = response.context['object_list'][0]
         pair = PesticideUseRollup.objects.filter(year=2023, chemical=chemical, product=product).aggregate(Sum('lbs_chemical'))
@@ -287,8 +288,8 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         # Lists only show entities with use in the year, and read their pounds
         # off the totals table, so give each a rollup row and its total.
         chemical = Chemical.objects.create(**fields)
-        PesticideUseRollup.objects.create(year=2023, month=1, county_id=9001, chemical=chemical, lbs_chemical=1, applications=1)
-        PesticideUseTotal.objects.create(year=2023, county_id=9001, chemical=chemical, lbs_chemical=1, applications=1)
+        PesticideUseRollup.objects.create(year=2023, month=1, county_id=9001, chemical=chemical, lbs_chemical=1, applications=1, records=1)
+        PesticideUseTotal.objects.create(year=2023, county_id=9001, chemical=chemical, lbs_chemical=1, applications=1, records=1)
         return chemical
 
     def test_pagination_links_keep_filters(self):
@@ -612,7 +613,9 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
         # The upcoming-notices box costs two (the notices and their
         # chemicals); it used to cost three, before the day summary replaced
         # the per-notice table and its products prefetch went with it.
-        with self.assertNumQueries(28):
+        # The last is the "how it was applied" group-by, cached after the
+        # first request.
+        with self.assertNumQueries(29):
             self.client.get(self.chemical.get_absolute_url())
 
     def test_by_month_in_context(self):
@@ -664,7 +667,7 @@ class ProductDetailTests(RollupTestMixin, TestCase):
         html = self.client.get(self.product.get_absolute_url()).content.decode()
         assert 'CARB TAC' in html
         assert 'Fumigant' in html
-        assert 'CA restricted' in html
+        assert '>Restricted</a>' in html
 
     def test_badge_tooltips_come_from_the_notes_datafile(self):
         from camp.apps.pesticides import notes
@@ -697,7 +700,7 @@ class CommodityDetailTests(RollupTestMixin, TestCase):
 
     def test_summary_sentence_uses_chemicals(self):
         ctx = self.client.get(self.commodity.get_absolute_url()).context
-        assert ctx['summary_sentence'] == 'Applied in 1 of 8 SJV counties in 2023, mostly Sulfur and Glyphosate.'
+        assert ctx['summary_sentence'] == 'Applied in 1 of 8 SJV counties in 2023, mostly with Sulfur and Glyphosate.'
 
     def test_no_notice_section(self):
         html = self.client.get(self.commodity.get_absolute_url()).content.decode()
@@ -1011,7 +1014,7 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         ]
         assert response.context['concern'] == stats.NARROW_CONCERN
         assert response.context['scope_qs'] == '?narrow=concern'
-        assert 'of concern' in response.context['summary_sentence']
+        assert 'flagged chemicals' in response.context['summary_sentence']
 
     def test_product_list_keeps_products_with_a_concern_chemical(self):
         response = self.client.get(reverse('pesticides:product-list'), {'concern': '1'})
@@ -1075,8 +1078,8 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
 
     def test_map_page_passes_the_scope_to_the_grid(self):
         response = self.client.get(reverse('pesticides:map'), {'concern': '1'})
-        assert response.context['map_config']['concern'] == '1'
-        assert self.client.get(reverse('pesticides:map')).context['map_config']['concern'] == ''
+        assert response.context['map_config']['narrow'] == 'concern'
+        assert self.client.get(reverse('pesticides:map')).context['map_config']['narrow'] == ''
 
     def test_narrow_picker_offers_every_narrowing(self):
         url = reverse('pesticides:chemical-list')
@@ -1111,15 +1114,15 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
 
     def test_filter_forms_carry_the_scope_as_a_hidden_input(self):
         html = self.client.get(reverse('pesticides:chemical-list'), {'concern': '1'}).content.decode()
-        assert '<input type="hidden" name="concern" value="1">' in html
+        assert '<input type="hidden" name="narrow" value="concern">' in html
         html = self.client.get(reverse('pesticides:chemical-list')).content.decode()
         assert 'name="concern"' not in html
 
     def test_map_template_carries_the_scope_as_a_data_attribute(self):
         html = self.client.get(reverse('pesticides:map'), {'concern': '1'}).content.decode()
-        assert 'data-concern="1"' in html
+        assert 'data-narrow="concern"' in html
         html = self.client.get(reverse('pesticides:map')).content.decode()
-        assert 'data-concern=""' in html
+        assert 'data-narrow=""' in html
 
     def test_landing_leaderboard_titles_follow_the_scope(self):
         # Unscoped: a chemicals board, plus an of-concern board carrying only
@@ -1560,3 +1563,149 @@ class CountFormattingTests(RollupTestMixin, TestCase):
         html = self.client.get(reverse('pesticides:section-detail', kwargs={'sqid': section.sqid})).content.decode()
         assert '<p class="title">4</p>' in html
         assert '4.0' not in html
+
+
+class NarrowPlumbingTests(RollupTestMixin, TestCase):
+    """
+    Every "Narrow to" value survives the map, the forms, the caches and the
+    aggregates -- none of them quietly becomes "flagged chemicals".
+    """
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def test_map_config_carries_the_narrow_value(self):
+        cfg = views.section_map_config(2023, concern='fumigant')
+        assert cfg['map']['data']['narrow'] == 'fumigant'
+        assert 'concern' not in cfg['map']['data']
+
+    def test_hidden_scope_field_keeps_the_narrowing(self):
+        html = self.client.get(reverse('pesticides:records'), {'narrow': 'restricted'}).content.decode()
+        assert '<input type="hidden" name="narrow" value="restricted">' in html
+        assert 'name="concern"' not in html
+
+    def test_notice_filter_form_keeps_the_narrowing(self):
+        html = self.client.get(reverse('pesticides:notice-list'), {'narrow': 'fumigant'}).content.decode()
+        assert '<input type="hidden" name="narrow" value="fumigant">' in html
+
+    def test_landing_trend_is_not_empty_under_fumigant(self):
+        data = stats.landing_stats(2023, concern='fumigant')
+        assert data['by_year'] and sum(r['lbs'] for r in data['by_year']) > 0
+        expected = PesticideUseRollup.objects.filter(product__is_fumigant=True).aggregate(s=Sum('lbs_chemical'))['s']
+        assert sum(r['lbs'] for r in data['by_year']) == expected
+
+    def test_landing_all_years_under_fumigant_counts_only_fumigants(self):
+        data = stats.landing_stats(all_years=True, concern='fumigant')
+        expected = PesticideUseRollup.objects.filter(product__is_fumigant=True).aggregate(s=Sum('lbs_chemical'))['s']
+        assert data['total_lbs'] == expected
+
+    def test_landing_trend_totals_path_matches_rollup_for_restricted(self):
+        # Restricted stays on the (faster) totals table; it must agree with the rollup.
+        data = stats.landing_stats(2023, concern='restricted')
+        rollup_rows = stats.by_year(stats.narrow_rows(PesticideUseRollup.objects.all(), 'restricted'))
+        assert data['by_year'] == rollup_rows
+        assert sum(r['lbs'] for r in data['by_year']) > 0
+
+    def test_flagged_board_is_only_for_all_use(self):
+        # Its "View all" is the flagged-chemicals list, a different narrowing
+        # from any other the page could be on.
+        assert 'top_chemicals_of_concern' in stats.landing_stats(2023)
+        for narrow in stats.NARROW_VALUES:
+            assert 'top_chemicals_of_concern' not in stats.landing_stats(2023, concern=narrow)
+
+    def test_county_totals_under_fumigant_counts_only_fumigant_products(self):
+        rows = stats.county_totals(2023, False, 'fumigant')
+        expected = PesticideUseRollup.objects.filter(year=2023, product__is_fumigant=True).aggregate(s=Sum('lbs_chemical'))['s']
+        assert expected
+        assert sum(r['lbs'] for r in rows) == expected
+
+    def test_detail_all_years_cache_key_is_per_narrowing(self):
+        chem = Chemical.objects.get(pk=2)
+        keys = []
+
+        def capture(key, build):
+            keys.append(key)
+            return build()
+
+        with mock.patch('camp.apps.pesticides.stats.cached', side_effect=capture):
+            for narrow in ('restricted', 'fumigant'):
+                self.client.get(chem.get_absolute_url(), {'year': 'all', 'narrow': narrow})
+        assert any('restricted' in str(k) for k in keys)
+        assert any('fumigant' in str(k) for k in keys)
+        assert not any(k for k in keys if 'concern' in str(k))
+
+    def test_commodity_list_pounds_follow_the_narrowing_not_flagged(self):
+        ctx = self.client.get(reverse('pesticides:commodity-list'), {'narrow': 'fumigant'}).context
+        lbs = {c.name: c.lbs_applied for c in ctx['object_list'] if c.lbs_applied}
+        expected = dict(PesticideUseRollup.objects.filter(year=2023, product__is_fumigant=True)
+            .values_list('commodity__name').annotate(s=Sum('lbs_chemical')))
+        assert lbs == expected
+
+    def test_banner_names_the_active_narrowing(self):
+        html = self.client.get(reverse('pesticides:chemical-list'), {'narrow': 'restricted'}).content.decode()
+        assert 'Restricted materials' in html
+        assert 'flagged chemicals only' not in html
+
+    def test_summary_sentence_names_the_narrowing(self):
+        response = self.client.get(reverse('pesticides:chemical-list'), {'narrow': 'restricted'})
+        assert 'restricted materials' in response.context['summary_sentence']
+        assert 'of concern' not in response.context['summary_sentence']
+
+    def test_chemical_detail_applies_restricted_by_restriction(self):
+        restricted = Chemical.objects.get(pk=2)
+        assert restricted.pk in set(stats.restricted_chemicals().values_list('pk', flat=True))
+        assert not self.client.get(restricted.get_absolute_url(), {'narrow': 'restricted'}).context['concern_excluded']
+        other = Chemical.objects.exclude(pk__in=stats.restricted_chemicals()).first()
+        assert self.client.get(other.get_absolute_url(), {'narrow': 'restricted'}).context['concern_excluded']
+
+    def test_fumigant_never_excludes_a_detail_page(self):
+        chem = Chemical.objects.get(pk=1)
+        assert not self.client.get(chem.get_absolute_url(), {'narrow': 'fumigant'}).context['concern_excluded']
+
+    def test_product_list_under_restricted_has_no_concern_ingredient_prefetch(self):
+        response = self.client.get(reverse('pesticides:product-list'), {'narrow': 'restricted'})
+        assert response.status_code == 200
+        assert 'concern_ingredients' not in response.content.decode()
+
+    def test_about_points_the_fumigant_section_at_the_methodology_and_describes_the_options(self):
+        html = self.client.get(reverse('pesticides:about')).content.decode()
+        fumigant_section = html.split('id="fumigant"')[1].split('id="methodology"')[0]
+        assert 'href="#methodology"' in fumigant_section
+        concern_section = html.split('id="concern"')[1].split('id="fumigant"')[0]
+        assert '<strong>Fumigants</strong>' in concern_section
+        assert '<strong>Applied by air</strong>' in concern_section
+
+    def test_flagged_board_is_hidden_under_a_narrowing_that_is_not_flagged_chemicals(self):
+        url = reverse('pesticides:home')
+        assert 'Other flagged chemicals' not in self.client.get(url, {'narrow': 'fumigant'}).content.decode()
+        assert 'Other flagged chemicals' not in self.client.get(url, {'narrow': 'concern'}).content.decode()
+
+    def excluded_pages_under(self, narrow):
+        """{kind: html} for a chemical, product and commodity page the narrowing excludes."""
+        pages = {}
+        for kind, queryset in (('chemical', Chemical.objects), ('product', Product.objects), ('commodity', Commodity.objects)):
+            for obj in queryset.all():
+                response = self.client.get(obj.get_absolute_url(), {'narrow': narrow})
+                if response.context['concern_excluded']:
+                    pages[kind] = response.content.decode()
+                    break
+        return pages
+
+    def test_restricted_exclusion_notes_name_restricted_materials_not_the_flagged_lists(self):
+        pages = self.excluded_pages_under('restricted')
+        assert set(pages) == {'chemical', 'product', 'commodity'}
+        assert "This chemical isn't a California restricted material," in pages['chemical']
+        assert "None of this product&#x27;s active ingredients is a California restricted material," in pages['product'] \
+            or "None of this product's active ingredients is a California restricted material," in pages['product']
+        assert 'No restricted material was reported on this commodity in this year and county,' in pages['commodity']
+        for html in pages.values():
+            assert 'Prop 65' not in html.split('placeholder-note')[1].split('</div>')[0]
+
+    def test_concern_exclusion_notes_keep_the_flagged_lists_copy(self):
+        Commodity.objects.create(site_code='999901', name='UNUSED CROP')
+        pages = self.excluded_pages_under('concern')
+        assert set(pages) == {'chemical', 'product', 'commodity'}
+        assert "This chemical isn't on the Prop 65, CARB toxic air contaminant, IARC or California restricted lists," in pages['chemical']
+        assert 'active ingredients is on the Prop 65, CARB' in pages['product'].replace('&#x27;', "'")
+        assert 'No flagged chemical was reported on this commodity in this year and county,' in pages['commodity']

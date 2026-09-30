@@ -7,13 +7,17 @@
 {% block identifiers %}Registration {{ object.reg_number }} · Product no. {{ object.prodno }}{% endblock %}
 {% block notes %}
     {% if concern_excluded %}
+    {% if concern == 'restricted' %}
+    {% include 'pesticides/includes/concern-note.html' with reason="None of this product's active ingredients is a California restricted material," %}
+    {% else %}
     {% include 'pesticides/includes/concern-note.html' with reason="None of this product's active ingredients is on the Prop 65, CARB toxic air contaminant, IARC or California restricted lists," %}
+    {% endif %}
     {% endif %}
     {{ block.super }}
 {% endblock %}
 {% block badges %}
-    {% if object.fumigant %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-warning is-light" href="{% url 'pesticides:product-list' %}?fumigant=true" data-tooltip="{{ 'fumigant'|note_summary }}">Fumigant</a>{% endif %}
-    {% if object.is_restricted %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-danger is-light" href="{% url 'pesticides:product-list' %}?california_restricted=true" data-tooltip="{{ 'restricted_material'|note_summary }}">CA restricted</a>{% endif %}
+    {% if object.is_fumigant %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-warning is-light" href="{% url 'pesticides:product-list' %}?fumigant=true" data-tooltip="{% if object.fumigant %}{{ 'fumigant'|note_summary }}{% else %}Not flagged as a fumigant by CDPR; its active ingredient is almost always applied as a fumigant.{% endif %}">Fumigant</a>{% endif %}
+    {% if object.is_restricted %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-warning is-light" href="{% url 'pesticides:product-list' %}?california_restricted=true" data-tooltip="{{ 'restricted_material'|note_summary }}">Restricted</a>{% endif %}
     {% if object.contains_prop65 %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-danger is-light" href="{% url 'pesticides:about' %}#prop65" data-tooltip="{{ 'prop65'|note_summary }}">Prop 65</a>{% endif %}
     {% if object.contains_tac %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-warning is-light" href="{% url 'pesticides:about' %}#tac" data-tooltip="{{ 'carb_tac'|note_summary }}">CARB TAC</a>{% endif %}
     {% if object.contains_iarc %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-danger" href="{% url 'pesticides:about' %}#iarc" data-tooltip="{{ 'badges'|note_summary }}">IARC</a>{% endif %}

@@ -59,6 +59,11 @@ noi_meaning:
   summary: A notice of intent is a grower telling the county they plan to apply a restricted pesticide. It is a plan, not proof that spraying happened, and the grower may begin any time up to four days after the scheduled date.
   detail: SprayDays publishes notices 48 hours ahead for fumigants and 24 hours ahead for other restricted materials. Notices list the product and chemical but not the crop. To be told about notices near an address, sign up with SprayDays.
   source_url: https://spraydays.cdpr.ca.gov/Home/About
+ab617:
+  title: AB 617 communities
+  summary: Neighborhoods the California Air Resources Board has selected under AB 617 (2017) for their heavy, combined exposure to air pollution. In each, the air district and a community steering committee monitor the air and plan emission reductions.
+  detail: The boundaries are CARB's. This explorer sums the pesticide use reported inside each one, the same way it does for a city or a ZIP code.
+  source_url: https://ww2.arb.ca.gov/capp
 pur_lag:
   title: Why the newest data is a year or more old
   summary: Growers report applications to the county, which sends them to the state, which checks and publishes them one to two years later. The most recent full year here is the newest the state has released, so the newest records are always at least a year old.

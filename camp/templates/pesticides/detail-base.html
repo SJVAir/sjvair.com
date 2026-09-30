@@ -33,6 +33,8 @@ doesn't render as one row of content beside ten and a screen of whitespace.
             <div class="column is-5-desktop is-4-widescreen">
                 {% trend_chart by_year year hide_lbs %}
                 {% include 'pesticides/includes/by-year-table.html' %}
+                <div class="mt-5">{% include 'pesticides/includes/method-breakdown.html' %}</div>
+                {% if by_fume_method %}<div class="mt-5">{% include 'pesticides/includes/fume-breakdown.html' %}</div>{% endif %}
                 <div class="mt-5">{% month_heatmap by_year_month year %}</div>
             </div>
             <div class="column is-7-desktop is-8-widescreen">
@@ -44,7 +46,7 @@ doesn't render as one row of content beside ten and a screen of whitespace.
                 {% endif %}
             </div>
         </div>
-        <p class="mt-4"><a href="{{ records_url }}">Browse all {{ totals.applications|default:0|intcomma }} records</a></p>
+        <p class="mt-4"><a class="button is-link is-light" href="{{ records_url }}"><span class="icon"><span class="fas fa-table-list"></span></span><span>Browse these {{ totals.applications|default:0|intcomma }} applications</span></a></p>
     {% else %}
         <p class="has-text-grey">No confirmed applications on record{% if years %} for {{ years.0 }}–{{ years.1 }}{% endif %}.</p>
     {% endif %}
@@ -55,13 +57,14 @@ doesn't render as one row of content beside ten and a screen of whitespace.
     <h2 class="title is-4">
         Planned applications
         <small class="has-text-grey is-size-6">SprayDays notices of intent</small>
-        <span class="tag is-info is-light is-medium ml-2">{{ upcoming_count }} scheduled</span>
+        {% if upcoming %}<span class="tag is-info is-light is-medium ml-2">{{ upcoming_count }} scheduled</span>{% endif %}
     </h2>
-    <p class="mb-3"><a href="{{ notices_url }}">See all notices for this {{ section|slice:":-1" }}</a></p>
     {% if upcoming %}
+        <p class="mb-3"><a href="{{ notices_url }}">See all notices for this {{ section|slice:":-1" }}</a></p>
         {% include 'pesticides/includes/upcoming-notices.html' %}
     {% else %}
-        <p class="has-text-grey">No upcoming notices.</p>
+        {# One line, not a "0 scheduled" badge over "No upcoming notices". #}
+        <p class="has-text-grey">None scheduled right now. <a href="{{ notices_url }}">See all notices for this {{ section|slice:":-1" }}</a>.</p>
     {% endif %}
 </section>
 {% endif %}

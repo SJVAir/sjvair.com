@@ -4,6 +4,7 @@ from pathlib import Path
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
+from camp.apps.pesticides import rollup
 from camp.apps.pesticides.models import Chemical
 
 # Unlike Prop 65 and the CARB table, there is nothing to download: CDPR's
@@ -85,3 +86,5 @@ class Command(BaseCommand):
 
         if dry_run:
             self.stdout.write(self.style.WARNING('Dry run: nothing written.'))
+        else:
+            self.stdout.write(rollup.REBUILD_REMINDER)

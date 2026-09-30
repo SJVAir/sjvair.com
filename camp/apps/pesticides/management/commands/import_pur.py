@@ -9,13 +9,16 @@ import requests
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from camp.apps.pesticides.models import Chemical, Commodity, PesticideUse, Product, ProductChemical
+from camp.apps.pesticides.models import (
+    Chemical, Commodity, FumigationMethod, PesticideUse, Product, ProductChemical,
+)
 from camp.apps.regions.models import Region
 
 CDPR_URL = 'https://files.cdpr.ca.gov/pub/outgoing/pur_archives/pur{year}.zip'
 
 MERIDIAN_MAP = {'M': 'MDM', 'H': 'HBM', 'S': 'SBM'}
 BATCH_SIZE = 5000
+FUME_UPDATE_CHUNK = 5000
 
 DATE_FORMATS = ('%m/%d/%Y', '%d-%b-%Y')
 
@@ -81,6 +84,14 @@ class Command(BaseCommand):
             action='store_true',
             help='Skip importing reference tables (chemicals, products)',
         )
+        parser.add_argument(
+            '--fume-only',
+            action='store_true',
+            help=(
+                "Only load CDPR's fumigation-method lookup and set each record's "
+                'field-fumigation technique for --year; the records themselves are left alone'
+            ),
+        )
 
     def handle(self, *args, **options):
         year = options['year']
@@ -90,6 +101,19 @@ class Command(BaseCommand):
             year_dir = self._extract(zip_path, tmp_dir)
             paths = self._detect_paths(year_dir)
 
+            if options['fume_only']:
+                self.stdout.write(f'Importing {year} fumigation methods')
+                if not options['skip_lookup']:
+                    self._import_fumigation_methods(paths['lookup_dir'])
+                if not FumigationMethod.objects.exists():
+                    # Nothing to match codes to, and the pass clears the
+                    # year's codes first: stop before it wipes anything.
+                    self.stdout.write(
+                        'No fumigation methods loaded; run without --skip-lookup first. Nothing changed.')
+                    return
+                self._import_fume_pass(paths, year)
+                return
+
             self.stdout.write(f'Importing {year} PUR data')
             self.stdout.write('')
 
@@ -98,13 +122,20 @@ class Command(BaseCommand):
                 self._import_commodities(paths['lookup_dir'])
                 self._import_products(paths['lookup_dir'])
                 self._import_product_chemicals(paths['lookup_dir'])
+                self._import_fumigation_methods(paths['lookup_dir'])
                 self.stdout.write('')
 
             self._import_use_records(paths, year)
+            self._import_fume_pass(paths, year)
 
-            from camp.apps.pesticides import rollup, stats
+            from camp.apps.pesticides import fumigants, rollup, stats
             written = rollup.rebuild_year(year)
             self.stdout.write(f'Rollup: {written:,} rows for {year}')
+            counts = fumigants.classify_fumigants()
+            self.stdout.write(
+                f"Fumigants: {counts['chemicals']:,} chemicals, {counts['products']:,} products "
+                f"({counts['added']:,} not flagged by CDPR)"
+            )
             stats.refresh_landing_stats()
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -291,6 +322,34 @@ class Command(BaseCommand):
         ProductChemical.objects.bulk_create(to_create, ignore_conflicts=True, batch_size=BATCH_SIZE)
         self.stdout.write(f'    {len(to_create):,} associations loaded')
 
+    def _import_fumigation_methods(self, lookup_dir):
+        path = self._find(lookup_dir, 'FUMIGATION_METHODS.txt', 'fumigation_methods.txt')
+        if not path:
+            self.stdout.write('  [fumigation methods] file not found, skipping')
+            return
+
+        self.stdout.write('  Importing fumigation methods...')
+        created = updated = 0
+        for row in read_csv(path):
+            code = parse_int(row.get('fume_cd'))
+            name = clean(row.get('fume_method'))
+            if not code or not name:
+                continue
+            active = clean(row.get('fume_active')).upper() == 'Y'
+            existing = FumigationMethod.objects.filter(code=code).first()
+            if existing is None:
+                FumigationMethod.objects.create(code=code, name=name, active=active)
+                created += 1
+            else:
+                # Each year's archive carries the whole table as of then, so an
+                # older year's file still lists a code a newer one has ended.
+                # A code only ever goes active -> ended, never back.
+                existing.name = name
+                existing.active = existing.active and active
+                existing.save(update_fields=['name', 'active', 'modified'])
+                updated += 1
+        self.stdout.write(f'    {created:,} created, {updated:,} updated')
+
     # --- Use record import ---
 
     def _build_county_cache(self, lookup_dir):
@@ -420,3 +479,75 @@ class Command(BaseCommand):
 
         self.stdout.write(f'  County {county_cd:02d}: {count:,} rows imported         ')
         return count
+
+    # --- Fumigation technique ---
+
+    def _import_fume_pass(self, paths, year):
+        """
+        The field-fumigation technique (`fume_cd`) only exists in CDPR's
+        statewide PUR{year}.txt, not in the per-county udc files the records
+        come from, so it's laid onto the imported records by (year, use_no).
+        """
+        path = self._find(paths['udc_dir'], f'PUR{year}.txt', f'pur{year}.txt')
+        if not path:
+            self.stdout.write(f'  No PUR{year}.txt in the archive, fumigation methods not set.')
+            return
+        county_cache = self._build_county_cache(paths['lookup_dir'])
+        coded, unknown = self._import_fume_codes(path, year, county_cache)
+        self.stdout.write(f'  Fumigation methods: {coded:,} records coded')
+        if self.fume_rows_skipped:
+            self.stdout.write(f'    {self.fume_rows_skipped:,} short or malformed rows skipped')
+        if unknown:
+            skipped = sum(unknown.values())
+            codes = ', '.join(str(code) for code in sorted(unknown))
+            self.stdout.write(f'    {skipped:,} records skipped for codes not in the lookup ({codes})')
+
+    def _read_fume_codes(self, path, county_cache):
+        """{use_no: fume_cd} for the imported counties' rows that carry a code."""
+        codes = {}
+        self.fume_rows_skipped = 0
+        with open(path, encoding='utf-8', errors='replace', newline='') as f:
+            reader = csv.reader(f)
+            header = [name.strip() for name in next(reader, [])]
+            try:
+                use_no_at, fume_at, county_at = (header.index(name) for name in ('use_no', 'fume_cd', 'county_cd'))
+            except ValueError:
+                raise CommandError(f'{Path(path).name} has no use_no, fume_cd and county_cd columns')
+            widest = max(use_no_at, fume_at, county_at)
+            for row in reader:
+                if len(row) <= widest:
+                    self.fume_rows_skipped += 1
+                    continue
+                code = parse_int(row[fume_at])
+                if not code or parse_int(row[county_at]) not in county_cache:
+                    continue
+                use_no = parse_int(row[use_no_at])
+                if use_no is not None:
+                    codes[use_no] = code
+        return codes
+
+    def _import_fume_codes(self, path, year, county_cache):
+        """
+        Set `fume_method` on the year's records from the statewide PUR file:
+        every ingredient row of a use_no gets its code. Returns (records
+        coded, {unknown code: records}) -- a code with no row in
+        FUMIGATION_METHODS is counted and skipped, never invented.
+        """
+        by_code = {}
+        for use_no, code in self._read_fume_codes(path, county_cache).items():
+            by_code.setdefault(code, []).append(use_no)
+
+        methods = dict(FumigationMethod.objects.values_list('code', 'pk'))
+        unknown = {code: len(use_nos) for code, use_nos in by_code.items() if code not in methods}
+        coded = 0
+        with transaction.atomic():
+            # A re-run replaces the year's codes rather than adding to them.
+            PesticideUse.objects.filter(year=year, fume_method__isnull=False).update(fume_method=None)
+            for code, use_nos in by_code.items():
+                if code in unknown:
+                    continue
+                for start in range(0, len(use_nos), FUME_UPDATE_CHUNK):
+                    chunk = use_nos[start:start + FUME_UPDATE_CHUNK]
+                    PesticideUse.objects.filter(year=year, use_no__in=chunk).update(fume_method_id=methods[code])
+                coded += len(use_nos)
+        return coded, unknown

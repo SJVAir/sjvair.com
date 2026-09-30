@@ -89,3 +89,42 @@ class FindAreaTests(RollupTestMixin, TestCase):
         html = self.client.get(chem.get_absolute_url()).content.decode()
         kern = Region.objects.get(pk=9002)
         assert reverse('pesticides:region', kwargs={'sqid': kern.sqid, 'slug': 'kern'}) in html
+
+
+@override_settings(MAPTILER_API_KEY='test-key')
+class AB617CommunityTests(RollupTestMixin, TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        from camp.apps.regions.models import Boundary
+        cache.clear()
+        self.url = reverse('pesticides:home')
+        square = 'SRID=4326;MULTIPOLYGON (((-119.85 36.65, -119.75 36.65, -119.75 36.75, -119.85 36.75, -119.85 36.65)))'
+        self.community = Region.objects.create(
+            name='South Central Fresno', slug='south-central-fresno', type=Region.Type.AB617_COMMUNITY,
+            external_id='ab617-scf', metadata={'community_url': 'https://community.valleyair.org/selected-communities/south-central-fresno'})
+        self.community.boundary = Boundary.objects.create(region=self.community, version='t', geometry=square)
+        self.community.save()
+        self.region_url = reverse('pesticides:region', kwargs={'sqid': self.community.sqid, 'slug': 'south-central-fresno'})
+
+    def test_the_place_search_lists_it_labelled(self):
+        places = FindAreaTests.embedded_places(self, self.client.get(self.url).content.decode())
+        place = next(place for place in places if place['type'] == Region.Type.AB617_COMMUNITY)
+        assert (place['name'], place['type_label'], place['url']) == ('South Central Fresno', 'AB 617 community', self.region_url)
+
+    def test_the_landing_links_it_under_the_counties(self):
+        html = self.client.get(self.url, {'year': 2022}).content.decode()
+        assert 'find-area-ab617' in html
+        assert f'{self.region_url}?year=2022' in html
+        assert html.index('find-area-counties') < html.index('find-area-ab617')
+
+    def test_it_has_a_place_page_naming_its_type_and_community_page(self):
+        response = self.client.get(self.region_url)
+        assert response.status_code == 200
+        html = response.content.decode()
+        assert '<title>South Central Fresno (AB 617 Community)' in html
+        assert 'https://community.valleyair.org/selected-communities/south-central-fresno' in html
+
+    def test_no_row_without_communities(self):
+        self.community.delete()
+        assert 'find-area-ab617' not in self.client.get(self.url).content.decode()

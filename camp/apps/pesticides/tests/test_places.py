@@ -58,7 +58,7 @@ class AreaTests(RollupTestMixin, TestCase):
         assert ctx['map_config']['year'] == 'all'
         assert ctx['map_config']['year_label'] == '2022\u20132023'
         # Built once and cached; a later import is what clears it.
-        assert cache.get(stats.all_years_key('place-v2', 'region:9001')) is not None
+        assert cache.get(stats.all_years_key('place-v3', 'region:9001')) is not None
 
     def test_place_page_cards(self):
         fresno = Region.objects.get(pk=9001)
@@ -315,7 +315,7 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         section.save()
         PesticideUseRollup.objects.create(
             year=2023, month=8, county_id=9001, mtrs=section,
-            lbs_chemical=lbs, applications=applications,
+            lbs_chemical=lbs, applications=applications, records=applications,
         )
         return section
 
@@ -687,7 +687,7 @@ class PlaceConcernScopeTests(RollupTestMixin, TestCase):
         assert ctx['totals']['chemicals'] == 2
         assert [r.obj.name for r in ctx['top_chemicals']] == ['GLYPHOSATE', 'CHLORPYRIFOS']
         assert [(r['year'], r['lbs']) for r in ctx['by_year']] == [(2023, 170.0), (2022, 80.0)]
-        assert ctx['map_config']['concern'] == '1'
+        assert ctx['map_config']['narrow'] == 'concern'
         assert 'narrow=concern' in ctx['records_url']
 
     def test_place_context_all_years_caches_separately(self):

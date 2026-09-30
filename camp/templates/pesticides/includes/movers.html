@@ -17,7 +17,8 @@ Context: `movers`, `title`, `kind` ('chemicals' for the concern badges).
     <div class="card-content">
         <div class="columns">
             {% for group in movers.groups %}
-            <div class="column is-half">
+            {# An empty side ("Nothing rose.") takes only the room its line needs. #}
+            <div class="column{% if not group.rows %} is-narrow{% endif %}">
                 <p class="heading">{{ group.label }}</p>
                 {% if group.rows %}
                 <div class="table-container">

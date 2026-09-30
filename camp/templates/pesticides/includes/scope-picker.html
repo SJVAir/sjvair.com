@@ -60,8 +60,8 @@ itself is left out rather than rendering an empty flex box.
     </div>
     {% endif %}
     {% comment %}
-    The chemicals-of-concern scope: one button, on every explorer page, that
-    adds or clears `?concern=1`. It narrows the whole explorer, so it lives in
+    The narrowing: one button, on every explorer page, that
+    sets or clears `?narrow=<value>`. It narrows the whole explorer, so it lives in
     the scope bar with the year and county pickers rather than in a page's
     filters.
     {% endcomment %}
@@ -79,8 +79,8 @@ itself is left out rather than rendering an empty flex box.
             <div class="dropdown-content">
                 <a class="dropdown-item{% if not concern %} is-active{% endif %}" href="{% qs_replace narrow=None concern=None page=None %}"{% if not concern %} aria-current="page"{% endif %}>All use</a>
                 <hr class="dropdown-divider">
-                {% for value, label in narrow_choices %}
-                <a class="dropdown-item{% if concern == value %} is-active{% endif %}" href="{% qs_replace narrow=value concern=None page=None %}"{% if concern == value %} aria-current="page"{% endif %}>{{ label }}</a>
+                {% for value, label, help in narrow_options %}
+                <a class="dropdown-item{% if concern == value %} is-active{% endif %}" href="{% qs_replace narrow=value concern=None page=None %}"{% if concern == value %} aria-current="page"{% endif %}{% if help %} title="{{ help }}"{% endif %}>{{ label }}</a>
                 {% endfor %}
             </div>
         </div>
@@ -88,8 +88,8 @@ itself is left out rather than rendering an empty flex box.
     {# What the narrowings mean, for anyone who can't hover a tooltip. #}
     <a class="explorer-scope-help has-tooltip-multiline has-tooltip-arrow"
        href="{% url 'pesticides:about' %}#concern"
-       data-tooltip="What counts as a flagged chemical, or a fumigant?"
-       aria-label="What counts as a flagged chemical, or a fumigant?"><span class="fa-regular fa-fw fa-circle-question" aria-hidden="true"></span></a>
+       data-tooltip="What do these mean?"
+       aria-label="What do the narrowing options mean?"><span class="fa-regular fa-fw fa-circle-question" aria-hidden="true"></span></a>
     {% endif %}
 </div>
 {% endif %}

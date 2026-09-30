@@ -35,7 +35,7 @@ class StatsTests(RollupTestMixin, TestCase):
         ]
 
     def test_by_year_uses_lbs_product_for_products(self):
-        rows = stats.by_year(PesticideUseRollup.objects.filter(product_id=1), lbs_field='lbs_product')
+        rows = stats.by_year(PesticideUseRollup.objects.filter(product_id=1), lbs_field='lbs_product_once')
         assert rows[0]['lbs'] == 450.0
 
     def test_by_county(self):
@@ -94,7 +94,7 @@ class StatsTests(RollupTestMixin, TestCase):
         # Including undated rows in the total would leave a row claiming more
         # than the twelve cells beside it can account for.
         PesticideUseRollup.objects.create(
-            year=2023, month=0, county_id=9001, chemical_id=1, lbs_chemical=999.0, applications=1)
+            year=2023, month=0, county_id=9001, chemical_id=1, lbs_chemical=999.0, applications=1, records=1)
         grid = stats.by_year_month(PesticideUseRollup.objects.filter(chemical_id=1))
         assert grid[0]['lbs'] == 180.0
         assert grid[0]['lbs'] == sum(cell['lbs'] for cell in grid[0]['months'])
@@ -265,6 +265,18 @@ class StatsTests(RollupTestMixin, TestCase):
     def test_refresh_landing_stats_also_builds_the_all_years_entry(self):
         stats.refresh_landing_stats()
         assert cache.get(stats.landing_key('all'))['total_lbs'] == 1280.0
+
+    def test_refresh_landing_stats_drops_narrowed_landing_entries(self):
+        for scope_year in ('all', 2022, 2023):
+            for narrow in stats.NARROW_VALUES:
+                cache.set(stats.landing_key(scope_year, narrow), {'stale': True})
+                cache.set(f'{stats.landing_key(scope_year, narrow)}:fresno', {'stale': True})
+        stats.refresh_landing_stats()
+        for scope_year in ('all', 2022, 2023):
+            for narrow in stats.NARROW_VALUES:
+                assert cache.get(stats.landing_key(scope_year, narrow)) is None
+                assert cache.get(f'{stats.landing_key(scope_year, narrow)}:fresno') is None
+        assert stats.landing_stats(2023, concern='aerial')['total_lbs'] == 70.0
 
     def test_resolve_year_empty_db(self):
         PesticideUse.objects.all().delete()
@@ -479,7 +491,7 @@ class NarrowScopeTests(RollupTestMixin, TestCase):
         narrowed = stats.narrow_rows(rows, stats.NARROW_FUMIGANT)
         assert narrowed.count() < rows.count()
         for row in narrowed.select_related('product'):
-            assert row.product.fumigant
+            assert row.product.is_fumigant
 
     def test_concern_narrows_on_the_chemical(self):
         rows = PesticideUseRollup.objects.all()
@@ -492,12 +504,13 @@ class NarrowScopeTests(RollupTestMixin, TestCase):
         rows = PesticideUseRollup.objects.all()
         assert stats.narrow_rows(rows, '').count() == rows.count()
 
-    def test_only_the_product_narrowing_needs_the_product(self):
+    def test_rollup_only_narrowings_need_the_rollup(self):
         # PesticideUseTotal's per-chemical rows carry no product, so a
         # fumigant narrowing has to read the rollup instead.
-        assert stats.narrow_needs_product(stats.NARROW_FUMIGANT) is True
-        assert stats.narrow_needs_product(stats.NARROW_CONCERN) is False
-        assert stats.narrow_needs_product('') is False
+        assert stats.narrow_needs_rollup(stats.NARROW_FUMIGANT) is True
+        assert stats.narrow_needs_rollup(stats.NARROW_CONCERN) is False
+        assert stats.narrow_needs_rollup('') is False
+        assert stats.narrow_needs_rollup(stats.NARROW_RESTRICTED) is False
 
     def test_county_totals_answer_the_fumigant_narrowing(self):
         # The regression this guards: filtering PesticideUseTotal's chemical
@@ -614,3 +627,54 @@ class SeriesFollowsTheScopeTests(RollupTestMixin, TestCase):
         assert stats.series_label(2023) == 'Trend lines show pounds per month in 2023'
         assert stats.series_label(None, all_years=True) == 'Trend lines show pounds per year, 2022–2023'
         assert stats.series_label(None) == ''
+
+
+class ByMethodTests(RollupTestMixin, TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def test_breakdown_and_shares(self):
+        rows = PesticideUseRollup.objects.all()
+        out = stats.by_method(rows, 2023)
+        assert [r['method'] for r in out] == ['G', 'A']
+        assert [r['lbs'] for r in out] == [670.0, 70.0]
+        assert abs(sum(r['share'] for r in out) - 1) < 1e-9
+        assert out[1]['label'] == 'Air' and out[1]['applications'] == 2
+
+    def test_not_reported_is_labelled_not_dropped(self):
+        PesticideUseRollup.objects.filter(year=2023).update(method='')
+        out = stats.by_method(PesticideUseRollup.objects.all(), 2023)
+        assert [(r['method'], r['label'], r['share']) for r in out] == [('', 'Not reported', 1.0)]
+
+    def test_all_years(self):
+        out = stats.by_method(PesticideUseRollup.objects.all(), None, all_years=True)
+        assert {r['method']: r['lbs'] for r in out} == {'G': 1150.0, 'A': 130.0}
+
+    def test_no_year_is_empty(self):
+        assert stats.by_method(PesticideUseRollup.objects.all(), None) == []
+
+    def test_methods_are_biggest_first_with_other_and_not_reported_last(self):
+        # Field fumigation outweighs Air, which outweighs Ground; Not reported
+        # is the biggest of all and still goes last.
+        PesticideUseRollup.objects.filter(year=2023, method='A').update(lbs_chemical=5000)
+        PesticideUseRollup.objects.create(
+            year=2023, month=1, county_id=PesticideUseRollup.objects.first().county_id,
+            method='F', lbs_chemical=50000, applications=1, records=1)
+        PesticideUseRollup.objects.create(
+            year=2023, month=2, county_id=PesticideUseRollup.objects.first().county_id,
+            method='', lbs_chemical=90000, applications=1, records=1)
+        out = stats.by_method(PesticideUseRollup.objects.all(), 2023)
+        assert [r['method'] for r in out] == ['F', 'A', 'G', '']
+
+    def test_without_pounds_methods_rank_by_applications(self):
+        # A placeholder chemical has no pounds; applications decide instead.
+        PesticideUseRollup.objects.filter(year=2023).update(lbs_chemical=0)
+        PesticideUseRollup.objects.filter(year=2023, method='A').update(records=50)
+        out = stats.by_method(PesticideUseRollup.objects.all(), 2023)
+        assert [r['method'] for r in out] == ['A', 'G']
+
+    def test_unknown_code_counts_as_other(self):
+        PesticideUseRollup.objects.filter(year=2023, method='A').update(method='X')
+        out = stats.by_method(PesticideUseRollup.objects.all(), 2023)
+        assert [(r['method'], r['lbs']) for r in out] == [('G', 670.0), ('O', 70.0)]
+        assert abs(sum(r['share'] for r in out) - 1) < 1e-9
+        assert abs(sum(r['app_share'] for r in out) - 1) < 1e-9

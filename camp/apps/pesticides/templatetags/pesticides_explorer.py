@@ -6,7 +6,8 @@ import uuid
 from django import template
 from django.contrib.humanize.templatetags.humanize import intcomma
 from django.urls import reverse
-from django.utils.html import format_html
+from django.utils.html import conditional_escape, format_html
+from django.utils.safestring import mark_safe
 
 from camp.apps.pesticides import notes as notes_module
 from camp.apps.pesticides import stats
@@ -86,6 +87,40 @@ def lbs(value):
 
 
 @register.filter
+def slash_breaks(value):
+    """Lets "Tarpaulin/Deep/Broadcast" wrap after a slash rather than setting a narrow column's width."""
+    return mark_safe(conditional_escape(value).replace('/', '/<wbr>'))
+
+
+@register.filter
+def percent(value):
+    """A 0-1 share as a percentage to one decimal ("6.1%"), whole when exact; "<0.1%" for a sliver rather than "0%"."""
+    if not value:
+        return '0%'
+    pct = value * 100
+    if pct < 0.1:
+        return '<0.1%'
+    return f'{pct:.1f}'.removesuffix('.0') + '%'
+
+
+@register.filter
+def method_label(code):
+    return stats.METHOD_LABELS.get(code or '', stats.METHOD_LABELS[''])
+
+
+@register.filter
+def notice_method(value):
+    """A SprayDays method in the explorer's words: its "Aircraft" is the PUR records' "Air"."""
+    return stats.NOTICE_METHOD_LABELS.get(value, value)
+
+
+@register.filter
+def css_percent(value):
+    """A 0-1 share as a CSS width."""
+    return f'{(value or 0) * 100:.2f}%'
+
+
+@register.filter
 def signed_lbs(value):
     """
     `lbs` with the sign always shown, for a change. An increase reads "+400"
@@ -96,7 +131,9 @@ def signed_lbs(value):
         return '—'
     if not value:
         return '0'
-    return f'+{lbs(value)}' if value > 0 else lbs(value)
+    # A true minus sign: a hyphen is shorter than the plus beside it and
+    # doesn't line up down a column.
+    return f'+{lbs(value)}' if value > 0 else f'\u2212{lbs(-value)}'
 
 
 @register.filter
@@ -105,7 +142,7 @@ def signed_pct(value):
     leaves it off where the baseline is too small to mean anything."""
     if value is None:
         return ''
-    return f'{value:+.1f}%'
+    return f'{value:+.1f}%'.replace('-', '\u2212')
 
 
 # A word, with an apostrophe inside it kept ("CHILDREN'S" -> "Children's").

@@ -11,8 +11,8 @@ from django.contrib.gis.geos import Point
 from django.contrib.gis.measure import D
 from django.core.cache import cache
 from django.core.paginator import Paginator
-from django.db.models import Case, Count, F, FloatField, IntegerField, OuterRef, Prefetch, Q, Subquery, Sum, Value, When
-from django.db.models.functions import Coalesce, Lower, TruncMonth
+from django.db.models import Case, CharField, Count, F, FloatField, IntegerField, Min, OuterRef, Prefetch, Q, Subquery, Sum, Value, When
+from django.db.models.functions import Coalesce, Concat, Lower, TruncMonth
 from django.http import Http404
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -24,10 +24,10 @@ import vanilla
 from camp.api.v2.pesticides.sections import radius_bbox
 from camp.apps.pesticides import maps, notes, places, stats
 from camp.apps.pesticides.forms import (
-    ChemicalFilterForm, CommodityFilterForm, NoticeFilterForm, ProductFilterForm, RecordsFilterForm,
+    ChemicalFilterForm, CommodityFilterForm, NO_METHOD, NoticeFilterForm, ProductFilterForm, RecordsFilterForm,
 )
 from camp.apps.pesticides.models import (
-    Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, PesticideUseTotal,
+    Chemical, Commodity, FumigationMethod, PesticideNotice, PesticideUse, PesticideUseRollup, PesticideUseTotal,
     Product, ProductChemical,
 )
 from camp.apps.regions.models import Region
@@ -68,6 +68,7 @@ def year_context(year, all_years=False, county=None, county_scope=True, concern=
         'concern': concern,
         'narrow_label': stats.narrow_label(concern),
         'narrow_choices': stats.NARROW_CHOICES,
+        'narrow_options': [(value, label, stats.NARROW_HELP.get(value, '')) for value, label in stats.NARROW_CHOICES],
         'scope_concern': concern_scope,
         'scope_qs': stats.scope_query(year, all_years, county, concern),
     }
@@ -80,7 +81,7 @@ def scope_county(request):
 
 def scope_concern(request):
     """
-    What the explorer is narrowed to: '' (all use), 'concern' or 'fumigant'.
+    What the explorer is narrowed to: '' (all use) or one of stats.NARROW_VALUES.
 
     Still called `concern` everywhere downstream, where it's only ever tested
     for truth or passed along -- widening the value rather than threading a
@@ -330,15 +331,46 @@ class ExplorerListMixin:
         """
         if not self.rollup_field or not (self.year or self.all_years):
             return queryset
-        # Under the concern scope the totals table can't answer the question
-        # (its product and commodity rows carry no chemical), so "used" comes
-        # off the rollup, where every row names all three.
-        used = stats.narrow_rows(PesticideUseRollup.objects.all(), self.concern) if self.concern else PesticideUseTotal.objects.all()
+        if self.concern:
+            # Under a narrowing the totals table can't answer the question
+            # (its product and commodity rows carry no chemical, and none
+            # carries the method), so "used" comes off one cached group-by
+            # over the narrowed rollup rather than a subquery per request.
+            return queryset.filter(pk__in=list(stats.narrowed_keys(
+                self.rollup_field, self.concern, self.year, self.all_years, self.county)))
+        used = PesticideUseTotal.objects.all()
         if not self.all_years:
             used = used.filter(year=self.year)
         if self.county is not None:
             used = used.filter(county=self.county)
         return queryset.filter(pk__in=used.values(self.rollup_field))
+
+    def narrowed_lbs(self, year, lbs_field):
+        """
+        The pounds column under a narrowing, as one cached group-by inlined
+        as a CASE (the way CommodityList.chemical_count does), or None when
+        the column needs the per-pair subquery instead: no narrowing, or an
+        entity filter, where the column is the pair's pounds, not the
+        entity's.
+        """
+        if not self.concern or self.related_filters():
+            return None
+        totals = stats.narrowed_lbs(self.rollup_field, lbs_field, self.concern, year, self.all_years, self.county)
+        if not totals:
+            return Value(None, output_field=FloatField())
+        return Case(
+            *[When(pk=pk, then=Value(lbs)) for pk, lbs in totals.items()],
+            default=Value(None),
+            output_field=FloatField(),
+        )
+
+    def lbs_annotation(self, year, lbs_field='lbs_chemical'):
+        expr = self.narrowed_lbs(year, lbs_field)
+        if expr is not None:
+            return expr
+        return lbs_subquery(
+            self.rollup_field, year, lbs_field=lbs_field, county=self.county,
+            all_years=self.all_years, related=self.related_filters(), concern=self.concern)
 
     def get_search_query(self):
         return (self.form.cleaned_data.get('q') or '').strip()
@@ -400,7 +432,7 @@ class ExplorerListMixin:
             noun = 'commodity'
         parts = [f'{count:,} {noun}']
         if self.concern:
-            parts.append('of concern')
+            parts.append(f'narrowed to {stats.narrow_label(self.concern).lower()}')
         query = self.get_search_query()
         if query:
             parts.append(f'matching "{query}"')
@@ -466,7 +498,7 @@ class ChemicalList(ExplorerListMixin, vanilla.ListView):
         # The placeholders aren't chemicals; their pages stay reachable from
         # the records and product pages that cite them.
         queryset = queryset.exclude(chem_code__in=Chemical.PLACEHOLDER_CODES)
-        if self.concern:
+        if self.concern == stats.NARROW_CONCERN:
             queryset = queryset.filter(pk__in=stats.of_concern_chemicals())
         if data.get('category'):
             queryset = queryset.filter(categories__overlap=data['category'])
@@ -487,7 +519,7 @@ class ChemicalList(ExplorerListMixin, vanilla.ListView):
         )
         if year or self.all_years:
             queryset = queryset.annotate(
-                lbs_applied=lbs_subquery('chemical', year, county=self.county, all_years=self.all_years, related=self.related_filters(), concern=self.concern)
+                lbs_applied=self.lbs_annotation(year)
             )
         else:
             queryset = queryset.annotate(lbs_applied=F('chem_code') * 0.0)
@@ -516,7 +548,7 @@ class ExplorerRedirect(vanilla.GenericView):
         return redirect(obj.get_absolute_url() + (f'?{query}' if query else ''), permanent=True)
 
 
-FIND_AREA_PLACES_CACHE_KEY = 'pesticides:find-area-places:v2'
+FIND_AREA_PLACES_CACHE_KEY = 'pesticides:find-area-places:v3'
 FIND_AREA_PLACES_TTL = 60 * 60 * 24
 
 # Short, human labels for the "Find your area" dropdown. Region.Type's own
@@ -528,6 +560,7 @@ FIND_AREA_TYPE_LABELS = {
     **Region.COMMUNITY_LABELS,
     Region.Type.ZIPCODE: 'ZIP',
     Region.Type.SCHOOL_DISTRICT: 'School district',
+    Region.Type.AB617_COMMUNITY: 'AB 617 community',
 }
 
 
@@ -599,6 +632,10 @@ class Home(vanilla.TemplateView):
                 place for place in find_area_places
                 if place['type'] == Region.Type.COUNTY
             ],
+            find_area_ab617=[
+                place for place in find_area_places
+                if place['type'] == Region.Type.AB617_COMMUNITY
+            ],
             maptiler_key=settings.MAPTILER_API_KEY,
             focus_find=self.request.GET.get('find') == '1',
             movers=movers,
@@ -643,7 +680,7 @@ class ProductList(ExplorerListMixin, vanilla.ListView):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        if self.concern:
+        if self.concern == stats.NARROW_CONCERN:
             # The table shows which of each product's ingredients are of
             # concern (in place of the flags), so fetch them with the page.
             queryset = queryset.prefetch_related(Prefetch(
@@ -654,14 +691,14 @@ class ProductList(ExplorerListMixin, vanilla.ListView):
         return queryset
 
     def apply_filters(self, queryset, data):
-        if self.concern:
+        if self.concern == stats.NARROW_CONCERN:
             # A product is "of concern" when one of its active ingredients is.
             queryset = queryset.filter(pk__in=ProductChemical.objects
                 .filter(chemical__in=stats.of_concern_chemicals())
                 .values('product'))
         fumigant = self.form.bool_value('fumigant')
         if fumigant is not None:
-            queryset = queryset.filter(fumigant=fumigant)
+            queryset = queryset.filter(is_fumigant=fumigant)
         # Restricted is a property of the active ingredient (3 CCR 6400), so
         # it reads off the chemicals the way "of concern" above does rather
         # than off the deprecated Product.california_restricted flag, which
@@ -681,7 +718,7 @@ class ProductList(ExplorerListMixin, vanilla.ListView):
         )
         if year or self.all_years:
             queryset = queryset.annotate(
-                lbs_applied=lbs_subquery('product', year, lbs_field='lbs_product', county=self.county, all_years=self.all_years, related=self.related_filters(), concern=self.concern)
+                lbs_applied=self.lbs_annotation(year, stats.product_lbs_field('chemical' in self.related_filters()))
             )
         else:
             queryset = queryset.annotate(lbs_applied=F('prodno') * 0.0)
@@ -721,29 +758,16 @@ class CommodityList(ExplorerListMixin, vanilla.ListView):
 
     def lbs_applied(self, year):
         """
-        The pounds column. Normally the per-commodity totals subquery; under
-        the chemicals-of-concern scope that has to read the rollup (a totals
-        row's commodity rows carry no chemical), and the correlated sum then
-        runs once per commodity on the page -- seconds, across all years. So
-        the concern pounds come from one cached group-by instead, inlined as
-        a CASE the way chemical_count() does. An entity filter still goes
-        through the subquery: then the column is the pair's pounds, not the
+        The pounds column. Normally the per-commodity totals subquery; under a
+        narrowing that has to read the rollup (a totals row's commodity rows
+        carry no chemical, or method), and the correlated sum then runs once
+        per commodity on the page -- seconds, across all years. So the
+        narrowed pounds come from one cached group-by instead (see
+        ExplorerListMixin.narrowed_lbs). An entity filter still goes through
+        the subquery: then the column is the pair's pounds, not the
         commodity's.
         """
-        related = self.related_filters()
-        if self.concern and not related:
-            totals = stats.commodity_concern_lbs(year, self.all_years, self.county)
-            if not totals:
-                return Value(None, output_field=FloatField())
-            return Case(
-                *[When(pk=pk, then=Value(lbs)) for pk, lbs in totals.items()],
-                default=Value(None),
-                output_field=FloatField(),
-            )
-        return lbs_subquery(
-            'commodity', year, county=self.county, all_years=self.all_years,
-            related=related, concern=self.concern,
-        )
+        return self.lbs_annotation(year)
 
     def chemical_count(self, year):
         """
@@ -783,6 +807,15 @@ class ExplorerDetailMixin:
     concern_excluded = False
     concern_active = ''
 
+    @property
+    def chemical_scoped(self):
+        """Whether every row on this page is one chemical's, so per-row measures are right."""
+        return self.use_field == 'chemical'
+
+    @property
+    def apps_field(self):
+        return stats.apps_field_for(self.chemical_scoped)
+
     def get_rollup(self):
         rows = PesticideUseRollup.objects.filter(**{self.use_field: self.object})
         if self.county is not None:
@@ -790,6 +823,30 @@ class ExplorerDetailMixin:
         if self.concern_active:
             rows = stats.narrow_rows(rows, self.concern_active)
         return rows
+
+    def shows_fume_methods(self):
+        """Whether this page breaks field fumigation down by technique: fumigants only."""
+        return False
+
+    def get_fume_uses(self):
+        """
+        The raw field-fumigation records in this page's scope (entity, county,
+        narrowing). The technique code lives on the records, not the rollup.
+        """
+        uses = PesticideUse.objects.filter(**{self.use_field: self.object}, aerial_ground='F')
+        if self.county is not None:
+            uses = uses.filter(county=self.county)
+        if self.concern_active:
+            uses = stats.narrow_rows(uses, self.concern_active, method_field='aerial_ground')
+        return uses
+
+    def by_fume_method(self, year, all_years):
+        if not self.shows_fume_methods():
+            return []
+        return self.cached_stat('by_fume_method', lambda: stats.by_fume_method(
+            stats.in_year(self.get_fume_uses(), year, all_years),
+            'lbs_product' if self.lbs_field == 'lbs_product_once' else self.lbs_field,
+            chemical_scoped=self.chemical_scoped, once=self.lbs_field == 'lbs_product_once'))
 
     def concern_applies(self):
         """
@@ -828,7 +885,7 @@ class ExplorerDetailMixin:
             return build()
         scope = self.county.slug if self.county is not None else ''
         if self.concern_active:
-            scope = f'{scope}:{stats.CONCERN_PARAM}'
+            scope = f'{scope}:{self.concern_active}'
         return stats.cached(stats.all_years_key('detail', self.use_field, self.object.pk, scope, name), build)
 
     def top_related(self, field, lbs_field=None, limit=stats.RELATED_LIMIT):
@@ -900,7 +957,7 @@ class ExplorerDetailMixin:
         rows = self.get_rollup()
         notices = self.get_notices()
         scope = stats.scope_param(year, all_years, self.county, self.concern)
-        totals = self.cached_stat('totals', lambda: stats.year_totals(rows, year, self.lbs_field, all_years=all_years))
+        totals = self.cached_stat('totals', lambda: stats.year_totals(rows, year, self.lbs_field, all_years=all_years, apps_field=self.apps_field))
         if not self.shows_lbs_per_acre:
             totals = {**totals, 'lbs_per_acre': None}
         related_a, related_b = self.get_related()
@@ -912,12 +969,14 @@ class ExplorerDetailMixin:
             county_total=stats.SJV_COUNTY_COUNT,
             concern_excluded=self.concern_excluded,
             totals=totals,
-            by_year=stats.by_year(rows, self.lbs_field),
-            by_county=self.cached_stat('by_county', lambda: stats.by_county(rows, year, self.lbs_field, all_years=all_years)),
-            by_month=self.cached_stat('by_month', lambda: stats.by_month(rows, year, self.lbs_field, all_years=all_years)) if (year or all_years) else [],
+            by_year=stats.by_year(rows, self.lbs_field, self.apps_field),
+            by_county=self.cached_stat('by_county', lambda: stats.by_county(rows, year, self.lbs_field, all_years=all_years, apps_field=self.apps_field)),
+            by_method=self.cached_stat('by_method', lambda: stats.by_method(rows, year, self.lbs_field, all_years=all_years, apps_field=self.apps_field)),
+            by_fume_method=self.by_fume_method(year, all_years),
+            by_month=self.cached_stat('by_month', lambda: stats.by_month(rows, year, self.lbs_field, all_years=all_years, apps_field=self.apps_field)) if (year or all_years) else [],
             # Always every year: seasonality only reads as a shift across them.
             by_year_month=self.cached_stat(
-                'by_year_month', lambda: stats.by_year_month(rows, self.lbs_field), always=True),
+                'by_year_month', lambda: stats.by_year_month(rows, self.lbs_field, self.apps_field), always=True),
             related_a=related_a,
             related_b=related_b,
             records_url=reverse('pesticides:records') + f'?{self.use_field}={self.object.sqid}' + (
@@ -927,7 +986,7 @@ class ExplorerDetailMixin:
             notices_url=(
                 reverse('pesticides:notice-list') + f'?{self.use_field}={self.object.sqid}'
                 + (f'&county={self.county.slug}' if self.county is not None else '')
-                + (f'&{stats.CONCERN_PARAM}=1' if self.concern else '')
+                + (f'&{stats.NARROW_PARAM}={self.concern}' if self.concern else '')
             ) if self.has_notices else '',
             upcoming=stats.notices_in_days(upcoming_days),
             upcoming_days=upcoming_days,
@@ -988,8 +1047,15 @@ class ChemicalDetail(ExplorerDetailMixin, vanilla.DetailView):
     def get_notices(self):
         return PesticideNotice.objects.filter(chemicals=self.object)
 
+    def shows_fume_methods(self):
+        return Chemical.Category.FUMIGANT in (self.object.categories or [])
+
     def concern_applies(self):
-        return self.object.is_of_concern
+        if self.concern == stats.NARROW_CONCERN:
+            return self.object.is_of_concern
+        if self.concern == stats.NARROW_RESTRICTED:
+            return Chemical.Category.CALIFORNIA_RESTRICTED in (self.object.categories or [])
+        return True
 
     def get_notes(self):
         return notes.keys_for_chemical(self.object)
@@ -1009,7 +1075,7 @@ class ProductDetail(ExplorerDetailMixin, vanilla.DetailView):
     template_name = 'pesticides/product-detail.html'
     section = 'products'
     use_field = 'product'
-    lbs_field = 'lbs_product'
+    lbs_field = 'lbs_product_once'
     api_param = 'product'
 
     def get_queryset(self):
@@ -1021,15 +1087,21 @@ class ProductDetail(ExplorerDetailMixin, vanilla.DetailView):
     def get_notices(self):
         return PesticideNotice.objects.filter(products=self.object)
 
+    def shows_fume_methods(self):
+        return self.object.is_fumigant
+
     def concern_applies(self):
         # A product whose active ingredients are all off the lists has no
         # concern pounds at all, so scoping it would blank the page; it
         # renders unscoped with a note instead, like a chemical that isn't
         # of concern.
-        return ProductChemical.objects.filter(
-            product=self.object,
-            chemical__in=stats.of_concern_chemicals(),
-        ).exists()
+        if self.concern == stats.NARROW_CONCERN:
+            chemicals = stats.of_concern_chemicals()
+        elif self.concern == stats.NARROW_RESTRICTED:
+            chemicals = stats.restricted_chemicals()
+        else:
+            return True
+        return ProductChemical.objects.filter(product=self.object, chemical__in=chemicals).exists()
 
     def get_notes(self):
         return notes.keys_for_product(self.object)
@@ -1069,6 +1141,10 @@ class CommodityDetail(ExplorerDetailMixin, vanilla.DetailView):
         # Nothing of concern reported on this commodity in the year and
         # county on screen: the scoped page would be all zeros, so it
         # renders unscoped with a note (see ProductDetail.concern_applies).
+        if self.concern not in {stats.NARROW_CONCERN, stats.NARROW_RESTRICTED}:
+            # Fumigant and aerial narrowings can't exclude a commodity; a
+            # commodity they leave empty shows the normal empty states.
+            return True
         rows = PesticideUseRollup.objects.filter(commodity=self.object)
         if self.county is not None:
             rows = rows.filter(county=self.county)
@@ -1077,14 +1153,16 @@ class CommodityDetail(ExplorerDetailMixin, vanilla.DetailView):
     def get_related(self):
         return (
             self.related_card('Chemicals applied', 'chemicals', self.top_related('chemical'), 'pesticides:chemical-list', 'commodity'),
-            self.related_card('Products applied', 'products', self.top_related('product', 'lbs_product'), 'pesticides:product-list', 'commodity'),
+            self.related_card('Products applied', 'products', self.top_related('product', 'lbs_product_once'), 'pesticides:product-list', 'commodity'),
         )
 
     def summary_top(self, context):
         return context['related_a']['rows']
 
-    def get_summary_sentence(self, totals, label, top, verb=None):
-        return super().get_summary_sentence(totals, label, top, verb=None)
+    def get_summary_sentence(self, totals, label, top, verb='with'):
+        # "Applied ..., mostly with Mineral oil and Glyphosate": the chemicals
+        # applied to this commodity, not what it was applied on.
+        return super().get_summary_sentence(totals, label, top, verb='with')
 
 
 SJV_CENTER = '36.75,-119.80'
@@ -1155,9 +1233,9 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         'product': str(product.prodno) if product else '',
         'commodity': commodity.site_code if commodity else '',
         'county': county or '',
-        # The chemicals-of-concern scope, passed straight through to the grid
-        # endpoints as `concern=1`.
-        'concern': '1' if concern else '',
+        # The narrowing's value, passed straight through to the grid
+        # endpoints as `narrow=<value>`.
+        'narrow': concern or '',
         # The year the map shades the change against. A control on the main
         # map's toolbar, not explorer scope: it stays out of scope_param, so
         # no other page offers it or carries it in a link.
@@ -1446,7 +1524,13 @@ class RecordsBrowser(vanilla.ListView):
         )
 
         if data.get('method'):
-            queryset = queryset.filter(aerial_ground=data['method'])
+            queryset = queryset.filter(aerial_ground='' if data['method'] == NO_METHOD else data['method'])
+
+        if data.get('fume_method'):
+            # The pk first, so the filter is a plain column match on the
+            # (partial) index rather than a join.
+            method_id = FumigationMethod.objects.filter(code=data['fume_method']).values_list('pk', flat=True).first()
+            queryset = queryset.filter(fume_method_id=method_id) if method_id else queryset.none()
 
         for param in ('chemical', 'product', 'commodity'):
             obj = self.related.get(param)
@@ -1454,7 +1538,7 @@ class RecordsBrowser(vanilla.ListView):
                 queryset = queryset.filter(**{param: obj})
 
         if self.concern:
-            queryset = stats.narrow_rows(queryset, self.concern)
+            queryset = stats.narrow_rows(queryset, self.concern, method_field='aerial_ground')
 
         return queryset
 
@@ -1491,7 +1575,7 @@ class RecordsBrowser(vanilla.ListView):
         page = super().paginate_queryset(queryset, page_size)
         page_pks = [obj.pk for obj in page.object_list]
         objects = PesticideUse.objects.select_related(
-            'county', 'mtrs', 'chemical', 'product', 'commodity',
+            'county', 'mtrs', 'chemical', 'product', 'commodity', 'fume_method',
         ).in_bulk(page_pks)
         # A row deleted between the pk query above and this hydration query
         # (an import can delete/reimport a year mid-request) is dropped from
@@ -1507,6 +1591,7 @@ class RecordsBrowser(vanilla.ListView):
             'end': end,
             'county': data.get('county'),
             'method': data.get('method'),
+            'fume_method': data.get('fume_method'),
             'region': self.request.GET.get('region', ''),
             'section': self.request.GET.get('section', ''),
             'chemical': self.request.GET.get('chemical', ''),
@@ -1519,7 +1604,7 @@ class RecordsBrowser(vanilla.ListView):
         }
         normalized = sorted((key, str(value)) for key, value in params.items())
         digest = hashlib.sha1(repr(normalized).encode()).hexdigest()
-        return f'pesticides:records-totals:{digest}'
+        return f'pesticides:records-totals:v2:{digest}'
 
     def get_totals(self):
         key = self._totals_cache_key()
@@ -1527,11 +1612,31 @@ class RecordsBrowser(vanilla.ListView):
         if totals is None:
             aggregate = self.get_filtered_queryset().order_by().aggregate(
                 applications=Count('id'), lbs=Sum('lbs_chemical'), acres=Sum('acres_treated'),
+                # A record with several active ingredients is several rows
+                # sharing (year, county, use_no); `applications` counts rows
+                # (what the paginator pages through), `records` counts each
+                # use report once.
+                records=Count(
+                    Concat('year', Value('-'), 'county_id', Value('-'), 'use_no', output_field=CharField()),
+                    distinct=True,
+                ),
             )
+            chemical = self.related.get('chemical')
+            scoped = bool(chemical and chemical is not MISSING)
+            queryset = self.get_filtered_queryset().order_by()
+            if scoped:
+                acres = aggregate['acres']
+            else:
+                # Acres repeat on every ingredient row of a record: sum one
+                # (the lowest pk) row per record.
+                first_rows = queryset.values('year', 'county_id', 'use_no').annotate(first=Min('pk')).values('first')
+                acres = PesticideUse.objects.filter(pk__in=first_rows).aggregate(a=Sum('acres_treated'))['a']
             totals = {
                 'applications': aggregate['applications'] or 0,
+                # Rows are one chemical's, one per record, when filtered to a chemical.
+                'records': (aggregate['applications'] if scoped else aggregate['records']) or 0,
                 'lbs': aggregate['lbs'] or 0,
-                'acres': aggregate['acres'] or 0,
+                'acres': acres or 0,
             }
             cache.set(key, totals, RECORDS_TOTALS_TTL)
         return totals
@@ -1557,7 +1662,7 @@ class RecordsBrowser(vanilla.ListView):
 
     def get_summary_sentence(self, totals):
         sentence = (
-            f"{totals['applications']:,} applications, "
+            f"{totals['records']:,} applications, "
             f"{totals['lbs']:,.0f} lbs, "
             f"{totals['acres']:,.0f} acres treated"
         )
@@ -1568,7 +1673,7 @@ class RecordsBrowser(vanilla.ListView):
         if self.county:
             descriptors.append(self.county.name)
         if self.concern:
-            descriptors.append('chemicals of concern')
+            descriptors.append(stats.narrow_label(self.concern).lower())
         for param in ('chemical', 'product', 'commodity'):
             obj = self.related.get(param)
             if obj and obj is not MISSING:
@@ -1668,13 +1773,14 @@ def section_summary(rows, year, all_years, records_url, lbs_field='lbs_chemical'
         peak_month = calendar.month_name[peak['month']]
 
     top_chemicals = stats.top_related(rows, year, 'chemical', limit=stats.RELATED_LIMIT, all_years=all_years)
-    top_products = stats.top_related(rows, year, 'product', lbs_field='lbs_product', limit=stats.RELATED_LIMIT, all_years=all_years)
+    top_products = stats.top_related(rows, year, 'product', lbs_field='lbs_product_once', limit=stats.RELATED_LIMIT, all_years=all_years)
     top_commodities = stats.top_related(rows, year, 'commodity', limit=stats.RELATED_LIMIT, all_years=all_years)
     return {
         'totals': totals,
         'chemical_count': chemical_count,
         'years': stats.years_loaded(),
         'by_year': stats.by_year(rows, lbs_field),
+        'by_method': stats.by_method(rows, year, lbs_field, all_years=all_years) if (year or all_years) else [],
         'by_month': by_month,
         'by_year_month': stats.by_year_month(rows, lbs_field),
         'peak_month': peak_month,
@@ -1759,7 +1865,7 @@ class SectionDetail(vanilla.DetailView):
         year_param = stats.year_param(year, all_years)
         records_url = reverse('pesticides:records') + f'?section={section.sqid}' + (
             f'&{year_param}' if year_param else ''
-        ) + (f'&{stats.CONCERN_PARAM}=1' if concern else '')
+        ) + (f'&{stats.NARROW_PARAM}={concern}' if concern else '')
 
         center = zoom = None
         if section.boundary_id:

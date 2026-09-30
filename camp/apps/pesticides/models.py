@@ -183,8 +183,8 @@ class Chemical(TimeStampedModel):
 
     @property
     def other_categories(self):
-        """Categories not already expressed by the Prop 65 / CARB TAC badges."""
-        implied = self.PROP65_CATEGORIES | {self.Category.TOXIC_AIR_CONTAMINANT}
+        """Categories not already expressed by the Prop 65 / CARB TAC / Restricted badges."""
+        implied = self.PROP65_CATEGORIES | {self.Category.TOXIC_AIR_CONTAMINANT, self.Category.CALIFORNIA_RESTRICTED}
         return [c for c in (self.categories or []) if c not in implied]
 
     @property
@@ -250,7 +250,11 @@ class Product(TimeStampedModel):
     prodno = models.IntegerField(_('Product Number'), unique=True)
     reg_number = models.CharField(_('Registration Number'), max_length=64, unique=True)
     name = models.CharField(_('Name'), max_length=256)
-    fumigant = models.BooleanField(_('Fumigant'), default=False)
+    fumigant = models.BooleanField(_('CDPR fumigant flag'), default=False)
+    # CDPR's flag, or a product containing an ingredient that is almost always
+    # applied as a fumigant (fumigants.classify_fumigants). CDPR's flag misses
+    # re-registrations -- the 2021 Telone products carry none.
+    is_fumigant = models.BooleanField(_('Fumigant'), default=False, db_index=True)
     @property
     def is_restricted(self):
         """
@@ -336,6 +340,39 @@ class ProductChemical(models.Model):
         return f'{self.product} / {self.chemical}'
 
 
+class FumigationMethod(TimeStampedModel):
+    """
+    CDPR's field-fumigation technique code (`fume_cd`): the method the
+    fumigation regulations (3 CCR 6447-6450) require for a field fumigation
+    in the non-attainment areas, the San Joaquin Valley among them.
+    """
+    sqid = SqidsField(alphabet=shuffle_alphabet('pesticides.FumigationMethod'))
+
+    code = models.IntegerField(_('Code'), unique=True)
+    # CDPR's text verbatim, citation included: "Tarpaulin/Deep/Broadcast [6447.3(a)(5)]".
+    name = models.CharField(_('Name'), max_length=256)
+    active = models.BooleanField(_('Active'), default=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = _('Fumigation Method')
+        verbose_name_plural = _('Fumigation Methods')
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def short_name(self):
+        """The technique without its trailing regulation citation."""
+        return re.sub(r'\s*\[[^\]]*\]\s*$', '', self.name)
+
+    @property
+    def citation(self):
+        """The regulation the technique falls under ("6448.2(d)(6)"), or ''."""
+        match = re.search(r'\[([^\]]*)\]\s*$', self.name)
+        return match.group(1) if match else ''
+
+
 class PesticideUse(TimeStampedModel):
     class AerialGround(models.TextChoices):
         AERIAL      = 'A', _('Aerial')
@@ -402,6 +439,18 @@ class PesticideUse(TimeStampedModel):
     application_date = models.DateField(_('Application Date'), null=True, blank=True)
     aerial_ground = models.CharField(_('Aerial/Ground'), max_length=1, blank=True, choices=AerialGround.choices)
     record_id = models.CharField(_('Record ID'), max_length=4, blank=True)
+    # Only field fumigations in the non-attainment areas carry one, and only
+    # from 2008; everything else stays null. Set by import_pur from the
+    # statewide PUR file, which is the only place CDPR publishes it.
+    fume_method = models.ForeignKey(
+        'pesticides.FumigationMethod',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_index=False,
+        related_name='uses',
+        verbose_name=_('Fumigation Method'),
+    )
 
     class Meta:
         ordering = ['-application_date', '-year']
@@ -416,6 +465,9 @@ class PesticideUse(TimeStampedModel):
             models.Index(fields=['chemical', 'year']),
             models.Index(fields=['product', 'year']),
             models.Index(fields=['commodity', 'year']),
+            # Nearly every record has no technique, so the FK's own index
+            # would be ~16M entries of NULL; this holds only the coded ones.
+            models.Index(fields=['fume_method'], condition=models.Q(fume_method__isnull=False), name='pesticide_use_fume_idx'),
         ]
         verbose_name = _('Pesticide Use')
         verbose_name_plural = _('Pesticide Uses')
@@ -498,17 +550,28 @@ class PesticideUseRollup(models.Model):
     chemical = models.ForeignKey('pesticides.Chemical', on_delete=models.CASCADE, null=True, blank=True, related_name='rollups', verbose_name=_('pesticides.Chemical'))
     product = models.ForeignKey('pesticides.Product', on_delete=models.CASCADE, null=True, blank=True, related_name='rollups', verbose_name=_('pesticides.Product'))
     commodity = models.ForeignKey('pesticides.Commodity', on_delete=models.CASCADE, null=True, blank=True, related_name='rollups', verbose_name=_('pesticides.Commodity'))
+    # CDPR's aer_gnd_ind: A aerial, G ground, F field fumigation, O other, blank not reported
+    method = models.CharField(_('Application method'), max_length=1, blank=True, default='')
     lbs_chemical = models.FloatField(_('Pounds of Chemical'), default=0)
     lbs_product = models.FloatField(_('Pounds of Product'), default=0)
     acres_treated = models.FloatField(_('Acres Treated'), default=0)
     applications = models.IntegerField(_('Applications'), default=0)
+    # `applications` and `lbs_product` sum every ingredient row, so a use record
+    # with two active ingredients counts twice. Only right when the rows are
+    # restricted to one chemical (`acres_treated` likewise). `records`,
+    # `lbs_product_once` and `acres_once` count each
+    # use record once, on its designated row (see rollup.REBUILD_SQL), and are
+    # what any sum across chemicals must read.
+    records = models.IntegerField(_('Records'), default=0)
+    lbs_product_once = models.FloatField(_('Pounds of Product, once per record'), default=0)
+    acres_once = models.FloatField(_('Acres Treated, once per record'), default=0)
 
     class Meta:
         verbose_name = _('Pesticide Use Rollup')
         verbose_name_plural = _('Pesticide Use Rollups')
         constraints = [
             models.UniqueConstraint(
-                fields=['year', 'month', 'county', 'mtrs', 'chemical', 'product', 'commodity'],
+                fields=['year', 'month', 'county', 'mtrs', 'chemical', 'product', 'commodity', 'method'],
                 nulls_distinct=False,
                 name='pesticides_rollup_key',
             ),
@@ -564,6 +627,9 @@ class PesticideSectionTotal(models.Model):
     lbs_product = models.FloatField(_('Pounds of Product'), default=0)
     acres_treated = models.FloatField(_('Acres Treated'), default=0)
     applications = models.IntegerField(_('Applications'), default=0)
+    records = models.IntegerField(_('Records'), default=0)
+    lbs_product_once = models.FloatField(_('Pounds of Product, once per record'), default=0)
+    acres_once = models.FloatField(_('Acres Treated, once per record'), default=0)
 
     class Meta:
         verbose_name = _('Pesticide Section Total')
@@ -577,7 +643,7 @@ class PesticideSectionTotal(models.Model):
             # rather than a heap fetch per section.
             models.Index(
                 fields=['year', 'mtrs'],
-                include=['lbs_chemical', 'lbs_product', 'acres_treated', 'applications'],
+                include=['lbs_chemical', 'lbs_product', 'acres_treated', 'applications', 'records', 'lbs_product_once', 'acres_once'],
                 name='pesticides_section_total_cov',
             ),
         ]
@@ -608,6 +674,9 @@ class PesticideUseTotal(models.Model):
     lbs_product = models.FloatField(_('Pounds of Product'), default=0)
     acres_treated = models.FloatField(_('Acres Treated'), default=0)
     applications = models.IntegerField(_('Applications'), default=0)
+    records = models.IntegerField(_('Records'), default=0)
+    lbs_product_once = models.FloatField(_('Pounds of Product, once per record'), default=0)
+    acres_once = models.FloatField(_('Acres Treated, once per record'), default=0)
 
     class Meta:
         verbose_name = _('Pesticide Use Total')

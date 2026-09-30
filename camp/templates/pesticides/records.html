@@ -31,6 +31,12 @@
                     <div class="select is-fullwidth">{{ form.method }}</div>
                 </div>
             </div>
+            <div class="field">
+                <label class="label" for="{{ form.fume_method.id_for_label }}">{{ form.fume_method.label }}</label>
+                <div class="control">
+                    <div class="select is-fullwidth">{{ form.fume_method }}</div>
+                </div>
+            </div>
             {# Entity pickers; this form submits on Apply only. #}
             {% include 'pesticides/includes/entity-picker.html' with kind='product' label='Product' selected=related.product autosubmit=0 %}
             {% include 'pesticides/includes/entity-picker.html' with kind='chemical' label='Chemical' selected=related.chemical autosubmit=0 %}
@@ -40,7 +46,6 @@
                 <div class="control"><a class="button is-light" href="{{ request.path }}{{ scope_qs }}">Clear</a></div>
             </div>
         </form>
-        {% include 'pesticides/includes/spraydays-signup.html' %}
     </div>
     <div class="column">
         {% if active_filters %}
@@ -49,8 +54,10 @@
         </div>
         {% endif %}
         {% include 'pesticides/includes/section-map.html' %}
-        <p class="summary-sentence mt-4 mb-3">{{ summary_sentence }}</p>
-        {% include 'pesticides/includes/records-table.html' %}
     </div>
 </div>
+{# The table runs the page's full width under the filters and map, rather #}
+{# than down a column beside a sidebar that ended screens ago. #}
+<p class="summary-sentence mt-4 mb-3">{{ summary_sentence }}</p>
+{% include 'pesticides/includes/records-table.html' %}
 {% endblock %}

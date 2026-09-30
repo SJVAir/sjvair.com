@@ -28,8 +28,6 @@
         </div>
         {% endif %}
     {% endfor %}
-    <div class="field is-grouped">
-        <div class="control"><button class="button is-link" type="submit">Apply</button></div>
-        <div class="control"><a class="button is-light" href="{{ request.path }}{{ scope_qs }}">Clear</a></div>
-    </div>
+    {# Every field applies itself as it changes; there's nothing to Apply. #}
+    <p class="filters-clear"><a href="{{ request.path }}{{ scope_qs }}">Clear filters</a></p>
 </form>

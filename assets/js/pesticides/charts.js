@@ -130,9 +130,9 @@
       });
     }
     if (compare) {
+      // Dashed and muted: context, not a second measurement competing for
+      // attention. No points, so the series with points stays the subject.
       series.push({
-        // Dashed and muted: context, not a second measurement competing for
-        // attention. No points, so the series with points stays the subject.
         stroke: colors.muted,
         width: 1.5,
         dash: [4, 3],
