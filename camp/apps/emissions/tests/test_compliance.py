@@ -50,7 +50,11 @@ class CardTests(ComplianceTestCase):
         assert card['primary'] == row and card['reported_through'] == date(2024, 6, 30) and card['since'] == date(2019, 7, 1)
         assert (card['inspections'], card['novs'], card['formals'], card['penalties']) == (2, 1, 1, Decimal('12500.50'))
         assert [e.date for e in card['events']][:2] == [date(2024, 6, 30), date(2024, 4, 1)]
-        assert len(card['events']) == 7 and card['more'] == []
+        assert len(card['events']) == 7
+        # Shown: the window's enforcement. More: its inspections and anything older.
+        assert [(e.kind, e.date) for e in card['shown']] == [('formal', date(2024, 6, 30)), ('hpv', date(2024, 4, 1)), ('nov', date(2023, 5, 2))]
+        assert [(e.kind, e.date) for e in card['more']] == [
+            ('inspection', date(2024, 3, 15)), ('inspection', date(2019, 7, 1)), ('inspection', date(2019, 6, 30)), ('formal', date(2015, 1, 1))]
         assert card['names'] == []
 
     def test_names_as_reported_and_show_all_split(self):
@@ -59,7 +63,7 @@ class CardTests(ComplianceTestCase):
             event(row, 'inspection', date(2023, 1, day))
         card = compliance.facility_card(self.plant)
         assert card['names'] == ['PREVIOUS OWNER LLC']
-        assert len(card['shown']) == 25 and len(card['more']) == 5
+        assert card['shown'] == [] and len(card['more']) == 30
 
     def test_two_icis_rows_merge(self):
         old = track(self.plant, 'CASJV00006019C0001', reported_through=date(2020, 1, 1))
@@ -122,9 +126,9 @@ class PageTests(ComplianceTestCase):
         assert 'Reported to EPA through June 30, 2024.' in content
         assert 'as reported to EPA: TEST PLANT INC' in content
         table = content[content.index('compliance-events'):]
-        assert table.index('Administrative - Formal') < table.index('FCE On-Site') < table.index('Notice of Violation')
-        # Few enough events to list: no Show all toggle (the caveats' own <details> aside).
-        assert 'Show all' not in content
+        # The table is the enforcement, newest first; the inspection is behind the toggle.
+        assert table.index('Administrative - Formal') < table.index('Notice of Violation') < table.index('1 more event: inspections and anything older') < table.index('FCE On-Site')
+        assert '<p class="title is-4">$12,501</p>' in content
 
     def test_show_all_and_addressed_badge(self):
         row = track(self.plant, 'CASJV00006019C0001', hpv='Addressed-EPA', reported_through=date(2024, 1, 1))
@@ -132,7 +136,8 @@ class PageTests(ComplianceTestCase):
             event(row, 'inspection', date(2023, 1, day))
         content = self.detail(self.plant)
         assert 'High-priority violation: addressed' in content
-        assert '<details class="compliance-more">' in content and 'Show all 30 events' in content
+        assert '<details class="compliance-more">' in content and '30 more events: inspections and anything older' in content
+        assert 'No notices of violation, formal actions or high-priority violations in the last 5 years.' in content
 
     def test_none_badge(self):
         track(self.plant, 'CASJV00006019C0001', reported_through=date(2024, 1, 1))

@@ -21,57 +21,24 @@
         Regulated by {% if district.metadata.carb_url %}<a href="{{ district.metadata.carb_url }}">{{ district.name }}</a>{% else %}{{ district.name }}{% endif %}
         {% if district.metadata.phone %}{% with phone=district.metadata.phone %} · <a href="tel:{{ phone|cut:'('|cut:')'|cut:' '|cut:'-' }}">{{ phone }}</a>{% endwith %}{% endif %}
         {% if district.metadata.complaints_url %}
-        <a class="button is-small is-link is-light ml-2" href="{{ district.metadata.complaints_url }}"><span class="icon"><span class="fa-regular fa-bullhorn" aria-hidden="true"></span></span><span>Report an air pollution problem</span></a>
+        <a class="button is-link is-light ml-2" href="{{ district.metadata.complaints_url }}"><span class="icon"><span class="fa-regular fa-bullhorn" aria-hidden="true"></span></span><span>Report an air pollution problem</span></a>
         {% endif %}
     </p>
 </div>
 
-<div class="columns facility-cards">
-    <div class="column is-half">
-        <div class="card">
-            <header class="card-header"><p class="card-header-title">Where</p></header>
-            <div class="card-content">
-                <p class="mb-0">{{ facility.address.street|title }}</p>
-                <p>{% if facility.city %}{{ facility.city.name }}{% else %}{{ facility.address.city|title }}{% endif %}, CA{% if facility.address.zipcode %} {{ facility.address.zipcode }}{% endif %}</p>
-                {% if area_links %}
-                <p class="heading mt-4 mb-1">Counted in
-                    {# From the facility's location on the map, which can differ from its reported address (the state's data, shown as given). #}
-                    <span class="icon is-small has-text-grey has-tooltip-multiline has-tooltip-bottom has-tooltip-arrow" data-tooltip="Where this facility's point on the map falls. It can differ from the address the state has on file, which is shown above as reported."><span class="fa-regular fa-circle-info" aria-hidden="true"></span></span>
-                </p>
-                <p class="facility-areas">{% for link in area_links %}<a href="{{ link.url }}{{ scope_qs }}">{{ link.label }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}</p>
-                {% endif %}
-                {% if facility_ces %}
-                <p class="heading mt-4 mb-1">Community</p>
-                <p>In <a href="{{ facility_ces.region.get_emissions_url }}">a tract {% if facility_ces.ci_score_p is not None %}at the {{ facility_ces.ci_score_p|percentile }} percentile{% else %}OEHHA doesn't score{% endif %}</a> ({{ facility_ces.label }}){% if facility_ces.dac %} · SB 535 disadvantaged community{% endif %}</p>
-                {% endif %}
-                {% if ab617_region %}
-                <p class="heading mt-4 mb-1">AB 617</p>
-                <p>Inside the <a href="{{ ab617_region.get_emissions_url }}{{ scope_qs }}">{{ ab617_region.name }} AB 617 community</a></p>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    {% if hot_spots %}<div class="column is-half">{% include 'emissions/includes/hot-spots.html' %}</div>{% endif %}
-    {% if nearby is not None %}
-    <div class="column is-half">
-        {% include 'emissions/includes/schools-card.html' %}
-    </div>
-    {% elif facility.sector == 'oil-gas' %}
-    <div class="column is-half">
-        <div class="card">
-            <header class="card-header"><p class="card-header-title">About this location</p></header>
-            <div class="card-content">
-                <p>This is a district permit grouping that can span a whole oil field. Its map point is the operator's address, not a well.</p>
-                <p class="is-size-7 has-text-grey"><a href="{% url 'emissions:about' %}#oil-gas">Where the wells are</a></p>
-            </div>
-        </div>
-    </div>
+{% if headline or ghg_latest or hot_spots %}
+<div class="level stat-row box facility-stats">
+    {% if headline %}
+    <div class="level-item has-text-centered"><div><p class="heading">{{ headline.pollutant.name }}, {{ shown_year }}</p><p class="title">{{ headline.value|amount:headline.pollutant }} <span class="is-size-5">{{ headline.pollutant.unit_label }}</span></p><p class="stat-note">{% if headline.county_rank %}#{{ headline.county_rank|intcomma }} of {{ headline.county_count|intcomma }} in {{ facility.county.name }}{% endif %}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Share of the county's facilities</p><p class="title">{{ headline.county_share|percent }}</p><p class="stat-note">{{ pollutant.label }} reported by permitted facilities</p></div></div>
+    {% endif %}
+    {% if ghg_latest %}
+    <div class="level-item has-text-centered"><div><p class="heading">Greenhouse gases, {{ ghg_latest.year }}</p><p class="title">{{ ghg_latest.co2e|whole }} <span class="is-size-5">t CO2e</span></p><p class="stat-note"><a href="#greenhouse-gases">{{ ghg_latest.get_program_display }}</a></p></div></div>
+    {% endif %}
+    {% if hot_spots.total_score is not None %}
+    <div class="level-item has-text-centered"><div><p class="heading">Hot Spots priority score</p><p class="title">{{ hot_spots.total_score|quantity }}</p><p class="stat-note"><a href="#hot-spots">high priority above 10</a></p></div></div>
     {% endif %}
 </div>
-{% if facility.point %}
-{% include 'emissions/includes/facility-map.html' %}
-{% else %}
-<p class="has-text-grey mb-5">No map: this facility's address couldn't be placed on a street, and CARB gives no coordinates for it.</p>
 {% endif %}
 
 {% if shown_year != year %}
@@ -119,6 +86,55 @@
 </div>
 {% endif %}
 
+<h2 class="title is-4 mt-5" id="where">Where it is</h2>
+{% if facility.point %}
+{% include 'emissions/includes/facility-map.html' %}
+{% else %}
+<p class="has-text-grey mb-5">No map: this facility's address couldn't be placed on a street, and CARB gives no coordinates for it.</p>
+{% endif %}
+
+<div class="columns facility-cards">
+    <div class="column is-half">
+        <div class="card">
+            <header class="card-header"><p class="card-header-title">Where</p></header>
+            <div class="card-content">
+                <p class="mb-0">{{ facility.address.street|title }}</p>
+                <p>{% if facility.city %}{{ facility.city.name }}{% else %}{{ facility.address.city|title }}{% endif %}, CA{% if facility.address.zipcode %} {{ facility.address.zipcode }}{% endif %}</p>
+                {% if area_links %}
+                <p class="heading mt-4 mb-1">Counted in
+                    {# From the facility's location on the map, which can differ from its reported address (the state's data, shown as given). #}
+                    <span class="icon is-small has-text-grey has-tooltip-multiline has-tooltip-bottom has-tooltip-arrow" data-tooltip="Where this facility's point on the map falls. It can differ from the address the state has on file, which is shown above as reported."><span class="fa-regular fa-circle-info" aria-hidden="true"></span></span>
+                </p>
+                <p class="facility-areas">{% for link in area_links %}<a href="{{ link.url }}{{ scope_qs }}">{{ link.label }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}</p>
+                {% endif %}
+                {% if facility_ces %}
+                <p class="heading mt-4 mb-1">Community</p>
+                <p>In <a href="{{ facility_ces.region.get_emissions_url }}">a tract {% if facility_ces.ci_score_p is not None %}at the {{ facility_ces.ci_score_p|percentile }} percentile{% else %}OEHHA doesn't score{% endif %}</a> ({{ facility_ces.label }}){% if facility_ces.dac %} · SB 535 disadvantaged community{% endif %}</p>
+                {% endif %}
+                {% if ab617_region %}
+                <p class="heading mt-4 mb-1">AB 617</p>
+                <p>Inside the <a href="{{ ab617_region.get_emissions_url }}{{ scope_qs }}">{{ ab617_region.name }} AB 617 community</a></p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% if nearby is not None %}
+    <div class="column is-half">
+        {% include 'emissions/includes/schools-card.html' %}
+    </div>
+    {% elif facility.sector == 'oil-gas' %}
+    <div class="column is-half">
+        <div class="card">
+            <header class="card-header"><p class="card-header-title">About this location</p></header>
+            <div class="card-content">
+                <p>This is a district permit grouping that can span a whole oil field. Its map point is the operator's address, not a well.</p>
+                <p class="is-size-7 has-text-grey"><a href="{% url 'emissions:about' %}#oil-gas">Where the wells are</a></p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
 {% if toxics_rows %}
 <h2 class="title is-4">Toxic air contaminants in {{ shown_year }}</h2>
 <div class="table-container">
@@ -147,6 +163,8 @@
 </div>
 {% include 'emissions/includes/toxics-caveats.html' with compact=True %}
 {% endif %}
+
+{% if hot_spots %}{% include 'emissions/includes/hot-spots.html' %}{% endif %}
 
 {% include 'emissions/includes/methane-card.html' %}
 

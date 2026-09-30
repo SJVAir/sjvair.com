@@ -86,7 +86,8 @@ class FacilityTractLineTests(TestCase):
 
     def test_the_where_card_names_the_tract_percentile(self):
         content = self.client.get(Facility.objects.get(name='TEST PLANT').get_absolute_url()).content.decode()
-        where = content[content.index('card-header-title">Where'):content.index('facility-map map-canvas')]
+        start = content.index('card-header-title">Where')
+        where = content[start:content.index('</div>\n    </div>', start)]
         assert f'In <a href="{self.tract.get_emissions_url()}">a tract at the 89th percentile</a> (CalEnviroScreen 5.0) · SB 535 disadvantaged community' in where
 
     def test_no_tract_no_line(self):

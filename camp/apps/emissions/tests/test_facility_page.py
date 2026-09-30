@@ -54,6 +54,19 @@ class FacilityHeaderTests(TestCase):
         content = self.detail('TEST CEMENT')
         assert 'AB 617 community' not in content
 
+    def test_stat_row_leads_with_the_scope_pollutant(self):
+        content = self.detail('TEST PLANT')
+        stats = content[content.index('facility-stats'):content.index('Emissions in 2024')]
+        assert '<p class="heading">Nitrogen oxides, 2024</p>' in stats
+        assert ' in Fresno County</p>' in stats and '#1 of ' in stats
+        # The stat row comes before the table, and the map after it.
+        assert content.index('facility-stats') < content.index('Emissions in 2024') < content.index('id="where"')
+
+    def test_no_stat_row_without_anything_to_lead_with(self):
+        # TEST CEMENT reported no SOx, and has no GHG report or Hot Spots score.
+        url = Facility.objects.get(name='TEST CEMENT').get_absolute_url()
+        assert 'facility-stats' not in self.client.get(url + '?pollutant=sox').content.decode()
+
     def test_a_placed_facility_gets_its_map(self):
         content = self.detail('TEST PLANT')
         assert 'class="facility-map' in content
@@ -125,6 +138,8 @@ class FacilityToxicsTests(TestCase):
         assert 'public notification at 10, risk reduction required at 100' in content
         assert 'Chronic hazard index' not in content
         assert 'air-toxics-annual-reports' in content
+        # The score also leads the page, in the stat row.
+        assert '<p class="heading">Hot Spots priority score</p><p class="title">12.5</p>' in content
 
     def test_no_toxics_no_table(self):
         cement = Facility.objects.get(name='TEST CEMENT')
@@ -149,7 +164,8 @@ class SchoolsCardTests(TestCase):
     def test_card_groups_and_map_overlay(self):
         from camp.apps.emissions.tests.test_areas_pages import map_data
         content = self.detail(self.plant)
-        card = content[content.index('card-header-title">Schools and child care nearby'):content.index('facility-map map-canvas')]
+        start = content.index('card-header-title">Schools and child care nearby')
+        card = content[start:content.index('<h2', start)]
         assert card.index('Within 1,000 ft') < card.index('NEAR ELEMENTARY') < card.index('1,000 ft to ¼ mile') < card.index('QUARTER MILE ACADEMY')
         assert 'FAR HIGH' not in card
         assert re.search(r'NEAR ELEMENTARY.*?Public school · \d{3} ft', card, re.S)

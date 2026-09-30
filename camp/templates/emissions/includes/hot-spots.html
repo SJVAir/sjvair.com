@@ -1,14 +1,21 @@
 {% load emissions_explorer %}
 {% comment %}AB 2588 Hot Spots results CARB carries for the facility (stats.hot_spots): the district's prioritization score, the approved HRA's cancer risk, and the hazard indices.{% endcomment %}
-<div class="card hot-spots">
-    <header class="card-header"><p class="card-header-title">Hot Spots (AB 2588), {{ shown_year }}</p></header>
-    <div class="card-content content">
+<section class="hot-spots mt-5" id="hot-spots">
+    <h2 class="title is-4">Hot Spots (AB 2588), {{ shown_year }}</h2>
+    <div class="content">
         <dl class="hot-spots-values">
             {% if hot_spots.total_score is not None %}<dt>Prioritization score</dt><dd><strong>{{ hot_spots.total_score|quantity }}</strong> <span class="has-text-grey">High priority above 10</span></dd>{% endif %}
             {% if hot_spots.hra is not None %}<dt>HRA cancer risk</dt><dd><strong>{{ hot_spots.hra|quantity }}</strong> per million <span class="has-text-grey">public notification at 10, risk reduction required at 100</span></dd>{% endif %}
             {% if hot_spots.chindex is not None %}<dt>Chronic hazard index</dt><dd><strong>{{ hot_spots.chindex|quantity }}</strong> <span class="has-text-grey">1.0 is the reference level</span></dd>{% endif %}
             {% if hot_spots.ahindex is not None %}<dt>Acute hazard index</dt><dd><strong>{{ hot_spots.ahindex|quantity }}</strong> <span class="has-text-grey">1.0 is the reference level</span></dd>{% endif %}
         </dl>
-        <p class="is-size-7 has-text-grey">These are the official measures. CARB notes the risk data may not come from the same year's emissions and that risk may have been substantially reduced since. The district publishes its <a href="https://www.valleyair.org/permitting/air-toxics-program/information-for-the-public/air-toxics-annual-reports/">Air Toxics annual reports</a>.</p>
     </div>
-</div>
+    <details class="data-notes">
+        <summary>What this is, and isn't</summary>
+        <ul>
+            <li><strong>These are the official measures</strong> of a facility's toxics risk under AB 2588, unlike the weighted shares above.</li>
+            <li><strong>They may be from earlier years.</strong> CARB notes the risk data may not come from the same year's emissions, and that risk may have been substantially reduced since.</li>
+            <li>The district publishes its <a href="https://www.valleyair.org/permitting/air-toxics-program/information-for-the-public/air-toxics-annual-reports/">Air Toxics annual reports</a>.</li>
+        </ul>
+    </details>
+</section>

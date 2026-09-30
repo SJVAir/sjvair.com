@@ -10,6 +10,8 @@ from django.db.models import Q
 from camp.apps.emissions import stats
 from camp.apps.emissions.models import AirComplianceFacility, ComplianceEvent, SourceImport
 
+# Bumped when a cached value's shape or meaning changes (2: the card's shown/more split).
+CACHE_VERSION = 2
 GENERATION_KEY = 'emissions:compliance:generation'
 
 
@@ -27,12 +29,11 @@ def clear_caches():
 
 
 def key(*parts):
-    return ':'.join(str(part) for part in (f'emissions:compliance:v{stats.CACHE_VERSION}', generation(), *parts))
+    return ':'.join(str(part) for part in (f'emissions:compliance:v{stats.CACHE_VERSION}.{CACHE_VERSION}', generation(), *parts))
 
 
 SOURCE = 'icis-air'
 WINDOW_YEARS = 5
-SHOWN_EVENTS = 25
 FILTERS = ('any', 'hpv')
 FILTER_LABELS = (('', 'All facilities'), ('any', 'Tracked by EPA'), ('hpv', 'With an unaddressed high-priority violation'))
 TRACKED = Q(facility__icis_facilities__isnull=False)
@@ -66,7 +67,10 @@ def facility_card(facility):
     The facility page's compliance card, or None when no ICIS row matched this
     facility (nothing is shown then, by design). Every matched row's events,
     newest first; the badges from the row reported most recently; the five-year
-    rollups counted back from that row's reported_through.
+    rollups counted back from that row's reported_through. `shown` is the
+    window's enforcement (notices, formal actions, high-priority violations),
+    what a reader came for; `more` is the rest -- inspections and anything
+    older -- behind a toggle.
     """
     def compute():
         rows = list(facility.icis_facilities.all())
@@ -87,8 +91,8 @@ def facility_card(facility):
             'formals': sum(e.kind == ComplianceEvent.Kind.FORMAL for e in recent),
             'penalties': sum((e.penalty or Decimal(0) for e in recent if e.kind == ComplianceEvent.Kind.FORMAL), Decimal(0)),
             'events': events,
-            'shown': events[:SHOWN_EVENTS],
-            'more': events[SHOWN_EVENTS:],
+            'shown': [e for e in recent if e.kind != ComplianceEvent.Kind.INSPECTION],
+            'more': [e for e in events if e.kind == ComplianceEvent.Kind.INSPECTION or not (since and e.date >= since)],
             'names': sorted({row.name for row in rows if row.name.strip().upper() != facility.name.strip().upper()}),
         }
     return cache.get_or_set(key('card', facility.pk), compute, stats.CACHE_TIMEOUT)

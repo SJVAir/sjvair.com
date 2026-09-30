@@ -287,8 +287,14 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
         facility_regions = areas.facility_areas(facility)
         tract = next((region for region in facility_regions if region.type == Region.Type.TRACT), None)
         ranks = stats.facility_ranks(facility, shown_year)
+        ghg_card = ghg.facility_card(facility)
         return super().get_context_data(
             facility=facility,
+            # The stat row: the page's pollutant for this facility (its row
+            # in the ranks table, None if it reported none) and its newest
+            # greenhouse-gas report.
+            headline=next((row for row in ranks if row['pollutant'].key == scope.pollutant.key and row['value']), None),
+            ghg_latest=ghg_card[0] if ghg_card else None,
             district=facility.air_district,
             shown_year=shown_year,
             # Pollutants it reported get a row; the rest are named in one line under the table.
@@ -303,7 +309,7 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
             facility_ces=ces_stats.tract_record(tract),
             ab617_region=areas.facility_ab617_region(facility),
             compliance_card=compliance.facility_card(facility),
-            ghg_card=ghg.facility_card(facility),
+            ghg_card=ghg_card,
             methane_sources=methane.near_facility(facility) if methane.enabled() else [],
             methane_stamp=methane.stamp(),
             methane_attribution=methane.attribution(),
