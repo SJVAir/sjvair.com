@@ -252,3 +252,12 @@
 .methane-popup .methane-record {
   margin-top: 0.5rem;
 }
+
+/* The full map page: once scrolled to, the map fills what the navbar and
+   the sticky scope bar leave of the screen, rather than running past it. */
+body.map-page .map-wrap:not(.is-compact):not(.is-expanded) .map-canvas {
+  height: calc(100vh - 3.25rem - 4.5rem);
+  height: calc(100dvh - 3.25rem - 4.5rem);
+  min-height: 420px;
+}
+

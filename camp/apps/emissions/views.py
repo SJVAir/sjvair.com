@@ -365,7 +365,7 @@ class SectorDetail(ScopeMixin, vanilla.TemplateView):
             columns=dict(uniform_columns(rows), hide_sector=True),
             facility_count=table.count(),
             map_config=facility_map_config(
-                scope, mode='compact', sector=self.sector,
+                scope, mode='compact', sector=self.sector, fit=True,
                 wells=wells_overlay(self.request.GET, default=self.sector == Facility.Sector.OIL_GAS),
                 methane=methane_overlay(self.request.GET),
             ),
@@ -519,7 +519,7 @@ def reporting_sectors(scope):
 
 
 def facility_map_config(scope, *, mode='full', highlight=None, sector=None, params=None, areas_view=None,
-                        outline_url='', center='', zoom='', radius='', nearby=None, wells=None, methane=None):
+                        outline_url='', center='', zoom='', radius='', nearby=None, wells=None, methane=None, fit=False):
     """
     The data-* attributes of a `.facility-map` container (see
     assets/js/emissions/facility-map.js). `nearby` is a FeatureCollection
@@ -546,6 +546,10 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         'maptiler_key': settings.MAPTILER_API_KEY,
         'style': mapconfig.MAP_STYLE,
         'highlight': highlight.sqid if highlight is not None else '',
+        # Where to pin the highlighted facility (a facility page), lng,lat.
+        # Frame the loaded facilities rather than the Valley (a sector page).
+        'fit': '1' if fit else '',
+        'highlight_point': f'{point.x:.5f},{point.y:.5f}' if point is not None else '',
         'center': center or (f'{point.y},{point.x}' if point is not None else ''),
         'zoom': zoom or (11 if point is not None else ''),
         'bounds': mapconfig.covered_bounds(),

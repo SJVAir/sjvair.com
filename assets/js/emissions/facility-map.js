@@ -430,6 +430,17 @@
       layout: { 'line-join': 'round' },
       paint: { 'line-color': HIGHLIGHT_COLOR, 'line-width': 2.5, 'line-opacity': 0.9 },
     });
+    // A facility page's own facility: a fixed-size ring at its point, on
+    // top of everything, so a small emitter is as easy to find as a large one.
+    this.shell.ensureSource('highlight-pin');
+    this.shell.ensureLayer({
+      id: 'highlight-pin', type: 'circle', source: 'highlight-pin',
+      paint: {
+        'circle-radius': 13, 'circle-color': 'rgba(0, 0, 0, 0)',
+        'circle-stroke-color': HIGHLIGHT_COLOR, 'circle-stroke-width': 3,
+      },
+    });
+    this.showHighlightPin();
     this.applyHighlight();
     this.applyView();
     this.showNearby();
@@ -452,6 +463,14 @@
       ['case', isHighlight, HIGHLIGHT_COLOR, ['get', '_stroke']]);
     this.map.setPaintProperty('facilities', 'circle-stroke-width',
       ['case', isHighlight, 3, 1]);
+  };
+
+  FacilityMap.prototype.showHighlightPin = function () {
+    var parts = (this.data.highlightPoint || '').split(',').map(Number);
+    var features = parts.length === 2 && isFinite(parts[0]) && isFinite(parts[1])
+      ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: parts }, properties: {} }]
+      : [];
+    this.shell.setSourceData('highlight-pin', { type: 'FeatureCollection', features: features });
   };
 
   // One view at a time: the layers, the toolbar's switch and its Areas-only
@@ -822,9 +841,11 @@
   };
 
   // Frame the facilities, unless the page framed the map itself (a facility
-  // page's centre, the covered counties' bounds, or the page's area).
+  // page's centre, the covered counties' bounds, or the page's area). A page
+  // that asks (data-fit, a sector page) frames its facilities over the bounds.
   FacilityMap.prototype.fit = function (collection) {
-    if (M.parseCenter(this.data.center) || M.parseBounds(this.data.bounds) || this.data.outlineUrl) return;
+    if (M.parseCenter(this.data.center) || this.data.outlineUrl) return;
+    if (M.parseBounds(this.data.bounds) && this.data.fit !== '1') return;
     var features = collection.features || [];
     if (!features.length) return;
     var bounds = new maptilersdk.LngLatBounds();
@@ -1286,6 +1307,7 @@
     if (this.methane) this.methane.onAdopt();
     this.fitted = false;
     this.shell.frame();
+    this.showHighlightPin();
     this.applyHighlight();
     this.load();
   };

@@ -87,16 +87,18 @@
 {% endif %}
 
 <h2 class="title is-4 mt-5" id="where">Where it is</h2>
-{% if facility.point %}
-{% include 'emissions/includes/facility-map.html' %}
-{% else %}
-<p class="has-text-grey mb-5">No map: this facility's address couldn't be placed on a street, and CARB gives no coordinates for it.</p>
-{% endif %}
-
+{# The map and the Where card side by side; the schools or oil & gas card under them. #}
 <div class="columns facility-cards">
-    <div class="column is-half">
+    <div class="column is-two-thirds-desktop">
+        {% if facility.point %}
+        {% include 'emissions/includes/facility-map.html' %}
+        {% else %}
+        <p class="has-text-grey">No map: this facility's address couldn't be placed on a street, and CARB gives no coordinates for it.</p>
+        {% endif %}
+    </div>
+    <div class="column">
         <div class="card">
-            <header class="card-header"><p class="card-header-title">Where</p></header>
+            <header class="card-header"><p class="card-header-title">Address</p></header>
             <div class="card-content">
                 <p class="mb-0">{{ facility.address.street|title }}</p>
                 <p>{% if facility.city %}{{ facility.city.name }}{% else %}{{ facility.address.city|title }}{% endif %}, CA{% if facility.address.zipcode %} {{ facility.address.zipcode }}{% endif %}</p>
@@ -118,22 +120,20 @@
             </div>
         </div>
     </div>
-    {% if nearby is not None %}
-    <div class="column is-half">
-        {% include 'emissions/includes/schools-card.html' %}
-    </div>
-    {% elif facility.sector == 'oil-gas' %}
-    <div class="column is-half">
-        <div class="card">
-            <header class="card-header"><p class="card-header-title">About this location</p></header>
-            <div class="card-content">
-                <p>This is a district permit grouping that can span a whole oil field. Its map point is the operator's address, not a well.</p>
-                <p class="is-size-7 has-text-grey"><a href="{% url 'emissions:about' %}#oil-gas">Where the wells are</a></p>
-            </div>
+</div>
+{% if nearby is not None %}
+<div class="facility-cards mb-5">{% include 'emissions/includes/schools-card.html' %}</div>
+{% elif facility.sector == 'oil-gas' %}
+<div class="facility-cards mb-5">
+    <div class="card">
+        <header class="card-header"><p class="card-header-title">About this location</p></header>
+        <div class="card-content">
+            <p>This is a district permit grouping that can span a whole oil field. Its map point is the operator's address, not a well.</p>
+            <p class="is-size-7 has-text-grey"><a href="{% url 'emissions:about' %}#oil-gas">Where the wells are</a></p>
         </div>
     </div>
-    {% endif %}
 </div>
+{% endif %}
 
 {% if toxics_rows %}
 <h2 class="title is-4">Toxic air contaminants in {{ shown_year }}</h2>

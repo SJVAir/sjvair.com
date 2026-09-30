@@ -10,7 +10,8 @@ dairy-cattle ammonia and its share of the county's.
 
 Two rows: the herd (CADD's counts) over what's estimated or observed about
 it (CARB's and EPA's estimates, Carbon Mapper, CDFA's grants), so eight
-tiles don't wrap into uneven lines.
+tiles don't wrap into uneven lines. With nothing estimated but the methane
+count (the Valley-wide tab), that tile joins the herd row instead.
 {% endcomment %}
 <div class="dairy-stats">
 <div class="level is-mobile stat-row box is-grid-mobile dairy-stats-herd">
@@ -30,8 +31,14 @@ tiles don't wrap into uneven lines.
         <p class="heading">Total cattle</p><p class="title">{{ summary.cattle|whole }}</p>
         <p class="stat-note">cows, heifers, calves &amp; beef</p>
     </div></div>
+    {% if methane_stamp and not carb_estimate and not nei_dairy and not ddrdp_totals %}
+    <div class="level-item has-text-centered"><div>
+        <p class="heading">With observed methane plumes</p><p class="title">{{ summary.methane|intcomma }}</p>
+        <p class="stat-note">snapshots from overflights</p>
+    </div></div>
+    {% endif %}
 </div>
-{% if carb_estimate or nei_dairy or methane_stamp or ddrdp_totals %}
+{% if carb_estimate or nei_dairy or ddrdp_totals %}
 <div class="level is-mobile stat-row box is-grid-mobile dairy-stats-emissions">
     {% if carb_estimate %}
     <div class="level-item has-text-centered"><div>

@@ -611,11 +611,21 @@
   };
 
   // The page's area frames the map when it has one (fitted as the outline
-  // arrives); else a county in scope does; otherwise the page's bounds.
+  // arrives); else a county in scope does; otherwise the dairies themselves
+  // (the tab: the Valley's bounds run out over the Kern desert, which has
+  // none), falling back to the page's bounds.
   DairyMap.prototype.frame = function () {
     if (this.outlineBounds || this.data.outlineUrl || M.parseCenter(this.data.center)) return;
-    var bounds = this.countyBounds();
+    var bounds = this.countyBounds() || this.dairyBounds();
     if (bounds) this.map.fitBounds(bounds, { padding: 24, duration: 0 });
+  };
+
+  DairyMap.prototype.dairyBounds = function () {
+    var features = (this.dairies && this.dairies.features) || [];
+    if (!features.length) return null;
+    var bounds = new maptilersdk.LngLatBounds();
+    features.forEach(function (f) { bounds.extend(f.geometry.coordinates); });
+    return bounds;
   };
 
   DairyMap.prototype.home = function () {
