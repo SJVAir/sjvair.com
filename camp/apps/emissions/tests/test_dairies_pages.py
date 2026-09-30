@@ -105,7 +105,7 @@ class DairyTabContentTests(DairyPageTestCase):
         assert content.index('BIG DAIRY') < content.index('SMALL DAIRY')
         assert 'CLOSED DAIRY' not in content
         assert f'class="dairy-zoom" data-dairy="{self.big.sqid}" data-lng="-119.78500" data-lat="36.73500"' in content
-        assert 'Yes, since 2019' in content
+        assert '<th>Digester since</th>' in content and 'data-label="Digester since">2019</td>' in content
         assert '>Mature dairy cows</a>' in content and '<th>EPA size</th>' in content
         big_row = content[content.index('BIG DAIRY</a>'):]
         big_row = big_row[:big_row.index('</tr>')]
@@ -122,7 +122,7 @@ class DairyTabContentTests(DairyPageTestCase):
         make_dairy(4, 'AGSTAR DAIRY', IN_KERN, self.kern, herds={2023: {'milk_cows': 50}}, digesters=[(None, None)])
         dairies.clear_caches()
         content = self.get().content.decode()
-        assert 'Yes (start year unknown)' in content
+        assert '<span title="Start year unknown">yes</span>' in content
         assert 'since None' not in content and 'since null' not in content
 
     def test_a_region_redirects_to_its_dairy_page(self):

@@ -17,9 +17,9 @@ its rate is Carbon Mapper's estimate, not ours -- see the About page.
             <th class="has-text-right">{% if sortable %}{% sort_link 'mature_cows' 'Mature dairy cows' %}{% else %}Mature dairy cows{% endif %}</th>
             <th class="has-text-right">Other cattle</th>
             <th>EPA size</th>
-            <th>Digester</th>
+            <th>Digester since</th>
             {% if methane_stamp %}<th>{% if sortable %}{% sort_link 'methane_kg_h' 'Methane observed' %}{% else %}Methane observed{% endif %}
-                <span class="icon is-small has-text-grey has-tooltip-multiline has-tooltip-bottom has-tooltip-arrow" data-tooltip="Plumes Carbon Mapper has observed within 1 km, from aircraft and satellite passes since 2016: the largest source's rate (a Carbon Mapper estimate, an instantaneous snapshot with wide uncertainty, not an annual total) and its detection count. No plume doesn't mean no emissions. Data by Carbon Mapper®, non-commercial use."><span class="fa-regular fa-circle-info" aria-hidden="true"></span></span></th>{% endif %}
+                <span class="icon is-small has-text-grey has-tooltip-multiline has-tooltip-bottom has-tooltip-arrow" data-tooltip="Plumes Carbon Mapper has observed within 1 km, from aircraft and satellite passes since 2016: the largest source's rate (a Carbon Mapper estimate, an instantaneous snapshot with wide uncertainty, not an annual total) and, after the dot, its detection count. No plume doesn't mean no emissions. Data by Carbon Mapper®, non-commercial use."><span class="fa-regular fa-circle-info" aria-hidden="true"></span></span></th>{% endif %}
         </tr>
     </thead>
     <tbody>
@@ -32,8 +32,8 @@ its rate is Carbon Mapper's estimate, not ours -- see the About page.
             <td class="has-text-right cell-value"{% if herd.mature_cows is not None %} data-unit="cows"{% endif %}>{{ herd.mature_cows|whole }}</td>
             <td class="has-text-right cell-meta"{% if herd.other_cattle is not None %} data-unit="other cattle"{% endif %}>{{ herd.other_cattle|whole }}</td>
             <td class="cell-meta" data-label="EPA size">{{ herd.get_size_class_display }}</td>
-            <td class="cell-meta{% if not herd.digester %} is-none{% endif %}" data-label="Digester">{% if herd.digester %}Yes{% if herd.digester_since %}, since {{ herd.digester_since }}{% else %} (start year unknown){% endif %}{% else %}—{% endif %}</td>
-            {% if methane_stamp %}<td class="cell-meta{% if not herd.methane %} is-none{% endif %}" data-label="Methane">{% if herd.methane %}{% if herd.methane_kg_h is not None %}{{ herd.methane_kg_h|whole }} kg/h{% if herd.methane_detections %}, {% endif %}{% endif %}{% if herd.methane_detections %}{{ herd.methane_detections }} detection{{ herd.methane_detections|pluralize }}{% endif %}{% else %}—{% endif %}</td>{% endif %}
+            <td class="cell-meta{% if not herd.digester %} is-none{% endif %}" data-label="Digester since">{% if herd.digester %}{% if herd.digester_since %}{{ herd.digester_since }}{% else %}<span title="Start year unknown">yes</span>{% endif %}{% else %}—{% endif %}</td>
+            {% if methane_stamp %}<td class="cell-meta{% if not herd.methane %} is-none{% endif %}" data-label="Methane">{% if herd.methane %}<span class="nowrap" title="{% if herd.methane_kg_h is not None %}Largest source {{ herd.methane_kg_h|whole }} kg/h (Carbon Mapper estimate){% endif %}{% if herd.methane_detections %}{% if herd.methane_kg_h is not None %}; {% endif %}{{ herd.methane_detections }} detection{{ herd.methane_detections|pluralize }}{% endif %}">{% if herd.methane_kg_h is not None %}{{ herd.methane_kg_h|whole }} kg/h{% if herd.methane_detections %} · {% endif %}{% endif %}{% if herd.methane_detections %}{{ herd.methane_detections }}{% if herd.methane_kg_h is None %} detection{{ herd.methane_detections|pluralize }}{% endif %}{% endif %}</span>{% else %}—{% endif %}</td>{% endif %}
         </tr>
         {% endwith %}
         {% empty %}
