@@ -104,6 +104,29 @@
   display: none;
 }
 
+/* A folded legend folds its key, not its overlay switches (the explorer's
+   wells and methane checkboxes, .legend-overlay > .legend-toggle): they're
+   the only way to turn those layers on, so they stay in view under the
+   Legend header. */
+.map-panel.is-collapsed .map-panel-body:has(.legend-toggle) {
+  display: block;
+}
+
+.map-panel.is-collapsed .map-panel-body:has(.legend-toggle) :is(.facility-map-legend, .dairy-map-legend) > :not(.legend-overlay),
+.map-panel.is-collapsed .map-panel-body:has(.legend-toggle) .legend-overlay > :not(.legend-toggle) {
+  display: none;
+}
+
+.map-panel.is-collapsed .map-panel-body:has(.legend-toggle) .legend-overlay {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.map-panel.is-collapsed .map-panel-body:has(.legend-toggle) .legend-overlay ~ .legend-overlay {
+  margin-top: 0.35rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .map-panel-chevron {
     transition: none;
