@@ -470,6 +470,11 @@
   // its neighbours' otherwise); at the section level each section has its
   // own marker again.
   var NOTICE_TOWNSHIP = { small: 13, large: 16, largeFrom: 10 };
+  // Under the lens a township's bubble gives way to its sections' markers,
+  // but only once a section is this many pixels across: smaller (the valley
+  // and county views) the markers would pile into one heap, and the bubble
+  // says more.
+  var NOTICE_SPLIT_MIN_PX = 16;
   var NOTICE_COUNT_FALLBACK_FONT = ['Noto Sans Bold'];
   // How many of a section's notices its popup lists before "N more".
   var SECTION_POPUP_NOTICES = 3;
@@ -2023,6 +2028,13 @@
   SectionMap.prototype.bindGridEvents = function () {
     var self = this;
     var map = this.map;
+    // Zooming with the lens up can take its sections across the size where
+    // its townships' notices split out of their bubbles, or back.
+    map.on('zoomend', function () {
+      if (self.level !== 'township' || !self.lensFeatures.length) return;
+      var split = self.sectionPixels() >= NOTICE_SPLIT_MIN_PX;
+      if (split !== !!self.noticesSplit) self.drawNotices();
+    });
     map.on('mousemove', 'grid-fill', function (event) {
       // Under "all sections" the townships are only click plumbing.
       if (self.allSectionsActive()) return;
@@ -3010,6 +3022,9 @@
     // The selected section wears its outline while a section layer holds it.
     var selected = this.selectedSectionId ? findFeature(features, this.selectedSectionId) : null;
     if (selected) this.showSelectedOutline(selected);
+    // The townships under the lens trade their notice bubbles for their
+    // sections' markers.
+    this.drawNotices();
   };
 
   // A short grace period between leaving a township (or one of its
@@ -3061,6 +3076,8 @@
       if (this.selectedSectionId && findFeature(this.lensFeatures, this.selectedSectionId)) this.showSelectedOutline(null);
       this.lensFeatures = [];
       this.setSourceData('lens', EMPTY);
+      // Their bubbles back.
+      if (this.level === 'township') this.drawNotices();
     }
   };
 
@@ -3200,14 +3217,23 @@
   };
 
   // The markers for the grid's level: a township's notices as one bubble on
-  // its square at the township level, each section's at the section level.
-  // Run when the notices arrive and when the grid changes level.
+  // its square at the township level, each section's at the section level
+  // -- and at the township level, each section's too for the townships
+  // under the lens, whose sections are on the map. Run when the notices
+  // arrive, when the grid changes level, and when the lens comes and goes.
   SectionMap.prototype.drawNotices = function () {
     var features = this.noticeFeatures || [];
     this.noticeTownshipById = {};
     if (this.level === 'township') features = this.groupNoticesByTownship(features);
     this.clearHover('notices');
     this.setSourceData('notices', { type: 'FeatureCollection', features: features });
+  };
+
+  // How many pixels across a square-mile section is at the current zoom.
+  SectionMap.prototype.sectionPixels = function () {
+    var lat = this.map.getCenter().lat * Math.PI / 180;
+    var metersPerPx = 156543.03 * Math.cos(lat) / Math.pow(2, this.map.getZoom());
+    return METERS_PER_MILE / metersPerPx;
   };
 
   // "MDM-T15S-R19E-28" -> "MDM-T15S-R19E": the township's id on the grid.
@@ -3223,8 +3249,18 @@
     var self = this;
     var groups = {};
     var order = [];
+    var underLens = {};
+    this.noticesSplit = !!(this.lensHosts && this.lensFeatures.length && this.sectionPixels() >= NOTICE_SPLIT_MIN_PX);
+    if (this.noticesSplit) {
+      this.lensHosts.forEach(function (host) { underLens[host.properties.id] = true; });
+    }
+    var loose = [];
     sectionFeatures.forEach(function (f) {
       var key = townshipOf(f.properties.section) || f.properties.id;
+      if (underLens[key]) {
+        loose.push(f);
+        return;
+      }
       if (!groups[key]) {
         groups[key] = { sections: [], count: 0 };
         order.push(key);
@@ -3252,7 +3288,7 @@
       };
       self.noticeTownshipById[id] = { feature: feature, sections: group.sections };
       return feature;
-    });
+    }).concat(loose);
   };
 
   // A township's bubble: with every notice in one section, that section's
