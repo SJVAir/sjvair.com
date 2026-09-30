@@ -219,6 +219,12 @@ html.map-expanded .explorer-scope-bar {
   border-bottom: 1px solid #dbdbdb;
 }
 
+/* The site navbar goes above the scope bar, so its dropdowns open over the
+   bar rather than behind it (Bulma gives the navbar z-index 30). */
+html.map-expanded .navbar {
+  z-index: 1020;
+}
+
 @media (max-width: 768px) {
   .map-panel {
     font-size: 0.75rem;
