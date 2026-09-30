@@ -5,7 +5,32 @@
 {% block breadcrumb-list %}<li class="is-active"><a aria-current="page">About</a></li>{% endblock %}
 
 {% block explorer-content %}
-<div class="content">
+<div class="columns about-layout">
+{# The contents first in the markup: at the top on a phone, a sticky column #}
+{# beside the text on a desktop (the pesticides About's layout). #}
+<nav class="column is-3-desktop about-toc" aria-label="On this page">
+    <p class="menu-label">On this page</p>
+    <ul class="menu-list">
+        <li><a href="#coverage">What this covers</a></li>
+        <li><a href="#districts">Two air districts</a></li>
+        <li><a href="#carb-estimates">CARB's estimates of all sources</a></li>
+        <li><a href="#units">Pollutants and units</a></li>
+        <li><a href="#minor-sources">Minor sources</a></li>
+        <li><a href="#years">Years and changes</a></li>
+        <li><a href="#weighted-toxics">Toxicity-weighted emissions</a></li>
+        <li><a href="#dairies">Dairies</a></li>
+        <li><a href="#schools">Schools and child care</a></li>
+        <li><a href="#calenviroscreen">CalEnviroScreen</a></li>
+        <li><a href="#compliance">Compliance</a></li>
+        <li><a href="#ammonia">Ammonia</a></li>
+        <li><a href="#oil-gas">Oil and gas</a></li>
+        <li><a href="#greenhouse-gases">Greenhouse gases</a></li>
+        <li><a href="#methane">Methane</a></li>
+        <li><a href="#sources">Sources</a></li>
+    </ul>
+</nav>
+<div class="column about-main">
+<div class="content explainer">
 <h2 id="coverage">What this covers</h2>
 <p>The Facility Emissions Explorer shows air pollution reported by <strong>permitted stationary sources</strong> in the San Joaquin Valley's eight counties: power plants, glass and cement plants, oil fields, food processors, dairies with permits, landfills, hospitals, gas stations and thousands more. The data is the California Air Resources Board's facility inventory (CEIDARS), which the air districts report to CARB every year. For the Valley's dairies, permitted or not, see <a href="#dairies">Dairies</a>.</p>
 <p>It does <strong>not</strong> cover cars and trucks, farm equipment, trains, most farming and dust, consumer products, wildfires, or facilities too small to need a permit. Those are most of the valley's air pollution; see <a href="#carb-estimates">CARB's estimates of all sources</a>.</p>
@@ -119,5 +144,7 @@
 </ul>
 
 <p class="is-size-7 has-text-grey">Header photo: <a href="https://commons.wikimedia.org/wiki/File:Pumpjacks,_San_Joaquin_Valley,_California.jpg">Pumpjacks, San Joaquin Valley, California</a> by Downtowngal, <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>, resized, cropped and darkened.</p>
+</div>
+</div>
 </div>
 {% endblock %}

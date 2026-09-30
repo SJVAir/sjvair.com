@@ -215,6 +215,19 @@ body.emissions
       margin-top: 0.5rem
   .oil-gas-callout
     margin: 0.5rem 0 1rem
+  // The About page's sections are h2s (the pesticides About's are h3s):
+  // clear of the sticky scope bar when a contents link jumps to one.
+  .about-layout .explainer h2
+    scroll-margin-top: 5rem
+  // Sixteen sections: on a phone the contents list is two tight columns,
+  // not a screen of links before the text starts.
+  +mobile
+    .about-toc .menu-list
+      columns: 2
+      column-gap: 1rem
+      font-size: $size-7
+      a
+        padding: 0.2rem 0
   // "What this is, and isn't": one folded panel at the foot of a section,
   // the same on every section that has caveats.
   .data-notes
