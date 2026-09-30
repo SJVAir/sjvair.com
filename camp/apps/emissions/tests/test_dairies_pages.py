@@ -552,12 +552,12 @@ class MethaneTests(DairyPageTestCase):
         content = self.get({'year': '2023'}).content.decode()
         # The column header is sortable, so it's a sort_link anchor (label
         # plus an icon span) rather than a bare <th>Methane observed</th>.
-        assert 'sort=-methane_kg_h">Methane observed ' in content and 'Carbon Mapper estimate' in content
+        assert 'sort=-methane_kg_h">Methane observed ' in content
         big_row = content[content.index('BIG DAIRY</a>'):]
         assert '120 kg/h' in big_row[:big_row.index('</tr>')]
         assert '<p class="heading">With observed methane plumes</p><p class="title">1</p>' in content
         assert 'name="methane" value="1"' in content and 'With an observed methane source' in content
-        assert 'Data by Carbon Mapper' in content
+        assert 'Data by Carbon Mapper' not in content  # credited on About, not every page
         content = self.get({'year': '2023', 'methane': '1'}).content.decode()
         assert 'BIG DAIRY' in content and 'SMALL DAIRY' not in content and 'checked' in content
 

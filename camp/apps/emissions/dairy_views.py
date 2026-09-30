@@ -238,7 +238,6 @@ class DairyScopeMixin(ScopeMixin):
             # The methane column/filter/tile are offered only once an
             # import has run (methane.stamp() is None before then).
             'methane_stamp': methane.stamp(),
-            'methane_attribution': methane.attribution(),
         }
         context.update(kwargs)
         return super().get_context_data(**context)

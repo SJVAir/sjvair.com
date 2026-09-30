@@ -28,7 +28,6 @@
   if (!M) return;
 
   var COLORS = { livestock: '#7c3aed', 'oil-gas': '#0f766e', waste: '#b45309', other: '#6b7280' };
-  var TERMS_URL = 'https://carbonmapper.org/terms';
   var PLUME_SOURCE = 'methane-plume-image';
   var PLUME_LAYER = 'methane-plume-image';
   var PLUMES_SOURCE = 'methane-plumes';
@@ -68,12 +67,11 @@
 
   // The click targets go under the host's own points (`before`), so a dairy
   // or facility circle over a source still takes its own clicks; the plume
-  // images go on top. The attribution is the licence's.
+  // images go on top. Carbon Mapper is credited on the About, data providers
+  // and integrations pages, not on the map.
   Overlay.prototype.addLayers = function () {
     var d = this.host.data;
-    this.host.shell.ensureSource('methane', {
-      attribution: '<a href="' + escapeHtml(d.methaneHome || 'https://carbonmapper.org') + '">' + escapeHtml(d.methaneAttribution || 'Data by Carbon Mapper®') + '</a>',
-    });
+    this.host.shell.ensureSource('methane');
     var map = this.host.map;
     var before = this.before && map.getLayer(this.before) ? this.before : undefined;
     // The plume images go on top of the map's own points: they're the point
@@ -206,9 +204,9 @@
 
   Overlay.prototype.legendHtml = function () {
     if (!this.enabled) return '';
-    var html = '<div class="legend-overlay"><label class="legend-toggle"><input type="checkbox" data-methane' + (this.on ? ' checked' : '') + '> Methane sources (Carbon Mapper)</label>';
+    var html = '<div class="legend-overlay"><label class="legend-toggle"><input type="checkbox" data-methane' + (this.on ? ' checked' : '') + '> Methane sources</label>';
     if (this.on) {
-      html += '<p class="legend-note">Each source\'s newest plume image from Carbon Mapper, shaded by methane concentration; drawn larger than life when zoomed out. Click one for its estimated rate (kg/h) and other passes. Snapshots from overflights, not annual totals. <a href="' + escapeHtml(this.host.data.methaneHome || 'https://carbonmapper.org') + '">' + escapeHtml(this.host.data.methaneAttribution || 'Data by Carbon Mapper®') + '</a>, non-commercial use.</p>';
+      html += '<p class="legend-note">Each source\'s newest observed plume, shaded by methane concentration and drawn larger than life when zoomed out. Snapshots from overflights, not annual totals. Click one for its rate and other passes.</p>';
     }
     return html + '</div>';
   };
@@ -219,16 +217,19 @@
     // Nested objects arrive as JSON strings in MapLibre feature properties.
     var link = p.facility ? JSON.parse(p.facility) : null;
     var dairy = p.dairy ? JSON.parse(p.dairy) : null;
-    var hasRate = p.rate !== null && p.rate !== undefined && p.rate !== '';
+    // The source (what it is, what's near it, its typical rate and how often
+    // it's been seen), then the plume on the map with a stepper through its
+    // passes.
     var html = '<div class="facility-popup methane-popup">' +
       '<p class="facility-popup-name">' + escapeHtml(p.sector) + ' methane source</p>' +
-      '<p>' + escapeHtml(p.rate_text) + (hasRate ? ' <span class="has-text-grey">(Carbon Mapper estimate)</span>' : '') + '</p>' +
-      '<p>' + p.det + ' detection' + (p.det === 1 ? '' : 's') + ' of ' + p.obs + ' pass' + (p.obs === 1 ? '' : 'es') + (p.persistence !== null && p.persistence !== undefined ? ' · persistence ' + Number(p.persistence).toFixed(2) : '') + '</p>' +
-      (dairy ? '<p>Nearest dairy: ' + escapeHtml(dairy.name) + '</p>' : '') +
-      (link ? '<p>Nearest facility: <a href="' + escapeHtml(link.url) + '">' + escapeHtml(link.name) + '</a></p>' : '') +
-      '<p><a href="' + escapeHtml(p.viewer_url) + '">View at Carbon Mapper →</a></p>' +
-      '<div class="methane-plume-panel" data-plume-panel><p class="is-size-7 has-text-grey">Loading plume imagery…</p></div>' +
-      '<p class="is-size-7 has-text-grey"><a href="' + escapeHtml(this.host.data.methaneHome || 'https://carbonmapper.org') + '">' + escapeHtml(this.host.data.methaneAttribution || 'Data by Carbon Mapper®') + '</a>, for <a href="' + TERMS_URL + '">non-commercial use</a>.</p></div>';
+      (dairy ? '<p class="methane-near">Near ' + escapeHtml(dairy.name) + '</p>' : '') +
+      (link ? '<p class="methane-near">Near <a href="' + escapeHtml(link.url) + '">' + escapeHtml(link.name) + '</a></p>' : '') +
+      '<dl class="methane-facts">' +
+        '<dt>Rate</dt><dd>' + escapeHtml(p.rate_text) + '</dd>' +
+        '<dt>Seen</dt><dd>' + p.det + ' of ' + p.obs + ' pass' + (p.obs === 1 ? '' : 'es') + '</dd>' +
+      '</dl>' +
+      '<div class="methane-plume-panel" data-plume-panel><p class="has-text-grey">Loading plumes…</p></div>' +
+      '<p class="methane-record"><a href="' + escapeHtml(p.viewer_url) + '">Source record →</a></p></div>';
     var popup = this.host.shell.placePopup(html, lngLat);
     this.plumes = null;
     this.plumeIndex = 0;
@@ -280,36 +281,44 @@
     var panel = this.plumePanel(popup);
     if (!panel) return;
     if (!this.plumes || !this.plumes.length) {
-      panel.innerHTML = '<p class="is-size-7 has-text-grey">No plume detections on file.</p>';
+      panel.innerHTML = '<p class="has-text-grey">No plume images on file.</p>';
       this.removePlumeLayer();
       return;
     }
     var self = this;
+    // Newest first: index 0 is the latest pass, so "earlier" is +1.
     var plume = this.plumes[this.plumeIndex];
+    var count = this.plumes.length;
     var hasRate = plume.rate !== null && plume.rate !== undefined;
     var hasWind = plume.wind_speed !== null && plume.wind_speed !== undefined;
-    var platformText = plume.platform ? escapeHtml(plume.platform) + (plume.instrument ? ' (' + escapeHtml(plume.instrument) + ')' : '') : '';
-    var multi = this.plumes.length > 1;
+    var details = [];
+    if (count > 1) details.push('pass ' + (count - this.plumeIndex) + ' of ' + count);
+    if (plume.platform) details.push(escapeHtml(plume.platform));
+    if (hasRate) details.push(escapeHtml(plume.rate_text));
+    if (hasWind) details.push('wind ' + Number(plume.wind_speed).toFixed(1) + ' m/s');
     panel.innerHTML =
-      '<div class="methane-plume-stepper">' +
-        '<button type="button" class="methane-plume-prev" aria-label="Earlier plume"' + (multi ? '' : ' disabled') + '>◀</button>' +
-        '<span class="methane-plume-date">' + escapeHtml(this.formatPlumeDate(plume.observed_at)) + '</span>' +
-        '<button type="button" class="methane-plume-next" aria-label="Later plume"' + (multi ? '' : ' disabled') + '>▶</button>' +
+      '<div class="methane-plume-head">' +
+        '<span class="methane-plume-label">Plume</span>' +
+        '<span class="buttons has-addons methane-plume-stepper">' +
+          '<button type="button" class="button is-small methane-plume-prev" aria-label="Earlier pass"' + (this.plumeIndex < count - 1 ? '' : ' disabled') + '><span class="fa-regular fa-chevron-left" aria-hidden="true"></span></button>' +
+          '<span class="button is-small is-static methane-plume-date">' + escapeHtml(this.formatPlumeDate(plume.observed_at)) + '</span>' +
+          '<button type="button" class="button is-small methane-plume-next" aria-label="Later pass"' + (this.plumeIndex > 0 ? '' : ' disabled') + '><span class="fa-regular fa-chevron-right" aria-hidden="true"></span></button>' +
+        '</span>' +
       '</div>' +
-      (platformText ? '<p class="is-size-7">' + platformText + '</p>' : '') +
-      (hasRate ? '<p class="is-size-7">' + escapeHtml(plume.rate_text) + ' <span class="has-text-grey">(Carbon Mapper estimate)</span></p>' : '') +
-      (hasWind ? '<p class="is-size-7">Wind ' + escapeHtml(String(plume.wind_speed)) + ' m/s' + (plume.wind_direction !== null && plume.wind_direction !== undefined ? ' @ ' + escapeHtml(String(plume.wind_direction)) + '°' : '') + '</p>' : '') +
-      (!plume.image_url ? '<p class="is-size-7 has-text-grey">No image for this pass.</p>' : '');
+      (details.length ? '<p class="methane-plume-details">' + details.join(' · ') + '</p>' : '') +
+      (!plume.image_url ? '<p class="has-text-grey">No image for this pass.</p>' : '');
     var prevBtn = panel.querySelector('.methane-plume-prev');
     var nextBtn = panel.querySelector('.methane-plume-next');
-    if (prevBtn) prevBtn.addEventListener('click', function () { self.stepPlume(-1, popup); });
-    if (nextBtn) nextBtn.addEventListener('click', function () { self.stepPlume(1, popup); });
+    if (prevBtn) prevBtn.addEventListener('click', function () { self.stepPlume(1, popup); });
+    if (nextBtn) nextBtn.addEventListener('click', function () { self.stepPlume(-1, popup); });
     this.drapePlume(plume);
   };
 
   Overlay.prototype.stepPlume = function (delta, popup) {
-    if (!this.plumes || this.plumes.length < 2) return;
-    this.plumeIndex = (this.plumeIndex + delta + this.plumes.length) % this.plumes.length;
+    if (!this.plumes) return;
+    var index = this.plumeIndex + delta;
+    if (index < 0 || index >= this.plumes.length) return;
+    this.plumeIndex = index;
     this.renderPlumePanel(popup);
   };
 

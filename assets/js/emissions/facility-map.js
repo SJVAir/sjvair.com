@@ -296,6 +296,7 @@
       self.map.on('mouseenter', layer, function () { self.map.getCanvas().style.cursor = 'pointer'; });
       self.map.on('mouseleave', layer, function () { self.map.getCanvas().style.cursor = ''; });
     });
+    this.mainLayer = true;
     this.methane = window.EmissionsMethaneOverlay ? new window.EmissionsMethaneOverlay(this, { before: 'facilities' }) : null;
     // The scope bar's links (year, pollutant, toggles) and the near-me radius
     // buttons were rendered before
@@ -462,9 +463,11 @@
       var set = function (map, id, visible) {
         if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
       };
-      set(this.map, 'facilities', !areas);
-      set(this.map, 'areas-fill', areas);
-      set(this.map, 'areas-line', areas);
+      // mainLayer: the legend's checkbox for the pollutant's own layer, off
+      // to see an overlay (plumes, wells) alone.
+      set(this.map, 'facilities', !areas && this.mainLayer);
+      set(this.map, 'areas-fill', areas && this.mainLayer);
+      set(this.map, 'areas-line', areas && this.mainLayer);
     }
     Array.prototype.forEach.call(this.shell.controls('[data-view]'), function (button) {
       var on = button.getAttribute('data-view') === (areas ? 'areas' : 'facilities');
@@ -909,6 +912,11 @@
   FacilityMap.prototype.legend = function (body) {
     var legend = body.querySelector('.facility-map-legend');
     if (!legend) return;
+    this.renderLegend(body, legend);
+    legend.innerHTML = M.mainLayerToggle(legend.innerHTML, this.mainLayer);
+  };
+
+  FacilityMap.prototype.renderLegend = function (body, legend) {
     if (this.view === 'areas') {
       this.areaLegend(legend);
       return;
@@ -1003,6 +1011,7 @@
       legendBody.setAttribute('data-wells-bound', '1');
       legendBody.addEventListener('change', function (event) {
         if (event.target && event.target.hasAttribute('data-wells')) self.setWells(event.target.checked);
+        if (event.target && event.target.hasAttribute('data-main-layer')) { self.mainLayer = event.target.checked; self.applyView(); }
       });
     }
     if (this.methane) this.methane.bind(legendBody);

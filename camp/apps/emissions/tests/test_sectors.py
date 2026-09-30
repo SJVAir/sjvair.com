@@ -85,5 +85,5 @@ class OilGasMethaneListTests(TestCase):
         content = self.client.get(reverse('emissions:sector-detail', args=['oil-gas'])).content.decode()
         assert 'Methane sources observed at oil &amp; gas sites' in content
         assert '500 ± 150 kg/h' in content and 'Kern' in content and 'TEST GAS STATION' in content
-        assert 'Data by Carbon Mapper®' in content
+        assert 'Data by Carbon Mapper' not in content  # credited on About, not every page
         assert 'Methane sources observed' not in self.client.get(reverse('emissions:sector-detail', args=['glass'])).content.decode()

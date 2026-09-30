@@ -199,3 +199,56 @@
   border-radius: 4px;
   background: #fff;
 }
+
+/* The methane source popup: what and where, two facts, then the plume on
+   the map with a stepper through its passes, and the source record link. */
+.methane-popup .methane-near {
+  color: #4a4a4a;
+}
+.methane-popup .methane-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.1rem 0.6rem;
+  margin: 0.4rem 0;
+}
+.methane-popup .methane-facts dt {
+  color: #7a7a7a;
+}
+.methane-popup .methane-facts dd {
+  margin: 0;
+}
+.methane-popup .methane-plume-panel {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #ededed;
+}
+.methane-popup .methane-plume-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.methane-popup .methane-plume-label {
+  color: #7a7a7a;
+}
+.methane-popup .methane-plume-stepper.buttons {
+  margin: 0;
+  flex-wrap: nowrap;
+}
+.methane-popup .methane-plume-stepper .button {
+  margin-bottom: 0;
+}
+.methane-popup .methane-plume-date {
+  min-width: 7.5rem;
+  color: #363636;
+}
+.methane-popup .methane-plume-details {
+  color: #7a7a7a;
+  font-size: 0.85em;
+}
+.methane-popup .methane-plume-details {
+  margin-top: 0.35rem;
+}
+.methane-popup .methane-record {
+  margin-top: 0.5rem;
+}

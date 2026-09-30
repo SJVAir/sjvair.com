@@ -33,7 +33,7 @@
             {% if methane_stamp %}
             <div class="field">
                 <label class="checkbox"><input type="checkbox" name="methane" value="1"{% if filters.methane %} checked{% endif %}> With an observed methane source</label>
-                <p class="help">Carbon Mapper plumes within 1 km. <a href="{% url 'emissions:about' %}#methane">What this is</a>.</p>
+                <p class="help">Plumes observed within 1 km. <a href="{% url 'emissions:about' %}#methane">What this is</a>.</p>
             </div>
             {% endif %}
             {# Every field applies itself as it changes; there's nothing to Apply. #}

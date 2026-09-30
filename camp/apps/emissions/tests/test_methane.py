@@ -111,7 +111,6 @@ class OverlayConfigTests(MethaneTestCase):
             assert map_data(content, 'methane-url') == reverse('api:v2:emissions:methane-geojson'), url
             assert map_data(content, 'methane-plumes-url') == reverse('api:v2:emissions:methane-plumes', args=['__id__']).replace('__id__', '{id}'), url
             assert map_data(content, 'methane') == '', url
-            assert 'Carbon Mapper' in map_data(content, 'methane-attribution'), url
         content = self.client.get(reverse('emissions:map'), {'methane': '1'}).content.decode()
         assert map_data(content, 'methane') == '1'
 

@@ -19,11 +19,11 @@ shaded), an Options menu with Tiles only (a size filter surviving the style
 swap, tiles= in the URL), a measure change redrawing the legend, a sort (a
 boosted swap) keeping Counties and its measure, a table row's name zooming to its dairy
 with its popup, a county narrowing the dairies, and the NOx / 2024 fallback
-notes, and the Methane sources (Carbon Mapper) overlay: off until ticked,
-loads the layer and writes ?methane=1, the legend's attribution and sector
-key, the map's own attribution control naming Carbon Mapper, and a plume's
-popup carrying the "Carbon Mapper estimate" label and the non-commercial
-attribution (needs import_carbon_mapper on this DB; skipped otherwise). Last,
+notes, and the Methane sources overlay: off until ticked,
+loads the layer and writes ?methane=1, draws the plume images, a legend and
+map without a repeated Carbon Mapper credit (it's on the About and data
+provider pages), and a plume's popup with its rate, passes and dated
+stepper (needs import_carbon_mapper on this DB; skipped otherwise). Last,
 a county page in 2023 maps its facilities (sized circles, the
 plain legend with a size key -- dairies were removed from this map; the
 Dairies tab is the only place they're mapped), and the Dairies tab's own
@@ -689,7 +689,7 @@ def main():
             count = settled_count(driver, lambda d: d.execute_script("var m = window.EmissionsDairyMap.instances()[0]; return m.map.querySourceFeatures('methane').length;"))
             check(results, 'the methane layer loads and ?methane=1 lands in the URL', loaded and count > 0 and 'methane=1' in driver.current_url, f'{count} sources; {driver.current_url}')
             legend = driver.execute_script("return document.querySelector('.dairy-map-legend').textContent;")
-            check(results, 'the methane legend carries the attribution', 'Data by Carbon Mapper' in legend and 'newest plume image' in legend)
+            check(results, 'the methane legend explains the plumes, without repeating the credit', 'newest observed plume' in legend and 'Carbon Mapper' not in legend)
             # The sources are drawn as their plume images, painted onto one
             # canvas source: wait for some non-transparent pixels on it.
             painted = wait_for(driver,
@@ -698,34 +698,34 @@ def main():
                 "var d = ctx.getImageData(0, 0, c.width, c.height).data; for (var i = 3; i < d.length; i += 4) { if (d[i]) return true; } return false;")
             check(results, 'the methane sources are drawn as plume images', painted)
             attribution = driver.execute_script("var el = document.querySelector('.maplibregl-ctrl-attrib-inner, .maptiler-ctrl-attrib-inner'); return el ? el.textContent : '';")
-            check(results, "the map's attribution control names Carbon Mapper", 'Carbon Mapper' in attribution, attribution[:120])
+            check(results, "the map's attribution control doesn't repeat the Carbon Mapper credit", 'Carbon Mapper' not in attribution, attribution[:120])
             opened = driver.execute_script(
                 "var m = window.EmissionsDairyMap.instances()[0]; var f = m.map.querySourceFeatures('methane')[0]; if (!f) return false;"
                 "m.methane.openPopup(f, {lng: f.geometry.coordinates[0], lat: f.geometry.coordinates[1]}); return true;")
             popup = driver.execute_script("var p = document.querySelector('.methane-popup'); return p ? p.textContent : '';") if opened else ''
-            check(results, 'a methane popup says Carbon Mapper estimate and carries the attribution', 'Carbon Mapper estimate' in popup and 'Data by Carbon Mapper' in popup, popup[:160])
+            check(results, 'a methane popup gives the rate and passes, and links the source record', 'Rate' in popup and ' passes' in popup and 'Source record' in popup and 'Carbon Mapper' not in popup, popup[:160])
 
             # Part 2: the popup's plume image stepper (methane-overlay.js
             # loadPlumes/renderPlumePanel). The plumes fetch is async, so wait
-            # for the panel to render past "Loading plume imagery...".
+            # for the panel to render past "Loading plumes..."
             panel_ready = wait_for(
                 driver,
                 "var p = document.querySelector('[data-plume-panel]');"
-                "return !!p && p.textContent.indexOf('Loading plume imagery') === -1;") if opened else False
+                "return !!p && p.textContent.indexOf('Loading plumes') === -1;") if opened else False
             if not panel_ready:
                 check(results, 'the source popup drapes a plume image (needs plumes imported on this DB)', False, 'plume panel never left the loading state -- skip if import_carbon_mapper plumes are still importing')
             else:
                 panel_text = driver.execute_script("return document.querySelector('[data-plume-panel]').textContent;")
-                has_plumes = 'No plume detections on file' not in panel_text
+                has_plumes = 'No plume images on file' not in panel_text
                 if not has_plumes:
                     check(results, 'the source popup drapes a plume image (needs plumes imported on this DB)', False, 'source has no plumes on file yet')
                 else:
                     has_image_layer = driver.execute_script("var m = window.EmissionsDairyMap.instances()[0]; return !!(m.map.getLayer('methane-plume-image') && m.map.getSource('methane-plume-image'));")
                     date_text = driver.execute_script("var d = document.querySelector('.methane-plume-date'); return d ? d.textContent : '';")
                     check(results, 'the plume image layer appears with a dated stepper', has_image_layer or 'No image for this pass' in panel_text, f'layer={has_image_layer} date={date_text!r}')
-                    next_btn = driver.execute_script("var b = document.querySelector('.methane-plume-next'); return b && !b.disabled;")
+                    next_btn = driver.execute_script("var b = document.querySelector('.methane-plume-prev'); return b && !b.disabled;")
                     if next_btn:
-                        driver.execute_script("document.querySelector('.methane-plume-next').click();")
+                        driver.execute_script("document.querySelector('.methane-plume-prev').click();")
                         new_date = driver.execute_script("var d = document.querySelector('.methane-plume-date'); return d ? d.textContent : '';")
                         check(results, "stepping the plume popup's controls changes the date", new_date != date_text, f'{date_text!r} -> {new_date!r}')
                     else:
@@ -775,6 +775,10 @@ def main():
             "return list.length === 1 && list[0].view === 'counties' && list[0].measure === 'emissions';")
         check(results, 'a sort (boosted swap) keeps Counties and its measure',
               kept and 'view=counties' in driver.current_url and 'measure=emissions' in driver.current_url, driver.current_url)
+        # Let the sort's boosted swap finish first: landing after the click, it
+        # would re-read the page's view (Counties) over the zoom's switch.
+        wait_for(driver, "return !document.querySelector('.htmx-request') && window.EmissionsDairyMap.instances().length === 1;")
+        time.sleep(1)
         driver.execute_script("var a = document.querySelector('.dairy-zoom'); a.scrollIntoView(); a.click();")
         opened = False
         deadline = time.time() + 8
@@ -784,7 +788,8 @@ def main():
                 "return !!p && p.textContent.indexOf('Mature dairy cows') !== -1 && p.textContent.indexOf('EPA size') !== -1;")
             time.sleep(0.25)
         back = driver.execute_script("return window.EmissionsDairyMap.instances()[0].view === 'dairies';")
-        check(results, 'a row name zooms to its dairy, back in Dairies, with its popup', opened and back)
+        popup_text = driver.execute_script("var p = document.querySelector('.maplibregl-popup'); return p ? p.textContent.slice(0, 120) : 'no popup';")
+        check(results, 'a row name zooms to its dairy, back in Dairies, with its popup', opened and back, f'back={back} popup={popup_text!r}')
 
         driver.get(args.base + '/tools/emissions/dairies/?county=tulare')
         wait_dairies(driver)

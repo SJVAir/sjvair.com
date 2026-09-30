@@ -16,7 +16,7 @@ import vanilla
 
 from camp.apps.ces import stats as ces_stats
 from camp.apps.emissions import areas, compliance, dairies, ghg, methane, nei, schools, stats, wells
-from camp.apps.emissions.models import AirComplianceFacility, Facility, MethaneSource, SourceImport
+from camp.apps.emissions.models import AirComplianceFacility, Facility, SourceImport
 from camp.apps.emissions.pollutants import CRITERIA, PRECURSORS
 from camp.apps.regions import nearby
 from camp.apps.regions.models import Region
@@ -312,7 +312,6 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
             ghg_card=ghg_card,
             methane_sources=methane.near_facility(facility) if methane.enabled() else [],
             methane_stamp=methane.stamp(),
-            methane_attribution=methane.attribution(),
             nearby=nearby,
             nearby_shown=schools.SHOWN,
             nearby_groups=nearby_groups(nearby),
@@ -375,7 +374,6 @@ class SectorDetail(ScopeMixin, vanilla.TemplateView):
             methane_oil_gas=methane.oil_gas_sources() if self.sector == Facility.Sector.OIL_GAS and methane.enabled() else None,
             methane_list_rows=METHANE_LIST_ROWS,
             methane_stamp=methane.stamp(),
-            methane_attribution=methane.attribution(),
             **kwargs,
         )
 
@@ -465,15 +463,13 @@ def methane_map_data(overlay):
     if not overlay:
         return {
             'methane_url': '', 'methane_plumes_url': '', 'methane': '',
-            'methane_default': '', 'methane_attribution': '', 'methane_home': '',
+            'methane_default': '',
         }
     return {
         'methane_url': reverse('api:v2:emissions:methane-geojson'),
         'methane_plumes_url': reverse('api:v2:emissions:methane-plumes', args=['__id__']).replace('__id__', '{id}'),
         'methane': '1' if overlay['on'] else '',
         'methane_default': '1' if overlay['default'] else '',
-        'methane_attribution': MethaneSource.ATTRIBUTION,
-        'methane_home': MethaneSource.HOME_URL,
     }
 
 

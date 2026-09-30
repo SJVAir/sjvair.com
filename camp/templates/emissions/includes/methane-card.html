@@ -16,15 +16,15 @@ requires both wherever the data shows).
             {% for source in methane_sources %}
             <tr>
                 <td>{{ source.sector_label }} <span class="has-text-grey is-size-7">{{ source.distance_m|floatformat:0 }} m away</span></td>
-                <td>{{ source.rate_text }}{% if source.emission_kg_h is not None %} <span class="has-text-grey is-size-7">Carbon Mapper estimate</span>{% endif %}</td>
+                <td>{{ source.rate_text }}</td>
                 <td>{{ source.detections }} detection{{ source.detections|pluralize }} of {{ source.observations }} pass{{ source.observations|pluralize:"es" }}{% if source.persistence is not None %} <span class="has-text-grey is-size-7">(persistence {{ source.persistence|floatformat:2 }})</span>{% endif %}</td>
                 <td>{% if source.dairy %}{{ source.dairy.name }}{% else %}—{% endif %}</td>
-                <td><a href="{{ source.viewer_url }}">View at Carbon Mapper →</a></td>
+                <td><a href="{{ source.viewer_url }}">Source record →</a></td>
             </tr>
             {% endfor %}
             </tbody>
         </table>
-        <p class="is-size-7 has-text-grey">Plumes are snapshots from aircraft and satellite passes. Each rate is an instantaneous estimate with wide uncertainty, not an annual total. A site with no plume hasn't been shown to be clean. <a href="{% url 'emissions:about' %}#methane">More</a>. <a href="{{ methane_attribution.url }}">{{ methane_attribution.text }}</a>, for <a href="{{ methane_attribution.license_url }}">non-commercial use</a>.{% if methane_stamp %} Catalog as of {{ methane_stamp.imported_at|date:"N j, Y" }}.{% endif %}</p>
+        <p class="is-size-7 has-text-grey">Plumes are snapshots from aircraft and satellite passes. Each rate is an instantaneous estimate with wide uncertainty, not an annual total. A site with no plume hasn't been shown to be clean. <a href="{% url 'emissions:about' %}#methane">More</a>.{% if methane_stamp %} Catalog as of {{ methane_stamp.imported_at|date:"N j, Y" }}.{% endif %}</p>
     </div>
 </div>
 {% endif %}

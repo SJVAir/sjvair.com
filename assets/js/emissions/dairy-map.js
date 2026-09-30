@@ -207,11 +207,10 @@
     var me = data.methane;
     if (me && me.sources && me.sources.length) {
       var lines = me.sources.map(function (s) {
-        return '<strong>Methane observed</strong>: ' + escapeHtml(s.rate_text) + (s.rate != null ? ' (Carbon Mapper estimate)' : '') +
+        return '<strong>Methane observed</strong>: ' + escapeHtml(s.rate_text) +
           (s.det ? ', ' + s.det + ' detection' + (s.det === 1 ? '' : 's') + ' of ' + s.obs + ' pass' + (s.obs === 1 ? '' : 'es') : '') +
-          ' · <a href="' + escapeHtml(s.viewer_url) + '">View at Carbon Mapper →</a>';
+          ' · <a href="' + escapeHtml(s.viewer_url) + '">Source record →</a>';
       });
-      lines.push('<span class="has-text-grey"><a href="' + escapeHtml(config.methaneHome || 'https://carbonmapper.org') + '">' + escapeHtml(config.methaneAttribution || 'Data by Carbon Mapper®') + '</a>, non-commercial use</span>');
       parts.push('<div class="dairy-popup-methane is-size-7"><p>' + lines.join('<br>') + '</p></div>');
     }
     if (data.areas && data.areas.length) {
@@ -315,6 +314,7 @@
       if (path !== null) detail.path = path;
     };
     document.body.addEventListener('htmx:configRequest', this.onConfigRequest);
+    this.mainLayer = true;
     this.methane = window.EmissionsMethaneOverlay ? new window.EmissionsMethaneOverlay(this, { before: 'dairies' }) : null;
     // For debugging from the console: document.querySelector('.dairy-map').dairyMap
     this.el.dairyMap = this;
@@ -373,8 +373,10 @@
       var set = function (map, id, visible) {
         if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
       };
-      set(this.map, 'dairies', !counties);
-      set(this.map, 'counties-fill', counties);
+      // mainLayer: the legend's checkbox for the map's own layer, off to
+      // see the methane plumes alone.
+      set(this.map, 'dairies', !counties && this.mainLayer);
+      set(this.map, 'counties-fill', counties && this.mainLayer);
     }
     Array.prototype.forEach.call(this.shell.controls('[data-view]'), function (button) {
       var on = button.getAttribute('data-view') === (counties ? 'counties' : 'dairies');
@@ -716,7 +718,7 @@
     // enabled overlay to show.
     if (!hasData && !methaneHtml) return;
     if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = false;
-    legend.innerHTML = (hasData ? (this.view === 'counties' ? this.countyLegend() : this.dairyLegend()) : '') + methaneHtml;
+    legend.innerHTML = M.mainLayerToggle((hasData ? (this.view === 'counties' ? this.countyLegend() : this.dairyLegend()) : ''), this.mainLayer) + methaneHtml;
   };
 
   DairyMap.prototype.onChrome = function () {
@@ -729,6 +731,13 @@
     this.shell.bindTiles('select[name="tiles"]', function () { self.syncUrl(); });
     this.applyView();
     if (this.methane) this.methane.bind(this.shell.legendBodyEl);
+    var legendBody = this.shell.legendBodyEl;
+    if (legendBody && !legendBody.getAttribute('data-main-layer-bound')) {
+      legendBody.setAttribute('data-main-layer-bound', '1');
+      legendBody.addEventListener('change', function (event) {
+        if (event.target && event.target.hasAttribute('data-main-layer')) { self.mainLayer = event.target.checked; self.applyView(); }
+      });
+    }
   };
 
   // The size dropdown's checkboxes: bindControls always closes its dropdown

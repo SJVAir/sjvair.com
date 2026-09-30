@@ -252,12 +252,13 @@ class MethaneCardTests(TestCase):
     def detail(self, name):
         return self.client.get(Facility.objects.get(name=name).get_absolute_url()).content.decode()
 
-    def test_card_rows_and_attribution(self):
+    def test_card_rows(self):
         content = self.detail('TEST PLANT')
         assert 'card-header-title">Methane plumes observed nearby' in content
-        assert '120 ± 40 kg/h' in content and 'Carbon Mapper estimate' in content
-        assert '5 detections of 12 passes' in content and 'View at Carbon Mapper →' in content
-        assert 'href="https://carbonmapper.org"' in content and 'Data by Carbon Mapper®' in content
+        assert '120 ± 40 kg/h' in content
+        assert '5 detections of 12 passes' in content and 'Source record →' in content
+        # Carbon Mapper is credited on the About and data provider pages, not on every page.
+        assert 'Data by Carbon Mapper' not in content and 'Carbon Mapper estimate' not in content
         assert 'BIG DAIRY' in content  # the nearest dairy is named
         assert 'not an annual total' in content
 
