@@ -13,6 +13,10 @@
             Within {{ area.radius }} mile{{ area.radius|pluralize }}
         {% else %}
             {{ area.region.type_label }}
+            {% if area.region.metadata.community_url %}
+            {# An AB 617 community's page at the Valley Air District: its plan and steering committee. #}
+            &middot; <a href="{{ area.region.metadata.community_url }}" target="_blank" rel="noopener">Community page</a>
+            {% endif %}
         {% endif %}
     </p>
     {% if area.kind == 'point' and radius_options %}

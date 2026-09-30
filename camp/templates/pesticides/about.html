@@ -19,6 +19,7 @@
         <li><a href="#iarc">IARC groups</a></li>
         <li><a href="#tac">CARB Toxic Air Contaminants</a></li>
         <li><a href="#restricted">California restricted materials</a></li>
+        <li><a href="#ab617">AB 617 communities</a></li>
         <li><a href="#fumigant">Fumigants</a></li>
         <li><a href="#methodology">How these numbers are made</a></li>
         <li><a href="#caveats">Caveats</a></li>
@@ -86,6 +87,10 @@
     <h3 id="restricted">California restricted materials</h3>
     {% health_note 'california_restricted' as restricted_note %}
     <p>{{ restricted_note.summary }}{% if restricted_note.detail %} {{ restricted_note.detail }}{% endif %}</p>
+
+    <h3 id="ab617">AB 617 communities</h3>
+    {% health_note 'ab617' as ab617_note %}
+    <p>{{ ab617_note.summary }} {{ ab617_note.detail }} <a href="{{ ab617_note.source_url }}" target="_blank" rel="noopener">CARB&rsquo;s Community Air Protection Program</a>.</p>
 
     <h3 id="fumigant">Fumigants</h3>
     {% health_note 'fumigant' as fumigant_note %}

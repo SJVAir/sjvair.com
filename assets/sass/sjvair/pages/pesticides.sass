@@ -816,6 +816,10 @@ body.pesticides
                     content: '· '
         .find-area-counties
             margin-top: 0.75rem
+            // The AB 617 row sits right under the counties', as one block.
+            & + .find-area-ab617
+                margin-top: 0.25rem
+                margin-bottom: 0.75rem
             font-size: $size-7
             a
                 font-weight: 600

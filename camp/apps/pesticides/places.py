@@ -29,6 +29,7 @@ from camp.apps.regions.models import Location, Region
 
 PLACE_REGION_TYPES = (
     Region.Type.COUNTY, *Region.COMMUNITY_TYPES, Region.Type.ZIPCODE, Region.Type.SCHOOL_DISTRICT,
+    Region.Type.AB617_COMMUNITY,
 )
 # v2: the 'places' group became 'communities', each entry labelled.
 WITHIN_KEY = 'pesticides:within:v2'
@@ -86,13 +87,14 @@ class Area:
     def page_title(self):
         """
         The <title> and breadcrumb text: `label`, plus its type for a
-        community region (city, urban area, CDP) -- Fresno the city and
-        Fresno the urban area are both just "Fresno" otherwise, in a browser
-        tab or a breadcrumb where the identifiers line under the h1 isn't
-        visible. Every other kind (and the h1 itself, always `label`) is
+        community region (city, urban area, CDP) or an AB 617 community --
+        Fresno the city and Fresno the urban area, or Shafter the city and
+        Shafter the AB 617 community, are otherwise the same words in a
+        browser tab or a breadcrumb where the identifiers line under the h1
+        isn't visible. Every other kind (and the h1 itself, always `label`) is
         already unambiguous on its own.
         """
-        if self.kind == 'region' and self.region.type in Region.COMMUNITY_TYPES:
+        if self.kind == 'region' and self.region.type in (*Region.COMMUNITY_TYPES, Region.Type.AB617_COMMUNITY):
             return f'{self.label} ({self.region.type_label})'
         return self.label
 

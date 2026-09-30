@@ -548,7 +548,7 @@ class ExplorerRedirect(vanilla.GenericView):
         return redirect(obj.get_absolute_url() + (f'?{query}' if query else ''), permanent=True)
 
 
-FIND_AREA_PLACES_CACHE_KEY = 'pesticides:find-area-places:v2'
+FIND_AREA_PLACES_CACHE_KEY = 'pesticides:find-area-places:v3'
 FIND_AREA_PLACES_TTL = 60 * 60 * 24
 
 # Short, human labels for the "Find your area" dropdown. Region.Type's own
@@ -560,6 +560,7 @@ FIND_AREA_TYPE_LABELS = {
     **Region.COMMUNITY_LABELS,
     Region.Type.ZIPCODE: 'ZIP',
     Region.Type.SCHOOL_DISTRICT: 'School district',
+    Region.Type.AB617_COMMUNITY: 'AB 617 community',
 }
 
 
@@ -630,6 +631,10 @@ class Home(vanilla.TemplateView):
             find_area_counties=[
                 place for place in find_area_places
                 if place['type'] == Region.Type.COUNTY
+            ],
+            find_area_ab617=[
+                place for place in find_area_places
+                if place['type'] == Region.Type.AB617_COMMUNITY
             ],
             maptiler_key=settings.MAPTILER_API_KEY,
             focus_find=self.request.GET.get('find') == '1',
