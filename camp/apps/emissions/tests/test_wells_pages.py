@@ -59,6 +59,7 @@ class OverlayConfigTests(WellsPagesTestCase):
         assert map_data(content, 'wells') == '1' and map_data(content, 'wells-default') == ''
 
     def test_on_by_default_on_the_oil_gas_tab_and_sector(self):
+        self.add_wells()
         oil_gas = self.kern.get_emissions_tab_url('oil-gas')
         content = self.get(oil_gas)
         assert map_data(content, 'wells') == '1' and map_data(content, 'wells-default') == '1'
@@ -125,6 +126,29 @@ class WellsBlockTests(WellsPagesTestCase):
         assert "80% of Kern" in content and 'permit groupings that can span a whole oil field' in content
         assert 'id="wells"' not in content
         assert '80% of Kern' not in self.get(reverse('emissions:sector-detail', args=['glass']), {'year': '2024'})
+
+
+class OilGasTabTests(WellsPagesTestCase):
+    """The Oil & gas tab's table, filters, CSV and chart (area-oil-gas.html)."""
+
+    def test_the_wells_table_filters_and_csv(self):
+        self.add_wells()
+        url = self.fresno.get_emissions_tab_url('oil-gas')
+        content = self.get(url, {'year': '2024'})
+        table = content[content.index('well-table'):content.index('</table>', content.index('well-table'))]
+        assert table.count('<tr>') == 3  # header + Fresno's two wells
+        assert 'class="explorer-filters box"' in content and 'Download these wells (CSV)' in content
+        idle = self.get(url, {'year': '2024', 'status': 'Idle'})
+        idle_table = idle[idle.index('well-table'):idle.index('</table>', idle.index('well-table'))]
+        assert 'No wells match.' in idle_table
+        response = self.client.get(url, {'format': 'csv'})
+        assert response['Content-Type'] == 'text/csv'
+        rows = response.content.decode().strip().splitlines()
+        assert rows[0].startswith('api,lease,well_number,status') and len(rows) == 3
+
+    def test_the_tab_without_wells_says_so(self):
+        content = self.get(self.fresno.get_emissions_tab_url('oil-gas'))
+        assert 'No active, idle or new oil or gas wells here.' in content and 'well-table' not in content
 
 
 class FacilityNoteTests(WellsPagesTestCase):

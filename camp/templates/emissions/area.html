@@ -32,23 +32,6 @@
 
 {% emissions_trend_chart by_year pollutant year heading="Over time" %}
 
-{% elif tab == 'facilities' %}
-<h2 class="title is-4" id="facilities">Facilities in {{ year }}</h2>
-{% if top_rows %}
-{% include 'emissions/includes/facility-table.html' with rows=top_rows sortable=False hide_city=top_columns.hide_city hide_county=top_columns.hide_county %}
-{% if facility_count > top_rows|length %}<p class="mt-2">The {{ top_rows|length }} largest of {{ facility_count|intcomma }}.{% if facility_list_url %} <a href="{{ facility_list_url }}">All of them in the facility list →</a>{% endif %}</p>{% endif %}
-{% else %}
-<p class="has-text-grey">No facilities here reported {{ pollutant.name }} in {{ year }}.</p>
-{% endif %}
-{% if compliance_line %}
-<p class="compliance-line is-size-7 mt-2">{{ compliance_line.tracked|intcomma }} of the {{ compliance_line.facilities|intcomma }} facilities here are tracked in EPA's air compliance system; {{ compliance_line.unaddressed|intcomma }} have an unaddressed high-priority violation <a href="{{ compliance_line.url }}">→</a></p>
-{% endif %}
-{% if ghg_table.rows %}{% include 'emissions/includes/ghg-table.html' %}{% endif %}
-
-{% elif tab == 'oil-gas' %}
-{% include 'emissions/includes/facility-map.html' %}
-{% if wells_block %}{% include 'emissions/includes/wells-block.html' %}{% else %}<p class="has-text-grey mt-4">No active, idle or new oil or gas wells here.</p>{% endif %}
-
 {% elif tab == 'community' %}
 {% include 'emissions/includes/community-card.html' %}
 {% include 'regions/includes/within.html' with within_name=name %}

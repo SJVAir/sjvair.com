@@ -9,11 +9,11 @@ point is an office, so the plumes are listed here instead of on facility pages.
 {% if methane_oil_gas %}
 <div class="table-container">
 <table class="table is-fullwidth is-narrow">
-    <thead><tr><th>County</th><th>Rate</th><th>Seen</th><th>Nearest facility</th><th></th></tr></thead>
+    <thead><tr>{% if not here %}<th>County</th>{% endif %}<th>Rate</th><th>Seen</th><th>Nearest facility</th><th></th></tr></thead>
     <tbody>
     {% for item in methane_oil_gas|slice:methane_list_rows %}
     <tr>
-        <td>{{ item.county.short_name }}</td>
+        {% if not here %}<td>{{ item.county.short_name }}</td>{% endif %}
         <td>{{ item.source.rate_text }}</td>
         <td>{{ item.source.detections }} of {{ item.source.observations }} passes</td>
         <td>{% if item.facility %}<a href="{{ item.facility.get_absolute_url }}">{{ item.facility.name }}</a>{% else %}<span class="has-text-grey">{{ item.source.point.y|floatformat:4 }}, {{ item.source.point.x|floatformat:4 }}</span>{% endif %}</td>
@@ -25,7 +25,7 @@ point is an office, so the plumes are listed here instead of on facility pages.
 </div>
 {% if methane_oil_gas|length > methane_list_rows %}<p class="is-size-7 has-text-grey">The {{ methane_list_rows }} largest of {{ methane_oil_gas|length|intcomma }}; turn on the map's <em>Methane sources</em> overlay for all of them.</p>{% endif %}
 {% else %}
-<p class="has-text-grey">No oil &amp; gas methane sources observed in the covered counties.</p>
+<p class="has-text-grey">No oil &amp; gas methane sources observed {% if here %}here{% else %}in the covered counties{% endif %}.</p>
 {% endif %}
 <p class="is-size-7 has-text-grey">Snapshots from aircraft and satellite passes, not annual totals; a field with no plume hasn't been shown to be clean.</p>
 {% endif %}

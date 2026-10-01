@@ -16,7 +16,7 @@ import vanilla
 
 from camp.apps.ces import stats as ces_stats
 from camp.apps.emissions import areas, compliance, dairies, ghg, methane, nei, schools, stats, wells
-from camp.apps.emissions.models import AirComplianceFacility, Facility, SourceImport
+from camp.apps.emissions.models import AirComplianceFacility, Facility, SourceImport, Well
 from camp.apps.emissions.pollutants import CRITERIA, PRECURSORS
 from camp.apps.regions import nearby
 from camp.apps.regions.models import Region
@@ -213,6 +213,32 @@ class FacilityList(ScopeMixin, vanilla.TemplateView):
     def csv_response(self):
         scope = self.get_scope()
         return facility_csv(scope, stats.facility_table(scope, **list_filters(self.request.GET)), f'facility-emissions-{scope.year}.csv')
+
+
+def area_geometry(area):
+    """An area's shape: a region's boundary or a radius's circle."""
+    region = getattr(area, 'region', None)
+    return region.boundary.geometry if region is not None else area.geometry
+
+
+def oil_gas_methane_in(area):
+    """methane.oil_gas_sources() inside the area (a few hundred Valley-wide, so tested in Python)."""
+    shape = area_geometry(area)
+    return [row for row in methane.oil_gas_sources() if shape.contains(row['source'].point)]
+
+
+def wells_csv(wells_qs, filename):
+    """A wells table (wells.table) as a CSV download: the Oil & gas tab's."""
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    writer = csv.writer(response)
+    writer.writerow(['api', 'lease', 'well_number', 'status', 'well_type', 'operator', 'field', 'county', 'spud_date',
+                     'health_protection_zone', 'latitude', 'longitude', 'calgem_url'])
+    for well in wells_qs.select_related('county'):
+        writer.writerow([well.api, well.lease_name, well.well_number, well.status, well.well_type_label, well.operator_name,
+                         well.field_name, well.county.name, well.spud_date or '', well.in_hpz,
+                         f'{well.point.y:.5f}', f'{well.point.x:.5f}', well.calgem_url])
+    return response
 
 
 def facility_csv(scope, records, filename):
@@ -524,7 +550,8 @@ def reporting_sectors(scope):
 
 
 def facility_map_config(scope, *, mode='full', highlight=None, sector=None, params=None, areas_view=None,
-                        outline_url='', center='', zoom='', radius='', nearby=None, wells=None, methane=None, fit=False):
+                        outline_url='', center='', zoom='', radius='', nearby=None, wells=None, methane=None, fit=False,
+                        main_layer=True):
     """
     The data-* attributes of a `.facility-map` container (see
     assets/js/emissions/facility-map.js). `nearby` is a FeatureCollection
@@ -554,6 +581,8 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         # Where to pin the highlighted facility (a facility page), lng,lat.
         # Frame the loaded facilities rather than the Valley (a sector page).
         'fit': '1' if fit else '',
+        # '0' starts the facilities (the legend's first checkbox) off: an Oil & gas tab, about the wells.
+        'main_layer': '' if main_layer else '0',
         'highlight_point': f'{point.x:.5f},{point.y:.5f}' if point is not None else '',
         'center': center or (f'{point.y},{point.x}' if point is not None else ''),
         'zoom': zoom or (11 if point is not None else ''),
@@ -818,6 +847,8 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
             request.GET = params
         if self.tab == 'facilities' and request.GET.get('format') == 'csv':
             return self.facilities_csv()
+        if self.tab == 'oil-gas' and request.GET.get('format') == 'csv':
+            return wells_csv(wells.table(self.get_area(), **wells.table_filters(request.GET)), f'wells-{self.csv_slug()}.csv')
         return super().get(request, *args, **kwargs)
 
     def area_scope(self):
@@ -881,6 +912,24 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
                 sector_options=sector_options(), compliance_options=compliance.FILTER_LABELS,
                 reporting=stats.facility_table(scope).filter(value__gt=0).count(),
             )
+        elif tab == 'oil-gas':
+            # The wells table, filters and CSV; the drilling-by-year chart; and the
+            # area's oil & gas permit groupings and methane observed at oil & gas sites.
+            well_filters = wells.table_filters(self.request.GET)
+            well_page = Paginator(wells.table(area, **well_filters), PAGE_SIZE).get_page(self.request.GET.get('page'))
+            kwargs.update(
+                page_obj=well_page, is_paginated=well_page.has_other_pages(), well_rows=well_page.object_list,
+                sort=well_filters['sort'], filters=well_filters, well_options=wells.filter_options(area),
+                status_options=Well.Status.choices, spud=wells.spud_by_year(area), well_types=wells.by_type(area),
+                oil_gas_card=[
+                    {'label': record.facility.name, 'url': record.facility.get_absolute_url(), 'value': record.value}
+                    for record in stats.facility_table(scope, sector=Facility.Sector.OIL_GAS)[:5]
+                ],
+                oil_gas_facilities_url=self.area_tab_url('facilities', '&'.join(filter(None, [self.tab_query('facilities'), 'sector=oil-gas']))),
+                methane_oil_gas=oil_gas_methane_in(area) if methane.enabled() else None,
+                methane_list_rows=METHANE_LIST_ROWS,
+            )
+            top_rows = []
         elif tab == 'overview':
             top_rows = stats.with_ranks(stats.facility_table(scope)[:5], stats.ranks(scope))
         else:
@@ -1023,6 +1072,7 @@ class RegionPage(RegionLookupMixin, AreaPage):
             # Wells start on only on the Oil & gas tab (66,000 in Kern are too
             # many to load by default on its Overview); ?wells=1 still shows them.
             wells=wells_overlay(self.request.GET, default=self.tab == 'oil-gas'),
+            main_layer=self.tab != 'oil-gas',
             methane=methane_overlay(self.request.GET),
         )
 
@@ -1193,6 +1243,7 @@ class NearMe(NearLookupMixin, AreaPage):
             center=f'{self.near.lat:.4f},{self.near.lng:.4f}', zoom=RADIUS_ZOOMS[self.near.radius],
             radius=self.near.radius,
             wells=wells_overlay(self.request.GET, default=self.tab == 'oil-gas'),
+            main_layer=self.tab != 'oil-gas',
             methane=methane_overlay(self.request.GET),
         )
 
@@ -1224,6 +1275,7 @@ class RegionFacilities(RegionPage):
 
 class RegionOilGas(RegionPage):
     tab = 'oil-gas'
+    template_name = 'emissions/area-oil-gas.html'
 
 
 class RegionCommunity(RegionPage):
@@ -1237,6 +1289,7 @@ class NearMeFacilities(NearMe):
 
 class NearMeOilGas(NearMe):
     tab = 'oil-gas'
+    template_name = 'emissions/area-oil-gas.html'
 
 
 class NearMeCommunity(NearMe):

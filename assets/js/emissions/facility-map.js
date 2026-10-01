@@ -296,7 +296,8 @@
       self.map.on('mouseenter', layer, function () { self.map.getCanvas().style.cursor = 'pointer'; });
       self.map.on('mouseleave', layer, function () { self.map.getCanvas().style.cursor = ''; });
     });
-    this.mainLayer = true;
+    // The legend's own-layer checkbox; a page can start it off (data-main-layer="0", an Oil & gas tab).
+    this.mainLayer = this.data.mainLayer !== '0';
     this.methane = window.EmissionsMethaneOverlay ? new window.EmissionsMethaneOverlay(this, { before: 'facilities' }) : null;
     // The scope bar's links (year, pollutant, toggles) and the near-me radius
     // buttons were rendered before
@@ -1301,6 +1302,7 @@
     this.shell.setSourceData('areas', M.EMPTY);
     this.shell.setStatus('');
     this.readViewState();
+    this.mainLayer = this.data.mainLayer !== '0';
     this.applyView();
     this.applyWells();
     if (this.wells) this.loadWells();

@@ -287,6 +287,39 @@ def digester_trend_chart(points, year=None):
     }
 
 
+@register.inclusion_tag('pesticides/includes/trend-chart.html')
+def well_spud_chart(points, total=None, heading=None):
+    """
+    Today's wells by the year drilling began (wells.spud_by_year), a line of
+    whole counts: the one history CalGEM's snapshot carries. Nothing without one.
+    """
+    rows = sorted(points, key=lambda row: row['year'])
+    years = [row['year'] for row in rows]
+    known = sum(row['value'] for row in rows)
+    # CalGEM leaves about half its wells' spud dates blank; say how many the line covers.
+    note = f'{known:,} of these {total:,} wells have a recorded spud date. ' if total else ''
+    note += "Wells plugged since aren't in CalGEM's current list, so earlier years undercount what was drilled."
+    return {
+        'chart_id': f'chart-{uuid.uuid4().hex[:8]}',
+        'chart': {
+            'type': 'line',
+            'unit': 'wells',
+            'whole': True,
+            'x': years,
+            'y': [row['value'] for row in rows],
+            'labels': ['wells drilled'],
+            'selected': None,
+        },
+        'has_data': any(row['value'] for row in rows),
+        'heading': heading,
+        'title': "Today's wells by the year drilling began",
+        'sentence': '',
+        'note': note,
+        'first_year': years[0] if years else None,
+        'last_year': years[-1] if years else None,
+    }
+
+
 @register.simple_tag
 def sparkline(points, width=100, height=24):
     """A tiny inline SVG trend line; '' with fewer than two points."""

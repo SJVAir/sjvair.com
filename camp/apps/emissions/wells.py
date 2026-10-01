@@ -10,7 +10,8 @@ import time
 from django.contrib.gis.geos import Polygon
 from django.contrib.gis.measure import D
 from django.core.cache import cache
-from django.db.models import Count, Exists, OuterRef, Q, Sum
+from django.db.models import Count, Exists, F, OuterRef, Q, Sum
+from django.db.models.functions import ExtractYear
 
 from camp.apps.emissions import areas, stats
 from camp.apps.emissions.models import EmissionsRecord, Facility, SourceImport, ToxicEmission, Well
@@ -170,3 +171,81 @@ def kern_callout(year):
             'benzene_share': float(benzene_oil) / float(benzene_total) if benzene_total else None,
         }
     return cache.get_or_set(f'{stats.prefix()}:kern-oil-gas:{year}', compute, stats.CACHE_TIMEOUT)
+
+
+# The Oil & gas tab's table (views.RegionOilGas): its sorts and filters.
+TABLE_SORTS = ('label', '-label', 'operator', '-operator', 'field', '-field', 'status', '-status', 'spud', '-spud')
+SORT_FIELDS = {'label': ('lease_name', 'well_number'), 'operator': ('operator_name',), 'field': ('field_name',), 'status': ('status',), 'spud': ('spud_date',)}
+FILTER_OPTIONS = 40
+
+
+def table_filters(get):
+    """The wells table's filters from a query string, validated: q, status, operator, field, hpz (a flag) and sort."""
+    status = get.get('status')
+    sort = get.get('sort')
+    return {
+        'q': (get.get('q') or '').strip() or None,
+        'status': status if status in Well.Status.values else None,
+        'operator': (get.get('operator') or '').strip() or None,
+        'field': (get.get('field') or '').strip() or None,
+        'hpz': get.get('hpz') == '1',
+        # Newest drilling first: about half the wells carry a spud date, and those lead.
+        'sort': sort if sort in TABLE_SORTS else '-spud',
+    }
+
+
+def table(area, *, q=None, status=None, operator=None, field=None, hpz=False, sort='-spud'):
+    """The area's wells, filtered and sorted, for the Oil & gas tab's table and CSV."""
+    queryset = Well.objects.filter(well_q(area))
+    if q:
+        queryset = queryset.filter(Q(lease_name__icontains=q) | Q(api__icontains=q))
+    if status:
+        queryset = queryset.filter(status=status)
+    if operator:
+        queryset = queryset.filter(operator_name=operator)
+    if field:
+        queryset = queryset.filter(field_name=field)
+    if hpz:
+        queryset = queryset.filter(in_hpz=Well.HPZ.VERIFIED)
+    sort = sort if sort in TABLE_SORTS else '-spud'
+    fields = SORT_FIELDS[sort.lstrip('-')]
+    descending = sort.startswith('-')
+    order = [F(name).desc(nulls_last=True) if descending else F(name).asc(nulls_last=True) for name in fields]
+    return queryset.order_by(*order, 'api')
+
+
+def filter_options(area):
+    """The area's operators and fields by well count ({'operators': [...], 'fields': [...]}), the most first, for the filters."""
+    def compute():
+        wells = Well.objects.filter(well_q(area))
+        def ranked(name):
+            return [row[name] for row in wells.exclude(**{name: ''}).values(name).annotate(n=Count('pk')).order_by('-n', name)[:FILTER_OPTIONS]]
+        return {'operators': ranked('operator_name'), 'fields': ranked('field_name')}
+    return cache.get_or_set(key('options', area.key), compute, stats.CACHE_TIMEOUT)
+
+
+def spud_by_year(area):
+    """
+    The area's current wells by the year they were spudded (drilling began):
+    [{'year', 'value'}]. CalGEM's list is today's snapshot, so this isn't a
+    history of wells in service -- wells plugged since aren't in it -- but the
+    spud year is the one date it carries for every well.
+    """
+    def compute():
+        rows = (
+            Well.objects.filter(well_q(area), spud_date__isnull=False)
+            .annotate(year=ExtractYear('spud_date')).values('year').annotate(n=Count('pk')).order_by('year')
+        )
+        return [{'year': row['year'], 'value': row['n']} for row in rows]
+    return cache.get_or_set(key('spud', area.key), compute, stats.CACHE_TIMEOUT)
+
+
+def by_type(area):
+    """The area's wells by well type (oil & gas, water injection, steam flood ...), the most first: [{'label', 'count'}], top 6."""
+    def compute():
+        rows = (
+            Well.objects.filter(well_q(area)).exclude(well_type_label='')
+            .values('well_type_label').annotate(n=Count('pk')).order_by('-n')[:6]
+        )
+        return [{'label': row['well_type_label'], 'count': row['n']} for row in rows]
+    return cache.get_or_set(key('types', area.key), compute, stats.CACHE_TIMEOUT)
