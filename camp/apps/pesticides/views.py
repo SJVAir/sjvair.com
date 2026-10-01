@@ -1922,13 +1922,17 @@ class NoticeList(vanilla.ListView):
         self.year, self.all_years = stats.resolve_year_param(request.GET.get('year'))
         return super().dispatch(request, *args, **kwargs)
 
-    def get_queryset(self):
+    def filtered_notices(self):
+        """
+        The notices the page's own filters let through -- its area, method,
+        product/chemical and narrowing -- whatever the mode or month: what the
+        list shows and the archive's month counts both start from it.
+        """
         if any(value is MISSING for value in self.related.values()):
             return PesticideNotice.objects.none()
 
-        queryset = PesticideNotice.objects.select_related('county', 'mtrs').prefetch_related('chemicals', 'products')
         queryset = area_filter(
-            queryset,
+            PesticideNotice.objects.all(),
             county=self.county,
             region=self.related.get('region'),
             section=self.related.get('section'),
@@ -1946,6 +1950,11 @@ class NoticeList(vanilla.ListView):
 
         if self.concern:
             queryset = stats.narrow_notices(queryset, self.concern)
+        return queryset
+
+    def get_queryset(self):
+        data = self.form.cleaned_data
+        queryset = self.filtered_notices().select_related('county', 'mtrs').prefetch_related('chemicals', 'products')
 
         if self.mode == 'past':
             cutoff = timezone.now() - timedelta(days=stats.NOTICE_GRACE_DAYS)
@@ -1961,16 +1970,21 @@ class NoticeList(vanilla.ListView):
         return queryset
 
     def get_archive_months(self):
-        """Last 24 months (in America/Los_Angeles) with an archived notice, newest first."""
+        """
+        Last 24 months (in America/Los_Angeles) with an archived notice the
+        page's filters let through, newest first -- the counts are what a
+        click on each shows (a county page's, not the valley's).
+        """
         if self.mode != 'past':
             return []
         cutoff = timezone.now() - timedelta(days=stats.NOTICE_GRACE_DAYS)
         months = (
-            PesticideNotice.objects
+            self.filtered_notices()
             .filter(scheduled_application__lt=cutoff)
             .annotate(month=TruncMonth('scheduled_application', tzinfo=settings.DEFAULT_TIMEZONE))
             .values('month')
-            .annotate(count=Count('id'))
+            # Distinct: the narrowing joins a notice's chemicals.
+            .annotate(count=Count('id', distinct=True))
             .order_by('-month')[:24]
         )
         return [
