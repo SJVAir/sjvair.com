@@ -2370,15 +2370,12 @@ class AreaCommunityMixin:
         )
 
 
-class AreaNoticesMixin:
+class AreaNarrowedListMixin:
     """
-    A place page's Notices tab: the notice list (NoticeList) narrowed to the
-    place -- its filters, archive, map and rows -- under the place's header
-    and tabs, with the stat row always on what's scheduled now. The place's
-    own filter is added to the request before the list reads it, and isn't
-    offered as a chip to clear: the tab is the place.
+    A place tab that narrows one of the explorer's list browsers to the
+    place: the place's own filter is added to the request before the browser
+    reads it, and isn't offered as a chip to clear -- the tab is the place.
     """
-    template_name = 'pesticides/area-notices.html'
 
     def dispatch(self, request, *args, **kwargs):
         params = request.GET.copy()
@@ -2392,6 +2389,16 @@ class AreaNoticesMixin:
         own = {region.name, getattr(region, 'display_name', region.name)} if region is not None else set()
         return [chip for chip in super().get_active_filters()
             if chip['label'] not in own and not chip['label'].startswith('Within ')]
+
+
+class AreaNoticesMixin(AreaNarrowedListMixin):
+    """
+    A place page's Notices tab: the notice list (NoticeList) narrowed to the
+    place -- its filters, archive, map and rows -- under the place's header
+    and tabs, with the stat row always on what's scheduled now. The place's
+    own filter comes from AreaNarrowedListMixin.
+    """
+    template_name = 'pesticides/area-notices.html'
 
     def get_clear_filters_url(self):
         url = self.area_tab_url('notices')
@@ -2425,28 +2432,14 @@ class AreaNoticesMixin:
         return context
 
 
-class AreaRecordsMixin:
+class AreaRecordsMixin(AreaNarrowedListMixin):
     """
     A place page's Records tab: the records browser (RecordsBrowser) narrowed
     to the place -- its stats, map, filters and table -- under the place's
     header and tabs. The place's own filter (its region, county, or point
-    and radius) is added to the request before the browser reads it, and
-    isn't offered as a chip to clear: the tab is the place.
+    and radius) comes from AreaNarrowedListMixin.
     """
     template_name = 'pesticides/area-records.html'
-
-    def dispatch(self, request, *args, **kwargs):
-        params = request.GET.copy()
-        for key, value in self.area.area_params().items():
-            params[key] = value
-        request.GET = params
-        return super().dispatch(request, *args, **kwargs)
-
-    def get_active_filters(self):
-        region = self.area.region
-        own = {region.name, getattr(region, 'display_name', region.name)} if region is not None else set()
-        return [chip for chip in super().get_active_filters()
-            if chip['label'] not in own and not chip['label'].startswith('Within ')]
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

@@ -1,3 +1,4 @@
+from django.contrib.gis.geos import MultiPolygon, Polygon
 from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
@@ -5,7 +6,7 @@ from django.urls import reverse
 from camp.apps.pesticides import stats, views
 from camp.apps.pesticides.models import Chemical, PesticideNotice
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
-from camp.apps.regions.models import Region
+from camp.apps.regions.models import Boundary, Region
 
 
 class NoticeListTests(TestCase):
@@ -283,3 +284,12 @@ class AreaNoticesTabTests(TestCase):
 
     def test_paginates(self):
         assert self.client.get(self.url).context['paginator'].per_page == 50
+
+    def test_region_tab_drops_its_own_chip(self):
+        city = Region.objects.create(name='Selma', slug='selma', type=Region.Type.CITY)
+        poly = Polygon(((-119.9, 36.6), (-119.7, 36.6), (-119.7, 36.8), (-119.9, 36.8), (-119.9, 36.6)), srid=4326)
+        city.boundary = Boundary.objects.create(region=city, version='test', geometry=MultiPolygon(poly, srid=4326))
+        city.save()
+        response = self.client.get(city.get_pesticides_tab_url('notices'))
+        assert response.status_code == 200
+        assert city.name not in [f['label'] for f in response.context['active_filters']]
