@@ -674,6 +674,12 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         assert 'Who goes to school here' not in html
         assert 'data-show-locations="0"' in html
 
+    def test_filters_sit_beside_the_map(self):
+        from camp.apps.pesticides.tests.test_area_layout import side
+        html = self.client.get(self.url).content.decode()
+        assert 'schools-filters' in side(html)
+        assert html.index('class="column tab-map"') < html.index('schools-table')
+
 
 class PlaceConcernScopeTests(RollupTestMixin, TestCase):
     """Place pages follow the chemicals-of-concern scope like everything else."""

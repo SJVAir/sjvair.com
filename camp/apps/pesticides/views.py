@@ -2451,7 +2451,6 @@ class AreaSchoolsMixin:
             section=None,
             area=area,
             tab_label='Schools',
-            tab_has_filters=True,
             schools=schools,
             school_count=len(rows) - child_care,
             child_care_count=child_care,
