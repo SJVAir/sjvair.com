@@ -5,8 +5,8 @@ Loads the map page and a few compact-map pages in headless Chrome, waits for
 the facilities to draw (`data-loaded="1"` on the container), checks features
 were drawn, switches the map page's sector filter and waits for the redraw,
 follows a boosted tab link and back to check the live map is adopted rather
-than rebuilt, then runs the Areas view (ZIP areas shaded, facilities hidden,
-the view in the URL, tracts, a measure change, back to facilities), a county
+than rebuilt, then runs the Areas view (tracts shaded, facilities hidden,
+the view in the URL, ZIP areas, a measure change, back to facilities), a county
 page (outlined, and a boosted year change keeping one map still in Areas) and
 a near-me page (its circle), and checks the scope bar's boosted swaps carry
 the map's current state (back to Facilities, a cleared sector, no repeated
@@ -128,8 +128,9 @@ def facility_color(driver):
 
 def legend_swatch_color(driver):
     return driver.execute_script(
-        "var el = document.querySelector('.facility-map-legend .legend-swatch');"
-        "return el ? el.style.background : null;"
+        # The plain Facilities legend's key circles, or another view's swatches.
+        "var el = document.querySelector('.facility-map-legend .legend-key-row circle, .facility-map-legend .legend-bins .legend-swatch');"
+        "return el ? (el.style.fill || el.style.background) : null;"
     )
 
 
@@ -270,6 +271,13 @@ for (var y = 60; y < r.height - 30; y += 5) for (var x = 20; x < r.width - 20; x
   var f = map.queryRenderedFeatures([x, y], {layers: ['areas-fill']});
   if (!f.length || f[0].properties._empty !== 0) continue;
   if (document.elementFromPoint(r.left + x, r.top + y) !== c) continue;
+  // Well inside one area (tracts are small at the Valley's zoom), so the
+  // mouse's whole-pixel move lands on the same one.
+  var id = f[0].id, inside = [[-4, 0], [4, 0], [0, -4], [0, 4]].every(function (d) {
+    var g = map.queryRenderedFeatures([x + d[0], y + d[1]], {layers: ['areas-fill']});
+    return g.length && g[0].id === id;
+  });
+  if (!inside) continue;
   return [x - r.width / 2, y - r.height / 2];
 }
 return null;
@@ -381,7 +389,7 @@ def main():
         wait_loaded(driver)
         driver.execute_script("document.querySelector('.facility-map-view [data-view=areas]').click()")
         shaded = settled_count(driver, area_count) if wait_areas(driver) else 0
-        check(results, 'areas view shades ZIP areas', shaded > 0, f'{shaded} shaded')
+        check(results, 'areas view shades census tracts', shaded > 0, f'{shaded} shaded')
         check(results, 'areas view hides the facilities', driver.execute_script(
             "var m = window.EmissionsFacilityMap.instances()[0]; return m.map.getLayoutProperty('facilities', 'visibility') === 'none';"))
 
@@ -412,9 +420,9 @@ def main():
         check(results, 'view is in the URL', 'view=areas' in driver.current_url, driver.current_url)
         check(results, 'default level and measure stay out of the URL',
               'level=' not in driver.current_url and 'measure=' not in driver.current_url, driver.current_url)
-        driver.execute_script("document.querySelector('.facility-map-level [data-level=tract]').click()")
+        driver.execute_script("document.querySelector('.facility-map-level [data-level=zipcode]').click()")
         shaded = settled_count(driver, area_count) if wait_areas(driver) else 0
-        check(results, 'level switches to tracts', shaded > 0 and 'level=tract' in driver.current_url, f'{shaded} shaded')
+        check(results, 'level switches to ZIP areas', shaded > 0 and 'level=zipcode' in driver.current_url, f'{shaded} shaded')
         driver.execute_script("document.querySelector('.facility-map-measure [data-measure=total]').click()")
         time.sleep(0.5)
         legend = driver.execute_script("return document.querySelector('.facility-map-legend .legend-title').textContent;")
@@ -682,18 +690,22 @@ def main():
         check(results, 'the reloaded map only draws medium/large digester dairies',
               bool(rendered) and all(sc != 'small' and dig for sc, dig in rendered), str(rendered[:5]))
 
-        # Phase 9: the methane overlay on the dairy map. Ticking the legend's
-        # checkbox loads the layer, writes ?methane=1, and a plume's popup
-        # carries the attribution.
+        # Phase 9: the methane overlay on the dairy map, on there by default.
+        # Unticking the legend's checkbox writes ?methane=0; ticking it again
+        # drops it from the URL, and the layer loads.
         driver.get(args.base + '/tools/emissions/dairies/')
         wait_dairies(driver)
         has_toggle = driver.execute_script("return !!document.querySelector('.dairy-map-legend [data-methane]');")
         check(results, 'dairies tab offers the methane overlay (needs import_carbon_mapper on this DB)', has_toggle)
         if has_toggle:
+            on_by_default = driver.execute_script("return document.querySelector('.dairy-map-legend [data-methane]').checked;")
+            driver.execute_script("document.querySelector('.dairy-map-legend [data-methane]').click()")
+            turned_off = wait_for(driver, "return location.search.indexOf('methane=0') !== -1;")
+            check(results, 'the methane overlay starts on, and unticking it writes ?methane=0', on_by_default and turned_off, driver.current_url)
             driver.execute_script("document.querySelector('.dairy-map-legend [data-methane]').click()")
             loaded = wait_for(driver, "var el = document.querySelector('.dairy-map'); return !!el && el.dataset.methaneLoaded === '1';")
             count = settled_count(driver, lambda d: d.execute_script("var m = window.EmissionsDairyMap.instances()[0]; return m.map.querySourceFeatures('methane').length;"))
-            check(results, 'the methane layer loads and ?methane=1 lands in the URL', loaded and count > 0 and 'methane=1' in driver.current_url, f'{count} sources; {driver.current_url}')
+            check(results, 'the methane layer loads, and ticking it again leaves the URL clean', loaded and count > 0 and 'methane=' not in driver.current_url, f'{count} sources; {driver.current_url}')
             legend = driver.execute_script("return document.querySelector('.dairy-map-legend').textContent;")
             check(results, 'the methane legend explains the plumes, without repeating the credit', 'newest observed plume' in legend and 'Carbon Mapper' not in legend)
             # The sources are drawn as their plume images, painted onto one
@@ -820,8 +832,8 @@ def main():
         drawn = settled_count(driver, feature_count)
         check(results, 'a county page maps its facilities (2023)', drawn > 0, f'{drawn} facilities')
         legend = driver.execute_script("return document.querySelector('.facility-map-legend').textContent;")
-        check(results, 'its legend is the plain sized-facilities legend (a size key, no dairies ramp)',
-              'legend-sizes' in driver.execute_script("return document.querySelector('.facility-map-legend').innerHTML;")
+        check(results, 'its legend is the plain sized-facilities legend (one size-and-colour key, no dairies ramp)',
+              'legend-key-row' in driver.execute_script("return document.querySelector('.facility-map-legend').innerHTML;")
               and 'Dairies' not in legend, legend[:160])
 
         # The dairy charts: the Dairies tab's herd, CARB estimate and

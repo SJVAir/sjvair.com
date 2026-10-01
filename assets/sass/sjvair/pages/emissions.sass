@@ -10,6 +10,15 @@ body.emissions
       .title
         font-size: $size-4
         white-space: nowrap
+  // A stats row of one or two tiles (a facility page's) spreads them to the
+  // box's edges, far apart; it reads better as a group in the middle.
+  .stat-row:not(:has(> .level-item:nth-child(3)))
+    +tablet
+      justify-content: center
+      gap: 4rem
+      .level-item
+        flex-grow: 0
+        margin-right: 0
   .hook
     // Photo: "Pumpjacks, San Joaquin Valley, California" by Downtowngal
     // (east of Paso Robles, 2011), Wikimedia Commons, CC BY-SA 3.0; credited

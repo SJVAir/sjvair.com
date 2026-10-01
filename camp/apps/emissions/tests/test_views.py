@@ -215,11 +215,11 @@ class MapTests(ViewTestCase):
 
     def test_map_page_default_level(self):
         content = self.get('map', params={'view': 'areas', 'level': 'county'}).content.decode()
-        assert 'data-level="county"' in content and 'data-default-level="zipcode"' in content
+        assert 'data-level="county"' in content and 'data-default-level="tract"' in content
 
     def test_map_view_carries_its_default_level(self):
         assert views.map_view({'level': 'tract'}, 'zipcode')['default_level'] == 'zipcode'
-        assert views.map_view({})['default_level'] == 'zipcode'
+        assert views.map_view({})['default_level'] == 'tract'
 
     def test_map_view_compare_and_compare_options(self):
         # No year to compare against: neither a compare nor any options,

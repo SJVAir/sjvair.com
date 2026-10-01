@@ -24,13 +24,14 @@ from camp.apps.regions.models import Region
 from camp.utils.gis import EPSG_CALIFORNIA_ALBERS, EPSG_LATLON
 
 LEVELS = (Region.Type.COUNTY, Region.Type.ZIPCODE, Region.Type.TRACT)
-DEFAULT_LEVEL = Region.Type.ZIPCODE
+# Census tracts: the finest level, and the one CalEnviroScreen and the Community tab use.
+DEFAULT_LEVEL = Region.Type.TRACT
 MEASURES = ('density', 'total', 'per_resident')
 DEFAULT_MEASURE = 'density'
-# The map level a region page opens its Areas view at: one step finer than
-# the page. A tract page has none (it's the finest level).
+# The map level a region page opens its Areas view at: tracts, like the
+# Valley map. A tract page has none (it's the finest level).
 NEXT_LEVEL = {
-    Region.Type.COUNTY: Region.Type.ZIPCODE,
+    Region.Type.COUNTY: Region.Type.TRACT,
     Region.Type.CITY: Region.Type.TRACT,
     Region.Type.URBAN_AREA: Region.Type.TRACT,
     Region.Type.CDP: Region.Type.TRACT,

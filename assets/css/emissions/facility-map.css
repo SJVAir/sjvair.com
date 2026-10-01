@@ -133,6 +133,26 @@
   }
 }
 
+/* The plain Facilities legend's merged key (valueKeyHtml(), facility-map.js):
+   a circle per colour class at that class's size, largest first. The svgs
+   share one width (the largest circle's), so the labels line up. */
+.facility-map-legend .legend-key {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.facility-map-legend .legend-key-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.facility-map-legend .legend-key-row svg {
+  flex: none;
+}
+.facility-map-legend .legend-key-row circle {
+  stroke-width: 1;
+}
+
 /* The size key's three sample circles (70px cells at MAX_RADIUS 34) crowd a
    phone-width legend card. Each sample's svg carries its own viewBox
    (sizeCircle(), facility-map.js), so shrinking its CSS width scales the
@@ -145,6 +165,12 @@
   }
   .facility-map-legend .legend-sizes {
     gap: 0.25rem;
+  }
+  /* The same scaling for the merged key: one width for every row keeps the
+     circles in proportion. */
+  .facility-map-legend .legend-key-row svg {
+    width: 44px;
+    height: auto;
   }
 }
 

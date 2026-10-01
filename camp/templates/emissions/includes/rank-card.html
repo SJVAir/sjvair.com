@@ -1,10 +1,13 @@
 {# emissions_explorer last: its percent wins over the pesticides one of the same name. #}
-{% load pesticides_explorer emissions_explorer %}
+{% load humanize pesticides_explorer emissions_explorer %}
 {% comment %}
 A ranked top-five card in the pesticides place page's related-card style.
 `rows`: [{label, url, value, share?}]. `view_all_url` links the full list;
 without one, `collapse` keeps the rows past the fifth in the card and its
 View all reveals them in place (explorer.js's [data-collapse-toggle]).
+`count_label` makes it a card of counts (wells by operator, say): the value
+column is headed with it and shows whole numbers, and the row URLs are used
+as they are, without the page's scope.
 {% endcomment %}
 <div class="card related-card"{% if not view_all_url %} data-collapse-scope{% endif %}>
     <header class="card-header">
@@ -18,18 +21,20 @@ View all reveals them in place (explorer.js's [data-collapse-toggle]).
             <thead><tr>
                 <th class="rank"><span class="is-sr-only">Rank</span></th>
                 <th>Name</th>
-                <th class="has-text-right">{% if pollutant.weighted %}Share{% else %}{{ pollutant.label }} ({{ pollutant.unit_label }}){% endif %}</th>
+                <th class="has-text-right">{% if count_label %}{{ count_label }}{% elif pollutant.weighted %}Share{% else %}{{ pollutant.label }} ({{ pollutant.unit_label }}){% endif %}</th>
             </tr></thead>
             <tbody>
             {% for row in rows %}
                 <tr{% if not view_all_url and forloop.counter > 5 %} class="is-collapsed"{% endif %}>
                     <td class="rank">{{ forloop.counter }}.</td>
-                    <td><a href="{{ row.url }}{{ scope_qs }}">{{ row.label }}</a>{% if row.share is not None and not pollutant.weighted %} <span class="has-text-grey is-size-7">{{ row.share|percent }}</span>{% endif %}</td>
-                    <td class="has-text-right">{{ row.value|amount:pollutant }}</td>
+                    <td><a href="{{ row.url }}{% if not count_label %}{{ scope_qs }}{% endif %}">{{ row.label }}</a>{% if row.share is not None and not pollutant.weighted %} <span class="has-text-grey is-size-7">{{ row.share|percent }}</span>{% endif %}</td>
+                    <td class="has-text-right">{% if count_label %}{{ row.value|intcomma }}{% else %}{{ row.value|amount:pollutant }}{% endif %}</td>
                 </tr>
             {% endfor %}
             </tbody>
         </table>
+        {% elif count_label %}
+        <p class="has-text-grey">None here.</p>
         {% else %}
         <p class="has-text-grey">None reported {{ pollutant.name }} in {{ year }}.</p>
         {% endif %}

@@ -398,7 +398,7 @@ class SectorDetail(ScopeMixin, vanilla.TemplateView):
             map_config=facility_map_config(
                 scope, mode='compact', sector=self.sector, fit=True,
                 wells=wells_overlay(self.request.GET, default=self.sector == Facility.Sector.OIL_GAS),
-                methane=methane_overlay(self.request.GET),
+                methane=methane_overlay(self.request.GET, default=self.sector == Facility.Sector.OIL_GAS),
             ),
             kern_callout=wells.kern_callout(scope.year) if self.sector == Facility.Sector.OIL_GAS else None,
             wells_stamp=wells.stamp(),
@@ -889,6 +889,18 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
             return dairy_page_query(base, base.year if base.year in known else (known[-1] if known else base.year))
         return base.query(county=None).lstrip('?')
 
+    def well_leaders(self, area):
+        """wells.leaders() as rank-card rows, each linking this tab filtered to it."""
+        query = self.tab_query('oil-gas')
+        def rows(name, param):
+            return [
+                {'label': row['label'], 'value': row['count'],
+                 'url': self.area_tab_url('oil-gas', '&'.join(filter(None, [query, urlencode({param: row['label']})])))}
+                for row in leaders[name]
+            ]
+        leaders = wells.leaders(area)
+        return {'operators': rows('operators', 'operator'), 'fields': rows('fields', 'field')}
+
     def get_context_data(self, **kwargs):
         base = self.get_scope()
         area = self.get_area()
@@ -925,6 +937,7 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
                     {'label': record.facility.name, 'url': record.facility.get_absolute_url(), 'value': record.value}
                     for record in stats.facility_table(scope, sector=Facility.Sector.OIL_GAS)[:5]
                 ],
+                well_leaders=self.well_leaders(area),
                 oil_gas_facilities_url=self.area_tab_url('facilities', '&'.join(filter(None, [self.tab_query('facilities'), 'sector=oil-gas']))),
                 methane_oil_gas=oil_gas_methane_in(area) if methane.enabled() else None,
                 methane_list_rows=METHANE_LIST_ROWS,
@@ -1074,7 +1087,7 @@ class RegionPage(RegionLookupMixin, AreaPage):
             # many to load by default on its Overview); ?wells=1 still shows them.
             wells=wells_overlay(self.request.GET, default=self.tab == 'oil-gas'),
             main_layer=self.tab != 'oil-gas',
-            methane=methane_overlay(self.request.GET),
+            methane=methane_overlay(self.request.GET, default=self.tab == 'oil-gas'),
         )
 
     def get_context_data(self, **kwargs):
@@ -1246,7 +1259,7 @@ class NearMe(NearLookupMixin, AreaPage):
             radius=self.near.radius,
             wells=wells_overlay(self.request.GET, default=self.tab == 'oil-gas'),
             main_layer=self.tab != 'oil-gas',
-            methane=methane_overlay(self.request.GET),
+            methane=methane_overlay(self.request.GET, default=self.tab == 'oil-gas'),
         )
 
     def get_context_data(self, **kwargs):

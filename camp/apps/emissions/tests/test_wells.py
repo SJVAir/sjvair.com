@@ -18,9 +18,9 @@ def north_of(point, feet):
 
 def make_well(api, lnglat, county, status='Active', hpz='Not Within HPZ', **fields):
     point = lnglat if isinstance(lnglat, Point) else Point(*lnglat, srid=4326)
+    fields = {'operator_name': 'TEST OIL LLC', 'field_name': 'Test Field', 'well_type_label': 'Oil & Gas', **fields}
     return Well.objects.create(
-        api=api, lease_name='TEST LEASE', well_number=api[-2:], status=status, in_hpz=hpz, county=county, point=point,
-        operator_name='TEST OIL LLC', field_name='Test Field', well_type_label='Oil & Gas', **fields,
+        api=api, lease_name='TEST LEASE', well_number=api[-2:], status=status, in_hpz=hpz, county=county, point=point, **fields,
     )
 
 

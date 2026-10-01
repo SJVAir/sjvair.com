@@ -6,7 +6,8 @@ An area's Oil & gas tab (views.RegionOilGas / NearMeOilGas) in the shared
 tab skeleton (area-tab.html): CalGEM's wells here by status and how many are
 in a verified health protection zone, with the snapshot caveat (and Kern's
 callout); the map with the wells on; the wells themselves, filtered, sorted,
-paged and downloadable; the wells drilled by year and their types; and the
+paged and downloadable; the wells drilled by year; the operators and oil
+fields with the most wells (each a link filtering the table) and the types; and the
 schools near wells, the area's oil & gas permit groupings and the methane
 observed at oil & gas sites. CalGEM's list is today's: nothing here is a
 history of wells in service.
@@ -123,7 +124,13 @@ history of wells in service.
 {% endblock %}
 
 {% block tab-related %}
+{% if well_leaders.operators or well_leaders.fields %}
 <div class="columns mt-5">
+    <div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='Top operators' rows=well_leaders.operators count_label='Wells' view_all_url=None %}</div>
+    <div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='Top oil fields' rows=well_leaders.fields count_label='Wells' view_all_url=None %}</div>
+</div>
+{% endif %}
+<div class="columns">
     {% if well_types %}
     <div class="column is-half-tablet">
         <div class="card related-card">

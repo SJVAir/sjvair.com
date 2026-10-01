@@ -35,7 +35,7 @@ class RegionPageTests(TestCase):
         # The page is the area: no county picker in the scope bar.
         assert 'data-scope="county"' not in content
         assert map_data(content, 'areas') == '1'
-        assert map_data(content, 'level') == 'zipcode'
+        assert map_data(content, 'level') == 'tract'
         assert map_data(content, 'outline-url') == reverse('api:v2:regions:region-detail', args=[self.fresno.sqid])
 
     def test_city_page_counts_by_point(self):
@@ -87,13 +87,13 @@ class RegionPageTests(TestCase):
         content = self.get(self.fresno, {'view': 'areas', 'level': 'tract', 'measure': 'total'})
         assert (map_data(content, 'view'), map_data(content, 'level'), map_data(content, 'measure')) == ('areas', 'tract', 'total')
         content = self.get(self.fresno, {'view': 'bogus', 'level': 'mtrs', 'measure': 'x'})
-        assert (map_data(content, 'view'), map_data(content, 'level'), map_data(content, 'measure')) == ('facilities', 'zipcode', 'density')
+        assert (map_data(content, 'view'), map_data(content, 'level'), map_data(content, 'measure')) == ('facilities', 'tract', 'density')
 
     def test_the_map_knows_the_page_default_level(self):
         # The map leaves the default level out of the URLs it writes, so it
         # needs the page's default even when the URL chose another level.
-        content = self.get(self.fresno, {'view': 'areas', 'level': 'tract'})
-        assert (map_data(content, 'level'), map_data(content, 'default-level')) == ('tract', 'zipcode')
+        content = self.get(self.fresno, {'view': 'areas', 'level': 'zipcode'})
+        assert (map_data(content, 'level'), map_data(content, 'default-level')) == ('zipcode', 'tract')
         city = Region.objects.get(type=Region.Type.CITY, slug='fresno')
         content = self.get(city, {'level': 'county'})
         assert (map_data(content, 'level'), map_data(content, 'default-level')) == ('county', 'tract')

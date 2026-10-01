@@ -4,7 +4,7 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
-from camp.apps.emissions import views
+from camp.apps.emissions import areas, views, wells
 from camp.apps.emissions.models import EmissionsRecord, Facility, ToxicEmission, ToxicPollutant
 from camp.apps.emissions.tests.test_areas_pages import map_data
 from camp.apps.emissions.tests.test_dairies import IN_KERN, NEAR_PLANT
@@ -145,6 +145,23 @@ class OilGasTabTests(WellsPagesTestCase):
         assert response['Content-Type'] == 'text/csv'
         rows = response.content.decode().strip().splitlines()
         assert rows[0].startswith('api,lease,well_number,status') and len(rows) == 3
+
+    def test_top_operators_and_fields(self):
+        self.add_wells()
+        make_well('0401900011', NEAR_PLANT, self.fresno, operator_name='OTHER OIL CO', field_name='Other Field')
+        content = self.get(self.fresno.get_emissions_tab_url('oil-gas'), {'year': '2024'})
+        card = content[content.index('Top operators'):content.index('</table>', content.index('Top operators'))]
+        # The most wells first, each linking the tab's table filtered to it.
+        assert card.index('TEST OIL LLC') < card.index('OTHER OIL CO')
+        assert 'oil-gas/?operator=OTHER+OIL+CO"' in card
+        assert '<td class="has-text-right">2</td>' in card
+        fields = content[content.index('Top oil fields'):content.index('</table>', content.index('Top oil fields'))]
+        assert 'field=Other+Field' in fields
+
+    def test_leaders(self):
+        self.add_wells()
+        leaders = wells.leaders(areas.RegionArea(self.kern))
+        assert leaders == {'operators': [{'label': 'TEST OIL LLC', 'count': 2}], 'fields': [{'label': 'Test Field', 'count': 2}]}
 
     def test_the_tab_without_wells_says_so(self):
         content = self.get(self.fresno.get_emissions_tab_url('oil-gas'))

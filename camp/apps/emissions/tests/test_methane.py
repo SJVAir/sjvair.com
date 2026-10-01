@@ -98,21 +98,31 @@ class OverlayConfigTests(MethaneTestCase):
         SourceImport.objects.filter(source='carbon-mapper').delete()
         assert views.methane_overlay({'methane': '1'}) is None
 
-    def test_every_map_offers_the_overlay_off_by_default(self):
+    def test_every_map_offers_the_overlay(self):
+        """Off by default, but on for the dairy pages and the oil & gas sector, where the plumes are """
         from camp.apps.emissions.tests.test_views import map_data
+        from camp.apps.emissions.tests.test_wells import make_well
         region = self.plant.county
-        urls = [
-            reverse('emissions:map'),
-            region.get_emissions_url(), region.get_emissions_dairies_url(), reverse('emissions:dairy-list'),
-            reverse('emissions:sector-detail', args=['oil-gas']), self.plant.get_absolute_url(),
-        ]
-        for url in urls:
+        make_well('0401900001', self.plant.point, region)  # so the Oil & gas tab has a map
+        defaults = {
+            reverse('emissions:map'): '',
+            region.get_emissions_url(): '',
+            region.get_emissions_tab_url('oil-gas'): '1',
+            region.get_emissions_dairies_url(): '1',
+            reverse('emissions:dairy-list'): '1',
+            reverse('emissions:sector-detail', args=['oil-gas']): '1',
+            self.plant.get_absolute_url(): '',
+        }
+        for url, on in defaults.items():
             content = self.client.get(url, {'year': 2023}).content.decode()
             assert map_data(content, 'methane-url') == reverse('api:v2:emissions:methane-geojson'), url
             assert map_data(content, 'methane-plumes-url') == reverse('api:v2:emissions:methane-plumes', args=['__id__']).replace('__id__', '{id}'), url
-            assert map_data(content, 'methane') == '', url
+            assert map_data(content, 'methane') == on, url
+            assert map_data(content, 'methane-default') == on, url
         content = self.client.get(reverse('emissions:map'), {'methane': '1'}).content.decode()
         assert map_data(content, 'methane') == '1'
+        content = self.client.get(reverse('emissions:dairy-list'), {'methane': '0'}).content.decode()
+        assert map_data(content, 'methane') == ''
 
     def test_nothing_offered_before_an_import(self):
         from camp.apps.emissions.models import SourceImport

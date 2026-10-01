@@ -130,16 +130,35 @@
       (round || roundLabel)(value >= 1 ? Math.round(value) : value) + '</span>';
   }
 
-  // The size key (three sample circles at max/10/100 of it), shared by the
-  // plain Facilities legend and the Compare legend. Empty when there's
-  // nothing to scale. `color` is the circles' stroke: the chosen ramp's
-  // darkest step, or the stylesheet's grey under Compare, where the circles'
+  // The Compare legend's size key (three sample circles at max/10/100 of
+  // it). Empty when there's nothing to scale. `color` is the circles'
+  // stroke, the stylesheet's grey when unset: under Compare the circles'
   // colour means change rather than size.
   function sizeKeyHtml(max, color, round) {
     if (!max) return '';
     return '<div class="legend-sizes">' + [max, max / 10, max / 100].map(function (value) {
       return sizeCircle(radiusFor(value, max), value, color, round);
     }).join('') + '</div>';
+  }
+
+  // The plain Facilities legend's one key: size and colour both follow the
+  // value there, so each colour class shows as a circle in its colour at
+  // the size of the class's top (the largest facility's for the top class).
+  // Classes above the largest facility have no circles on the map and are
+  // left out. Under Compare the two part ways (size is this year's value,
+  // colour the change), so that legend keeps a size key and colour classes.
+  function valueKeyHtml(max, breaks, round) {
+    var box = 2 * MAX_RADIUS + 2;
+    var top = classIndex(max, breaks);
+    var rows = '';
+    for (var i = top; i >= 0; i--) {
+      var value = i === top ? max : breaks[i];
+      var r = radiusFor(value, max);
+      rows += '<span class="legend-key-row"><svg viewBox="0 0 ' + box + ' ' + (2 * r + 2) + '" width="' + box + '" height="' + (2 * r + 2) + '">' +
+        '<circle cx="' + (box / 2) + '" cy="' + (r + 1) + '" r="' + r + '" style="fill: ' + RAMP[i] + '; stroke: ' + darken(RAMP[i], 0.35) + '"/></svg>' +
+        '<span>' + M.classes.label(i, breaks, round) + '</span></span>';
+    }
+    return '<div class="legend-key">' + rows + '</div>';
   }
 
   // A legend's classes on the blue ramp, largest first.
@@ -322,7 +341,7 @@
     this.areasEnabled = this.data.areas === '1';
     this.view = this.areasEnabled && this.data.view === 'areas' ? 'areas' : 'facilities';
     // The page's default level (the server's), left out of the URLs we write.
-    this.defaultLevel = this.data.defaultLevel || 'zipcode';
+    this.defaultLevel = this.data.defaultLevel || 'tract';
     this.level = this.data.level || this.defaultLevel;
     this.measure = this.data.measure || 'density';
     // A weighted toxics measure is a share: only Total means anything (the
@@ -969,8 +988,7 @@
       return;
     }
     legend.innerHTML = '<p class="legend-title">' + label + '</p>' +
-      sizeKeyHtml(max, RAMP[RAMP.length - 1], round) +
-      facilityBins(breaks, undefined, round) +
+      valueKeyHtml(max, breaks, round) +
       '<p class="legend-empty"><span class="legend-ring"></span>None reported</p>' +
       (share ? '<p class="legend-note">Pounds × OEHHA toxicity, relative to the Valley total. Not a health risk: stack height, weather and distance are ignored.</p>' : '') +
       (this.data.nearby ? '<p class="legend-note">Green dots: schools and child care within ¼ mile (dashed ring).</p>' : '') +

@@ -177,6 +177,7 @@ def kern_callout(year):
 TABLE_SORTS = ('label', '-label', 'operator', '-operator', 'field', '-field', 'status', '-status', 'spud', '-spud')
 SORT_FIELDS = {'label': ('lease_name', 'well_number'), 'operator': ('operator_name',), 'field': ('field_name',), 'status': ('status',), 'spud': ('spud_date',)}
 FILTER_OPTIONS = 40
+LEADERS = 10
 
 
 def table_filters(get):
@@ -222,6 +223,21 @@ def filter_options(area):
             return [row[name] for row in wells.exclude(**{name: ''}).values(name).annotate(n=Count('pk')).order_by('-n', name)[:FILTER_OPTIONS]]
         return {'operators': ranked('operator_name'), 'fields': ranked('field_name')}
     return cache.get_or_set(key('options', area.key), compute, stats.CACHE_TIMEOUT)
+
+
+def leaders(area):
+    """
+    The area's operators and oil fields with the most wells, ten each and the
+    most first: {'operators': [{'label', 'count'}], 'fields': [...]}, for the
+    Oil & gas tab's cards.
+    """
+    def compute():
+        wells = Well.objects.filter(well_q(area))
+        def ranked(name):
+            rows = wells.exclude(**{name: ''}).values(name).annotate(n=Count('pk')).order_by('-n', name)[:LEADERS]
+            return [{'label': row[name], 'count': row['n']} for row in rows]
+        return {'operators': ranked('operator_name'), 'fields': ranked('field_name')}
+    return cache.get_or_set(key('leaders', area.key), compute, stats.CACHE_TIMEOUT)
 
 
 def spud_by_year(area):

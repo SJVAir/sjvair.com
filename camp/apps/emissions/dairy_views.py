@@ -309,7 +309,7 @@ class DairyList(DairyScopeMixin, vanilla.TemplateView):
             emissions_trend=dairies.emissions_trend(scope.pollutant, county=scope.county),
             digester_trend=dairies.digester_chart_points(county=scope.county),
             map_config=dairy_map_config(
-                scope, dairy_map_view(self.request.GET), methane=views.methane_overlay(self.request.GET),
+                scope, dairy_map_view(self.request.GET), methane=views.methane_overlay(self.request.GET, default=True),
             ) if dairies.years() else None,
             find_area_places=places,
             find_area_counties=[p for p in places if p['type'] == Region.Type.COUNTY],
@@ -433,7 +433,7 @@ class RegionDairies(views.RegionLookupMixin, DairyAreaPage):
         return dairy_map_config(
             scope, dairy_map_view(self.request.GET), area_params={'region': self.region.sqid},
             outline_url=reverse('api:v2:regions:region-detail', args=[self.region.sqid]),
-            methane=views.methane_overlay(self.request.GET),
+            methane=views.methane_overlay(self.request.GET, default=True),
         )
 
     def csv_name(self, year):
@@ -479,7 +479,7 @@ class NearMeDairies(views.NearLookupMixin, DairyAreaPage):
             scope, dairy_map_view(self.request.GET), area_params=self.near_params_for_api(),
             center=f'{self.near.lat:.4f},{self.near.lng:.4f}', zoom=views.RADIUS_ZOOMS[self.near.radius],
             radius=self.near.radius,
-            methane=views.methane_overlay(self.request.GET),
+            methane=views.methane_overlay(self.request.GET, default=True),
         )
 
     def near_params_for_api(self):
