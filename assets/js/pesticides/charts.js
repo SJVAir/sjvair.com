@@ -229,79 +229,100 @@
     return new uPlot(opts, columns, el);
   }
 
-  // A stacked area by year: data.series [{label, values, color}], bottom of
-  // the stack first. Each band is the space between its running total and the
-  // one below; the readout lists the hovered year's parts and their total.
+  // A 100% stacked bar per year: data.series [{label, values, color}], the
+  // bottom of the stack first; each year's parts as shares of its total, so
+  // the chart shows the mix, not the volume (the trend above has that). Each
+  // part is a bar from 0 to its running share, drawn tallest first so the
+  // ones below show through. The readout keeps to one line (the year and its
+  // total); the hovered year's shares go into the legend, which is always
+  // there, so the chart doesn't move as the cursor does.
   function stack(el, figure, data) {
     var colors = palette(figure);
     var readout = figure.querySelector('.chart-readout');
+    var legendValues = figure.querySelectorAll('.chart-legend.is-series [data-share]');
     var x = data.x;
     var parts = data.series || [];
+    var totals = x.map(function (year, j) {
+      return parts.reduce(function (sum, part) { return sum + (part.values[j] || 0); }, 0);
+    });
+    var shares = parts.map(function (part) {
+      return part.values.map(function (value, j) { return totals[j] ? 100 * (value || 0) / totals[j] : 0; });
+    });
     var running = x.map(function () { return 0; });
-    var totals = parts.map(function (part) {
-      running = running.map(function (sum, j) { return sum + (part.values[j] || 0); });
+    var cumulative = shares.map(function (share) {
+      running = running.map(function (sum, j) { return sum + share[j]; });
       return running.slice();
     });
-    var top = totals.length ? totals[totals.length - 1] : [];
+    var indexes = x.map(function (year, j) { return j; });
     var selectedIndex = data.selected == null ? -1 : x.indexOf(data.selected);
-    var pad = x.length > 1 ? 0.5 : 1;
-    var series = [{}].concat(parts.map(function (part, i) {
-      return {stroke: part.color, width: 1, fill: i === 0 ? part.color : undefined, points: {show: false}};
+    // Every few years a label, so a 15-year axis doesn't crowd.
+    var every = Math.max(1, Math.ceil(x.length / 8));
+    var order = parts.map(function (part, i) { return i; }).reverse();
+    var series = [{}].concat(order.map(function (i) {
+      return {
+        stroke: parts[i].color,
+        width: 0,
+        fill: parts[i].color,
+        paths: uPlot.paths.bars({size: [0.75, 60], align: 0}),
+        points: {show: false},
+      };
     }));
-    var bands = parts.slice(1).map(function (part, i) { return {series: [i + 2, i + 1], fill: part.color}; });
-    var opts = Object.assign(size(el, data.height || LINE_HEIGHT), {
+    var showShares = function (index) {
+      Array.prototype.forEach.call(legendValues, function (span) {
+        var i = Number(span.getAttribute('data-share'));
+        span.textContent = index == null ? '' : ' ' + Math.round(shares[i][index]) + '%';
+      });
+    };
+    var opts = Object.assign(size(el, data.height || BARS_HEIGHT), {
       legend: {show: false},
       select: {show: false},
-      cursor: {y: false, drag: {x: false, y: false}, points: {show: false}},
+      cursor: {x: false, y: false, drag: {x: false, y: false}, points: {show: false}},
       scales: {
-        x: {time: false, range: [x[0] - pad, x[x.length - 1] + pad]},
-        y: {range: function (u, min, max) { return [0, (max || 1) * 1.08]; }},
+        x: {time: false, distr: 2, range: function (u, min, max) { return [min - 0.5, max + 0.5]; }},
+        y: {range: [0, 100]},
       },
       axes: [
         Object.assign(axisBase(colors), {
           grid: {show: false},
-          splits: yearSplits(x),
-          values: function (u, splits) { return splits.map(function (value) { return String(value); }); },
+          splits: function () { return indexes; },
+          values: function (u, splits) {
+            return splits.map(function (index) { return index % every === (x.length - 1) % every ? String(x[index]) : ''; });
+          },
           size: 26,
         }),
         Object.assign(axisBase(colors), {
           grid: {stroke: colors.grid, width: 1},
-          values: function (u, splits) { return splits.map(compact); },
-          space: 24,
+          splits: function () { return [0, 25, 50, 75, 100]; },
+          values: function (u, splits) { return splits.map(function (value) { return value + '%'; }); },
           size: 46,
         }),
       ],
       series: series,
-      bands: bands,
       hooks: {
         draw: [function (u) {
-          // The scope year: a thin rule down the stack.
+          // The scope year: its bar outlined.
           if (selectedIndex < 0) return;
           var ctx = u.ctx;
-          var cx = u.valToPos(x[selectedIndex], 'x', true);
+          var slot = u.bbox.width / x.length;
+          var cx = u.valToPos(selectedIndex, 'x', true);
           ctx.save();
           ctx.strokeStyle = colors.text;
-          ctx.globalAlpha = 0.5;
-          ctx.lineWidth = devicePixelRatio;
-          ctx.beginPath();
-          ctx.moveTo(cx, u.bbox.top);
-          ctx.lineTo(cx, u.bbox.top + u.bbox.height);
-          ctx.stroke();
+          ctx.lineWidth = 1.5 * devicePixelRatio;
+          ctx.strokeRect(cx - slot * 0.375, u.bbox.top, slot * 0.75, u.bbox.height);
           ctx.restore();
         }],
         setCursor: [function (u) {
-          if (!readout) return;
           var index = u.cursor.idx;
-          if (index == null) { readout.textContent = ''; return; }
-          var text = x[index] + ' · ' + amount(top[index], data.unit);
-          for (var i = parts.length - 1; i >= 0; i--) {
-            text += ' · ' + parts[i].label + ' ' + full(parts[i].values[index] || 0);
-          }
-          readout.textContent = text;
+          if (index == null) index = selectedIndex < 0 ? null : selectedIndex;
+          if (readout) readout.textContent = index == null ? '' : x[index] + ' · ' + amount(totals[index], data.unit) + ' in all';
+          showShares(index);
         }],
       },
     });
-    return new uPlot(opts, [x].concat(totals), el);
+    var plot = new uPlot(opts, [indexes].concat(order.map(function (i) { return cumulative[i]; })), el);
+    // Before any hover, the legend shows the scope year's shares.
+    showShares(selectedIndex < 0 ? null : selectedIndex);
+    return plot;
   }
 
   function bars(el, figure, data) {

@@ -288,6 +288,13 @@ body.pesticides
                 display: inline-flex
                 align-items: center
                 gap: 0.35rem
+        // A fixed width, so the shares filling in on hover don't re-wrap the
+        // legend and move the chart.
+        .chart-legend-share
+            display: inline-block
+            min-width: 2.4em
+            font-variant-numeric: tabular-nums
+            color: $text
         .chart-key.is-swatch
             display: inline-block
             width: 0.7rem

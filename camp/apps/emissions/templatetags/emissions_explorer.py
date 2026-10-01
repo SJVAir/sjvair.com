@@ -296,10 +296,11 @@ STACK_OTHER = '#c8d1da'
 @register.inclusion_tag('pesticides/includes/trend-chart.html')
 def sector_stack_chart(stack, pollutant, year=None, heading=None, height=None):
     """
-    The scope's emissions by year, stacked by sector (stats.sector_stack): the
-    largest few, then the rest together, so the trend above shows what moved
-    it. Drawn by charts.js's 'stack' type; nothing for a weighted toxic (a
-    share has no sum to stack) or too little history.
+    Each year's emissions split by sector as shares, a 100% stacked bar per
+    year (stats.sector_stack): the largest few sectors, then the rest
+    together, so the mix behind the trend above shows. Drawn by charts.js's
+    'stack' type; nothing for a weighted toxic (a share has no sum to split)
+    or too little history.
     """
     if not stack or pollutant.weighted:
         return {'has_data': False}
@@ -320,7 +321,7 @@ def sector_stack_chart(stack, pollutant, year=None, heading=None, height=None):
         },
         'has_data': True,
         'heading': heading,
-        'title': f'{pollutant.label} by sector ({pollutant.unit}/yr)',
+        'title': f'{pollutant.label} by sector, share of each year (%)',
         'sentence': '',
         'legend': series,
         'first_year': stack['years'][0],
