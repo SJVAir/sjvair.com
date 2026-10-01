@@ -36,7 +36,7 @@
 <div class="columns mt-5">
     <div class="column">
         <h2 class="title is-4">By sector</h2>
-        {% include 'emissions/includes/sector-rows.html' with rows=top_sectors %}
+        {% include 'emissions/includes/sector-rows.html' with rows=top_sectors collapse=5 %}
     </div>
     <div class="column">
         {% emissions_trend_chart by_year pollutant year heading="Over time" %}
