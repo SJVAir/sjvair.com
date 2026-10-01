@@ -1,0 +1,81 @@
+{% extends 'emissions/area-tab.html' %}
+{# emissions_explorer last: its percent and signed_pct (whole percents) win over the pesticides ones of the same name. #}
+{% load humanize pesticides_explorer emissions_explorer %}
+{% comment %}
+An area's Facilities tab (views.RegionFacilities / NearMeFacilities) in the
+shared tab skeleton (area-tab.html): how many facilities and how many are
+tracked by EPA, the facility map, the facility list's filters and sortable
+table with its CSV (the area fixed by the page), the trend and the sectors,
+and on a county the largest greenhouse-gas reporters.
+{% endcomment %}
+
+{% block tab-stats %}
+<div class="level is-mobile stat-row box is-grid-mobile" id="facilities">
+    <div class="level-item has-text-centered"><div><p class="heading">Facilities in {{ year }}</p><p class="title">{{ totals.facilities|intcomma }}</p><p class="stat-note">{{ reporting|intcomma }} reported {{ pollutant.label }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">{% if pollutant.weighted %}Share of the Valley's {{ pollutant.label|lower }} toxics{% else %}{{ pollutant.name }}{% endif %}</p><p class="title">{{ total|amount:pollutant }}{% if not pollutant.weighted %} <span class="is-size-5">{{ pollutant.unit_label }}</span>{% endif %}</p><p class="stat-note">{{ by_year|year_change:year }}</p></div></div>
+    {% if county_share is not None and county_region != area.region %}
+    <div class="level-item has-text-centered"><div><p class="heading">Share of {{ county_region.name }}</p><p class="title">{{ county_share|percent }}</p><p class="stat-note">of its facilities' {{ pollutant.label }}</p></div></div>
+    {% endif %}
+    {% if compliance_line %}
+    <div class="level-item has-text-centered"><div><p class="heading">Tracked by EPA</p><p class="title">{{ compliance_line.tracked|intcomma }}</p><p class="stat-note"><a href="{{ compliance_line.url }}">{{ compliance_line.unaddressed|intcomma }} with an unaddressed violation</a></p></div></div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block tab-map %}{% include 'emissions/includes/facility-map.html' %}{% endblock %}
+
+{% block tab-filters %}
+<form method="get" class="explorer-filters box" hx-trigger="submit, change delay:250ms">
+    {% for key, value in point_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+    {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <div class="field">
+        <label class="label" for="facility-q">Search</label>
+        <div class="control has-icons-left">
+            <input class="input" type="search" id="facility-q" name="q" value="{{ filters.q|default:'' }}" placeholder="Facility name"
+                hx-get="{{ request.path }}" hx-include="closest form" hx-trigger="keyup changed delay:500ms, search">
+            <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
+        </div>
+    </div>
+    <div class="field">
+        <label class="label" for="facility-sector">Sector</label>
+        <div class="control"><div class="select is-fullwidth"><select id="facility-sector" name="sector">
+            <option value="">All sectors</option>
+            {% for value, label in sector_options %}<option value="{{ value }}"{% if filters.sector == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></div></div>
+    </div>
+    <div class="field">
+        <label class="label" for="facility-compliance">EPA compliance</label>
+        <div class="control"><div class="select is-fullwidth"><select id="facility-compliance" name="compliance">
+            {% for value, label in compliance_options %}<option value="{{ value }}"{% if filters.compliance == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></div></div>
+        <p class="help">About 660 large sources; <a href="{% url 'emissions:about' %}#compliance">what this covers</a>.</p>
+    </div>
+    {# Every field applies itself as it changes; there's nothing to Apply. #}
+    <p class="filters-clear"><a href="{{ clear_filters_url }}">Clear filters</a></p>
+</form>
+{% endblock %}
+
+{% block tab-table %}
+{% include 'emissions/includes/facility-table.html' with rows=top_rows sortable=True hide_city=top_columns.hide_city hide_county=top_columns.hide_county %}
+{% include 'pesticides/includes/pagination.html' %}
+<p class="mt-3"><a href="{% qs_replace format='csv' page=None %}" hx-boost="false" download>Download these facilities (CSV)</a></p>
+{% endblock %}
+
+{% block tab-charts %}
+<div class="columns mt-5">
+    <div class="column is-half-desktop">{% emissions_trend_chart by_year pollutant year heading="Over time" %}</div>
+    <div class="column is-half-desktop">
+        <h2 class="title is-4">By sector</h2>
+        {% include 'emissions/includes/sector-rows.html' with rows=top_sectors %}
+    </div>
+</div>
+{% endblock %}
+
+{% block tab-related %}
+{% if ghg_table.rows %}{% include 'emissions/includes/ghg-table.html' %}{% endif %}
+{% endblock %}
+
+{% block tab-notes %}
+<p class="is-size-7 has-text-grey mt-4">Source: California Air Resources Board facility emissions inventory (CEIDARS); EPA compliance from ICIS-Air. <a href="{% url 'emissions:about' %}">About this data</a>.</p>
+{% endblock %}

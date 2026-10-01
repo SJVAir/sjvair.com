@@ -399,7 +399,9 @@ class DairyAreaPage(DairyScopeMixin, vanilla.TemplateView):
             hide_county=county is not None,
             map_config=self.get_map_config(scope) if dairies.years() else None,
             tab='dairies',
+            tab_label='Dairies',
             tabs=views.area_tabs(self, area, 'dairies'),
+            overview_url=self.area_tab_url('overview', self.tab_query('overview')),
             # The page is the area: no county picker.
             county_options=[],
             **kwargs,
@@ -445,11 +447,10 @@ class RegionDairies(views.RegionLookupMixin, DairyAreaPage):
             # the breadcrumb) adds the type for a community region.
             name=region_title(region),
             title=region_page_title(region),
-            dairies_label=f'in {region_page_title(region)}',
+            tab_title_suffix=f'in {region_page_title(region)}',
             kind=region.type_label,
             population=(region.metadata or {}).get('population'),
             county_region=county,
-            region_page_url=region.get_emissions_url(),
             # Non-county pages point at the county's dairy page for CARB's estimate.
             county_dairies_url=county.get_emissions_dairies_url() if county is not None and county != region else None,
             within=views.region_within_dairies(region),
@@ -494,13 +495,11 @@ class NearMeDairies(views.NearLookupMixin, DairyAreaPage):
         return super().get_context_data(
             name=title,
             title=title,
-            dairies_label=self.near_phrase(),
+            tab_title_suffix=self.near_phrase(),
             kind='Near me',
             population=None,
             county_region=None,
             radius_options=self.radius_options(),
-            # The emissions near-me page for the breadcrumb: the point, then the page's scope.
-            near_page_url=f"{reverse('emissions:near-me')}?{urlencode({**self.near_params(), **page_params(scope)})}",
             privacy_note=True,
             **kwargs,
         )

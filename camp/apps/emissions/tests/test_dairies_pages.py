@@ -360,6 +360,16 @@ class AreaTabTests(DairyPageTestCase):
         assert dict((label, current) for label, _, current in tabs)['Dairies']
         assert dict((label, href) for label, href, _ in tabs)['Overview'] == f'{self.fresno.get_emissions_url()}?year=2023&pollutant=rog'
 
+    def test_a_near_me_facilities_form_keeps_its_point(self):
+        params = {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'year': '2023'}
+        content = self.page(reverse('emissions:near-me-facilities'), params)
+        form = content[content.index('class="explorer-filters box"'):content.index('</form>')]
+        for name, value in (('lat', '36.7370'), ('lng', '-119.7870'), ('radius', '1')):
+            assert f'<input type="hidden" name="{name}" value="{value}">' in form
+        # And its CSV.
+        csv = self.client.get(reverse('emissions:near-me-facilities'), dict(params, format='csv'))
+        assert csv['Content-Type'] == 'text/csv' and 'near-36.7370--119.7870-1-2023.csv' in csv['Content-Disposition']
+
     def test_the_overview_has_top_facility_and_sector_cards(self):
         overview = self.page(self.fresno.get_emissions_url(), {'year': '2023'})
         facilities = overview[overview.index('card-header-title">Top facilities'):overview.index('card-header-title">Top sectors')]
@@ -372,7 +382,11 @@ class AreaTabTests(DairyPageTestCase):
         overview = self.page(self.fresno.get_emissions_url(), {'year': '2023'})
         assert 'Top facilities' in overview and 'id="in-and-around"' not in overview
         facilities = self.page(self.fresno.get_emissions_tab_url('facilities'), {'year': '2023'})
-        assert 'Facilities in 2023' in facilities and 'Top facilities' not in facilities and 'facility-map map-canvas' not in facilities
+        # The shared tab layout: stats, map, the filters beside a sortable table, CSV.
+        assert '<p class="heading">Facilities in 2023</p>' in facilities and 'Top facilities' not in facilities
+        assert 'facility-map map-canvas' in facilities and 'class="explorer-filters box"' in facilities
+        assert 'sort=-value' in facilities or 'sort=value' in facilities
+        assert 'Download these facilities (CSV)' in facilities
         community = self.page(self.fresno.get_emissions_tab_url('community'), {'year': '2023'})
         assert 'id="in-and-around"' in community and 'Top facilities' not in community
 

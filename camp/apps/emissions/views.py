@@ -212,33 +212,38 @@ class FacilityList(ScopeMixin, vanilla.TemplateView):
 
     def csv_response(self):
         scope = self.get_scope()
-        rank_map = stats.ranks(scope)
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = f'attachment; filename="facility-emissions-{scope.year}.csv"'
-        writer = csv.writer(response)
-        # One extra column for a pollutant that isn't a criteria column: a
-        # toxic (lbs or share) or ammonia (tons), the scope's `value`.
-        criteria_keys = {pollutant.key for pollutant in CRITERIA}
-        extra_column = [] if scope.pollutant.key in criteria_keys else [
-            f"{scope.pollutant.key}_{'share' if scope.pollutant.weighted else scope.pollutant.unit}"
-        ]
+        return facility_csv(scope, stats.facility_table(scope, **list_filters(self.request.GET)), f'facility-emissions-{scope.year}.csv')
+
+
+def facility_csv(scope, records, filename):
+    """A facility table (stats.facility_table records) as a CSV download: the list's and an area's Facilities tab's."""
+    rank_map = stats.ranks(scope)
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    writer = csv.writer(response)
+    # One extra column for a pollutant that isn't a criteria column: a
+    # toxic (lbs or share) or ammonia (tons), the scope's `value`.
+    criteria_keys = {pollutant.key for pollutant in CRITERIA}
+    extra_column = [] if scope.pollutant.key in criteria_keys else [
+        f"{scope.pollutant.key}_{'share' if scope.pollutant.weighted else scope.pollutant.unit}"
+    ]
+    writer.writerow(
+        ['rank', 'facility', 'id', 'air_district', 'county', 'city', 'sector', 'sic_code', 'year']
+        + [f'{pollutant.key}_tons' for pollutant in CRITERIA] + extra_column
+        + ['epa_tracked', 'hpv_status']
+    )
+    tracked = {row.facility_id: row for row in AirComplianceFacility.objects.exclude(facility=None).order_by('reported_through')}
+    for record in records:
+        facility = record.facility
+        values = [pollutant.display(getattr(record, pollutant.key)) for pollutant in CRITERIA] + ([record.value] if extra_column else [])
         writer.writerow(
-            ['rank', 'facility', 'id', 'air_district', 'county', 'city', 'sector', 'sic_code', 'year']
-            + [f'{pollutant.key}_tons' for pollutant in CRITERIA] + extra_column
-            + ['epa_tracked', 'hpv_status']
+            [rank_map.get(record.facility_id, ''), facility.name, facility.sqid, facility.air_district.name,
+             facility.get_county() or '', facility.get_city(), facility.get_sector_display(),
+             facility.sic_code or '', record.year]
+            + ['' if value is None else value for value in values]
+            + ['yes' if facility.pk in tracked else '', tracked[facility.pk].hpv_status if facility.pk in tracked else '']
         )
-        tracked = {row.facility_id: row for row in AirComplianceFacility.objects.exclude(facility=None).order_by('reported_through')}
-        for record in stats.facility_table(scope, **list_filters(self.request.GET)):
-            facility = record.facility
-            values = [pollutant.display(getattr(record, pollutant.key)) for pollutant in CRITERIA] + ([record.value] if extra_column else [])
-            writer.writerow(
-                [rank_map.get(record.facility_id, ''), facility.name, facility.sqid, facility.air_district.name,
-                 facility.get_county() or '', facility.get_city(), facility.get_sector_display(),
-                 facility.sic_code or '', record.year]
-                + ['' if value is None else value for value in values]
-                + ['yes' if facility.pk in tracked else '', tracked[facility.pk].hpv_status if facility.pk in tracked else '']
-            )
-        return response
+    return response
 
 
 def get_facility(sqid):
@@ -744,12 +749,6 @@ def facility_list_url(scope, area, **extra):
     return f"{reverse('emissions:facility-list')}{'?' + query if query else ''}"
 
 
-def area_list_covers(area):
-    """Whether facility_list_url can narrow the list to exactly this area."""
-    region = getattr(area, 'region', None)
-    return region is not None and (region.type == Region.Type.COUNTY or region.type in areas.FILTER_REGION_TYPES)
-
-
 def compliance_list_url(scope, area):
     """The facility list filtered to unaddressed HPVs, narrowed to the area where the list can be."""
     return facility_list_url(scope, area, compliance='hpv')
@@ -779,8 +778,6 @@ AREA_TABS = (
     ('oil-gas', 'Oil & gas', 'fa-oil-well', 'is-wells'),
     ('community', 'Community', 'fa-city', 'is-chemicals'),
 )
-# The Facilities tab lists this many before pointing at the facility list.
-AREA_TABLE_ROWS = 100
 
 
 def area_tabs(view, area, current):
@@ -819,7 +816,29 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
             params = request.GET.copy()
             params.pop('county')
             request.GET = params
+        if self.tab == 'facilities' and request.GET.get('format') == 'csv':
+            return self.facilities_csv()
         return super().get(request, *args, **kwargs)
+
+    def area_scope(self):
+        """The page's scope narrowed to its area, county-free (the page is the area)."""
+        base = self.get_scope()
+        return stats.Scope(year=base.year, county=None, pollutant=base.pollutant, minor=base.minor, area=self.get_area())
+
+    def area_filters(self):
+        """The Facilities tab's filters: the facility list's, less its region (the page is the area)."""
+        return {key: value for key, value in list_filters(self.request.GET).items() if key != 'area'}
+
+    def facilities_csv(self):
+        scope = self.area_scope()
+        return facility_csv(scope, stats.facility_table(scope, **self.area_filters()), f'facility-emissions-{self.csv_slug()}-{scope.year}.csv')
+
+    def csv_slug(self):
+        raise NotImplementedError
+
+    def point_params(self):
+        """The query parameters that say where the page is (near-me's point); none for a region."""
+        return {}
 
     def get_area(self):
         raise NotImplementedError
@@ -843,23 +862,30 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
         base = self.get_scope()
         area = self.get_area()
         tab = self.tab
-        scope = stats.Scope(year=base.year, county=None, pollutant=base.pollutant, minor=base.minor, area=area)
+        scope = self.area_scope()
         summary = compliance.area_summary(scope) if tab == 'facilities' else None
         compliance_line = dict(summary, url=compliance_list_url(base, area)) if summary else None
         totals = stats.totals(scope)
         total = totals['value'] or 0
         county = self.get_county()
         county_scope = stats.Scope(year=base.year, county=county, pollutant=base.pollutant, minor=base.minor)
-        county_total = stats.totals(county_scope)['value'] if county and tab == 'overview' else None
+        county_total = stats.totals(county_scope)['value'] if county and tab in ('overview', 'facilities') else None
         if tab == 'facilities':
-            table = stats.facility_table(scope)
-            top_rows = stats.with_ranks(table[:AREA_TABLE_ROWS], stats.ranks(scope))
-            kwargs.setdefault('facility_count', table.count())
+            # The facility list's table, filters, sorts, pages and CSV, for the area.
+            filters = self.area_filters()
+            table = stats.facility_table(scope, **filters)
+            page = Paginator(table, PAGE_SIZE).get_page(self.request.GET.get('page'))
+            top_rows = stats.with_ranks(page.object_list, stats.ranks(scope))
+            kwargs.update(
+                page_obj=page, is_paginated=page.has_other_pages(), sort=filters['sort'], filters=filters,
+                sector_options=sector_options(), compliance_options=compliance.FILTER_LABELS,
+                reporting=stats.facility_table(scope).filter(value__gt=0).count(),
+            )
         elif tab == 'overview':
             top_rows = stats.with_ranks(stats.facility_table(scope)[:5], stats.ranks(scope))
         else:
             top_rows = []
-        top_sectors = reporting_sectors(scope) if tab == 'overview' else []
+        top_sectors = reporting_sectors(scope) if tab in ('overview', 'facilities') else []
         # A region page overrides this with its own "In and around" lists;
         # a near-me page (a point, not a region) has none.
         kwargs.setdefault('within', None)
@@ -885,7 +911,12 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
             per_sq_mi=total / area.sq_miles if area.sq_miles else None,
             county_share=total / county_total if county_total else None,
             tab=tab,
+            tab_label=dict((key, label) for key, label, *_ in AREA_TABS)[tab],
             tabs=area_tabs(self, area, tab),
+            overview_url=self.area_tab_url('overview', self.tab_query('overview')),
+            # A tab's own form keeps the page's point (near-me) and clears to the tab, scope kept.
+            point_params=self.point_params(),
+            clear_filters_url=self.area_tab_url(tab, self.tab_query(tab)),
             facilities_tab_url=self.area_tab_url('facilities', self.tab_query('facilities')),
             top_rows=top_rows,
             top_columns=uniform_columns(top_rows),
@@ -899,11 +930,9 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
                 {'label': row['label'], 'url': reverse('emissions:sector-detail', args=[row['sector']]), 'value': row['value'], 'share': row['share']}
                 for row in top_sectors
             ],
-            by_year=stats.by_year(scope) if tab == 'overview' else [],
-            map_config=self.get_map_config(base) if tab in ('overview', 'oil-gas') else None,
+            by_year=stats.by_year(scope) if tab in ('overview', 'facilities') else [],
+            map_config=self.get_map_config(base) if tab in ('overview', 'facilities', 'oil-gas') else None,
             compliance_line=compliance_line,
-            # The Facilities tab's "all N" link, where the list can narrow to the area.
-            facility_list_url=facility_list_url(base, area) if area_list_covers(area) else None,
             toxics_breakdown=stats.toxics_breakdown(scope) if scope.toxics and tab == 'overview' else None,
             share_unit=scope.pollutant.unit == 'share',
             # The page is the area: no county picker, and the scope links
@@ -977,6 +1006,9 @@ class RegionPage(RegionLookupMixin, AreaPage):
     def get_area(self):
         return areas.RegionArea(self.region)
 
+    def csv_slug(self):
+        return self.region.slug
+
     def get_county(self):
         if self.region.type == Region.Type.COUNTY:
             return self.region
@@ -1020,6 +1052,7 @@ class RegionPage(RegionLookupMixin, AreaPage):
             # disambiguate) adds the type for a community region.
             name=region_title(region),
             title=region_page_title(region),
+            tab_title_suffix=f'in {region_page_title(region)}',
             kind=region.type_label,
             population=(region.metadata or {}).get('population'),
             context_bar=stats.county_context(county_scope) if county_scope else None,
@@ -1144,6 +1177,12 @@ class NearMe(NearLookupMixin, AreaPage):
     def get_area(self):
         return self.near
 
+    def csv_slug(self):
+        return f'near-{self.near.lat:.4f}-{self.near.lng:.4f}-{self.near.radius}'
+
+    def point_params(self):
+        return self.near_params()
+
     def get_county(self):
         return self.county
 
@@ -1164,6 +1203,7 @@ class NearMe(NearLookupMixin, AreaPage):
         return super().get_context_data(
             name=title,
             title=title,
+            tab_title_suffix=self.near_phrase(),
             kind='Near me',
             population=None,
             context_bar=None,
@@ -1179,6 +1219,7 @@ class NearMe(NearLookupMixin, AreaPage):
 
 class RegionFacilities(RegionPage):
     tab = 'facilities'
+    template_name = 'emissions/area-facilities.html'
 
 
 class RegionOilGas(RegionPage):
@@ -1191,6 +1232,7 @@ class RegionCommunity(RegionPage):
 
 class NearMeFacilities(NearMe):
     tab = 'facilities'
+    template_name = 'emissions/area-facilities.html'
 
 
 class NearMeOilGas(NearMe):
