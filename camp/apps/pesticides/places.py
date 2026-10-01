@@ -41,7 +41,7 @@ SPRAYDAYS_URL = 'https://spraydays.cdpr.ca.gov/'
 
 # -- The district page's schools table --
 
-# Rows past this many are rendered collapsed, with a control to show them.
+# The schools table's page size.
 SCHOOLS_PER_PAGE = 50
 # The table's own filter and sort state, prefixed so it can't collide with
 # the page's own `sort` (the place page has none today; a list page would).

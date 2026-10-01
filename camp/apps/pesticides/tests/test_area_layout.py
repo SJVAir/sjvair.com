@@ -2,7 +2,6 @@ import re
 
 from django.core.cache import cache
 from django.test import TestCase
-from django.urls import reverse
 
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
 from camp.apps.regions.models import Region

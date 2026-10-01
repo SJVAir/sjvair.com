@@ -27,6 +27,12 @@ class NoticeListTests(TestCase):
         chem = Chemical.objects.get(pk=1)
         assert [n.pk for n in self.client.get(self.url, {'chemical': chem.sqid}).context['object_list']] == [3]
 
+    def test_out_of_range_page_is_not_a_404(self):
+        for page in ('99', 'nope'):
+            assert self.client.get(self.url, {'page': page}).status_code == 200
+            assert self.client.get(self.url, {'past': 1, 'page': page}).status_code == 200
+        assert self.client.get(self.url, {'page': 'nope'}).context['page_obj'].number == 1
+
     def test_archive(self):
         response = self.client.get(self.url, {'past': 1})
         assert response.context['mode'] == 'past'
@@ -242,6 +248,10 @@ class AreaNoticesTabTests(TestCase):
         kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
         here = [n.county_id for n in self.client.get(kern.get_pesticides_tab_url('notices')).context['object_list']]
         assert here and set(here) == {kern.pk}
+
+    def test_out_of_range_page_is_not_a_404(self):
+        for page in ('99', 'nope'):
+            assert self.client.get(self.url, {'page': page}).status_code == 200
 
     def test_past_mode_lists_the_archive_and_counts_only_the_place(self):
         response = self.client.get(self.url, {'past': 1})

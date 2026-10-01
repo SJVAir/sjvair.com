@@ -1911,6 +1911,11 @@ class NoticeList(vanilla.ListView):
     paginate_by = 50
     template_name = 'pesticides/notice-list.html'
 
+    def paginate_queryset(self, queryset, page_size):
+        # An out-of-range or junk `?page=` lands on the nearest real page
+        # rather than a 404.
+        return self.get_paginator(queryset, page_size).get_page(self.request.GET.get(self.page_kwarg))
+
     def dispatch(self, request, *args, **kwargs):
         self.form = NoticeFilterForm(request.GET)
         self.form.is_valid()
@@ -1999,7 +2004,7 @@ class NoticeList(vanilla.ListView):
 
     def get_active_filters(self):
         filters = []
-        for param in ('chemical', 'product'):
+        for param in ('product', 'chemical'):
             obj = self.related.get(param)
             if obj and obj is not MISSING:
                 filters.append({'label': getattr(obj, 'display_name', obj.name), 'clear_url': clear_url(self.request, param)})
@@ -2425,7 +2430,6 @@ class AreaNoticesMixin(AreaNarrowedListMixin):
             area=self.area,
             tab_label='Notices',
             **places.upcoming_context(self.area, concern),
-            spraydays_url=places.SPRAYDAYS_URL,
             **self.header_context(),
             **self.tab_scope_context(),
         )
