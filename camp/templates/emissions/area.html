@@ -5,27 +5,9 @@
 {% block breadcrumb-list %}{% if county_region and county_region != area.region %}<li><a href="{{ county_region.get_emissions_url }}{{ scope_qs }}">{{ county_region.name }}</a></li>{% endif %}<li class="is-active"><a aria-current="page">{{ title }}</a></li>{% endblock %}
 
 {% block explorer-content %}
-<div class="content">
-    <h1 class="title is-3 mb-1">{{ name }}</h1>
-    <p class="heading">{{ kind }}{% if county_region and county_region != area.region %} · {{ county_region.name }}{% endif %}{% if population %} · {{ population|whole }} people{% endif %}</p>
-    {% include 'emissions/includes/ab617-notice.html' %}
-    {# In-page links (plain anchors, which htmx doesn't boost); only when there's more than the facilities to jump to. #}
-    {% if dairy_block.has_dairies or within.any or community or tract_ces or wells_block or ghg_table.rows %}
-    <nav class="section-nav is-size-7" aria-label="On this page">
-        <a href="#facilities">Facilities</a>{% if community or tract_ces %} · <a href="#community">Community</a>{% endif %}{% if ghg_table.rows %} · <a href="#greenhouse-gases">Greenhouse gases</a>{% endif %}{% if wells_block %} · <a href="#wells">Oil &amp; gas wells</a>{% endif %}{% if dairy_block.has_dairies %} · <a href="#dairies">Dairies</a>{% endif %}{% if within.any %} · <a href="#in-and-around">In and around</a>{% endif %}
-    </nav>
-    {% endif %}
-    {% if radius_options %}
-    <nav class="radius-switcher" aria-label="Radius">
-        <div class="buttons has-addons are-small">
-            {% for option in radius_options %}
-            <a class="button{% if option.current %} is-selected is-primary{% endif %}" href="{{ option.url }}"{% if option.current %} aria-current="page"{% endif %}>{{ option.miles }} mi</a>
-            {% endfor %}
-        </div>
-    </nav>
-    {% endif %}
-</div>
+{% include 'emissions/includes/area-header.html' %}
 
+{% if tab == 'overview' %}
 <div class="level stat-row box" id="facilities">
     <div class="level-item has-text-centered"><div><p class="heading">Facilities in {{ year }}</p><p class="title">{{ totals.facilities|intcomma }}</p><p class="stat-note"></p></div></div>
     <div class="level-item has-text-centered"><div><p class="heading">{% if pollutant.weighted %}Share of the Valley's {{ pollutant.label|lower }} toxics{% else %}{{ pollutant.name }}{% endif %}</p><p class="title">{{ total|amount:pollutant }}{% if not pollutant.weighted %} <span class="is-size-5">{{ pollutant.unit_label }}</span>{% endif %}</p><p class="stat-note">{{ by_year|year_change:year }}</p></div></div>
@@ -45,11 +27,9 @@
 <h2 class="title is-4 mt-5">Top facilities</h2>
 {% if top_rows %}
 {% include 'emissions/includes/facility-table.html' with rows=top_rows sortable=False hide_city=top_columns.hide_city hide_county=top_columns.hide_county %}
+{% for t in tabs %}{% if t.key == 'facilities' %}<p class="mt-2"><a href="{{ t.url }}">All {{ totals.facilities|intcomma }} facilities here →</a></p>{% endif %}{% endfor %}
 {% else %}
 <p class="has-text-grey">No facilities here reported {{ pollutant.name }} in {{ year }}.</p>
-{% endif %}
-{% if compliance_line %}
-<p class="compliance-line is-size-7 mt-2">{{ compliance_line.tracked|intcomma }} of the {{ compliance_line.facilities|intcomma }} facilities here are tracked in EPA's air compliance system; {{ compliance_line.unaddressed|intcomma }} have an unaddressed high-priority violation <a href="{{ compliance_line.url }}">→</a></p>
 {% endif %}
 {% if toxics_breakdown %}{% include 'emissions/includes/toxics-breakdown.html' %}{% endif %}
 
@@ -62,12 +42,28 @@
         {% emissions_trend_chart by_year pollutant year heading="Over time" %}
     </div>
 </div>
-{% include 'emissions/includes/community-card.html' %}
+
+{% elif tab == 'facilities' %}
+<h2 class="title is-4" id="facilities">Facilities in {{ year }}</h2>
+{% if top_rows %}
+{% include 'emissions/includes/facility-table.html' with rows=top_rows sortable=False hide_city=top_columns.hide_city hide_county=top_columns.hide_county %}
+{% if facility_count > top_rows|length %}<p class="mt-2">The {{ top_rows|length }} largest of {{ facility_count|intcomma }}.{% if facility_list_url %} <a href="{{ facility_list_url }}">All of them in the facility list →</a>{% endif %}</p>{% endif %}
+{% else %}
+<p class="has-text-grey">No facilities here reported {{ pollutant.name }} in {{ year }}.</p>
+{% endif %}
+{% if compliance_line %}
+<p class="compliance-line is-size-7 mt-2">{{ compliance_line.tracked|intcomma }} of the {{ compliance_line.facilities|intcomma }} facilities here are tracked in EPA's air compliance system; {{ compliance_line.unaddressed|intcomma }} have an unaddressed high-priority violation <a href="{{ compliance_line.url }}">→</a></p>
+{% endif %}
 {% if ghg_table.rows %}{% include 'emissions/includes/ghg-table.html' %}{% endif %}
-{% if wells_block %}{% include 'emissions/includes/wells-block.html' %}{% endif %}
-{% if dairy_block %}{% include 'emissions/includes/dairy-summary.html' %}{% endif %}
 
+{% elif tab == 'oil-gas' %}
+{% include 'emissions/includes/facility-map.html' %}
+{% if wells_block %}{% include 'emissions/includes/wells-block.html' %}{% else %}<p class="has-text-grey mt-4">No active, idle or new oil or gas wells here.</p>{% endif %}
+
+{% elif tab == 'community' %}
+{% include 'emissions/includes/community-card.html' %}
 {% include 'regions/includes/within.html' with within_name=name %}
+{% endif %}
 
-{% if privacy_note %}<p class="is-size-7 has-text-grey">This page's location is only in its address; we don't store it.</p>{% endif %}
+{% if privacy_note %}<p class="is-size-7 has-text-grey mt-5">This page's location is only in its address; we don't store it.</p>{% endif %}
 {% endblock %}

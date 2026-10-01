@@ -148,14 +148,15 @@ class PageTests(ComplianceTestCase):
         from camp.apps.regions.models import Region
         fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
         kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
-        assert 'tracked in EPA' not in self.client.get(fresno.get_emissions_url(), {'year': '2024'}).content.decode()
+        facilities = fresno.get_emissions_tab_url('facilities')
+        assert 'tracked in EPA' not in self.client.get(facilities, {'year': '2024'}).content.decode()
         track(self.plant, 'CASJV00006019C0001', hpv='Unaddressed-Local')
-        content = self.client.get(fresno.get_emissions_url(), {'year': '2024'}).content.decode()
+        content = self.client.get(facilities, {'year': '2024'}).content.decode()
         assert "1 of the 1 facilities here are tracked in EPA's air compliance system; 1 have an unaddressed high-priority violation" in content
         assert f'href="{reverse("emissions:facility-list")}?year=2024&amp;compliance=hpv&amp;county=fresno"' in content or \
                f'href="{reverse("emissions:facility-list")}?compliance=hpv&amp;county=fresno"' in content
-        assert 'tracked in EPA' not in self.client.get(kern.get_emissions_url(), {'year': '2024'}).content.decode()
-        near = self.client.get(reverse('emissions:near-me'), {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'year': '2024'}).content.decode()
+        assert 'tracked in EPA' not in self.client.get(kern.get_emissions_tab_url('facilities'), {'year': '2024'}).content.decode()
+        near = self.client.get(reverse('emissions:near-me-facilities'), {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'year': '2024'}).content.decode()
         assert 'tracked in EPA' in near and 'county=' not in near.split('compliance=hpv')[1][:40]
 
     def test_about_and_integrations(self):

@@ -356,6 +356,10 @@ class DairyAreaPage(DairyScopeMixin, vanilla.TemplateView):
     def rows(self):
         return dairies.table(self.get_scope().year, area=self.get_area(), **search_filters(self.request.GET))
 
+    def tab_query(self, key):
+        """A tab link's query: this page's year and pollutant (views.area_tabs)."""
+        return urlencode(page_params(self.get_scope()))
+
     def get_context_data(self, **kwargs):
         scope = self.get_scope()
         area = self.get_area()
@@ -392,6 +396,8 @@ class DairyAreaPage(DairyScopeMixin, vanilla.TemplateView):
             ddrdp_totals=dairies.grant_totals(county) if county is not None else None,
             hide_county=county is not None,
             map_config=self.get_map_config(scope) if dairies.years() else None,
+            tab='dairies',
+            tabs=views.area_tabs(self, area, 'dairies'),
             # The page is the area: no county picker.
             county_options=[],
             **kwargs,
@@ -445,6 +451,7 @@ class RegionDairies(views.RegionLookupMixin, DairyAreaPage):
             # Non-county pages point at the county's dairy page for CARB's estimate.
             county_dairies_url=county.get_emissions_dairies_url() if county is not None and county != region else None,
             within=views.region_within_dairies(region),
+            ab617=views.ab617_notice(region),
             **kwargs,
         )
 

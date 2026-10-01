@@ -32,19 +32,19 @@ class CommunityCardTests(TestCase):
         return content[start:content.index('</div>', content.index('</ul>', start))]
 
     def test_county_card(self):
-        card = self.card(self.get(self.fresno.get_emissions_url(), {'year': '2024'}))
+        card = self.card(self.get(self.fresno.get_emissions_tab_url('community'), {'year': '2024'}))
         assert '<strong>58%</strong> of residents live in state-designated disadvantaged communities (SB 535)' in card
         # Template literals aren't HTML-escaped, so the apostrophe is a plain one.
         assert "<strong>1 of 2</strong> census tracts are in California's most burdened 25% (CalEnviroScreen 5.0)" in card
         assert f'<a href="{self.other.get_emissions_url()}">51st</a> to <a href="{self.tract.get_emissions_url()}">89th</a>' in card
         # A county page lists its highest tracts.
         assert 'Highest tracts' in card and card.index('Census Tract 1.01') < card.index('Census Tract 1.02')
-        # And the section nav gains a Community link.
-        assert '<a href="#community">Community</a>' in self.get(self.fresno.get_emissions_url())
+        # And the page's Community tab is linked from its Overview.
+        assert f'href="{self.fresno.get_emissions_tab_url("community")}' in self.get(self.fresno.get_emissions_url())
 
     def test_community_card_without_the_top_list(self):
         place = make(Region.Type.CDP, 'Plantville', TWO_TRACTS)
-        card = self.card(self.get(place.get_emissions_url()))
+        card = self.card(self.get(place.get_emissions_tab_url('community')))
         assert '1 of 2</strong> census tracts' in card and 'Highest tracts' not in card
 
     def test_near_me_card(self):
@@ -52,7 +52,7 @@ class CommunityCardTests(TestCase):
         # a 1-mile circle covers ~8% of the tract and neither contains its centroid, so it falls to `containing`;
         # a 3-mile circle reaches the centroid, so the tract counts. (A 302 here means the point fell outside the
         # fixture's Fresno County boundary -- nudge it toward TEST PLANT at (-119.787, 36.737), staying off the centroid.)
-        url = reverse('emissions:near-me')
+        url = reverse('emissions:near-me-community')
         content = self.get(url, {'lat': '36.73', 'lng': '-119.78', 'radius': '1'})
         card = content[content.index('id="community"'):]
         assert f'Inside census tract <a href="{self.tract.get_emissions_url()}">Census Tract 1.01</a>, at the 89th percentile (CalEnviroScreen 5.0)' in card
@@ -61,7 +61,7 @@ class CommunityCardTests(TestCase):
         assert '1 of 1</strong> census tract is in' in content
 
     def test_tract_page_shows_its_own_scores(self):
-        content = self.get(self.tract.get_emissions_url())
+        content = self.get(self.tract.get_emissions_tab_url('community'))
         card = content[content.index('id="community"'):]
         assert 'Overall: <strong>89th percentile</strong>' in card
         assert 'Pollution burden: <strong>83rd percentile</strong>' in card
@@ -72,9 +72,9 @@ class CommunityCardTests(TestCase):
     def test_no_ces_data_no_card(self):
         CES5.objects.all().delete()
         CES4.objects.all().delete()
-        for url in (self.fresno.get_emissions_url(), self.tract.get_emissions_url()):
+        for url in (self.fresno.get_emissions_tab_url('community'), self.tract.get_emissions_tab_url('community')):
             assert 'id="community"' not in self.get(url)
-        assert 'id="community"' not in self.get(reverse('emissions:near-me'), {'lat': '36.73', 'lng': '-119.78'})
+        assert 'id="community"' not in self.get(reverse('emissions:near-me-community'), {'lat': '36.73', 'lng': '-119.78'})
 
 
 class FacilityTractLineTests(TestCase):

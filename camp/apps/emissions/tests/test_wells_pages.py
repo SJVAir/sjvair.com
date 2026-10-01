@@ -58,10 +58,14 @@ class OverlayConfigTests(WellsPagesTestCase):
         content = self.get(reverse('emissions:map'), {'wells': '1'})
         assert map_data(content, 'wells') == '1' and map_data(content, 'wells-default') == ''
 
-    def test_on_by_default_for_kern_and_the_oil_gas_sector(self):
-        content = self.get(self.kern.get_emissions_url())
+    def test_on_by_default_on_the_oil_gas_tab_and_sector(self):
+        oil_gas = self.kern.get_emissions_tab_url('oil-gas')
+        content = self.get(oil_gas)
         assert map_data(content, 'wells') == '1' and map_data(content, 'wells-default') == '1'
-        assert map_data(self.get(self.kern.get_emissions_url(), {'wells': '0'}), 'wells') == ''
+        assert map_data(self.get(oil_gas, {'wells': '0'}), 'wells') == ''
+        # Off on Kern's Overview: 66,000 wells are too many to load there by default.
+        content = self.get(self.kern.get_emissions_url())
+        assert map_data(content, 'wells') == '' and map_data(content, 'wells-url')
         content = self.get(reverse('emissions:sector-detail', args=['oil-gas']))
         assert map_data(content, 'wells') == '1'
         assert map_data(self.get(reverse('emissions:sector-detail', args=['glass'])), 'wells') == ''
@@ -72,15 +76,17 @@ class OverlayConfigTests(WellsPagesTestCase):
 
 
 class WellsBlockTests(WellsPagesTestCase):
-    def test_nothing_without_wells(self):
+    def test_no_tab_without_wells(self):
         content = self.get(self.fresno.get_emissions_url())
-        assert 'id="wells"' not in content and 'href="#wells"' not in content
+        assert self.fresno.get_emissions_tab_url('oil-gas') not in content
+        content = self.get(self.fresno.get_emissions_tab_url('oil-gas'))
+        assert 'id="wells"' not in content and 'No active, idle or new oil or gas wells here.' in content
 
     def test_region_block(self):
         self.add_wells()
-        content = self.get(self.fresno.get_emissions_url(), {'year': '2024'})
+        assert f'href="{self.fresno.get_emissions_tab_url("oil-gas")}' in self.get(self.fresno.get_emissions_url())
+        content = self.get(self.fresno.get_emissions_tab_url('oil-gas'), {'year': '2024'})
         block = content[content.index('id="wells"'):]
-        assert '<a href="#wells">Oil &amp; gas wells</a>' in content
         assert '2 active · 0 idle · 0 in a verified health-protection zone (3,200 ft of homes or schools)' in block
         assert '<strong>1</strong> school or child-care center here has an active or idle well within 3,200 ft' in block
         assert re.search(r'PLANT ELEMENTARY</td><td class="cell-meta">Public school</td><td[^>]*data-unit="wells">2</td>', block)
@@ -89,11 +95,11 @@ class WellsBlockTests(WellsPagesTestCase):
 
     def test_the_snapshot_caveat_names_the_year(self):
         self.add_wells()
-        latest = self.get(self.fresno.get_emissions_url(), {'year': '2024'})
+        latest = self.get(self.fresno.get_emissions_tab_url('oil-gas'), {'year': '2024'})
         block = latest[latest.index('id="wells"'):]
         assert '<strong>Current wells' in block and 'It has no history by year' in block
         assert "not 2024's" not in block
-        past = self.get(self.fresno.get_emissions_url(), {'year': '2023'})
+        past = self.get(self.fresno.get_emissions_tab_url('oil-gas'), {'year': '2023'})
         block = past[past.index('id="wells"'):]
         assert "<strong>These are today's wells, not 2023's.</strong>" in block.replace('&#x27;', "'")
         assert 'The emissions figures on this page are for 2023.' in block
@@ -101,7 +107,7 @@ class WellsBlockTests(WellsPagesTestCase):
     def test_kern_block_has_the_callout(self):
         self.add_wells()
         self.add_kern_oil_gas()
-        content = self.get(self.kern.get_emissions_url(), {'year': '2024'})
+        content = self.get(self.kern.get_emissions_tab_url('oil-gas'), {'year': '2024'})
         block = content[content.index('id="wells"'):]
         assert '1 active · 1 idle · 1 in a verified health-protection zone' in block
         assert "Oil &amp; gas facilities reported 80% of Kern&#x27;s permitted-facility ROG and 86% of its benzene in 2024" in block \
@@ -110,7 +116,7 @@ class WellsBlockTests(WellsPagesTestCase):
 
     def test_near_me_block(self):
         self.add_wells()
-        content = self.get(reverse('emissions:near-me'), {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'year': '2024'})
+        content = self.get(reverse('emissions:near-me-oil-gas'), {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'year': '2024'})
         assert 'id="wells"' in content and '2 active' in content
 
     def test_sector_page_callout(self):

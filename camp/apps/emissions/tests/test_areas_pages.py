@@ -197,21 +197,21 @@ class WithinSectionTests(TestCase):
         return match.group(1)
 
     def test_county_page_links_emissions_not_pesticides(self):
-        content = self.client.get(self.fresno.get_emissions_url(), {'year': '2024'}).content.decode()
+        content = self.client.get(self.fresno.get_emissions_tab_url('community'), {'year': '2024'}).content.decode()
         section = self.within_section(content)
         assert 'In Fresno County' in section
         assert '/tools/emissions/region/' in section
         assert '/tools/pesticides/' not in section
 
     def test_community_page_links_emissions_not_pesticides(self):
-        content = self.client.get(self.fresno_city.get_emissions_url(), {'year': '2024'}).content.decode()
+        content = self.client.get(self.fresno_city.get_emissions_tab_url('community'), {'year': '2024'}).content.decode()
         section = self.within_section(content)
         assert '/tools/emissions/region/' in section
         assert '/tools/pesticides/' not in section
 
     def test_near_me_page_has_no_section(self):
         response = self.client.get(
-            reverse('emissions:near-me'),
+            reverse('emissions:near-me-community'),
             {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'label': 'near Fresno', 'year': '2024'},
         )
         content = response.content.decode()
@@ -219,14 +219,14 @@ class WithinSectionTests(TestCase):
 
     def test_a_region_page_lists_an_overlapping_ab617_community(self):
         community = make(Region.Type.AB617_COMMUNITY, 'Shafter', AROUND_PLANT)
-        content = self.client.get(self.fresno_city.get_emissions_url(), {'year': '2024'}).content.decode()
+        content = self.client.get(self.fresno_city.get_emissions_tab_url('community'), {'year': '2024'}).content.decode()
         section = self.within_section(content)
         assert 'Shafter' in section and community.get_emissions_url() in section
         assert 'AB 617' in section
 
     def test_an_ab617_page_lists_the_city_and_county_it_is_in(self):
         community = make(Region.Type.AB617_COMMUNITY, 'Shafter', AROUND_PLANT)
-        content = self.client.get(community.get_emissions_url(), {'year': '2024'}).content.decode()
+        content = self.client.get(community.get_emissions_tab_url('community'), {'year': '2024'}).content.decode()
         section = self.within_section(content)
         assert self.fresno_city.name in section and self.fresno_city.get_emissions_url() in section
         assert self.fresno.name in section and self.fresno.get_emissions_url() in section

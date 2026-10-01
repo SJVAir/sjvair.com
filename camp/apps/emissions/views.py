@@ -411,8 +411,8 @@ def map_view(get, default_level=areas.DEFAULT_LEVEL, year=None, *, share=False):
 def wells_overlay(get, *, default=False):
     """
     The map's Oil & gas wells overlay: on by default where `default` says
-    (Kern County's page, the oil-gas sector page), off elsewhere; ?wells=1|0
-    overrides either way so the state can be shared.
+    (an area's Oil & gas tab, the oil-gas sector page), off elsewhere;
+    ?wells=1|0 overrides either way so the state can be shared.
     """
     raw = get.get('wells')
     on = raw == '1' if raw in ('0', '1') else default
@@ -420,7 +420,7 @@ def wells_overlay(get, *, default=False):
 
 
 def is_kern(region):
-    """Kern County's page: the overlay's default is on and the block carries the oil & gas callout."""
+    """Kern County's page: its Oil & gas tab carries the oil & gas facilities' callout."""
     return region.type == Region.Type.COUNTY and region.slug == wells.KERN_SLUG
 
 
@@ -727,20 +727,32 @@ def area_links(regions):
     } for region in regions]
 
 
-def compliance_list_url(scope, area):
+def facility_list_url(scope, area, **extra):
     """
-    The facility list filtered to unaddressed HPVs, narrowed to the area where
-    the list can be: ?county= for a county, ?region= for the types its region
-    filter searches (cities, urban areas, CDPs, ZIPs), nothing for the rest.
+    The facility list narrowed to the area where the list can be: ?county= for
+    a county, ?region= for the types its region filter searches (cities,
+    urban areas, CDPs, ZIPs), nothing for the rest. `extra` adds filters.
     """
-    params = dict(scope.params(county=None), compliance='hpv')
+    params = dict(scope.params(county=None), **extra)
     region = getattr(area, 'region', None)
     if region is not None:
         if region.type == Region.Type.COUNTY:
             params['county'] = region.slug
         elif region.type in areas.FILTER_REGION_TYPES:
             params['region'] = region.sqid
-    return f"{reverse('emissions:facility-list')}?{urlencode(params)}"
+    query = urlencode(params)
+    return f"{reverse('emissions:facility-list')}{'?' + query if query else ''}"
+
+
+def area_list_covers(area):
+    """Whether facility_list_url can narrow the list to exactly this area."""
+    region = getattr(area, 'region', None)
+    return region is not None and (region.type == Region.Type.COUNTY or region.type in areas.FILTER_REGION_TYPES)
+
+
+def compliance_list_url(scope, area):
+    """The facility list filtered to unaddressed HPVs, narrowed to the area where the list can be."""
+    return facility_list_url(scope, area, compliance='hpv')
 
 
 def dairy_page_query(scope, year):
@@ -755,41 +767,47 @@ def dairy_page_query(scope, year):
     return urlencode(params)
 
 
-def dairy_block(scope, area, dairy_url, *, county=None):
+# An area page's tabs, in order. Overview is the page itself; Dairies is its
+# dairy page (dairy_views); the rest are this module's *Facilities, *OilGas
+# and *Community views. A tab shows only where the area has something for it.
+AREA_TABS = (
+    ('overview', 'Overview'),
+    ('facilities', 'Facilities'),
+    ('dairies', 'Dairies'),
+    ('oil-gas', 'Oil & gas'),
+    ('community', 'Community'),
+)
+# The Facilities tab lists this many before pointing at the facility list.
+AREA_TABLE_ROWS = 100
+
+
+def area_tabs(view, area, current):
     """
-    The one-line Dairies summary on a region or near-me page, or None before
-    CARB's dairy database is imported. `dairy_url(query)` builds the area's
-    dairy page URL. Outside CADD's years it only says so (the template greys
-    it) and links the dairy page at CADD's last year. `county` (county
-    pages) adds CARB's county dairy-cattle emissions in the scope pollutant.
+    The tab row for an area page or its dairy page: [{key, label, url,
+    current}]. `view` provides area_tab_url(key, query), tab_query(key) and
+    has_community(); the current tab always shows.
     """
-    known = dairies.years()
-    if not known:
-        return None
-    block = {
-        'first_year': known[0],
-        'last_year': known[-1],
-        'in_range': scope.year in known,
-        'is_county': county is not None,
-        'last_year_url': dairy_url(dairy_page_query(scope, known[-1])),
+    available = {
+        'overview': True,
+        'facilities': True,
+        'dairies': bool(dairies.years()) and bool(dairies.trend(area=area)),
+        'oil-gas': wells.area_summary(area) is not None,
+        'community': view.has_community(),
     }
-    if not block['in_range']:
-        return block
-    reported = scope.pollutant.key in dairies.POLLUTANT_KEYS
-    summary = dairies.summary(scope.year, area=area)
-    block.update(
-        summary=summary,
-        has_dairies=bool(summary['dairies']),
-        page_url=dairy_url(dairy_page_query(scope, scope.year)),
-        county_pollutant=reported,
-        county_tons=dairies.county_emissions(scope.year, scope.pollutant).get(county.pk) if county is not None and reported else None,
-    )
-    return block
+    return [
+        {'key': key, 'label': label, 'url': view.area_tab_url(key, view.tab_query(key)), 'current': key == current}
+        for key, label in AREA_TABS if available[key] or key == current
+    ]
 
 
 class AreaPage(ScopeMixin, vanilla.TemplateView):
-    """What a region page and near-me share: one area's facilities, totals, map, sectors and trend."""
+    """
+    What a region page and near-me share: one area's page, one tab of it
+    (`tab`, AREA_TABS) -- Overview's totals, map, sectors and trend, or the
+    Facilities, Oil & gas or Community tab -- under the same header and tab row.
+    """
     template_name = 'emissions/area.html'
+    tab = 'overview'
 
     def get(self, request, *args, **kwargs):
         # The page is the area: a stray ?county= would ride along on the
@@ -810,26 +828,34 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
     def get_map_config(self, scope):
         raise NotImplementedError
 
-    def dairy_url(self, query):
-        """The area's dairy page, with `query` (year, pollutant) on it."""
-        raise NotImplementedError
-
-    def dairy_county(self):
-        """The county whose CARB dairy emissions the page shows (county pages only)."""
-        raise NotImplementedError
+    def tab_query(self, key):
+        """A tab link's query: the scope, or for Dairies the dairy page's (CADD's year)."""
+        base = self.get_scope()
+        if key == 'dairies':
+            known = dairies.years()
+            return dairy_page_query(base, base.year if base.year in known else (known[-1] if known else base.year))
+        return base.query(county=None).lstrip('?')
 
     def get_context_data(self, **kwargs):
         base = self.get_scope()
         area = self.get_area()
+        tab = self.tab
         scope = stats.Scope(year=base.year, county=None, pollutant=base.pollutant, minor=base.minor, area=area)
-        summary = compliance.area_summary(scope)
+        summary = compliance.area_summary(scope) if tab == 'facilities' else None
         compliance_line = dict(summary, url=compliance_list_url(base, area)) if summary else None
         totals = stats.totals(scope)
         total = totals['value'] or 0
         county = self.get_county()
         county_scope = stats.Scope(year=base.year, county=county, pollutant=base.pollutant, minor=base.minor)
-        county_total = stats.totals(county_scope)['value'] if county else None
-        top_rows = stats.with_ranks(stats.facility_table(scope)[:10], stats.ranks(scope))
+        county_total = stats.totals(county_scope)['value'] if county and tab == 'overview' else None
+        if tab == 'facilities':
+            table = stats.facility_table(scope)
+            top_rows = stats.with_ranks(table[:AREA_TABLE_ROWS], stats.ranks(scope))
+            kwargs.setdefault('facility_count', table.count())
+        elif tab == 'overview':
+            top_rows = stats.with_ranks(stats.facility_table(scope)[:10], stats.ranks(scope))
+        else:
+            top_rows = []
         # A region page overrides this with its own "In and around" lists;
         # a near-me page (a point, not a region) has none.
         kwargs.setdefault('within', None)
@@ -854,14 +880,17 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
             total=total,
             per_sq_mi=total / area.sq_miles if area.sq_miles else None,
             county_share=total / county_total if county_total else None,
+            tab=tab,
+            tabs=area_tabs(self, area, tab),
             top_rows=top_rows,
             top_columns=uniform_columns(top_rows),
-            top_sectors=reporting_sectors(scope),
-            by_year=stats.by_year(scope),
-            map_config=self.get_map_config(base),
+            top_sectors=reporting_sectors(scope) if tab == 'overview' else [],
+            by_year=stats.by_year(scope) if tab == 'overview' else [],
+            map_config=self.get_map_config(base) if tab in ('overview', 'oil-gas') else None,
             compliance_line=compliance_line,
-            dairy_block=dairy_block(base, area, self.dairy_url, county=self.dairy_county()),
-            toxics_breakdown=stats.toxics_breakdown(scope) if scope.toxics else None,
+            # The Facilities tab's "all N" link, where the list can narrow to the area.
+            facility_list_url=facility_list_url(base, area) if area_list_covers(area) else None,
+            toxics_breakdown=stats.toxics_breakdown(scope) if scope.toxics and tab == 'overview' else None,
             share_unit=scope.pollutant.unit == 'share',
             # The page is the area: no county picker, and the scope links
             # leave the county out.
@@ -905,6 +934,14 @@ class RegionLookupMixin:
     def region_url(self, region):
         return region.get_emissions_url()
 
+    def area_tab_url(self, key, query):
+        url = self.region.get_emissions_tab_url(key)
+        return f'{url}?{query}' if query else url
+
+    def has_community(self):
+        """The Community tab: CalEnviroScreen and In and around both need the boundary."""
+        return bool(self.region.boundary_id)
+
     def lookup_region(self, request, sqid, slug):
         """Sets self.region; None when the URL is right, else the redirect. Raises Http404."""
         self.region = get_page_region(sqid)
@@ -937,47 +974,43 @@ class RegionPage(RegionLookupMixin, AreaPage):
             scope, mode='compact', params=scope.params(county=None),
             areas_view=map_view(self.request.GET, level, year=scope.year, share=scope.pollutant.unit == 'share') if level else None,
             outline_url=reverse('api:v2:regions:region-detail', args=[self.region.sqid]),
-            wells=wells_overlay(self.request.GET, default=is_kern(self.region)),
+            # Wells start on only on the Oil & gas tab (66,000 in Kern are too
+            # many to load by default on its Overview); ?wells=1 still shows them.
+            wells=wells_overlay(self.request.GET, default=self.tab == 'oil-gas'),
             methane=methane_overlay(self.request.GET),
         )
 
-    def dairy_url(self, query):
-        return f'{self.region.get_emissions_dairies_url()}?{query}'
-
-    def dairy_county(self):
-        return self.region if self.region.type == Region.Type.COUNTY else None
-
     def get_context_data(self, **kwargs):
         region = self.region
+        tab = self.tab
         extra = {}
         if region.type == Region.Type.COUNTY:
             # The context bar names `county`; on a county page that's the page's own.
             extra['county'] = region
-        if region.type == Region.Type.TRACT:
-            extra['tract_ces'] = ces_stats.tract_record(region)
-        elif region.boundary_id:
-            extra['community'] = ces_stats.tract_summary(region.boundary.geometry)
-            extra['show_top_tracts'] = region.type == Region.Type.COUNTY
-        extra['wells_block'] = wells_block(areas.RegionArea(region), self.get_scope(), kern=is_kern(region))
+        if tab == 'community':
+            if region.type == Region.Type.TRACT:
+                extra['tract_ces'] = ces_stats.tract_record(region)
+            elif region.boundary_id:
+                extra['community'] = ces_stats.tract_summary(region.boundary.geometry)
+                extra['show_top_tracts'] = region.type == Region.Type.COUNTY
+            extra['within'] = region_within(region) if region.boundary_id else None
+        if tab == 'oil-gas':
+            extra['wells_block'] = wells_block(areas.RegionArea(region), self.get_scope(), kern=is_kern(region))
         extra['ab617'] = ab617_notice(region)
         county_scope = stats.Scope(
             year=self.get_scope().year, county=region, pollutant=self.get_scope().pollutant, minor=self.get_scope().minor,
-        ) if region.type == Region.Type.COUNTY else None
+        ) if region.type == Region.Type.COUNTY and tab == 'overview' else None
         return super().get_context_data(
             # `name` is the plain heading (h1); `title` (the <title> tag and
             # the breadcrumb, which have no identifiers line under them to
             # disambiguate) adds the type for a community region.
             name=region_title(region),
             title=region_page_title(region),
-            # The Dairies block's link text ("Dairies in <name> →"); a
-            # near-me page overrides this with its own lowercase phrase.
-            dairies_label=f'in {region_title(region)}',
             kind=region.type_label,
             population=(region.metadata or {}).get('population'),
             context_bar=stats.county_context(county_scope) if county_scope else None,
             nei_context=nei.context(county_scope) if county_scope else None,
-            within=region_within(region) if region.boundary_id else None,
-            ghg_table=ghg.county_table(region) if region.type == Region.Type.COUNTY else None,
+            ghg_table=ghg.county_table(region) if region.type == Region.Type.COUNTY and tab == 'facilities' else None,
             **extra,
             **kwargs,
         )
@@ -1037,6 +1070,20 @@ class NearLookupMixin:
     def bounce(self):
         return redirect(reverse('emissions:home') + '?find=1')
 
+    # AREA_TABS key -> URL name.
+    TAB_URLS = {
+        'overview': 'emissions:near-me', 'facilities': 'emissions:near-me-facilities', 'dairies': 'emissions:near-me-dairies',
+        'oil-gas': 'emissions:near-me-oil-gas', 'community': 'emissions:near-me-community',
+    }
+
+    def area_tab_url(self, key, query):
+        """The tab for the same point: the point's parameters, then the tab's query."""
+        point = urlencode(self.near_params())
+        return f'{reverse(self.TAB_URLS[key])}?{point}' + (f'&{query}' if query else '')
+
+    def has_community(self):
+        return True
+
     def near_phrase(self):
         """'within 3 miles of <label>' -- lowercase, for use mid-sentence (near_title() capitalizes it for a heading)."""
         label = radius_label(self.request.GET, self.near.lat, self.near.lng)
@@ -1092,15 +1139,9 @@ class NearMe(NearLookupMixin, AreaPage):
             areas_view=map_view(self.request.GET, Region.Type.TRACT, year=scope.year, share=scope.pollutant.unit == 'share'),
             center=f'{self.near.lat:.4f},{self.near.lng:.4f}', zoom=RADIUS_ZOOMS[self.near.radius],
             radius=self.near.radius,
-            wells=wells_overlay(self.request.GET),
+            wells=wells_overlay(self.request.GET, default=self.tab == 'oil-gas'),
             methane=methane_overlay(self.request.GET),
         )
-
-    def dairy_url(self, query):
-        return f"{reverse('emissions:near-me-dairies')}?{query}&{urlencode(self.near_params())}"
-
-    def dairy_county(self):
-        return None
 
     def get_context_data(self, **kwargs):
         # Not a region, so nothing to disambiguate with a type -- `name`
@@ -1109,13 +1150,39 @@ class NearMe(NearLookupMixin, AreaPage):
         return super().get_context_data(
             name=title,
             title=title,
-            dairies_label=self.near_phrase(),
             kind='Near me',
             population=None,
             context_bar=None,
             radius_options=self.radius_options(),
             privacy_note=True,
-            community=ces_stats.tract_summary(self.near.geometry),
-            wells_block=wells_block(self.near, self.get_scope()),
+            community=ces_stats.tract_summary(self.near.geometry) if self.tab == 'community' else None,
+            wells_block=wells_block(self.near, self.get_scope()) if self.tab == 'oil-gas' else None,
             **kwargs,
         )
+
+
+# An area page's other tabs (AREA_TABS): the same views on another tab.
+
+class RegionFacilities(RegionPage):
+    tab = 'facilities'
+
+
+class RegionOilGas(RegionPage):
+    tab = 'oil-gas'
+
+
+class RegionCommunity(RegionPage):
+    tab = 'community'
+
+
+class NearMeFacilities(NearMe):
+    tab = 'facilities'
+
+
+class NearMeOilGas(NearMe):
+    tab = 'oil-gas'
+
+
+class NearMeCommunity(NearMe):
+    tab = 'community'
+

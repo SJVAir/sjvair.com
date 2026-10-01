@@ -592,13 +592,18 @@ def main():
         time.sleep(0.3)
         check(results, 'unticking clears wells= and hides the layer', 'wells' not in query(driver)
               and driver.execute_script("return window.EmissionsFacilityMap.instances()[0].map.getLayoutProperty('wells', 'visibility');") == 'none')
-        # Kern County's page (its link from the home page): on by default, the wells section and its snapshot notice.
+        # Kern County's page (its link from the home page): wells off on its
+        # Overview (too many to load by default), on its Oil & gas tab with
+        # the wells section and its snapshot notice.
         driver.get(args.base + '/tools/emissions/')
         kern_url = driver.execute_script("var a = document.querySelector('a[href*=\"/region/\"][href$=\"/kern/\"]'); return a ? a.href : '';")
         driver.get(kern_url)
-        check(results, "Kern County's page has the overlay on by default and the wells section",
+        check(results, "Kern County's Overview loads with the wells overlay offered but off",
+              wait_loaded(driver) and driver.execute_script("var d = document.querySelector('.facility-map').dataset; return d.wells === '' && !!d.wellsUrl;"), kern_url)
+        driver.get(kern_url.split('?')[0] + 'oil-gas/')
+        check(results, "Kern County's Oil & gas tab has the overlay on and the wells section",
               wait_loaded(driver) and driver.execute_script("return document.querySelector('.facility-map').dataset.wells;") == '1'
-              and driver.execute_script("return !!document.getElementById('wells') && !!document.querySelector('#wells .wells-snapshot');"), kern_url)
+              and driver.execute_script("return !!document.getElementById('wells') && !!document.querySelector('#wells .wells-snapshot');"), driver.current_url)
 
         driver.get(args.base + '/tools/emissions/dairies/')
         check(results, 'dairies tab loads', wait_dairies(driver))
@@ -926,30 +931,24 @@ def main():
         time.sleep(1)
         check(results, "the tab's find box takes you to a county dairy page", '/dairies/' in driver.current_url, driver.current_url)
 
-        # Tulare County's emissions page: the Dairies section is the summary only.
+        # Tulare County's page: a tab row, its Dairies tab the dairy page.
         driver.get(tulare_region + '?year=2023&pollutant=rog')
         time.sleep(1)
-        summary_only = driver.execute_script(
-            "var s = document.getElementById('dairies'); return !!s && !s.querySelector('.dairy-table') && !s.querySelector('.dairy-charts')"
-            " && !!s.querySelector('.dairy-summary');")
-        check(results, "Tulare County's Dairies section is the summary only", summary_only)
-        link = driver.execute_script(
-            "var a = document.querySelector('#dairies a[href*=\"/dairies/\"]'); return a ? a.href : null;")
-        check(results, "'Dairies in Tulare County →' goes to the dairy page", bool(link) and link.split('?')[0] == tulare, str(link))
-        nav = driver.execute_script(
-            "return Array.prototype.map.call(document.querySelectorAll('.section-nav a'), function (a) { return a.getAttribute('href'); });")
-        check(results, 'its section nav links Facilities, Community, Greenhouse gases, Wells, Dairies, In and around',
-              nav == ['#facilities', '#community', '#greenhouse-gases', '#wells', '#dairies', '#in-and-around'], str(nav))
-        # A boosted swap would replace #explorer-body, and the mark with it.
-        driver.execute_script("document.getElementById('explorer-body').dataset.smoke = '1'; window.scrollTo(0, 0);")
-        driver.find_element(By.CSS_SELECTOR, '.section-nav a[href="#dairies"]').click()
-        time.sleep(0.5)
-        jumped = driver.execute_script(
-            "return document.getElementById('explorer-body').dataset.smoke === '1' && location.hash === '#dairies'"
-            " && (function (top, bar) { return top >= bar && top < bar + 60; })("
-            "   document.getElementById('dairies').getBoundingClientRect().top,"
-            "   document.querySelector('.breadcrumbs').getBoundingClientRect().bottom);")
-        check(results, 'the Dairies link jumps in place, clear of the pinned scope bar', jumped)
+        tabs = driver.execute_script(
+            "return Array.prototype.map.call(document.querySelectorAll('.area-tabs li'), function (li) {"
+            "  return [li.textContent.trim(), li.querySelector('a').getAttribute('href'), li.classList.contains('is-active')]; });")
+        labels = [t[0] for t in tabs]
+        check(results, "Tulare County's tab row: Overview (current), Facilities, Dairies, Community",
+              labels[:3] == ['Overview', 'Facilities', 'Dairies'] and 'Community' in labels and tabs[0][2], str(labels))
+        dairies_href = next((t[1] for t in tabs if t[0] == 'Dairies'), '')
+        check(results, 'its Dairies tab is the dairy page', dairies_href.split('?')[0] == tulare.replace(args.base, ''), dairies_href)
+        # A tab is a page: following one swaps the page (boosted) and lands on its URL.
+        driver.find_element(By.CSS_SELECTOR, '.area-tabs a[href*="/facilities/"]').click()
+        time.sleep(1.5)
+        on_facilities = driver.execute_script(
+            "var a = document.querySelector('.area-tabs li.is-active'); return a ? a.textContent.trim() : '';")
+        check(results, 'the Facilities tab opens as its own page, marked current',
+              '/facilities/' in driver.current_url and on_facilities == 'Facilities' and 'year=2023' in driver.current_url, driver.current_url)
 
         errors = console_errors(driver)
         check(results, 'no console errors', not errors, '; '.join(errors)[:300])

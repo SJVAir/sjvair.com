@@ -455,7 +455,7 @@ class GHGPageTests(GHGTestCase):
         report('mrr', '900001', 2024, facility=self.plant, county=self.fresno, co2e=87635.27, ch4=1.16, name='Test Plant Inc.', sector='Other Combustion Source')
         report('ghgrp', '501', 2023, facility=self.plant, county=self.fresno, co2e=71574.4, ch4=0.97)
         report('ghgrp', '503', 2023, county=self.fresno, co2e=800.0, name='Lonely Landfill', sector='Direct Emitter')
-        content = self.client.get(self.fresno.get_emissions_url(), {'year': '2024'}).content.decode()
+        content = self.client.get(self.fresno.get_emissions_tab_url('facilities'), {'year': '2024'}).content.decode()
         table = content[content.index('id="greenhouse-gases"'):]
         assert '<h2 class="title is-4">Largest greenhouse-gas reporters</h2>' in table
         assert '<th class="has-text-right">CARB MRR 2024</th>' in table and '<th class="has-text-right">EPA GHGRP 2023</th>' in table
@@ -465,9 +465,9 @@ class GHGPageTests(GHGTestCase):
         assert 'not matched to a permitted facility' in table
         assert '2,898,915' in table and '87,635' in table and '71,574' in table and '1,478' in table
         assert '<strong>Only large emitters report</strong> (about 10,000 t CO2e a year and up)' in table
-        assert '<a href="#greenhouse-gases">Greenhouse gases</a>' in content
+        # The county's Facilities tab carries it; the Overview links that tab.
         # Other counties and non-county pages have no table.
-        assert 'greenhouse-gas reporters' not in self.client.get(self.kern.get_emissions_url(), {'year': '2024'}).content.decode()
+        assert 'greenhouse-gas reporters' not in self.client.get(self.kern.get_emissions_tab_url('facilities'), {'year': '2024'}).content.decode()
         near = self.client.get(reverse('emissions:near-me'), {'lat': '36.737', 'lng': '-119.787', 'radius': '1'}).content.decode()
         assert 'greenhouse-gas reporters' not in near
 
