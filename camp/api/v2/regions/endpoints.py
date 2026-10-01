@@ -7,7 +7,7 @@ from camp.apps.regions.models import Region
 from camp.utils.views import CachedEndpointMixin
 
 from .filters import RegionFilter
-from .serializers import RegionSerializer
+from .serializers import RegionListSerializer, RegionSerializer
 
 
 class PlaceQueryForm(forms.Form):
@@ -26,6 +26,7 @@ class RegionMixin:
 class RegionList(RegionMixin, generics.ListEndpoint):
     filter_class = RegionFilter
     paginate = False
+    serializer_class = RegionListSerializer
 
     def get_queryset(self):
         qs = super().get_queryset()
