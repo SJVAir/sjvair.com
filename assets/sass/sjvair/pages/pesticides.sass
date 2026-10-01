@@ -268,6 +268,22 @@ body.pesticides
             width: 100%
         .u-over
             cursor: crosshair
+        // A stacked bar's tip (charts.js stack): the band under the cursor.
+        .chart-tip
+            position: absolute
+            z-index: 2
+            pointer-events: none
+            display: flex
+            flex-direction: column
+            padding: 0.3rem 0.5rem
+            background: $white
+            border: 1px solid $grey-lighter
+            border-radius: $radius
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15)
+            font-size: $size-7
+            white-space: nowrap
+            &[hidden]
+                display: none
         // Names the dashed baseline, which the hover readout otherwise only
         // says once the cursor is on the chart.
         .chart-legend

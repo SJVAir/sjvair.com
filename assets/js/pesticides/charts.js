@@ -273,6 +273,35 @@
         span.textContent = index == null ? '' : ' ' + Math.round(shares[i][index]) + '%';
       });
     };
+    // The band under the cursor -- its sector, share and amount -- in a tip
+    // that floats over the plot (absolutely placed in uPlot's over layer, so
+    // it moves nothing).
+    var tip = document.createElement('div');
+    tip.className = 'chart-tip';
+    tip.hidden = true;
+    var showTip = function (u, index) {
+      var top = u.cursor.top;
+      if (index == null || top == null || top < 0) { tip.hidden = true; return; }
+      var value = u.posToVal(top, 'y');
+      var part = -1;
+      for (var i = 0; i < parts.length; i++) {
+        if (value <= cumulative[i][index] + 1e-9) { part = i; break; }
+      }
+      if (part < 0 || value < 0 || !shares[part][index]) { tip.hidden = true; return; }
+      tip.innerHTML = '';
+      var name = document.createElement('strong');
+      name.textContent = parts[part].label;
+      var line = document.createElement('span');
+      line.textContent = x[index] + ' · ' + Math.round(shares[part][index]) + '% · ' + amount(parts[part].values[index] || 0, data.unit);
+      tip.appendChild(name);
+      tip.appendChild(line);
+      tip.hidden = false;
+      // Beside the cursor, flipped to its left near the right edge.
+      var left = u.cursor.left + 12;
+      if (left + tip.offsetWidth > u.over.clientWidth) left = u.cursor.left - tip.offsetWidth - 12;
+      tip.style.left = Math.max(0, left) + 'px';
+      tip.style.top = Math.max(0, Math.min(top - tip.offsetHeight / 2, u.over.clientHeight - tip.offsetHeight)) + 'px';
+    };
     var opts = Object.assign(size(el, data.height || BARS_HEIGHT), {
       legend: {show: false},
       select: {show: false},
@@ -312,14 +341,16 @@
           ctx.restore();
         }],
         setCursor: [function (u) {
-          var index = u.cursor.idx;
-          if (index == null) index = selectedIndex < 0 ? null : selectedIndex;
+          var hovered = u.cursor.idx;
+          var index = hovered == null ? (selectedIndex < 0 ? null : selectedIndex) : hovered;
           if (readout) readout.textContent = index == null ? '' : x[index] + ' · ' + amount(totals[index], data.unit) + ' in all';
           showShares(index);
+          showTip(u, hovered);
         }],
       },
     });
     var plot = new uPlot(opts, [indexes].concat(order.map(function (i) { return cumulative[i]; })), el);
+    plot.over.appendChild(tip);
     // Before any hover, the legend shows the scope year's shares.
     showShares(selectedIndex < 0 ? null : selectedIndex);
     return plot;
