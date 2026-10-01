@@ -830,3 +830,26 @@ class AreaTabTests(RollupTestMixin, TestCase):
         html = self.client.get(self.tab_url('overview')).content.decode()
         assert self.tab_url('notices') in html
         assert 'class="within' not in html  # In and around moved to Community
+
+
+class SchoolsTabMapTests(RollupTestMixin, TestCase):
+    """The Schools tab's map: the place's own sites at any zoom, every section drawn."""
+    fixtures = ['pesticides-explorer']
+
+    def test_the_schools_tab_map_loads_the_place_and_draws_sections(self):
+        cache.clear()
+        fresno = Region.objects.get(pk=9001)
+        Location.objects.create(
+            type=Location.Type.PUBLIC_SCHOOL, name='Inside High', external_id='x-in', source='cde-public',
+            point=fresno.boundary.geometry.point_on_surface)
+        config = self.client.get(fresno.get_pesticides_tab_url('schools')).context['map_config']
+        assert config['locations_area'] == f'region={fresno.sqid}'
+        assert config['show_all_sections'] == '1' and config['show_locations'] == '1'
+        # Not on the Overview.
+        overview = self.client.get(fresno.get_pesticides_tab_url('overview')).context['map_config']
+        assert overview['locations_area'] == '' and overview['show_all_sections'] == '0'
+
+    def test_a_near_me_schools_map_loads_its_circle(self):
+        cache.clear()
+        config = self.client.get(reverse('pesticides:near-me-schools'), {'lat': 36.71, 'lng': -119.79, 'radius': 3}).context['map_config']
+        assert config['locations_area'] == 'lat=36.71000&lng=-119.79000&radius=3'

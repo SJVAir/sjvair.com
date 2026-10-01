@@ -1182,7 +1182,7 @@ def page_url_pattern(name):
 MAP_STYLE = mapfigure.MAP_STYLE
 
 
-def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None):
+def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None, show_all_sections=False, locations_area=None):
     year = year or stats.latest_year()
     scope = stats.scope_param(year, all_years, county, concern)
     scope_suffix = f'&{scope}' if scope else ''
@@ -1194,6 +1194,13 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # School and child care markers: on where the schools are the
         # subject of the page (a school district), off everywhere else.
         'show_locations': '1' if show_locations else '0',
+        # "All sections" at the township zoom: off, except where the page
+        # is about individual sites (a place's Schools tab).
+        'show_all_sections': '1' if show_all_sections else '0',
+        # The schools to show, as the locations endpoint's area parameters
+        # (region=, or lat/lng/radius): all of a place's, at any zoom, in
+        # place of whatever's in view.
+        'locations_area': urlencode(locations_area) if locations_area else '',
         'sections_url': '/api/2.0/pesticides/sections/',
         # The covered counties' outlines, from the regions API.
         'counties_url': f"{reverse('api:v2:regions:region-geojson')}?type=county",
@@ -2438,7 +2445,10 @@ class AreaSchoolsMixin:
             district_demographics=places.district_demographics(district) if district else None,
             school_districts=districts,
             point_hidden=point_hidden,
-            map_config=section_map_config(year, all_years=all_years, show_locations=True, concern=concern, **area.map_kwargs()),
+            map_config=section_map_config(
+                year, all_years=all_years, show_locations=True, concern=concern,
+                show_all_sections=True, locations_area=area.locations_area(), **area.map_kwargs(),
+            ),
             **self.header_context(),
             **self.tab_scope_context(),
             **kwargs,

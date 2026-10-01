@@ -191,6 +191,12 @@ class Area:
             return circle
         return self.region.boundary.geometry
 
+    def locations_area(self):
+        """This place as the locations endpoint's area parameters."""
+        if self.kind == 'point':
+            return {'lat': f'{self.point.y:.5f}', 'lng': f'{self.point.x:.5f}', 'radius': self.radius}
+        return {'region': self.region.sqid}
+
     def locations(self):
         """The schools and child care centres inside this place."""
         if self.kind == 'point':

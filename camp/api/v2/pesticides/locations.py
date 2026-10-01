@@ -5,11 +5,12 @@ capacity) live in its `metadata`, which differs by source.
 """
 import json
 
-from django.contrib.gis.geos import Polygon
+from django.contrib.gis.geos import Point, Polygon
+from django.contrib.gis.measure import D
 
 from resticus import generics
 
-from camp.apps.regions.models import Location
+from camp.apps.regions.models import Location, Region
 from camp.utils.views import CachedEndpointMixin
 
 from .sections import bad_request, parse_bbox
@@ -57,14 +58,22 @@ class LocationListBase(generics.Endpoint):
     # is the one actually dispatched to.
     def get(self, request):
         params = request.GET
-        if not params.get('bbox'):
-            return bad_request('bbox is required')
-        bbox, error = parse_bbox(params['bbox'])
+        # An area (a region, or a point and radius) stands in for the bbox:
+        # a place page's Schools tab shows the place's own sites, all of them,
+        # at any zoom.
+        area, error = self.parse_area(params)
         if error:
             return bad_request(error)
-        west, south, east, north = bbox
-        if (east - west) > MAX_BBOX_DEGREES or (north - south) > MAX_BBOX_DEGREES:
-            return bad_request('bbox too large; zoom in')
+        bbox = None
+        if area is None:
+            if not params.get('bbox'):
+                return bad_request('bbox is required')
+            bbox, error = parse_bbox(params['bbox'])
+            if error:
+                return bad_request(error)
+            west, south, east, north = bbox
+            if (east - west) > MAX_BBOX_DEGREES or (north - south) > MAX_BBOX_DEGREES:
+                return bad_request('bbox too large; zoom in')
 
         types = list(Location.Type.values)
         if params.get('type'):
@@ -74,10 +83,14 @@ class LocationListBase(generics.Endpoint):
                 return bad_request(f'type is invalid: {", ".join(unknown)}')
 
         locations = (Location.objects
-            .filter(type__in=types, point__bboverlaps=Polygon.from_bbox(bbox))
+            .filter(type__in=types)
             .select_related('city', 'school_district')
             .order_by('name', 'pk')
         )
+        if area is not None:
+            locations = locations.filter(**area)
+        else:
+            locations = locations.filter(point__bboverlaps=Polygon.from_bbox(bbox))
 
         # The explorer's county scope. A bbox always overhangs the county
         # line, so without this a scoped map draws markers whose "within
@@ -112,6 +125,31 @@ class LocationListBase(generics.Endpoint):
         return {'type': 'FeatureCollection', 'features': features}
 
 
+    @staticmethod
+    def parse_area(params):
+        """
+        The queryset filter for `region=<sqid>` (a region with a boundary) or
+        `lat`, `lng` and `radius` (miles, at most 10), or None for neither;
+        and an error message for a bad one.
+        """
+        sqid = (params.get('region') or '').strip()
+        if sqid:
+            region = Region.objects.filter(sqid=sqid, boundary__isnull=False).select_related('boundary').first()
+            if region is None:
+                return None, 'region not found'
+            return {'point__within': region.boundary.geometry}, None
+        if params.get('lat') or params.get('lng'):
+            try:
+                lat, lng = float(params['lat']), float(params['lng'])
+                radius = float(params.get('radius') or 1)
+            except (KeyError, TypeError, ValueError):
+                return None, 'lat, lng and radius must be numbers'
+            if not (-90 <= lat <= 90 and -180 <= lng <= 180) or not (0 < radius <= 10):
+                return None, 'lat, lng or radius out of range'
+            return {'point__distance_lte': (Point(lng, lat, srid=4326), D(mi=radius))}, None
+        return None, None
+
+
 class LocationList(CachedEndpointMixin, LocationListBase):
     """
     Schools and licensed child care centers as GeoJSON points.
@@ -120,6 +158,8 @@ class LocationList(CachedEndpointMixin, LocationListBase):
     on a side. `type` is a comma-separated list of
     `public_school`, `private_school`, `child_care` (default: all three).
     `county` (a county slug) keeps only the locations in that county.
+    Instead of a bbox, `region` (a region's sqid) or `lat`, `lng` and
+    `radius` (miles, up to 10) return every location inside that area.
     """
     cache_timeout = 60 * 60 * 24
     # v2: the GeoJSON property names changed. A day-long cache would keep

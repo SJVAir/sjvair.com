@@ -743,7 +743,9 @@
     this.showLocations = locationsMatch ? locationsMatch[1] === '1' : this.data.showLocations === '1';
     // "All sections": at the township zoom, draw every section in view
     // instead of the township grid (loaded in blocks, see loadAllSections).
-    this.showAllSections = /[?&]sections=1/.test(window.location.search || '');
+    // Off by default, on where the page says (a place's Schools tab).
+    var sectionsMatch = /[?&]sections=([01])/.exec(window.location.search || '');
+    this.showAllSections = sectionsMatch ? sectionsMatch[1] === '1' : this.data.showAllSections === '1';
     // Only one grid is ever on the map at a time; `level` says which one.
     this.level = 'section';
     this.counties = null;
@@ -877,7 +879,7 @@
         if (self.metric !== 'lbs_chemical') params.metric = self.metric;
         if (self.showNotices !== (self.data.showNotices !== '0')) params.notices = self.showNotices ? '1' : '0';
         if (self.showLocations !== (self.data.showLocations === '1')) params.locations = self.showLocations ? '1' : '0';
-        if (self.showAllSections) params.sections = '1';
+        if (self.showAllSections !== (self.data.showAllSections === '1')) params.sections = self.showAllSections ? '1' : '0';
       });
     }
 
@@ -1169,12 +1171,12 @@
     // click as the marker (see bindMarkerEvents).
     this.ensureLayer({
       id: 'locations-hit', type: 'circle', source: 'locations',
-      minzoom: LOCATIONS_MIN_ZOOM,
+      minzoom: this.data.locationsArea ? 0 : LOCATIONS_MIN_ZOOM,
       paint: { 'circle-radius': MARKER_HIT_RADIUS, 'circle-opacity': 0, 'circle-stroke-width': 0 },
     });
     this.ensureLayer({
       id: 'locations-circle', type: 'circle', source: 'locations',
-      minzoom: LOCATIONS_MIN_ZOOM,
+      minzoom: this.data.locationsArea ? 0 : LOCATIONS_MIN_ZOOM,
       paint: {
         'circle-radius': LOCATION_MARKER.radius,
         'circle-color': ['match', ['get', 'type'],
@@ -1568,10 +1570,10 @@
       } else {
         url.searchParams.set('locations', this.showLocations ? '1' : '0');
       }
-      if (this.showAllSections) {
-        url.searchParams.set('sections', '1');
-      } else {
+      if (this.showAllSections === (this.data.showAllSections === '1')) {
         url.searchParams.delete('sections');
+      } else {
+        url.searchParams.set('sections', this.showAllSections ? '1' : '0');
       }
       // The experiment controls (basemap style, ramp) while a look is chosen.
       if (this.tileStyle && this.tileStyle !== this.defaultTileStyle) {
@@ -3491,6 +3493,31 @@
     if (this.map.isMoving()) return;
     this.updateLocationsNote();
     if (!this.showLocations) return;
+    // A place's Schools tab: the place's own sites, every one of them, at
+    // any zoom -- loaded once, never by the view, so nothing outside the
+    // place comes in as the reader pans.
+    if (this.data.locationsArea) {
+      if (this.loadedLocationBounds || this.locationsRequest) return;
+      var areaAbort = this.startRequest('locations');
+      var areaRequest = this.locationsRequest = { area: true };
+      var areaParams = {};
+      new URLSearchParams(this.data.locationsArea).forEach(function (value, key) { areaParams[key] = value; });
+      var me = this;
+      fetchJson(this.data.locationsUrl, areaParams, areaAbort)
+        .then(function (geojson) {
+          if (me.locationsRequest === areaRequest) me.locationsRequest = null;
+          if (me.locationsAbort !== areaAbort || !me.showLocations) return;
+          me.loadedLocationBounds = 'area';
+          me.renderLocations(geojson);
+        })
+        .catch(function (err) {
+          if (me.locationsRequest === areaRequest) me.locationsRequest = null;
+          if (isAbort(err) || me.locationsAbort !== areaAbort) return;
+          logError('failed to load locations', err);
+          me.clearLocations();
+        });
+      return;
+    }
     // Zoomed out the endpoint's bbox cap would reject the request anyway,
     // and thousands of dots would say nothing; the legend note explains.
     if (this.map.getZoom() < LOCATIONS_MIN_ZOOM) {
@@ -3675,7 +3702,7 @@
   // Why the markers aren't there: the toggle is on but the map is zoomed
   // out past where they load.
   SectionMap.prototype.updateLocationsNote = function () {
-    var tooFar = !!(this.showLocations && this.map && this.map.getZoom() < LOCATIONS_MIN_ZOOM);
+    var tooFar = !!(this.showLocations && !this.data.locationsArea && this.map && this.map.getZoom() < LOCATIONS_MIN_ZOOM);
     var note = this.wrapEl ? this.wrapEl.querySelector('.section-map-locations-note') : null;
     if (note) note.textContent = tooFar ? LOCATIONS_ZOOM_NOTE : '';
     // The legend it lives in collapses, so say it in the live region too --
