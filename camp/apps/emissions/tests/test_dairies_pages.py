@@ -307,8 +307,8 @@ def tab_links(content):
     match = re.search(r'<nav class="tabs area-tabs"[^>]*>(.*?)</nav>', content, re.S)
     assert match, 'no tab row rendered'
     return [
-        (label, href.replace('&amp;', '&'), bool(active))
-        for active, href, label in re.findall(r'<li( class="is-active")?><a href="([^"]*)"[^>]*>([^<]*)</a></li>', match.group(1))
+        (re.sub(r'<[^>]+>', '', inner).strip(), href.replace('&amp;', '&'), bool(active))
+        for active, href, inner in re.findall(r'<li( class="is-active")?><a href="([^"]*)"[^>]*>(.*?)</a></li>', match.group(1))
     ]
 
 
@@ -321,7 +321,9 @@ class AreaTabTests(DairyPageTestCase):
         return response.content.decode()
 
     def test_a_county_page_has_its_tabs(self):
-        tabs = tab_links(self.page(self.fresno.get_emissions_url(), {'year': '2023'}))
+        content = self.page(self.fresno.get_emissions_url(), {'year': '2023'})
+        assert 'fa-cow explorer-icon is-dairies' in content[content.index('area-tabs'):]
+        tabs = tab_links(content)
         assert [label for label, _, _ in tabs] == ['Overview', 'Facilities', 'Dairies', 'Community']
         assert tabs[0][2] and not any(current for _, _, current in tabs[1:])
         assert tabs[1][1] == f"{self.fresno.get_emissions_tab_url('facilities')}?year=2023"

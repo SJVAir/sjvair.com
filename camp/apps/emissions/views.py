@@ -770,12 +770,14 @@ def dairy_page_query(scope, year):
 # An area page's tabs, in order. Overview is the page itself; Dairies is its
 # dairy page (dairy_views); the rest are this module's *Facilities, *OilGas
 # and *Community views. A tab shows only where the area has something for it.
+# Each with its Font Awesome icon and explorer-icon colour class, the same
+# as the explorer's own tabs (base.html) and In and around's headings.
 AREA_TABS = (
-    ('overview', 'Overview'),
-    ('facilities', 'Facilities'),
-    ('dairies', 'Dairies'),
-    ('oil-gas', 'Oil & gas'),
-    ('community', 'Community'),
+    ('overview', 'Overview', 'fa-map', 'is-map'),
+    ('facilities', 'Facilities', 'fa-industry-windows', 'is-facilities'),
+    ('dairies', 'Dairies', 'fa-cow', 'is-dairies'),
+    ('oil-gas', 'Oil & gas', 'fa-oil-well', 'is-wells'),
+    ('community', 'Community', 'fa-city', 'is-chemicals'),
 )
 # The Facilities tab lists this many before pointing at the facility list.
 AREA_TABLE_ROWS = 100
@@ -783,8 +785,8 @@ AREA_TABLE_ROWS = 100
 
 def area_tabs(view, area, current):
     """
-    The tab row for an area page or its dairy page: [{key, label, url,
-    current}]. `view` provides area_tab_url(key, query), tab_query(key) and
+    The tab row for an area page or its dairy page: [{key, label, icon,
+    icon_class, url, current}]. `view` provides area_tab_url(key, query), tab_query(key) and
     has_community(); the current tab always shows.
     """
     available = {
@@ -795,8 +797,9 @@ def area_tabs(view, area, current):
         'community': view.has_community(),
     }
     return [
-        {'key': key, 'label': label, 'url': view.area_tab_url(key, view.tab_query(key)), 'current': key == current}
-        for key, label in AREA_TABS if available[key] or key == current
+        {'key': key, 'label': label, 'icon': icon, 'icon_class': icon_class,
+         'url': view.area_tab_url(key, view.tab_query(key)), 'current': key == current}
+        for key, label, icon, icon_class in AREA_TABS if available[key] or key == current
     ]
 
 

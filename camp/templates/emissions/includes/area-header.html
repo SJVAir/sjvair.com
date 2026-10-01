@@ -22,7 +22,7 @@ page: a tab can be shared, and loads only what it shows.
 {% if tabs|length > 1 %}
 <nav class="tabs area-tabs" aria-label="{{ name }}">
     <ul>
-        {% for t in tabs %}<li{% if t.current %} class="is-active"{% endif %}><a href="{{ t.url }}"{% if t.current %} aria-current="page"{% endif %}>{{ t.label }}</a></li>{% endfor %}
+        {% for t in tabs %}<li{% if t.current %} class="is-active"{% endif %}><a href="{{ t.url }}"{% if t.current %} aria-current="page"{% endif %}><span class="icon is-small"><span class="fa-duotone fa-fw {{ t.icon }} explorer-icon {{ t.icon_class }}" aria-hidden="true"></span></span><span>{{ t.label }}</span></a></li>{% endfor %}
     </ul>
 </nav>
 {% endif %}
