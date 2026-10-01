@@ -75,7 +75,7 @@ class TrendChartTests(SimpleTestCase):
     def test_chart_data_runs_oldest_to_newest_with_the_scope_year_selected(self):
         data = trend_chart(self.rows((2023, 88.0), (2022, 300.0), (2021, 50.0), (2014, 128.0)), 2023)
         assert data['chart'] == {
-            'type': 'line', 'unit': 'pounds',
+            'type': 'line', 'height': None, 'unit': 'pounds',
             'x': [2014, 2021, 2022, 2023], 'y': [128.0, 50.0, 300.0, 88.0],
             'selected': 2023,
             'compare': None, 'compare_label': '',

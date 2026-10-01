@@ -290,6 +290,14 @@ body.pesticides
     // as the line is worth reading, left-aligned in whatever column it's in.
     .trend-chart
         max-width: 32rem
+    // A place's Overview (as the emissions explorer's): the trend has the
+    // wide column to itself, and the top-five cards stacked beside it keep
+    // their own height rather than stretching to a neighbour's.
+    .overview-columns
+        .trend-chart
+            max-width: none
+        .related-card
+            height: auto
 
     // Months across, years down. Sized in rem rather than percentages so the
     // cells stay square-ish and a twenty-year grid scrolls instead of

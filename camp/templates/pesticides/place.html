@@ -55,30 +55,15 @@
 
 {% include 'pesticides/includes/section-map.html' %}
 
-<div class="box right-now mt-5">
-    <p>
-        {% if upcoming_count %}
-            <strong>{{ upcoming_count }}</strong> notice{{ upcoming_count|pluralize }} scheduled in this area.{% include 'pesticides/includes/note-help.html' with key='noi_meaning' anchor='notices' %}
-        {% else %}
-            No notices of intent are currently scheduled here.
-        {% endif %}
-    </p>
-    {% if upcoming_count %}<p class="mt-1"><a href="{{ notices_tab_url }}">See them day by day</a></p>{% endif %}
-    <p class="mt-2 mb-0"><a href="{{ spraydays_url }}" target="_blank" rel="noopener">Sign up for SprayDays notices</a> to be alerted before applications happen near you.</p>
-</div>
-
-{# One section, with each chart labelled by its own title: an h2 per column #}
-{# repeated what the chart title under it said. How it was applied sits under #}
-{# the trend, where a row of its own left 40% of the page empty. #}
-<section class="over-time mt-6">
-<h2 class="title is-4">Over time</h2>
-<div class="columns">
-    <div class="column is-5-desktop trend-section">
-        {% trend_chart by_year year compare=compare_by_year compare_label=compare_label %}
-        {% if by_method %}<div class="by-method mt-5">{% include 'pesticides/includes/method-breakdown.html' %}</div>{% endif %}
-    </div>
-    <div class="column is-7-desktop season-section">
+{# As the emissions explorer's area Overview: the charts in a wide column, #}
+{# what's applied here stacked as cards beside them, the scheduled notices #}
+{# at the top of that stack. #}
+<div class="columns mt-5 overview-columns">
+    <section class="column is-7-desktop over-time">
+        <h2 class="title is-4">Over time</h2>
+        {% trend_chart by_year year compare=compare_by_year compare_label=compare_label height=240 %}
         {% if by_month %}
+            <div class="mt-5">
             {# The heatmap's top row is the same year the bars drew, so only #}
             {# one of them runs. The bars are the fallback for a place with a #}
             {# single year loaded, where a one-row grid would say less. #}
@@ -87,58 +72,39 @@
             {% else %}
                 {% month_chart by_month year_label %}
             {% endif %}
-            {# Under the chart, so both columns open on their chart titles. #}
             {% if peak_month %}<p class="mt-3">Spraying peaks in {{ peak_month }} here.</p>{% endif %}
+            </div>
         {% else %}
             <p class="has-text-grey">No confirmed applications on record{% if year_label %} for {{ year_label }}{% endif %}.</p>
         {% endif %}
+        {% if by_method %}<div class="by-method mt-5">{% include 'pesticides/includes/method-breakdown.html' %}</div>{% endif %}
+    </section>
+    <div class="column top-lists">
+        <div class="box right-now">
+            <p>
+                {% if upcoming_count %}
+                    <strong>{{ upcoming_count }}</strong> notice{{ upcoming_count|pluralize }} scheduled in this area.{% include 'pesticides/includes/note-help.html' with key='noi_meaning' anchor='notices' %}
+                {% else %}
+                    No notices of intent are currently scheduled here.
+                {% endif %}
+            </p>
+            {% if upcoming_count %}<p class="mt-1"><a href="{{ notices_tab_url }}">See them day by day</a></p>{% endif %}
+            <p class="mt-2 mb-0"><a href="{{ spraydays_url }}" target="_blank" rel="noopener">Sign up for SprayDays notices</a> to be alerted before applications happen near you.</p>
+        </div>
+        {# Products before chemicals; under the concern scope the chemicals card's title says what it now is. #}
+        <div class="mt-5">{% include 'pesticides/includes/related-card.html' with card=products_card %}</div>
+        <div class="mt-5">{% include 'pesticides/includes/related-card.html' with card=chemicals_card %}</div>
+        <div class="mt-5">{% include 'pesticides/includes/related-card.html' with card=commodities_card %}</div>
     </div>
 </div>
-</section>
 
-{# Directly under the trend it explains: "Down 2% since 2022" and the #}
-{# chemicals that account for it used to sit 800px apart. Full width because #}
-{# two four-column tables don't fit a half -- the percent column was the #}
-{# first thing to get cut off. #}
+{# Full width: two four-column tables don't fit a half. #}
 {% if movers %}
 <section class="movers-section mt-6">
-    {# The card's own title names it and the years; an h2 above said it twice. #}
     {% include 'pesticides/includes/movers.html' with title='Biggest movers' kind='chemicals' %}
 </section>
 {% endif %}
 
-<section class="top-lists mt-6">
-    <h2 class="title is-4">What's applied here</h2>
-    {% comment %}
-    The three kinds across one row; products before chemicals. Under the
-    chemicals-of-concern scope every card is already of concern, so the
-    dedicated card drops out and the chemicals card's title says what it now
-    is -- the same rules as the landing page's leaderboards.
-
-    The concern card sits below rather than in the row: it carries only the
-    chemicals of concern the chemicals card doesn't already list (see
-    views._place_cards), so it reads as a continuation of that card, not a
-    fourth kind.
-    {% endcomment %}
-    <div class="columns is-multiline">
-        <div class="column is-one-third-desktop is-half-tablet">{% include 'pesticides/includes/related-card.html' with card=products_card %}</div>
-        <div class="column is-one-third-desktop is-half-tablet">{% include 'pesticides/includes/related-card.html' with card=chemicals_card %}</div>
-        <div class="column is-one-third-desktop is-half-tablet">{% include 'pesticides/includes/related-card.html' with card=commodities_card %}</div>
-    </div>
-</section>
-
-
-
-<div class="buttons mt-6 explorer-actions">
-    <a class="button" href="{{ records_url }}">
-        <span class="icon"><span class="fa-duotone fa-fw fa-table-list explorer-icon is-records" aria-hidden="true"></span></span>
-        <span>Browse all records for this area</span>
-    </a>
-    <a class="button" href="{{ notices_url }}">
-        <span class="icon"><span class="fa-duotone fa-fw fa-calendar-clock explorer-icon is-notices" aria-hidden="true"></span></span>
-        <span>See notices here</span>
-    </a>
-</div>
 
 {% if privacy_note %}
 <p class="is-size-7 has-text-grey">Your location is only in this page's address bar; we don't store it.</p>

@@ -140,7 +140,7 @@
         spanGaps: false,
       });
     }
-    var opts = Object.assign(size(el, LINE_HEIGHT), {
+    var opts = Object.assign(size(el, data.height || LINE_HEIGHT), {
       legend: {show: false},
       select: {show: false},
       cursor: {y: false, drag: {x: false, y: false}, points: {size: 9, width: 2}},

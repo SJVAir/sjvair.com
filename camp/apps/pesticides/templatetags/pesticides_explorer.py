@@ -260,7 +260,7 @@ def _chart_id():
 
 
 @register.inclusion_tag('pesticides/includes/trend-chart.html')
-def trend_chart(by_year, year=None, hide_lbs=False, title=None, compare=None, compare_label=''):
+def trend_chart(by_year, year=None, hide_lbs=False, title=None, compare=None, compare_label='', height=None):
     """
     The by-year trend: a uPlot line drawn in the browser from the data this
     tag embeds (see assets/js/pesticides/charts.js), with the delta sentence
@@ -272,6 +272,9 @@ def trend_chart(by_year, year=None, hide_lbs=False, title=None, compare=None, co
     can be read against something. It's aligned to the years the main series
     has, with a gap for any year it doesn't cover, rather than stretched to
     fit; a baseline that invented values would be worse than no baseline.
+
+    `height` (px) for a trend given a wide column of its own (a place's
+    Overview); the default suits a narrow one.
     """
     field = 'applications' if hide_lbs else 'lbs'
     metric_label = 'applications' if hide_lbs else 'pounds'
@@ -294,6 +297,7 @@ def trend_chart(by_year, year=None, hide_lbs=False, title=None, compare=None, co
         'chart_id': _chart_id(),
         'chart': {
             'type': 'line',
+            'height': height,
             'unit': metric_label,
             'x': years,
             'y': values,
