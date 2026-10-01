@@ -678,3 +678,22 @@ class ByMethodTests(RollupTestMixin, TestCase):
         assert [(r['method'], r['lbs']) for r in out] == [('G', 670.0), ('O', 70.0)]
         assert abs(sum(r['share'] for r in out) - 1) < 1e-9
         assert abs(sum(r['app_share'] for r in out) - 1) < 1e-9
+
+
+class ByMethodByYearTests(RollupTestMixin, TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def test_pounds_per_method_per_year_in_method_order(self):
+        out = stats.by_method_by_year(PesticideUseRollup.objects.all())
+        assert out['years'] == [2022, 2023]
+        assert [row['method'] for row in out['series']] == ['G', 'A']
+        by_method = {row['method']: row['values'] for row in out['series']}
+        assert sum(by_method['G']) + sum(by_method['A']) == 1150.0 + 130.0
+
+    def test_one_year_is_no_chart(self):
+        assert stats.by_method_by_year(PesticideUseRollup.objects.filter(year=2023)) is None
+
+    def test_an_unknown_code_counts_as_other(self):
+        PesticideUseRollup.objects.filter(method='A').update(method='X')
+        out = stats.by_method_by_year(PesticideUseRollup.objects.all())
+        assert [row['method'] for row in out['series']] == ['G', 'O']

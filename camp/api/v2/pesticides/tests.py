@@ -1285,6 +1285,21 @@ class LocationEndpointTests(TestCase):
         assert response.status_code == 200, response.content
         return response.json()['features']
 
+    def test_a_region_stands_in_for_the_bbox(self):
+        # Fresno's boundary holds Alpha and Bravo; Charlie is in Kern.
+        names = [f['properties']['name'] for f in self.features(region=self.county.sqid)]
+        assert names == ['Alpha Elementary', 'Bravo Child Care']
+
+    def test_a_point_and_radius_stand_in_for_the_bbox(self):
+        names = [f['properties']['name'] for f in self.features(lat=36.71, lng=-119.79, radius=1)]
+        assert names == ['Alpha Elementary', 'Bravo Child Care']
+        assert [f['properties']['name'] for f in self.features(lat=35.36, lng=-119.04, radius=1)] == ['Charlie Academy']
+
+    def test_a_bad_area_is_a_bad_request(self):
+        assert self.client.get(self.url, {'region': 'nope'}).status_code == 400
+        assert self.client.get(self.url, {'lat': 'x', 'lng': '-119'}).status_code == 400
+        assert self.client.get(self.url, {'lat': 36.7, 'lng': -119.8, 'radius': 50}).status_code == 400
+
     def test_bbox_returns_geojson_points(self):
         response = self.client.get(self.url, {'bbox': '-119.9,36.6,-119.7,36.8'})
         assert response.status_code == 200

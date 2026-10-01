@@ -28,4 +28,4 @@ class WithinTemplateTests(TestCase):
 
     def test_short_lists_have_no_toggle(self):
         html = self.render(n_communities=12, n_districts=12, n_zips=15)
-        assert 'is-collapsed' not in html and 'data-collapse-toggle' not in html
+        assert 'is-collapsed' not in html and 'data-reveal-toggle' not in html

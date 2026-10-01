@@ -34,6 +34,7 @@ PLACE_REGION_TYPES = (
 # v2: the 'places' group became 'communities', each entry labelled.
 WITHIN_KEY = 'pesticides:within:v2'
 RADIUS_CHOICES = (1, 3, 5)
+METERS_PER_MILE = 1609.344
 AREA_SECTIONS_TTL = 60 * 60 * 24
 SCHOOLS_NEARBY_TTL = 60 * 60 * 24
 SPRAYDAYS_URL = 'https://spraydays.cdpr.ca.gov/'
@@ -47,6 +48,12 @@ SCHOOLS_VISIBLE = 15
 SCHOOLS_Q_PARAM = 'schools_q'
 SCHOOLS_TYPE_PARAM = 'schools_type'
 SCHOOLS_RUN_BY_PARAM = 'schools_run_by'
+SCHOOLS_DISTRICT_PARAM = 'schools_district'
+# The "School districts here" box: this many of the largest by enrollment,
+# the rest a click away.
+DISTRICTS_VISIBLE = 5
+# ...and a district counts as "here" once this share of it is inside.
+DISTRICT_MIN_OVERLAP = 0.05
 SCHOOLS_SORT_PARAM = 'schools_sort'
 SCHOOLS_SORT_DEFAULT = '-lbs'
 SCHOOLS_SORT_KEYS = ('name', 'type', 'city', 'lbs', 'applications')
@@ -158,7 +165,7 @@ class Area:
             return area_filter(PesticideNotice.objects.all(), region=self.region)
         return area_filter(PesticideNotice.objects.all(), point=self.point, radius=self.radius)
 
-    def _area_params(self):
+    def area_params(self):
         county = self.county
         if county is not None:
             return {'county': county.slug}
@@ -167,17 +174,44 @@ class Area:
         return {'lat': self.point.y, 'lng': self.point.x, 'radius': self.radius}
 
     def records_url(self, year, all_years=False, concern=False):
-        params = self._area_params()
+        params = self.area_params()
         params['year'] = stats.ALL_YEARS if all_years else year
         if concern:
             params[stats.NARROW_PARAM] = concern
         return reverse('pesticides:records') + '?' + urlencode(params)
 
     def notices_url(self, concern=False):
-        params = self._area_params()
+        params = self.area_params()
         if concern:
             params[stats.NARROW_PARAM] = concern
         return reverse('pesticides:notice-list') + '?' + urlencode(params)
+
+    def geometry(self):
+        """
+        The ground this place covers, in EPSG:4326: a region's boundary, or a
+        radius's circle (drawn in California Albers, so a mile is a mile).
+        """
+        if self.kind == 'point':
+            circle = self.point.transform(3310, clone=True).buffer(self.radius * METERS_PER_MILE, quadsegs=16)
+            circle.transform(4326)
+            return circle
+        return self.region.boundary.geometry
+
+    def locations_area(self):
+        """This place as the locations endpoint's area parameters."""
+        if self.kind == 'point':
+            return {'lat': f'{self.point.y:.5f}', 'lng': f'{self.point.x:.5f}', 'radius': self.radius}
+        return {'region': self.region.sqid}
+
+    def locations(self):
+        """The schools and child care centres inside this place."""
+        if self.kind == 'point':
+            return Location.objects.filter(
+                # Bbox prefilter first, as in point_area.
+                point__bboverlaps=radius_bbox(self.point.y, self.point.x, self.radius),
+                point__distance_lte=(self.point, D(mi=self.radius)),
+            )
+        return Location.objects.filter(point__within=self.region.boundary.geometry)
 
     def map_kwargs(self):
         if self.kind == 'point':
@@ -275,8 +309,8 @@ def schools_nearby(region, year, all_years=False, concern=False):
     for a day per district and year; it only changes on import.
     """
     key = ':'.join([
-        # v3: entries gained their display fields and the run-by district.
-        'pesticides:schools-nearby:v3',
+        # v4: entries link the district that runs them.
+        'pesticides:schools-nearby:v7',
         str(region.pk),
         stats.year_param(year, all_years) or 'none',
         concern or '',
@@ -288,6 +322,7 @@ def schools_nearby(region, year, all_years=False, concern=False):
         rows = PesticideUseRollup.objects.all()
         if concern:
             rows = stats.narrow_rows(rows, concern)
+        districts = district_urls()
 
         # select_related: the table prints each location's city.
         run_by = list(Location.objects
@@ -298,14 +333,14 @@ def schools_nearby(region, year, all_years=False, concern=False):
         ) if district_code else []
         others = list(region.district_locations
             .exclude(pk__in=[location.pk for location in run_by])
-            .select_related('city')
+            .select_related('city', 'school_district')
             .order_by('name', 'pk')
         )
 
         groups = {
-            'run_by': [_school_entry(location, rows, year, all_years, is_run_by=True)
+            'run_by': [_school_entry(location, rows, year, all_years, is_run_by=True, districts=districts)
                 for location in run_by],
-            'others': [_school_entry(location, rows, year, all_years, is_run_by=False)
+            'others': [_school_entry(location, rows, year, all_years, is_run_by=False, districts=districts)
                 for location in others],
         }
         for entries in groups.values():
@@ -322,7 +357,96 @@ def schools_nearby(region, year, all_years=False, concern=False):
     return stats.cached(key, build, ttl=SCHOOLS_NEARBY_TTL)
 
 
-def _school_entry(location, rows, year, all_years, is_run_by):
+def area_schools(area, year, all_years=False, concern=False):
+    """
+    The schools and child care centres of any place, each with the pesticide
+    use reported around it -- schools_nearby's groups, for the Schools tab.
+    A school district is schools_nearby itself (its own schools, wherever
+    they stand, then what else sits inside it); anywhere else it's every
+    site inside the place, as `others`. Cached a day per place and year.
+    """
+    if area.kind == 'region' and area.region.type == Region.Type.SCHOOL_DISTRICT:
+        return schools_nearby(area.region, year, all_years, concern=concern)
+
+    key = ':'.join([
+        'pesticides:area-schools:v5',
+        area.cache_key(),
+        stats.year_param(year, all_years) or 'none',
+        concern or '',
+    ])
+
+    def build():
+        rows = PesticideUseRollup.objects.all()
+        if concern:
+            rows = stats.narrow_rows(rows, concern)
+        districts = district_urls()
+        others = [
+            _school_entry(location, rows, year, all_years, is_run_by=False, districts=districts)
+            for location in area.locations().select_related('city', 'school_district').order_by('name', 'pk')
+        ]
+        others.sort(key=lambda entry: (-entry['lbs'], entry['display_name']))
+        cities = {entry['display_city'].lower() for entry in others if entry['display_city']}
+        return {'run_by': [], 'others': others, 'show_city': len(cities) > 1}
+
+    return stats.cached(key, build, ttl=SCHOOLS_NEARBY_TTL)
+
+
+def district_urls():
+    """
+    Each school district, by its seven-digit CDE code (the start of its CDS
+    code, which is how a public school names the district that runs it) and
+    by name as `name:<name>` (all a private school's record gives):
+    {key: {'url', 'sqid', 'name'}}.
+    """
+    districts = {}
+    for external_id, name, sqid, slug in (Region.objects
+            .filter(type=Region.Type.SCHOOL_DISTRICT, boundary__isnull=False)
+            .values_list('external_id', 'name', 'sqid', 'slug')):
+        entry = {'url': reverse('pesticides:region', kwargs={'sqid': sqid, 'slug': slug}), 'sqid': sqid, 'name': name}
+        if external_id:
+            districts[external_id[:7]] = entry
+        districts.setdefault(f'name:{name}', entry)
+    return districts
+
+
+def area_districts(area):
+    """
+    The school districts a place overlaps, for its Schools tab's "School
+    districts here" box: [{name, url, enrollment, is_collapsed}] in name order,
+    with all but the DISTRICTS_VISIBLE largest by enrollment collapsed (shown
+    on "Show all"). A district counts once a real part of it is inside
+    (DISTRICT_MIN_OVERLAP of its area): Kern High slivers into Tulare County
+    along the line, and by enrollment would be one of its five. Cached a day.
+    """
+    key = f'pesticides:area-districts:v2:{area.cache_key()}'
+
+    def build():
+        geometry = area.geometry()
+        candidates = (
+            Region.objects
+            .filter(type=Region.Type.SCHOOL_DISTRICT, boundary__geometry__intersects=geometry)
+            .exclude(boundary__geometry__touches=geometry)
+            .select_related('boundary')
+        )
+        rows = []
+        for region in candidates:
+            shape = region.boundary.geometry
+            if shape.area and shape.intersection(geometry).area / shape.area >= DISTRICT_MIN_OVERLAP:
+                rows.append((region.name, region.sqid, region.slug, region.metadata))
+        districts = [{
+            'name': name,
+            'url': reverse('pesticides:region', kwargs={'sqid': sqid, 'slug': slug}),
+            'enrollment': ((metadata or {}).get('enrollment') or {}).get('total') or 0,
+        } for name, sqid, slug, metadata in rows]
+        largest = {d['url'] for d in sorted(districts, key=lambda d: -d['enrollment'])[:DISTRICTS_VISIBLE]}
+        for d in districts:
+            d['is_collapsed'] = d['url'] not in largest
+        return sorted(districts, key=lambda d: d['name'].lower())
+
+    return stats.cached(key, build, ttl=SCHOOLS_NEARBY_TTL)
+
+
+def _school_entry(location, rows, year, all_years, is_run_by, districts=None):
     totals = stats.block_totals(rows, location.point, year, all_years)
     section = totals['section']
     metadata = location.metadata or {}
@@ -333,11 +457,38 @@ def _school_entry(location, rows, year, all_years, is_run_by):
         'type': location.type,
         'type_label': str(location.short_type),
         'run_by_name': metadata.get('district_name') or '',
+        **_district_fields(location, metadata, districts or {}),
         'is_run_by': is_run_by,
         'lbs': totals['lbs'],
         'applications': totals['applications'],
         'section_sqid': section.sqid if section is not None else None,
         'section_mtrs': (section.external_id or section.name) if section is not None else None,
+    }
+
+
+def _district_fields(location, metadata, districts):
+    """
+    `run_by_url`, the page of the district a site names -- by its CDE code (a
+    public school's), else the district it was resolved into when the names
+    agree (a private school carries its district's name but no code), else by
+    name (it may have resolved into an overlapping one); none for a county
+    office of education. And `district_sqid`/`district_name`, the district the
+    district filter files it under: the one it names, else -- child care
+    names none -- the one it sits in.
+    """
+    name = metadata.get('district_name')
+    named = districts.get(metadata.get('district_code') or '')
+    containing = location.school_district
+    if named is None and containing is not None and containing.name == name:
+        named = {'url': containing.get_pesticides_url(), 'sqid': containing.sqid, 'name': containing.name}
+    if named is None and name:
+        named = districts.get(f'name:{name}')
+    if named is not None:
+        return {'run_by_url': named['url'], 'district_sqid': named['sqid'], 'district_name': named['name']}
+    return {
+        'run_by_url': None,
+        'district_sqid': containing.sqid if containing is not None else None,
+        'district_name': containing.name if containing is not None else '',
     }
 
 
@@ -354,9 +505,9 @@ def _display_name(location, text):
     return title_case_name(text)
 
 
-def schools_panel(region, groups, params=None):
+def schools_panel(groups, params=None, district=None):
     """
-    The one table a district page draws from `schools_nearby`'s groups:
+    The one table a place's Schools tab draws from `area_schools`' groups:
     filtered (name search, type, run-by-only), sorted, and marked up for the
     collapse. All of it happens here rather than in the database -- the list
     is cached whole and a few hundred entries at most.
@@ -383,6 +534,15 @@ def schools_panel(region, groups, params=None):
     if run_by_only:
         rows = [entry for entry in rows if entry['is_run_by']]
 
+    # The districts the sites are filed under, for the district filter.
+    every = list(groups['run_by']) + list(groups['others'])
+    district_names = {entry['district_sqid']: entry['district_name'] for entry in every if entry.get('district_sqid')}
+    district_value = (params.get(SCHOOLS_DISTRICT_PARAM) or '').strip()
+    if district_value not in district_names:
+        district_value = ''
+    if district_value:
+        rows = [entry for entry in rows if entry.get('district_sqid') == district_value]
+
     sort = (params.get(SCHOOLS_SORT_PARAM) or '').strip() or SCHOOLS_SORT_DEFAULT
     if sort.lstrip('-') not in SCHOOLS_SORT_KEYS:
         sort = SCHOOLS_SORT_DEFAULT
@@ -403,8 +563,13 @@ def schools_panel(region, groups, params=None):
         'run_by_only': run_by_only,
         'type_options': [{'value': value, 'label': label, 'selected': value == type_value}
             for value, label in SCHOOLS_TYPE_OPTIONS],
-        'is_filtered': bool(query or type_value or run_by_only),
-        'district_name': region.short_name,
+        'is_filtered': bool(query or type_value or run_by_only or district_value),
+        'district_value': district_value,
+        'district_options': [{'value': sqid, 'label': name, 'selected': sqid == district_value}
+            for sqid, name in sorted(district_names.items(), key=lambda item: item[1].lower())],
+        # The run-by filter and count are a district's alone.
+        'is_district': district is not None,
+        'district_name': district.short_name if district is not None else '',
     }
 
 
@@ -551,12 +716,7 @@ def place_context(area, year, all_years=False, concern=False, params=None):
         data = build()
     totals = data['totals']
 
-    notices = area.notices()
-    if concern:
-        notices = stats.narrow_notices(notices, concern)
-    upcoming_count = stats._upcoming(notices).distinct().count()
-    upcoming_days = stats.upcoming_by_day(notices)
-    upcoming = stats.notices_in_days(upcoming_days)
+    upcoming = upcoming_context(area, concern)
 
     # The district's own schools are the subject of a school-district page,
     # so its map opens with the markers on and the page lists them.
@@ -595,6 +755,17 @@ def place_context(area, year, all_years=False, concern=False, params=None):
         build_by_year_month,
     )
 
+    # How the application-method mix has moved, year by year; every year
+    # whatever the scope's year, so cached per area like by_year.
+    def build_by_method_year():
+        rows = area.rollup_rows()
+        return stats.by_method_by_year(stats.narrow_rows(rows, concern) if concern else rows)
+
+    by_method_year = stats.cached(
+        stats.all_years_key('place-by-method-year', area.cache_key(), *scope_key),
+        build_by_method_year,
+    )
+
     # A county reads against the average valley county: same kind of place,
     # same axis. Nothing for a city, district or radius -- an average county
     # is the wrong size to compare those to, and a baseline that doesn't
@@ -611,9 +782,8 @@ def place_context(area, year, all_years=False, concern=False, params=None):
         'compare_by_year': compare_by_year,
         'compare_label': 'Average valley county' if compare_by_year else '',
         'by_year_month': by_year_month,
-        'upcoming': upcoming,
-        'upcoming_days': upcoming_days,
-        'upcoming_count': upcoming_count,
+        'by_method_year': by_method_year,
+        **upcoming,
         'records_url': area.records_url(year, all_years, concern),
         # The chemicals-of-concern card's "Show all" narrows the records
         # browser the way the card does, whatever the page's own scope is.
@@ -626,14 +796,34 @@ def place_context(area, year, all_years=False, concern=False, params=None):
         'is_school_district': is_district,
     }
 
-    if is_district:
-        groups = schools_nearby(area.region, year, all_years, concern=concern)
-        context['schools'] = schools_panel(area.region, groups, params)
-        context['district_demographics'] = district_demographics(area.region)
+    return context
 
+
+def upcoming_context(area, concern=False):
+    """
+    The notices of intent scheduled in a place: how many, a row per day
+    (each opening onto its filings), the filings themselves, what they add up
+    to, and -- where the place spans more than one county -- how many in each.
+    The Overview's notices line and the Notices tab both read it.
+    """
+    notices = area.notices()
+    if concern:
+        notices = stats.narrow_notices(notices, concern)
+    days = stats.upcoming_by_day(notices)
+    chemicals = {}
+    for day in days:
+        for chemical in day['chemicals']:
+            chemicals.setdefault(chemical.pk, chemical)
+    acres = [day['acres'] for day in days if day['acres'] is not None]
+    context = {
+        'upcoming_count': stats._upcoming(notices).distinct().count(),
+        'upcoming_days': days,
+        'upcoming': stats.notices_in_days(days),
+        'upcoming_acres': sum(acres) if acres else None,
+        'upcoming_chemicals': sorted(chemicals.values(), key=lambda c: c.display_name),
+    }
     # A single-county area's per-county breakdown is just that one county
     # (== the total); only surface it when the area spans multiple counties.
-    if area.kind == 'region' and area.region.type != Region.Type.COUNTY:
+    if area.kind == 'point' or area.region.type != Region.Type.COUNTY:
         context['upcoming_by_county'] = stats.upcoming_by_county(notices)
-
     return context

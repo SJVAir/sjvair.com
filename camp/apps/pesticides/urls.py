@@ -9,8 +9,17 @@ urlpatterns = [
     path('about/', views.About.as_view(), name='about'),
     path('map/', views.MapPage.as_view(), name='map'),
 
+    # A place page's tabs (views.AREA_TABS): Overview is the page itself.
     path('near/', views.NearMe.as_view(), name='near-me'),
+    path('near/notices/', views.NearMeNotices.as_view(), name='near-me-notices'),
+    path('near/records/', views.NearMeRecords.as_view(), name='near-me-records'),
+    path('near/schools/', views.NearMeSchools.as_view(), name='near-me-schools'),
+    path('near/community/', views.NearMeCommunity.as_view(), name='near-me-community'),
     path('region/<str:sqid>/<slug:slug>/', views.RegionPage.as_view(), name='region'),
+    path('region/<str:sqid>/<slug:slug>/notices/', views.RegionNotices.as_view(), name='region-notices'),
+    path('region/<str:sqid>/<slug:slug>/records/', views.RegionRecords.as_view(), name='region-records'),
+    path('region/<str:sqid>/<slug:slug>/schools/', views.RegionSchools.as_view(), name='region-schools'),
+    path('region/<str:sqid>/<slug:slug>/community/', views.RegionCommunity.as_view(), name='region-community'),
 
     path('records/', views.RecordsBrowser.as_view(), name='records'),
     path('sections/<str:sqid>/', views.SectionDetail.as_view(), name='section-detail'),

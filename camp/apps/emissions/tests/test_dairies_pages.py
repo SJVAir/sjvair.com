@@ -376,7 +376,7 @@ class AreaTabTests(DairyPageTestCase):
         assert f'href="{self.fresno.get_emissions_tab_url("facilities")}?year=2023">View all</a>' in facilities.replace('&amp;', '&')
         assert '<td class="rank">1.</td>' in facilities
         # Sectors expand in place: there's no area-filtered sector list to link.
-        assert 'data-collapse-scope' in overview[overview.index('card-header-title">Top facilities') - 200:]
+        assert 'data-reveal-scope' in overview[overview.index('card-header-title">Top facilities') - 200:]
 
     def test_each_tab_shows_its_own_content(self):
         overview = self.page(self.fresno.get_emissions_url(), {'year': '2023'})

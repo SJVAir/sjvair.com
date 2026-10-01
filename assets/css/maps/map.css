@@ -107,12 +107,13 @@
 /* A folded legend folds its key, not its switches (the explorer's layer
    checkbox, .legend-layer, and its wells and methane checkboxes,
    .legend-overlay > .legend-toggle): they're the only way to turn those
-   layers on and off, so they stay in view under the Legend header. */
+   layers on and off, so they stay in view under the Legend header. A
+   module's legend is the panel body's child, whatever its class. */
 .map-panel.is-collapsed .map-panel-body:has(.legend-toggle) {
   display: block;
 }
 
-.map-panel.is-collapsed .map-panel-body:has(.legend-toggle) :is(.facility-map-legend, .dairy-map-legend) > :not(.legend-overlay, .legend-layer),
+.map-panel.is-collapsed .map-panel-body:has(.legend-toggle) > * > :not(.legend-overlay, .legend-layer),
 .map-panel.is-collapsed .map-panel-body:has(.legend-toggle) .legend-overlay > :not(.legend-toggle) {
   display: none;
 }
@@ -477,7 +478,7 @@ html.map-expanded .navbar {
 }
 
 /* A layer switched off: its key fades, so the legend says what's showing. */
-:is(.facility-map-legend, .dairy-map-legend):has(.legend-layer input:not(:checked)) > :not(.legend-layer, .legend-overlay) {
+.map-panel-body > :has(.legend-layer input:not(:checked)) > :not(.legend-layer, .legend-overlay) {
   opacity: 0.4;
 }
 

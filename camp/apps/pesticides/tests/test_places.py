@@ -188,7 +188,8 @@ class RegionsWithinTests(RollupTestMixin, TestCase):
         assert within['any'] is True
 
     def test_county_page_renders_the_lists(self):
-        html = self.client.get(reverse('pesticides:region', kwargs={'sqid': self.fresno.sqid, 'slug': 'fresno'})).content.decode()
+        # In and around is on a place's Community tab.
+        html = self.client.get(reverse('pesticides:region-community', kwargs={'sqid': self.fresno.sqid, 'slug': 'fresno'})).content.decode()
         assert 'In Fresno County' in html and 'Selma Unified' in html and '93662' in html
         assert 'Tehachapi' not in html
 
@@ -304,7 +305,8 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
             point=Point(-121.5, 38.5, srid=4326),
             school_district=self.district,
         )
-        self.url = reverse('pesticides:region', kwargs={'sqid': self.district.sqid, 'slug': 'selma-unified'})
+        # The schools table is the district page's Schools tab.
+        self.url = reverse('pesticides:region-schools', kwargs={'sqid': self.district.sqid, 'slug': 'selma-unified'})
 
     def make_section(self, name, geometry, lbs, applications):
         """An MTRS section with one 2023 rollup row, for the ring around 9101."""
@@ -430,16 +432,16 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         cache.clear()
         html = self.client.get(self.url).content.decode()
         # CDSS shouts its names; CDE's are already properly cased.
-        assert '<td>Away Child Care</td>' in html
+        assert '<td>Away Child Care<span' in html
         assert 'AWAY CHILD CARE' not in html
-        assert '<td>Selma High</td>' in html
+        assert '<td>Selma High<span' in html
 
     def test_panel_leaves_a_shouted_cde_name_alone(self):
         self.inside.name = 'SELMA HIGH'
         self.inside.save()
         cache.clear()
         html = self.client.get(self.url).content.decode()
-        assert '<td>SELMA HIGH</td>' in html
+        assert '<td>SELMA HIGH<span' in html
 
     def test_the_city_column_is_dropped_when_every_site_shares_one(self):
         # The postal city is shouted in the CDSS directory and title-cased for
@@ -474,9 +476,11 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         self.inside.save()
         cache.clear()
         html = self.client.get(self.url).content.decode()
-        assert '<td>Selma Unified</td>' in html
-        # Child care has no administering district.
-        assert '<td>&mdash;</td>' in html or '<td>—</td>' in html
+        # Under the name, after what it is, linking the district's page.
+        district_url = reverse('pesticides:region', kwargs={'sqid': self.district.sqid, 'slug': 'selma-unified'})
+        assert f'<span class="school-kind">Public school · <a href="{district_url}">Selma Unified</a></span>' in html
+        # Child care has no administering district: just what it is.
+        assert '<span class="school-kind">Child care</span>' in html
 
     def test_panel_section_links_carry_the_scope(self):
         section_url = reverse('pesticides:section-detail', kwargs={'sqid': Region.objects.get(pk=9101).sqid})
@@ -758,3 +762,147 @@ class AreaSquareMilesTests(TestCase):
         # them would overstate anything smaller than a county.
         area = places.region_area(Region.objects.get(pk=9001))
         assert area.square_miles != len(area.section_pks)
+
+
+class AreaTabTests(RollupTestMixin, TestCase):
+    """A place page is a header and a tab row over Overview, Notices, Records, Schools and Community."""
+    fixtures = ['pesticides-explorer']
+    POINT = {'lat': 36.71, 'lng': -119.79, 'radius': 3, 'label': 'near Selma'}
+
+    def setUp(self):
+        cache.clear()
+        self.fresno = Region.objects.get(pk=9001)
+
+    def tab_url(self, tab):
+        return self.fresno.get_pesticides_tab_url(tab)
+
+    def tab_keys(self, response):
+        return [tab['key'] for tab in response.context['tabs']]
+
+    def test_every_region_tab_renders_under_the_same_header(self):
+        for tab in ('overview', 'notices', 'records', 'community'):
+            response = self.client.get(self.tab_url(tab))
+            assert response.status_code == 200, tab
+            html = response.content.decode()
+            assert 'area-tabs' in html and '<h1 class="mb-1">Fresno County</h1>' in html, tab
+            assert [t['key'] for t in response.context['tabs'] if t['current']] == [tab]
+
+    def test_every_near_me_tab_renders_and_keeps_its_point(self):
+        for name in ('near-me', 'near-me-notices', 'near-me-records', 'near-me-schools', 'near-me-community'):
+            response = self.client.get(reverse(f'pesticides:{name}'), self.POINT)
+            assert response.status_code == 200, name
+            html = response.content.decode()
+            assert 'near Selma' in html and 'Within 3 miles' in html, name
+            for tab in response.context['tabs']:
+                assert 'lat=36.71' in tab['url'] and 'label=near+Selma' in tab['url'], (name, tab['key'])
+
+    def test_schools_is_offered_only_where_there_are_sites(self):
+        assert 'schools' not in self.tab_keys(self.client.get(self.tab_url('overview')))
+        Location.objects.create(
+            type=Location.Type.PUBLIC_SCHOOL, name='Inside High', external_id='x-inside', source='cde-public',
+            point=self.fresno.boundary.geometry.point_on_surface)
+        cache.clear()
+        response = self.client.get(self.tab_url('overview'))
+        assert 'schools' in self.tab_keys(response)
+        schools = self.client.get(self.tab_url('schools'))
+        assert schools.status_code == 200
+        assert [row['display_name'] for row in schools.context['schools']['rows']] == ['Inside High']
+        # Not a district: no run-by filter.
+        assert 'schools_run_by' not in schools.content.decode()
+
+    def test_the_records_tab_is_narrowed_to_the_place(self):
+        response = self.client.get(self.tab_url('records'))
+        assert response.context['totals']['lbs'] == self.client.get(
+            reverse('pesticides:records'), {'county': self.fresno.slug}).context['totals']['lbs']
+        # The place isn't a filter to clear: it's the tab.
+        assert response.context['active_filters'] == []
+
+    def test_the_tabs_carry_the_scope(self):
+        response = self.client.get(self.tab_url('notices'), {'year': 2022})
+        assert all('year=2022' in tab['url'] for tab in response.context['tabs'])
+
+    def test_a_wrong_slug_redirects_to_the_same_tab(self):
+        url = reverse('pesticides:region-community', kwargs={'sqid': self.fresno.sqid, 'slug': 'nope'})
+        response = self.client.get(url)
+        assert response.status_code == 301 and response['Location'] == self.tab_url('community')
+
+    def test_overview_heads_how_it_was_applied_with_its_year(self):
+        html = self.client.get(self.tab_url('overview'), {'year': 2023}).content.decode()
+        assert '<h2 class="title is-4">In 2023</h2>' in html
+        assert html.index('In 2023') < html.index('How it was applied') < html.index('Over time')
+        html = self.client.get(self.tab_url('overview'), {'year': 'all'}).content.decode()
+        assert '<h2 class="title is-4">Across 2022–2023</h2>' in html
+
+    def test_overview_points_to_the_notices_tab(self):
+        html = self.client.get(self.tab_url('overview')).content.decode()
+        assert self.tab_url('notices') in html
+        assert 'class="within' not in html  # In and around moved to Community
+
+
+class SchoolsTabMapTests(RollupTestMixin, TestCase):
+    """The Schools tab's map: the place's own sites at any zoom, every section drawn."""
+    fixtures = ['pesticides-explorer']
+
+    def test_the_schools_tab_map_loads_the_place_and_draws_sections(self):
+        cache.clear()
+        fresno = Region.objects.get(pk=9001)
+        Location.objects.create(
+            type=Location.Type.PUBLIC_SCHOOL, name='Inside High', external_id='x-in', source='cde-public',
+            point=fresno.boundary.geometry.point_on_surface)
+        config = self.client.get(fresno.get_pesticides_tab_url('schools')).context['map_config']
+        assert config['locations_area'] == f'region={fresno.sqid}'
+        assert config['show_all_sections'] == '1' and config['show_locations'] == '1'
+        # Not on the Overview.
+        overview = self.client.get(fresno.get_pesticides_tab_url('overview')).context['map_config']
+        assert overview['locations_area'] == '' and overview['show_all_sections'] == '0'
+
+    def test_a_near_me_schools_map_loads_its_circle(self):
+        cache.clear()
+        config = self.client.get(reverse('pesticides:near-me-schools'), {'lat': 36.71, 'lng': -119.79, 'radius': 3}).context['map_config']
+        assert config['locations_area'] == 'lat=36.71000&lng=-119.79000&radius=3'
+
+
+class SchoolsTabFilterTests(RollupTestMixin, TestCase):
+    """The Schools tab's district filter and its "School districts here" box."""
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+        self.fresno = Region.objects.get(pk=9001)
+        # Six overlapping districts, by enrollment: Alpha 600 ... Foxtrot 100.
+        self.districts = [
+            make_district(f'{name} Unified', f'{name.lower()}-unified', f'1062{index:03d}0000000', enrollment={'total': 600 - index * 100})
+            for index, name in enumerate(('Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot'))
+        ]
+        for index, district in enumerate(self.districts[:2]):
+            Location.objects.create(
+                type=Location.Type.PUBLIC_SCHOOL, name=f'School {index}', external_id=f'x-{index}', source='cde-public',
+                point=Point(-119.79, 36.71, srid=4326),
+                metadata={'district_code': district.external_id[:7], 'district_name': district.name})
+        self.url = self.fresno.get_pesticides_tab_url('schools')
+
+    def test_the_district_filter_narrows_the_table(self):
+        response = self.client.get(self.url)
+        options = [option['label'] for option in response.context['schools']['district_options']]
+        assert options == ['Alpha Unified', 'Bravo Unified']  # only districts the sites are filed under
+        narrowed = self.client.get(self.url, {'schools_district': self.districts[1].sqid})
+        assert [row['display_name'] for row in narrowed.context['schools']['rows']] == ['School 1']
+        assert narrowed.context['schools']['is_filtered']
+
+    def test_an_unknown_district_is_ignored(self):
+        response = self.client.get(self.url, {'schools_district': 'nope'})
+        assert len(response.context['schools']['rows']) == 2 and not response.context['schools']['is_filtered']
+
+    def test_the_districts_box_shows_the_largest_five_in_name_order(self):
+        response = self.client.get(self.url)
+        districts = response.context['school_districts']
+        assert [d['name'] for d in districts] == [f'{n} Unified' for n in ('Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot')]
+        assert [d['name'] for d in districts if d['is_collapsed']] == ['Foxtrot Unified']
+        html = response.content.decode()
+        assert 'School districts here' in html and 'Show all 6' in html
+
+    def test_a_districts_own_page_has_neither(self):
+        district = self.districts[0]
+        response = self.client.get(district.get_pesticides_tab_url('schools'))
+        assert response.context['school_districts'] == []
+        assert 'id_schools_district' not in response.content.decode()

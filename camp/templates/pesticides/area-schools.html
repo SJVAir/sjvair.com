@@ -1,0 +1,75 @@
+{% extends 'regions/area-tab.html' %}
+{% load humanize pesticides_explorer %}
+{% comment %}
+A place page's Schools tab: the schools and child care centres in the
+place, each with the pesticide use reported in the block of sections around
+it, on the map with them on. A school district adds who goes to school there;
+anywhere else, the school districts the place overlaps.
+{% endcomment %}
+{% block body-class %}{{ block.super }} place area-schools{% endblock %}
+
+{% block tab-stats %}
+<div class="level stat-row box">
+    <div class="level-item has-text-centered">
+        <div><p class="heading">Schools</p><p class="title">{{ school_count|intcomma }}</p><p class="stat-note">public and private</p></div>
+    </div>
+    <div class="level-item has-text-centered">
+        <div><p class="heading">Child care</p><p class="title">{{ child_care_count|intcomma }}</p><p class="stat-note">licensed centres</p></div>
+    </div>
+</div>
+{% if district_demographics %}
+<div class="district-demographics">
+    <h3 class="title is-6 mb-2">Who goes to school here{% if district_demographics.year_label %} <span class="source-stamp">{{ district_demographics.year_label }}</span>{% endif %}</h3>
+    <div class="level stat-row">
+        {% if district_demographics.enrollment != None %}
+        <div class="level-item has-text-centered">
+            <div><p class="heading">Students enrolled</p><p class="title">{{ district_demographics.enrollment|intcomma }}</p></div>
+        </div>
+        {% endif %}
+        {% for metric in district_demographics.metrics %}
+        <div class="level-item has-text-centered">
+            <div><p class="heading">{{ metric.label }}</p><p class="title">{{ metric.pct|floatformat:"-1" }}%</p></div>
+        </div>
+        {% endfor %}
+    </div>
+    <p class="is-size-7 has-text-grey">Enrollment and student groups as the <a href="https://www.cde.ca.gov/ds/si/ds/pubschls.asp" target="_blank" rel="noopener">California Department of Education</a> reports them for this district.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block tab-map %}{% include 'pesticides/includes/section-map.html' %}{% endblock %}
+
+{% block tab-filters %}
+{% include 'pesticides/includes/schools-filters.html' %}
+{% include 'pesticides/includes/school-districts-box.html' %}
+{% endblock %}
+
+{% block tab-table %}
+<section class="schools-nearby" data-reveal-scope>
+{# Most rows are child care, not schools, so the heading says both. #}
+<h2 class="title is-4">Schools &amp; child care {% if district %}in this district{% else %}here{% endif %}</h2>
+{% if schools.total %}
+<p class="is-size-7 has-text-grey">
+    &ldquo;Lbs nearby&rdquo; is the pesticide use reported in the three-mile-square block of
+    sections around each site &mdash; the section it sits in and the eight around it{% if year_label %}, in {{ year_label }}{% endif %}{% if concern %},
+    {{ narrow_label|lower }} only{% endif %}.{% if schools.sort_is_default %} Rows start with the highest
+    pounds nearby first; click a column heading to sort by something else.{% endif %}
+</p>
+{% include 'pesticides/includes/schools-table.html' %}
+{% else %}
+<p class="has-text-grey">{% if district_demographics %}We don't have school or child care addresses for this district yet.{% else %}No schools or child care on record here.{% endif %}</p>
+{% endif %}
+</section>
+{% endblock %}
+
+
+{% block tab-notes %}
+<details class="data-notes">
+    <summary>What this is, and isn't</summary>
+    <ul>
+        <li><strong>Sites are the state's lists</strong>: CDE's public and private schools and CDSS's licensed child care centres. {% if district %}Enrollment and student groups are CDE's for the district.{% endif %}</li>
+        <li><strong>&ldquo;Nearby&rdquo; is a block of square-mile sections</strong>, not a distance from the building; the records give a section, not a field.</li>
+    </ul>
+</details>
+{% if privacy_note %}<p class="is-size-7 has-text-grey mt-5">This page's location is only in its address; we don't store it.</p>{% endif %}
+{% endblock %}

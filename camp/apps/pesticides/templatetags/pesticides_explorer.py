@@ -260,7 +260,7 @@ def _chart_id():
 
 
 @register.inclusion_tag('pesticides/includes/trend-chart.html')
-def trend_chart(by_year, year=None, hide_lbs=False, title=None, compare=None, compare_label=''):
+def trend_chart(by_year, year=None, hide_lbs=False, title=None, compare=None, compare_label='', height=None):
     """
     The by-year trend: a uPlot line drawn in the browser from the data this
     tag embeds (see assets/js/pesticides/charts.js), with the delta sentence
@@ -272,6 +272,9 @@ def trend_chart(by_year, year=None, hide_lbs=False, title=None, compare=None, co
     can be read against something. It's aligned to the years the main series
     has, with a gap for any year it doesn't cover, rather than stretched to
     fit; a baseline that invented values would be worse than no baseline.
+
+    `height` (px) for a trend given a wide column of its own (a place's
+    Overview); the default suits a narrow one.
     """
     field = 'applications' if hide_lbs else 'lbs'
     metric_label = 'applications' if hide_lbs else 'pounds'
@@ -294,6 +297,7 @@ def trend_chart(by_year, year=None, hide_lbs=False, title=None, compare=None, co
         'chart_id': _chart_id(),
         'chart': {
             'type': 'line',
+            'height': height,
             'unit': metric_label,
             'x': years,
             'y': values,
@@ -334,6 +338,44 @@ def month_chart(by_month, year_label=None):
         },
         'rows': rows,
         'year_label': year_label,
+    }
+
+
+# The application methods' colours, as the method bar's (pesticides.sass
+# .method-bar-seg): the stacked chart's bands are the same methods.
+METHOD_COLORS = {'G': '#3498db', 'A': '#f1c40f', 'F': '#d35400', 'O': '#7a7a7a', '': '#b5b5b5'}
+
+
+@register.inclusion_tag('pesticides/includes/trend-chart.html')
+def method_stack_chart(stack, year=None, height=None):
+    """
+    Each year's pounds split by application method, a 100% stacked bar per
+    year (stats.by_method_by_year), so how the mix has shifted shows beside
+    the trend of the total. Drawn by charts.js's 'stack' type; nothing with
+    fewer than two years.
+    """
+    if not stack:
+        return {'has_data': False}
+    series = [
+        {'label': row['label'], 'values': row['values'], 'color': METHOD_COLORS[row['method']]}
+        for row in stack['series']
+    ]
+    return {
+        'chart_id': _chart_id(),
+        'chart': {
+            'type': 'stack',
+            'unit': 'pounds',
+            'x': stack['years'],
+            'series': series,
+            'selected': year if year in stack['years'] else None,
+            'height': height,
+        },
+        'has_data': True,
+        'title': 'How it was applied, share of each year\'s pounds',
+        'sentence': '',
+        'legend': series,
+        'first_year': stack['years'][0],
+        'last_year': stack['years'][-1],
     }
 
 

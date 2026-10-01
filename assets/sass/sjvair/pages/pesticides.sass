@@ -268,7 +268,8 @@ body.pesticides
             width: 100%
         .u-over
             cursor: crosshair
-        // A stacked bar's tip (charts.js stack): the band under the cursor.
+        // A chart's hover tip (charts.js): the hovered year beside its point,
+        // or a stacked bar's band under the cursor.
         .chart-tip
             position: absolute
             z-index: 2
@@ -297,6 +298,7 @@ body.pesticides
             display: inline-block
             width: 1.25rem
             border-top: 1.5px dashed $grey
+        // A stacked chart's series, each with its share of the hovered year.
         .chart-legend.is-series
             flex-wrap: wrap
             gap: 0.25rem 0.9rem
@@ -325,6 +327,14 @@ body.pesticides
     // as the line is worth reading, left-aligned in whatever column it's in.
     .trend-chart
         max-width: 32rem
+    // A place's Overview (as the emissions explorer's): the trend has the
+    // wide column to itself, and the top-five cards stacked beside it keep
+    // their own height rather than stretching to a neighbour's.
+    .overview-columns
+        .trend-chart
+            max-width: none
+        .related-card
+            height: auto
 
     // Months across, years down. Sized in rem rather than percentages so the
     // cells stay square-ish and a twenty-year grid scrolls instead of
@@ -1131,19 +1141,18 @@ body.pesticides
         .stat-row
             margin-bottom: 0.25rem
 
-    .schools-filters
-        padding: 0
-        box-shadow: none
-        background: transparent
-        margin-bottom: 0.5rem
-        .schools-filter-fields
-            margin-bottom: 0.25rem
-            .control
-                margin-bottom: 0.5rem
-        .schools-count
-            margin-bottom: 0
+    // The schools table's count, between the note and the table.
+    .schools-count
+        margin: 0.75rem 0 0.25rem
 
     .schools-table
+        .school-kind
+            display: block
+            font-size: $size-7
+            color: $grey
+        // "MDM-T17S-R23E-16" on one line.
+        td:last-child
+            white-space: nowrap
         tbody tr.is-collapsed
             display: none
             &.is-revealed
@@ -1151,6 +1160,27 @@ body.pesticides
 
     .schools-toggle
         margin-top: 0.25rem
+
+    // The school districts a place overlaps, under the schools filters: the
+    // largest few, the rest revealed by "Show all".
+    .school-districts-box
+        .label
+            @extend .is-size-7
+            @extend .has-text-grey
+            text-transform: uppercase
+            letter-spacing: 0.04em
+        .school-districts-list
+            list-style: none
+            margin: 0
+            li
+                padding: 0.15rem 0
+                &.is-collapsed
+                    display: none
+                    &.is-revealed
+                        display: list-item
+        .school-districts-toggle
+            padding-left: 0
+            margin-top: 0.25rem
 
     // htmx swap feedback. `#explorer` sets hx-indicator="body", so htmx puts
     // `htmx-request` on <body> for the duration of every boosted request.

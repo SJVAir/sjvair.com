@@ -38,6 +38,14 @@ class NoticeListTests(TestCase):
         # list(...) forces evaluation for a real comparison.
         assert list(self.client.get(self.url, {'past': 1, 'archive_year': 2020, 'month': 2}).context['object_list']) == []
 
+    def test_archive_months_count_what_the_page_shows(self):
+        archived = PesticideNotice.objects.get(pk=1)
+        own = self.client.get(self.url, {'past': 1, 'county': archived.county.slug}).context['archive_months']
+        assert [(m['year'], m['month'], m['count']) for m in own] == [(2020, 1, 1)]
+        # Another county's archive has nothing in that month, so no month at all.
+        other = Region.objects.filter(type=Region.Type.COUNTY).exclude(pk=archived.county_id).first()
+        assert self.client.get(self.url, {'past': 1, 'county': other.slug}).context['archive_months'] == []
+
     def test_archive_months_only_built_for_the_archive(self):
         assert self.client.get(self.url).context['archive_months'] == []
 
@@ -203,7 +211,8 @@ class UpcomingNoticeLinkTests(TestCase):
         fresno = Region.objects.get(pk=9001)
         section = Region.objects.get(pk=9101)
         pages = {
-            'place': reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': fresno.slug}),
+            # A place's notices, day by day, are on its Notices tab.
+            'place': reverse('pesticides:region-notices', kwargs={'sqid': fresno.sqid, 'slug': fresno.slug}),
             'section': reverse('pesticides:section-detail', kwargs={'sqid': section.sqid}),
             'chemical': Chemical.objects.get(pk=1).get_absolute_url(),
         }
