@@ -374,3 +374,23 @@ class FacilityAreaLineTests(TestCase):
         cement.save(update_fields=['point'])
         links = views.area_links([cement.county])
         assert [link['url'] for link in links] == [cement.county.get_emissions_url()]
+
+
+class PesticidesLinkTests(TestCase):
+    """The tab row's right-aligned link to the same place in the pesticides explorer."""
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def test_region_tabs_link_their_pesticides_page(self):
+        fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        content = self.client.get(fresno.get_emissions_url()).content.decode()
+        assert f'class="is-cross-link"><a href="{fresno.get_pesticides_url()}"' in content
+        content = self.client.get(fresno.get_emissions_tab_url('community')).content.decode()
+        assert f'href="{fresno.get_pesticides_tab_url("community")}"' in content
+
+    def test_a_tract_has_none(self):
+        tract = make(Region.Type.TRACT, 'T1', AROUND_PLANT)
+        assert 'is-cross-link' not in self.client.get(tract.get_emissions_url()).content.decode()
+
+    def test_near_me_keeps_the_point(self):
+        content = self.client.get(reverse('emissions:near-me'), {'lat': '36.737', 'lng': '-119.787', 'radius': '3', 'label': 'Home'}).content.decode()
+        assert f'href="{reverse("pesticides:near-me")}?lat=36.7370&amp;lng=-119.7870&amp;radius=3&amp;label=Home"' in content

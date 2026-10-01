@@ -799,7 +799,39 @@ def area_header(context):
         links.append({'label': 'CARB story map', 'url': ab617['storymaps_url']})
     crumbs = [{'label': county.name, 'url': county.get_emissions_url() + context.get('scope_qs', '')}] if in_county else []
     crumbs.append({'label': context['title'], 'url': context['overview_url']})
-    return {'kind': ' · '.join(kind), 'header_links': links, 'area_crumbs': crumbs, 'explorer_base': 'emissions/base.html'}
+    return {
+        'kind': ' · '.join(kind), 'header_links': links, 'area_crumbs': crumbs, 'explorer_base': 'emissions/base.html',
+        'tab_links': pesticides_tab_links(context),
+    }
+
+
+# An emissions tab and the pesticides tab for the same thing; any other opens its Overview.
+PESTICIDES_TABS = {'schools': 'schools', 'community': 'community'}
+
+
+def pesticides_tab_links(context):
+    """
+    The tab row's right-aligned link to the same place in the pesticides
+    explorer (regions/includes/area-header.html's `tab_links`): a region it
+    has pages for, or the same point and radius. None for a region it has no
+    page for (a census tract).
+    """
+    from camp.apps.pesticides.places import PLACE_REGION_TYPES
+
+    area = context['area']
+    tab = PESTICIDES_TABS.get(context.get('tab'))
+    region = getattr(area, 'region', None)
+    if region is not None:
+        if region.type not in PLACE_REGION_TYPES:
+            return []
+        url = region.get_pesticides_tab_url(tab) if tab else region.get_pesticides_url()
+    else:
+        view = context.get('view')
+        params = view.near_params() if hasattr(view, 'near_params') else {
+            'lat': f'{area.lat:.4f}', 'lng': f'{area.lng:.4f}', 'radius': area.radius,
+        }
+        url = f"{reverse(f'pesticides:near-me-{tab}' if tab else 'pesticides:near-me')}?{urlencode(params)}"
+    return [{'label': 'Pesticides', 'url': url, 'icon': 'fa-spray-can-sparkles', 'icon_class': 'is-products'}]
 
 
 def with_tract_urls(community):
