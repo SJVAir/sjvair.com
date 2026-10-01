@@ -1,0 +1,45 @@
+{% load humanize region_pages %}
+{% comment %}
+An area's CalEnviroScreen summary (camp.apps.ces.stats.tract_summary): what
+share of its people live in SB 535 disadvantaged communities, how many of its
+tracts are among California's most burdened, and the range of their
+percentiles. Renders nothing without `community`.
+
+Context: `community`; `community_about_url`, the explorer's own explanation;
+`show_top_tracts` lists the highest tracts (county pages). A tract row is
+linked only where the explorer gave it a `url` -- not every explorer has
+tract pages.
+{% endcomment %}
+{% if community %}
+<section class="community-card" id="community">
+    <h2 class="title is-4">CalEnviroScreen <span class="has-text-grey is-size-6 has-text-weight-normal">{{ community.label }}</span></h2>
+    {% if community.count %}
+    <ul>
+        {% if community.dac_share is not None %}<li><strong>{{ community.dac_share|whole_percent }}</strong> of residents live in state-designated disadvantaged communities (SB 535).</li>{% endif %}
+        {% if community.scored %}
+        <li><strong>{{ community.top25_tracts|intcomma }} of {{ community.scored|intcomma }}</strong> census tract{{ community.scored|pluralize }} {% if community.scored == 1 %}is{% else %}are{% endif %} in California's most burdened 25%.</li>
+        {% if community.scored > 1 %}<li>Tract percentiles run from {% include 'regions/includes/tract-name.html' with row=community.lowest text=community.min_p|percentile %} to {% include 'regions/includes/tract-name.html' with row=community.highest text=community.max_p|percentile %}.</li>{% endif %}
+        {% endif %}
+    </ul>
+    {% if show_top_tracts and community.top %}
+    <p class="heading mt-3 mb-1">Highest tracts</p>
+    <ul>
+        {% for row in community.top %}<li>{% include 'regions/includes/tract-name.html' with row=row text=row.region.name %} <span class="has-text-grey is-size-7">{{ row.ci_score_p|percentile }} percentile{% if row.dac %} · SB 535{% endif %}</span></li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% elif community.containing %}
+    <ul>
+        <li>Inside census tract {% include 'regions/includes/tract-name.html' with row=community.containing text=community.containing.region.name %}{% if community.containing.ci_score_p is not None %}, at the {{ community.containing.ci_score_p|percentile }} percentile{% endif %}{% if community.containing.dac %} · SB 535 disadvantaged community{% endif %}.</li>
+    </ul>
+    {% else %}
+    <p class="has-text-grey">No CalEnviroScreen tracts here.</p>
+    {% endif %}
+    <details class="data-notes">
+        <summary>What this is, and isn't</summary>
+        <ul>
+            <li><strong>Percentiles are OEHHA's, for census tracts</strong>, ranked against all of California on pollution burden and population characteristics together. <a href="https://oehha.ca.gov/calenviroscreen" target="_blank" rel="noopener">OEHHA's CalEnviroScreen</a></li>
+            <li><strong>Figures for this area are SJVAir's summary</strong> of the tracts inside it, not an OEHHA score.{% if community_about_url %} <a href="{{ community_about_url }}">More on CalEnviroScreen</a>{% endif %}</li>
+        </ul>
+    </details>
+</section>
+{% endif %}

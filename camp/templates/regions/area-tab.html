@@ -1,0 +1,33 @@
+{% extends explorer_base %}
+{% comment %}
+The skeleton an explorer's area data tabs share, so they read alike however
+different their data: under the header and tab row, a stat row, the map, the
+filters beside the table (the filters column only when the tab has filters,
+`tab_has_filters`), the charts, the tab's related sections, and its notes.
+A tab fills the blocks it has. `tab-body` wraps the lot, for a tab with
+nothing to show to replace in one go.
+
+Context: `explorer_base` (the explorer's base template), `area_crumbs`
+[{label, url}] for the breadcrumb before the tab, `tab_label`, and what
+regions/includes/area-header.html takes.
+{% endcomment %}
+
+{% block title %}{{ tab_label }} · {{ name }} | {{ block.super }}{% endblock %}
+{% block breadcrumb-list %}{% for crumb in area_crumbs %}<li><a href="{{ crumb.url }}">{{ crumb.label }}</a></li>{% endfor %}<li class="is-active"><a aria-current="page">{{ tab_label }}</a></li>{% endblock %}
+
+{% block explorer-content %}
+{% include 'regions/includes/area-header.html' %}
+{% block tab-body %}
+{% block tab-notices %}{% endblock %}
+<div class="tab-stats">{% block tab-stats %}{% endblock %}</div>
+<div class="tab-map">{% block tab-map %}{% endblock %}</div>
+{# One tab-table block, wrapped beside the filters or alone. #}
+{% if tab_has_filters %}<div class="columns tab-table mt-4"><div class="column is-3-desktop">{% block tab-filters %}{% endblock %}</div><div class="column">{% else %}<div class="tab-table mt-4">{% endif %}
+{% block tab-table %}{% endblock %}
+{% if tab_has_filters %}</div></div>{% else %}</div>{% endif %}
+<div class="tab-charts">{% block tab-charts %}{% endblock %}</div>
+{% block tab-related %}{% endblock %}
+{% block tab-notes %}{% endblock %}
+{% endblock %}
+{% block tab-after %}{% endblock %}
+{% endblock %}

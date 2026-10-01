@@ -1,0 +1,32 @@
+// The explorers' shared area pages (templates/regions/): the header and its
+// tab row, a data tab's blocks, and the "What this is, and isn't" panel.
+
+// The tab row sits under the header, before the tab's content, and scrolls
+// sideways on a phone rather than wrapping (Bulma's .tabs).
+.area-header
+  margin-bottom: 1rem !important
+.area-tabs
+  margin-bottom: 1.5rem
+  a
+    font-weight: 600
+
+// A gap between a data tab's stat row and its map.
+.tab-stats > :last-child
+  margin-bottom: 1.5rem !important
+
+// "What this is, and isn't": one folded panel at the foot of a section, the
+// same on every section that has caveats.
+.data-notes
+  margin: 0.75rem 0 1.5rem
+  font-size: $size-7
+  color: $grey-dark
+  summary
+    cursor: pointer
+    color: $grey
+    font-weight: 600
+    width: fit-content
+    &:hover
+      color: $link
+  ul
+    list-style: disc
+    margin: 0.4rem 0 0 1.25rem
