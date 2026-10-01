@@ -1119,8 +1119,6 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
             scope_qs=base.query(county=None),
             scope_params=base.params(county=None),
             **kwargs,
-            # The shared area-tab skeleton's filters column: the data tabs' lists.
-            tab_has_filters=tab in ('facilities', 'oil-gas', 'schools'),
             community_about_url=reverse('emissions:about') + '#calenviroscreen',
         )
         context.update(area_header(context))

@@ -404,7 +404,6 @@ class DairyAreaPage(DairyScopeMixin, vanilla.TemplateView):
             overview_url=self.area_tab_url('overview', self.tab_query('overview')),
             # The page is the area: no county picker.
             county_options=[],
-            tab_has_filters=True,
             **kwargs,
         )
         context.update(views.area_header(context))
