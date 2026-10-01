@@ -224,3 +224,62 @@ class UpcomingNoticeLinkTests(TestCase):
             for notice in upcoming:
                 href = reverse('pesticides:notice-detail', kwargs={'sqid': notice.sqid})
                 assert href in html, f'{name} does not link notice {notice.pk}'
+
+
+class AreaNoticesTabTests(TestCase):
+    """The Notices tab: the notice list, narrowed to its place."""
+    fixtures = ['pesticides-explorer']
+    POINT = {'lat': 36.71, 'lng': -119.79, 'radius': 3, 'label': 'near Selma'}
+
+    def setUp(self):
+        cache.clear()
+        self.archived = PesticideNotice.objects.get(pk=1)
+        self.county = self.archived.county
+        self.url = self.county.get_pesticides_tab_url('notices')
+
+    def test_lists_only_the_place(self):
+        kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
+        here = [n.county_id for n in self.client.get(kern.get_pesticides_tab_url('notices')).context['object_list']]
+        assert here and set(here) == {kern.pk}
+
+    def test_past_mode_lists_the_archive_and_counts_only_the_place(self):
+        response = self.client.get(self.url, {'past': 1})
+        assert [n.pk for n in response.context['object_list']] == [1]
+        assert [(m['year'], m['month'], m['count']) for m in response.context['archive_months']] == [(2020, 1, 1)]
+        # The stat row is what's scheduled now, whatever the mode.
+        assert response.context['upcoming_count'] == self.client.get(self.url).context['upcoming_count']
+
+    def test_chemical_filter_and_own_chip(self):
+        kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
+        chem = Chemical.objects.get(pk=1)
+        response = self.client.get(kern.get_pesticides_tab_url('notices'), {'chemical': chem.sqid})
+        assert [n.pk for n in response.context['object_list']] == [3]
+        labels = [f['label'] for f in response.context['active_filters']]
+        assert labels == [chem.display_name]
+
+    def test_layout(self):
+        from camp.apps.pesticides.tests.test_area_layout import side
+        html = self.client.get(self.url, {'past': 1}).content.decode()
+        panel = side(html)
+        assert 'notice-filters' in panel and 'archive-months' in panel and 'spraydays' in panel.lower()
+        assert 'Day by day' not in html and 'Past notices here' not in html
+        assert html.index('class="column tab-map"') < html.index('summary-sentence')
+
+    def test_near_me_filters_keep_the_point(self):
+        response = self.client.get(reverse('pesticides:near-me-notices'), self.POINT)
+        assert response.status_code == 200
+        html = response.content.decode()
+        form = html[html.index('notice-filters'):html.index('</form>', html.index('notice-filters'))]
+        for name, value in (('lat', '36.71'), ('lng', '-119.79'), ('radius', '3'), ('label', 'near Selma')):
+            assert f'name="{name}"' in form and value in form, name
+        clear = response.context['clear_filters_url']
+        assert clear.startswith(reverse('pesticides:near-me-notices')) and 'lat=36.71' in clear and 'label=near+Selma' in clear
+        assert not [f for f in response.context['active_filters'] if f['label'].startswith('Within ')]
+
+    def test_filter_form_carries_year_and_label(self):
+        html = self.client.get(self.url, {'year': 2022}).content.decode()
+        form = html[html.index('notice-filters'):html.index('</form>', html.index('notice-filters'))]
+        assert '<input type="hidden" name="year" value="2022">' in form
+
+    def test_paginates(self):
+        assert self.client.get(self.url).context['paginator'].per_page == 50

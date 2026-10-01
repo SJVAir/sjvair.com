@@ -1,0 +1,32 @@
+{% load pesticides_explorer %}
+<div class="tabs is-toggle is-small mb-4">
+    <ul>
+        <li class="{% if mode == 'active' %}is-active{% endif %}"><a href="{% qs_replace past=None archive_year=None month=None page=None %}">Active</a></li>
+        <li class="{% if mode == 'past' %}is-active{% endif %}"><a href="{% qs_replace past=1 page=None %}">Archive</a></li>
+    </ul>
+</div>
+<form method="GET" class="notice-filters box" hx-trigger="submit, change delay:250ms">
+    {% if county %}<input type="hidden" name="county" value="{{ county.slug }}">{% endif %}
+    {% if concern %}<input type="hidden" name="narrow" value="{{ concern }}">{% endif %}
+    {{ form.chemical }}
+    {{ form.product }}
+    {{ form.region }}
+    {{ form.section }}
+    {{ form.lat }}
+    {{ form.lng }}
+    {{ form.radius }}
+    {# A near-me place's name, and the page's year for its nav links, ride along. #}
+    {% if request.GET.label %}<input type="hidden" name="label" value="{{ request.GET.label }}">{% endif %}
+    {% if request.GET.year %}<input type="hidden" name="year" value="{{ request.GET.year }}">{% endif %}
+    {% if mode == 'past' %}
+    <input type="hidden" name="past" value="1">
+    {% if filter_year %}<input type="hidden" name="archive_year" value="{{ filter_year }}">{% endif %}
+    {% if filter_month %}<input type="hidden" name="month" value="{{ filter_month }}">{% endif %}
+    {% endif %}
+    <div class="field">
+        <label class="label" for="{{ form.method.id_for_label }}">{{ form.method.label }}</label>
+        <div class="control"><div class="select is-fullwidth">{{ form.method }}</div></div>
+    </div>
+    {# The method applies itself as it changes; there's nothing to Apply. #}
+    <p class="filters-clear"><a href="{{ clear_filters_url }}">Clear filters</a></p>
+</form>

@@ -2011,6 +2011,10 @@ class NoticeList(vanilla.ListView):
             filters.append({'label': f'Within {self.radius} mi', 'clear_url': clear_url(self.request, 'lat', 'lng', 'radius')})
         return filters
 
+    def get_clear_filters_url(self):
+        """Where "Clear filters" goes: the list in its mode, nothing else."""
+        return self.request.path + ('?past=1' if self.mode == 'past' else '')
+
     def get_map_config(self):
         chemical = self.related.get('chemical')
         product = self.related.get('product')
@@ -2048,6 +2052,7 @@ class NoticeList(vanilla.ListView):
             map_config=self.get_map_config(),
             active_filters=self.get_active_filters(),
             archive_months=self.get_archive_months(),
+            clear_filters_url=self.get_clear_filters_url(),
             filter_year=data.get('archive_year'),
             filter_month=data.get('month'),
             **year_ctx,
@@ -2367,26 +2372,57 @@ class AreaCommunityMixin:
 
 class AreaNoticesMixin:
     """
-    A place page's Notices tab: the notices of intent scheduled in it, day by
-    day, on the map with the notices on, with the place's archive a link away.
+    A place page's Notices tab: the notice list (NoticeList) narrowed to the
+    place -- its filters, archive, map and rows -- under the place's header
+    and tabs, with the stat row always on what's scheduled now. The place's
+    own filter is added to the request before the list reads it, and isn't
+    offered as a chip to clear: the tab is the place.
     """
     template_name = 'pesticides/area-notices.html'
 
-    def get_context_data(self, **kwargs):
+    def dispatch(self, request, *args, **kwargs):
+        params = request.GET.copy()
+        for key, value in self.area.area_params().items():
+            params[key] = value
+        request.GET = params
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_active_filters(self):
+        region = self.area.region
+        own = {region.name, getattr(region, 'display_name', region.name)} if region is not None else set()
+        return [chip for chip in super().get_active_filters()
+            if chip['label'] not in own and not chip['label'].startswith('Within ')]
+
+    def get_clear_filters_url(self):
+        url = self.area_tab_url('notices')
+        if self.mode == 'past':
+            url += ('&' if '?' in url else '?') + 'past=1'
+        return url
+
+    def get_map_config(self):
         year, all_years, concern = self.scope
-        area = self.area
-        return super().get_context_data(
+        chemical = self.related.get('chemical')
+        product = self.related.get('product')
+        return section_map_config(
+            year, all_years=all_years, concern=concern,
+            chemical=chemical if chemical and chemical is not MISSING else None,
+            product=product if product and product is not MISSING else None,
+            **self.area.map_kwargs(),
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        year, all_years, concern = self.scope
+        context.update(
             section=None,
-            area=area,
+            area=self.area,
             tab_label='Notices',
-            **places.upcoming_context(area, concern),
-            map_config=section_map_config(year, all_years=all_years, concern=concern, **area.map_kwargs()),
-            archive_url=area.notices_url(concern) + '&past=1',
+            **places.upcoming_context(self.area, concern),
             spraydays_url=places.SPRAYDAYS_URL,
             **self.header_context(),
             **self.tab_scope_context(),
-            **kwargs,
         )
+        return context
 
 
 class AreaRecordsMixin:
@@ -2483,11 +2519,11 @@ class RegionPage(RegionAreaMixin, AreaOverviewMixin, vanilla.TemplateView):
     pass
 
 
-class NearMeNotices(NearMeAreaMixin, AreaNoticesMixin, vanilla.TemplateView):
+class NearMeNotices(NearMeAreaMixin, AreaNoticesMixin, NoticeList):
     tab = 'notices'
 
 
-class RegionNotices(RegionAreaMixin, AreaNoticesMixin, vanilla.TemplateView):
+class RegionNotices(RegionAreaMixin, AreaNoticesMixin, NoticeList):
     tab = 'notices'
 
 

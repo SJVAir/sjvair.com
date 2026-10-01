@@ -1,9 +1,9 @@
 {% extends 'regions/area-tab.html' %}
 {% load humanize pesticides_explorer %}
 {% comment %}
-A place page's Notices tab: what SprayDays has scheduled in the place right
-now -- how many, how much ground, which chemicals -- on the map with the
-notices on, then day by day, each day opening onto its filings.
+A place page's Notices tab: the notice list narrowed to the place -- what
+SprayDays has scheduled there now, or its archive -- with the filters beside
+the map.
 {% endcomment %}
 {% block body-class %}{{ block.super }} place area-notices{% endblock %}
 
@@ -33,18 +33,20 @@ notices on, then day by day, each day opening onto its filings.
 </div>
 {% endblock %}
 
+{% block tab-filters %}{% include 'pesticides/includes/notice-filters.html' %}{% endblock %}
+{% block tab-aside %}
+{% include 'pesticides/includes/notice-archive-months.html' %}
+{% include 'pesticides/includes/spraydays-signup.html' %}
+{% endblock %}
+
 {% block tab-map %}{% include 'pesticides/includes/section-map.html' %}{% endblock %}
 
 {% block tab-table %}
-<section class="area-notices-days">
-    <h2 class="title is-4">Day by day</h2>
-    {% if upcoming %}
-        {% include 'pesticides/includes/upcoming-notices.html' %}
-    {% else %}
-        <p class="has-text-grey">No notices of intent are scheduled here right now.</p>
-    {% endif %}
-    <p class="mt-3"><a href="{{ archive_url }}">Past notices here</a></p>
-</section>
+<p class="summary-sentence mb-3">
+    {{ count }} notice{{ count|pluralize }} {% if mode == 'active' %}currently scheduled{% else %}in the archive{% endif %} here.
+</p>
+{% include 'pesticides/includes/notice-rows.html' %}
+{% include 'pesticides/includes/pagination.html' %}
 {% endblock %}
 
 {% block tab-notes %}
@@ -56,6 +58,5 @@ notices on, then day by day, each day opening onto its filings.
         <li><strong>A notice gives the square-mile section, not the field.</strong></li>
     </ul>
 </details>
-<p><a href="{{ spraydays_url }}" target="_blank" rel="noopener">Sign up for SprayDays notices</a> to be alerted before applications happen near you.</p>
 {% if privacy_note %}<p class="is-size-7 has-text-grey mt-5">This page's location is only in its address; we don't store it.</p>{% endif %}
 {% endblock %}
