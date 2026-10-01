@@ -53,8 +53,8 @@ class RegionPageTests(TestCase):
             # line below it; the <title>/breadcrumb add the type since a
             # community layer's name alone is ambiguous (a city and an
             # urban area can share a name).
-            assert f'<h1 class="title is-3 mb-1">{name}</h1>' in content
-            assert f'<p class="heading">{kind}' in content
+            assert f'<h1 class="mb-1">{name}</h1>' in content
+            assert f'<p class="identifiers has-text-grey">\n        {kind} · Fresno County' in content
             assert f'<title>{name} ({kind}) | ' in content
             assert f'<a aria-current="page">{name} ({kind})</a>' in content
             assert 'TEST PLANT' in content
@@ -139,8 +139,8 @@ class AB617PageTests(TestCase):
         response = self.client.get(community.get_emissions_url(), {'year': '2024'})
         assert response.status_code == 200
         content = response.content.decode()
-        assert '<h1 class="title is-3 mb-1">Shafter</h1>' in content
-        assert '<p class="heading">AB 617 Community' in content
+        assert '<h1 class="mb-1">Shafter</h1>' in content
+        assert 'AB 617 Community · selected by CARB in 2018 · Fresno County' in content
         assert 'TEST PLANT' in content
         assert map_data(content, 'level') == 'tract'
         # Shafter the city (fixture) and Shafter the AB 617 community share a
@@ -156,13 +156,13 @@ class AB617PageTests(TestCase):
         content = self.client.get(community.get_emissions_url(), {'year': '2024'}).content.decode()
         assert 'selected by CARB in 2018' in content
         assert 'href="https://community.valleyair.org/shafter"' in content
-        assert 'Community page at the Valley Air District' in content
-        assert 'href="https://storymaps.arcgis.com/shafter"' in content
+        assert '>Community page</a>' in content
+        assert 'href="https://storymaps.arcgis.com/shafter"' in content and '>CARB story map</a>' in content
 
     def test_notice_omits_missing_year_and_empty_storymaps(self):
         community = self.make_community(cerp_selected_year='', community_url='https://community.valleyair.org/shafter', storymaps_url='')
         content = self.client.get(community.get_emissions_url(), {'year': '2024'}).content.decode()
-        assert 'An AB 617 community,' in content
+        assert 'AB 617 Community · Fresno County' in content
         assert 'selected by CARB in' not in content
         assert 'storymaps.arcgis.com' not in content
 

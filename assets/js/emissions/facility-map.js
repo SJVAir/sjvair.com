@@ -851,7 +851,8 @@
     var p = feature.properties;
     this.shell.placePopup('<div class="facility-popup">' +
       '<p class="facility-popup-name">' + escapeHtml(p.name) + '</p>' +
-      '<p>' + escapeHtml(p.type_label) + ' · ' + Number(p.feet).toLocaleString('en-US') + ' ft away</p>' +
+      // A facility page's sites say how far; an area's Schools tab's say what's near them.
+      '<p>' + escapeHtml(p.type_label) + ' · ' + (p.summary ? escapeHtml(p.summary) : Number(p.feet).toLocaleString('en-US') + ' ft away') + '</p>' +
       '</div>', lngLat);
   };
 

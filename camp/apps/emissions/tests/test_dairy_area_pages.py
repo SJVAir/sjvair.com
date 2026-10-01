@@ -125,8 +125,8 @@ class ContentTests(DairyAreaTestCase):
         summary = dairies.summary(2023, area=areas.RegionArea(self.fresno))
         assert f'<p class="heading">Dairies</p><p class="title">{summary["dairies"]}</p>' in content
         assert ' of 1,600 cattle</p>' in content
-        assert '<h1 class="title is-3 mb-1">Fresno County</h1>' in content
-        assert '<title>Dairies in Fresno County | ' in content
+        assert '<h1 class="mb-1">Fresno County</h1>' in content
+        assert '<title>Dairies · Fresno County | ' in content
 
     def test_county_page_has_the_carb_tile_and_chart_and_no_county_column(self):
         dairy_inventory(self.fresno, rog=2.0)
@@ -276,8 +276,8 @@ class ContentTests(DairyAreaTestCase):
         near = self.near({'lat': '36.737', 'lng': '-119.787', 'radius': '3', 'label': 'near Home', 'year': '2023'}).content.decode()
         crumbs = re.search(r'<nav class="breadcrumb"[^>]*>(.*?)</nav>', near, re.S).group(1)
         assert f'<a href="{reverse("emissions:near-me")}?lat=36.7370&amp;lng=-119.7870&amp;radius=3&amp;label=near+Home&amp;year=2023&amp;pollutant=rog">Within 3 miles of Home</a>' in crumbs
-        # Not "<title>Dairies in Within 3 miles of Home" -- the near-me phrase reads mid-sentence.
-        assert '<title>Dairies within 3 miles of Home | ' in near
+        # The shared area-tab title: the tab, then the area's name.
+        assert '<title>Dairies · Within 3 miles of Home | ' in near
 
     def test_county_dairy_page_has_the_epa_ammonia_tile(self):
         from camp.apps.emissions import nei

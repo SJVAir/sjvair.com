@@ -1,0 +1,24 @@
+{% load emissions_explorer %}
+{% comment %}
+A census tract's own page's Community card: its CalEnviroScreen row
+(camp.apps.ces.stats.tract_record, `tract_ces`). Any larger area's summary
+is the shared regions/includes/community-card.html.
+{% endcomment %}
+{% if tract_ces %}
+<section class="community-card" id="community">
+    <h2 class="title is-4">CalEnviroScreen <span class="has-text-grey is-size-6 has-text-weight-normal">{{ tract_ces.label }}</span></h2>
+    <ul>
+        <li>Overall: {% if tract_ces.ci_score_p is not None %}<strong>{{ tract_ces.ci_score_p|percentile }} percentile</strong> of California's census tracts{% else %}<strong>no score</strong> (OEHHA doesn't score tracts with too few people or missing data){% endif %}</li>
+        {% if tract_ces.pollution_p is not None %}<li>Pollution burden: <strong>{{ tract_ces.pollution_p|percentile }} percentile</strong></li>{% endif %}
+        {% if tract_ces.popchar_p is not None %}<li>Population characteristics: <strong>{{ tract_ces.popchar_p|percentile }} percentile</strong></li>{% endif %}
+        <li>{% if tract_ces.dac %}SB 535 disadvantaged community{% if tract_ces.dac_category %} ({{ tract_ces.dac_category }}){% endif %}{% else %}Not on the SB 535 disadvantaged-community list{% endif %}</li>
+    </ul>
+    <details class="data-notes">
+        <summary>What this is, and isn't</summary>
+        <ul>
+            <li><a href="https://oehha.ca.gov/calenviroscreen">OEHHA's CalEnviroScreen</a> scores and ranks every California census tract.</li>
+            <li>The SB 535 list shown is CalEPA's 2026 draft until it is final. <a href="{% url 'emissions:about' %}#calenviroscreen">More on CalEnviroScreen</a></li>
+        </ul>
+    </details>
+</section>
+{% endif %}

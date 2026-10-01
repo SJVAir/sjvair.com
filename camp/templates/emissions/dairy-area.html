@@ -1,9 +1,9 @@
-{% extends 'emissions/area-tab.html' %}
+{% extends 'regions/area-tab.html' %}
 {# emissions_explorer last: its percent and signed_pct (whole percents) win over the pesticides ones of the same name. #}
 {% load humanize pesticides_explorer emissions_explorer %}
 {% comment %}
 An area's Dairies tab (dairy_views.DairyAreaPage), a region's or a near-me
-point's, in the shared tab skeleton (area-tab.html): the Dairies tab's
+point's, in the shared tab skeleton (regions/area-tab.html): the Dairies tab's
 tiles, map, table and charts scoped to the area, and "In and around" linking
 other areas' dairy pages. County pages add CARB's county estimate (a tile
 and a chart) and hide the table's County column.
@@ -65,4 +65,7 @@ and a chart) and hide the table's County column.
 
 {% block tab-notes %}{% include 'emissions/includes/dairy-notes.html' %}{% endblock %}
 
-{% block tab-after %}{% include 'regions/includes/within.html' with within_name=name %}{% endblock %}
+{% block tab-after %}
+{% include 'regions/includes/within.html' with within_name=name %}
+{% if privacy_note %}<p class="is-size-7 has-text-grey mt-5">This page's location is only in its address; we don't store it.</p>{% endif %}
+{% endblock %}

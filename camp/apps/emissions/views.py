@@ -19,7 +19,7 @@ from camp.apps.emissions import areas, compliance, dairies, ghg, methane, nei, s
 from camp.apps.emissions.models import AirComplianceFacility, Facility, SourceImport, Well
 from camp.apps.emissions.pollutants import CRITERIA, PRECURSORS
 from camp.apps.regions import nearby
-from camp.apps.regions.models import Region
+from camp.apps.regions.models import Location, Region
 from camp.utils import mapconfig
 
 # The "In and around <place>" lists (camp.apps.regions.nearby), linked with
@@ -238,6 +238,24 @@ def wells_csv(wells_qs, filename):
         writer.writerow([well.api, well.lease_name, well.well_number, well.status, well.well_type_label, well.operator_name,
                          well.field_name, well.county.name, well.spud_date or '', well.in_hpz,
                          f'{well.point.y:.5f}', f'{well.point.x:.5f}', well.calgem_url])
+    return response
+
+
+def sites_csv(rows, scope, filename):
+    """The Schools tab's sites (schools.area_sites rows) as CSV, the pollutant's column named for the scope."""
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    writer = csv.writer(response)
+    unit = 'share' if scope.pollutant.unit == 'share' else f'{scope.pollutant.unit}_per_year'
+    writer.writerow([
+        'name', 'type', 'latitude', 'longitude', 'facilities_within_1000ft', 'facilities_within_quarter_mile',
+        f'{scope.pollutant.key}_{unit}_within_quarter_mile_{scope.year}', 'wells_within_3200ft', 'dairies_within_1_mile',
+    ])
+    for row in rows:
+        writer.writerow([
+            row['name'], row['type_label'], f"{row['lat']:.5f}", f"{row['lng']:.5f}", row['notice'], row['quarter'],
+            '' if row['value'] is None else row['value'], row['wells'], row['dairies'],
+        ])
     return response
 
 
@@ -605,7 +623,8 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         # The facility page's schools and child care within 1/4 mile (a
         # FeatureCollection, JSON in the attribute) and the ring to draw.
         'nearby': json.dumps(nearby) if nearby else '',
-        'ring_miles': schools.QUARTER_MILE_FT / schools.FEET_PER_MILE if nearby else '',
+        # The ring is the facility page's 1/4 mile; an area's Schools tab has none.
+        'ring_miles': schools.QUARTER_MILE_FT / schools.FEET_PER_MILE if nearby and highlight is not None else '',
         # The Areas view (the map page, region pages): off where it's None.
         'areas': '1' if areas_view else '',
         'areas_url': reverse('api:v2:emissions:areas') if areas_view else '',
@@ -752,6 +771,49 @@ def ab617_notice(region):
     }
 
 
+def area_header(context):
+    """
+    What the shared area-page templates (regions/area-tab.html and
+    regions/includes/area-header.html) take beyond the page's own context,
+    from an area page's or its dairy page's context: the grey line under the
+    name (its kind, an AB 617 community's selection year, the county a
+    smaller area sits in, its population), an AB 617 community's links, the
+    breadcrumb before the tab and the explorer's base template.
+    """
+    region = getattr(context['area'], 'region', None)
+    county = context.get('county_region')
+    ab617 = context.get('ab617')
+    population = context.get('population')
+    in_county = county is not None and county != region
+    kind = [context['kind']]
+    if ab617 and ab617['year']:
+        kind.append(f"selected by CARB in {ab617['year']}")
+    if in_county:
+        kind.append(county.name)
+    if population:
+        kind.append(f'{round(float(population)):,} people')
+    links = []
+    if ab617 and ab617['community_url']:
+        links.append({'label': 'Community page', 'url': ab617['community_url']})
+    if ab617 and ab617['storymaps_url']:
+        links.append({'label': 'CARB story map', 'url': ab617['storymaps_url']})
+    crumbs = [{'label': county.name, 'url': county.get_emissions_url() + context.get('scope_qs', '')}] if in_county else []
+    crumbs.append({'label': context['title'], 'url': context['overview_url']})
+    return {'kind': ' · '.join(kind), 'header_links': links, 'area_crumbs': crumbs, 'explorer_base': 'emissions/base.html'}
+
+
+def with_tract_urls(community):
+    """A CalEnviroScreen summary (ces.stats.tract_summary) with each tract row linking its page here, for regions/includes/community-card.html."""
+    if not community:
+        return community
+    def linked(row):
+        return dict(row, url=row['region'].get_emissions_url()) if row else row
+    return dict(
+        community, highest=linked(community.get('highest')), lowest=linked(community.get('lowest')),
+        containing=linked(community.get('containing')), top=[linked(row) for row in community.get('top') or []],
+    )
+
+
 def area_links(regions):
     """The facility page's "Area" line: each region it counts in, labelled, linking to its page."""
     labels = {Region.Type.ZIPCODE: 'ZIP {}'}
@@ -805,6 +867,7 @@ AREA_TABS = (
     ('facilities', 'Facilities', 'fa-industry-windows', 'is-facilities'),
     ('dairies', 'Dairies', 'fa-cow', 'is-dairies'),
     ('oil-gas', 'Oil & gas', 'fa-oil-well', 'is-wells'),
+    ('schools', 'Schools', 'fa-school', 'is-schools'),
     ('community', 'Community', 'fa-city', 'is-chemicals'),
 )
 
@@ -820,6 +883,7 @@ def area_tabs(view, area, current):
         'facilities': True,
         'dairies': bool(dairies.years()) and bool(dairies.trend(area=area)),
         'oil-gas': wells.area_summary(area) is not None,
+        'schools': Location.objects.filter(wells.location_q(area)).exists(),
         'community': view.has_community(),
     }
     return [
@@ -849,6 +913,10 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
             return self.facilities_csv()
         if self.tab == 'oil-gas' and request.GET.get('format') == 'csv':
             return wells_csv(wells.table(self.get_area(), **wells.table_filters(request.GET)), f'wells-{self.csv_slug()}.csv')
+        if self.tab == 'schools' and request.GET.get('format') == 'csv':
+            scope = self.area_scope()
+            rows = schools.area_sites(self.get_area(), scope, **schools.site_filters(request.GET))
+            return sites_csv(rows, scope, f'schools-{self.csv_slug()}-{scope.year}.csv')
         return super().get(request, *args, **kwargs)
 
     def area_scope(self):
@@ -943,6 +1011,21 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
                 methane_list_rows=METHANE_LIST_ROWS,
             )
             top_rows = []
+        elif tab == 'schools':
+            # Every school and child-care center in the area with what's near it:
+            # the table (filtered, sorted, paged, CSV), the stat row (unfiltered)
+            # and the sites on the map.
+            site_filters = schools.site_filters(self.request.GET)
+            all_sites = schools.area_sites(area, scope)
+            sites = schools.area_sites(area, scope, **site_filters)
+            site_page = Paginator(sites, PAGE_SIZE).get_page(self.request.GET.get('page'))
+            kwargs.update(
+                page_obj=site_page, is_paginated=site_page.has_other_pages(), site_rows=site_page.object_list,
+                sort=site_filters['sort'], filters=site_filters, site_summary=schools.site_summary(all_sites),
+                site_count=len(sites), site_types=[('school', 'Schools'), ('child-care', 'Child care')],
+            )
+            self.site_geojson = schools.sites_geojson(all_sites)
+            top_rows = []
         elif tab == 'overview':
             top_rows = stats.with_ranks(stats.facility_table(scope)[:5], stats.ranks(scope))
         else:
@@ -965,7 +1048,7 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
         # The AB 617 top-of-page notice (RegionPage sets it on an AB 617
         # community's own page); a near-me page has none.
         kwargs.setdefault('ab617', None)
-        return super().get_context_data(
+        context = super().get_context_data(
             area=area,
             county_region=county,
             totals=totals,
@@ -994,7 +1077,7 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
             ],
             by_year=stats.by_year(scope) if tab in ('overview', 'facilities') else [],
             sector_stack=stats.sector_stack(scope) if tab == 'overview' else None,
-            map_config=self.get_map_config(base) if tab in ('overview', 'facilities', 'oil-gas') else None,
+            map_config=self.get_map_config(base) if tab in ('overview', 'facilities', 'oil-gas', 'schools') else None,
             compliance_line=compliance_line,
             toxics_breakdown=stats.toxics_breakdown(scope) if scope.toxics and tab == 'overview' else None,
             share_unit=scope.pollutant.unit == 'share',
@@ -1004,7 +1087,13 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
             scope_qs=base.query(county=None),
             scope_params=base.params(county=None),
             **kwargs,
+            # The shared area-tab skeleton's filters column: the data tabs' lists.
+            tab_has_filters=tab in ('facilities', 'oil-gas', 'schools'),
+            community_about_url=reverse('emissions:about') + '#calenviroscreen',
         )
+        context.update(area_header(context))
+        context['community'] = with_tract_urls(context['community'])
+        return context
 
 
 def get_page_region(sqid):
@@ -1088,6 +1177,7 @@ class RegionPage(RegionLookupMixin, AreaPage):
             wells=wells_overlay(self.request.GET, default=self.tab == 'oil-gas'),
             main_layer=self.tab != 'oil-gas',
             methane=methane_overlay(self.request.GET, default=self.tab == 'oil-gas'),
+            nearby=getattr(self, 'site_geojson', None),
         )
 
     def get_context_data(self, **kwargs):
@@ -1185,7 +1275,7 @@ class NearLookupMixin:
     # AREA_TABS key -> URL name.
     TAB_URLS = {
         'overview': 'emissions:near-me', 'facilities': 'emissions:near-me-facilities', 'dairies': 'emissions:near-me-dairies',
-        'oil-gas': 'emissions:near-me-oil-gas', 'community': 'emissions:near-me-community',
+        'oil-gas': 'emissions:near-me-oil-gas', 'schools': 'emissions:near-me-schools', 'community': 'emissions:near-me-community',
     }
 
     def area_tab_url(self, key, query):
@@ -1260,6 +1350,7 @@ class NearMe(NearLookupMixin, AreaPage):
             wells=wells_overlay(self.request.GET, default=self.tab == 'oil-gas'),
             main_layer=self.tab != 'oil-gas',
             methane=methane_overlay(self.request.GET, default=self.tab == 'oil-gas'),
+            nearby=getattr(self, 'site_geojson', None),
         )
 
     def get_context_data(self, **kwargs):
@@ -1293,6 +1384,11 @@ class RegionOilGas(RegionPage):
     template_name = 'emissions/area-oil-gas.html'
 
 
+class RegionSchools(RegionPage):
+    tab = 'schools'
+    template_name = 'emissions/area-schools.html'
+
+
 class RegionCommunity(RegionPage):
     tab = 'community'
 
@@ -1305,6 +1401,11 @@ class NearMeFacilities(NearMe):
 class NearMeOilGas(NearMe):
     tab = 'oil-gas'
     template_name = 'emissions/area-oil-gas.html'
+
+
+class NearMeSchools(NearMe):
+    tab = 'schools'
+    template_name = 'emissions/area-schools.html'
 
 
 class NearMeCommunity(NearMe):

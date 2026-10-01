@@ -2,10 +2,10 @@
 {% load humanize emissions_explorer %}
 
 {% block title %}{{ title }} | {{ block.super }}{% endblock %}
-{% block breadcrumb-list %}{% if county_region and county_region != area.region %}<li><a href="{{ county_region.get_emissions_url }}{{ scope_qs }}">{{ county_region.name }}</a></li>{% endif %}<li class="is-active"><a aria-current="page">{{ title }}</a></li>{% endblock %}
+{% block breadcrumb-list %}{% for crumb in area_crumbs|slice:":-1" %}<li><a href="{{ crumb.url }}">{{ crumb.label }}</a></li>{% endfor %}<li class="is-active"><a aria-current="page">{{ title }}</a></li>{% endblock %}
 
 {% block explorer-content %}
-{% include 'emissions/includes/area-header.html' %}
+{% include 'regions/includes/area-header.html' %}
 
 {% if tab == 'overview' %}
 <div class="level stat-row box" id="facilities">
@@ -38,7 +38,7 @@
 </div>
 
 {% elif tab == 'community' %}
-{% include 'emissions/includes/community-card.html' %}
+{% if tract_ces %}{% include 'emissions/includes/tract-ces-card.html' %}{% else %}{% include 'regions/includes/community-card.html' %}{% endif %}
 {% include 'regions/includes/within.html' with within_name=name %}
 {% endif %}
 

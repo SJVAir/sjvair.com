@@ -11,6 +11,7 @@ urlpatterns = [
     # An area page's tabs (views.AREA_TABS): Overview is the page itself, Dairies its dairy page.
     path('near/facilities/', views.NearMeFacilities.as_view(), name='near-me-facilities'),
     path('near/oil-gas/', views.NearMeOilGas.as_view(), name='near-me-oil-gas'),
+    path('near/schools/', views.NearMeSchools.as_view(), name='near-me-schools'),
     path('near/community/', views.NearMeCommunity.as_view(), name='near-me-community'),
     path('region/<str:sqid>/', views.RegionRedirect.as_view(), name='region-redirect'),
     # Before the slugged region page: `region/<sqid>/dairies/` isn't a slug.
@@ -19,6 +20,7 @@ urlpatterns = [
     path('region/<str:sqid>/<slug:slug>/dairies/', dairy_views.RegionDairies.as_view(), name='region-dairies'),
     path('region/<str:sqid>/<slug:slug>/facilities/', views.RegionFacilities.as_view(), name='region-facilities'),
     path('region/<str:sqid>/<slug:slug>/oil-gas/', views.RegionOilGas.as_view(), name='region-oil-gas'),
+    path('region/<str:sqid>/<slug:slug>/schools/', views.RegionSchools.as_view(), name='region-schools'),
     path('region/<str:sqid>/<slug:slug>/community/', views.RegionCommunity.as_view(), name='region-community'),
     path('facilities/', views.FacilityList.as_view(), name='facility-list'),
     path('facilities/<str:sqid>/', views.FacilityRedirect.as_view(), name='facility-redirect'),

@@ -1,9 +1,9 @@
-{% extends 'emissions/area-tab.html' %}
+{% extends 'regions/area-tab.html' %}
 {# emissions_explorer last: its percent and signed_pct (whole percents) win over the pesticides ones of the same name. #}
 {% load humanize pesticides_explorer emissions_explorer %}
 {% comment %}
 An area's Facilities tab (views.RegionFacilities / NearMeFacilities) in the
-shared tab skeleton (area-tab.html): how many facilities and how many are
+shared tab skeleton (regions/area-tab.html): how many facilities and how many are
 tracked by EPA, the facility map, the facility list's filters and sortable
 table with its CSV (the area fixed by the page), the trend and the sectors,
 and on a county the largest greenhouse-gas reporters.
@@ -79,3 +79,5 @@ and on a county the largest greenhouse-gas reporters.
 {% block tab-notes %}
 <p class="is-size-7 has-text-grey mt-4">Source: California Air Resources Board facility emissions inventory (CEIDARS); EPA compliance from ICIS-Air. <a href="{% url 'emissions:about' %}">About this data</a>.</p>
 {% endblock %}
+
+{% block tab-after %}{% if privacy_note %}<p class="is-size-7 has-text-grey mt-5">This page's location is only in its address; we don't store it.</p>{% endif %}{% endblock %}

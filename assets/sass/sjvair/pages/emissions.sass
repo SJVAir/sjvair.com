@@ -29,6 +29,9 @@ body.emissions
   // Duotone colours for the emissions explorer's own icons (the tabs and the
   // map toolbar), alongside the shared palette in pesticides.sass.
   .explorer-icon
+    &.is-schools
+      --fa-primary-color: #2f9e44
+      --fa-secondary-color: #b2f2bb
     &.is-facilities
       --fa-primary-color: #d35400
       --fa-secondary-color: #ffc078
@@ -279,37 +282,6 @@ body.emissions
   // trend at 32rem, sized for a narrow column of its own).
   .overview-columns .trend-chart
     max-width: none
-  // The shared data-tab layout (area-tab.html): each part keeps its gap
-  // from the next. A .box or .notification loses its bottom margin as the
-  // last child of its block, which left the map flush against the stats.
-  .tab-stats > :last-child
-    margin-bottom: 1.5rem !important
-  // An area page's tabs (area-header.html): under the header, before the
-  // tab's content, scrolling sideways on a phone rather than wrapping.
-  .area-header
-    margin-bottom: 1rem !important
-  .area-tabs
-    margin-bottom: 1.5rem
-    a
-      font-weight: 600
-  // "What this is, and isn't": one folded panel at the foot of a section,
-  // the same on every section that has caveats.
-  .data-notes
-    margin: 0.75rem 0 1.5rem
-    font-size: $size-7
-    color: $grey-dark
-    summary
-      cursor: pointer
-      color: $grey
-      font-weight: 600
-      width: fit-content
-      &:hover
-        color: $link
-    ul
-      list-style: disc
-      margin: 0.5rem 0 0 1.25rem
-    li + li
-      margin-top: 0.25rem
   .toxics-lead
     font-size: $size-7
     color: $grey-dark

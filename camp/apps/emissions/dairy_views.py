@@ -379,7 +379,7 @@ class DairyAreaPage(DairyScopeMixin, vanilla.TemplateView):
         # A region page overrides this with its own "In and around" lists;
         # a near-me page (a point, not a region) has none.
         kwargs.setdefault('within', None)
-        return super().get_context_data(
+        context = super().get_context_data(
             area=area,
             summary=summary,
             has_dairies=bool(summary['dairies']),
@@ -404,8 +404,11 @@ class DairyAreaPage(DairyScopeMixin, vanilla.TemplateView):
             overview_url=self.area_tab_url('overview', self.tab_query('overview')),
             # The page is the area: no county picker.
             county_options=[],
+            tab_has_filters=True,
             **kwargs,
         )
+        context.update(views.area_header(context))
+        return context
 
 
 class RegionDairiesRedirect(views.RegionRedirect):

@@ -1,9 +1,9 @@
-{% extends 'emissions/area-tab.html' %}
+{% extends 'regions/area-tab.html' %}
 {# emissions_explorer last: its percent and signed_pct (whole percents) win over the pesticides ones of the same name. #}
 {% load humanize pesticides_explorer emissions_explorer %}
 {% comment %}
 An area's Oil & gas tab (views.RegionOilGas / NearMeOilGas) in the shared
-tab skeleton (area-tab.html): CalGEM's wells here by status and how many are
+tab skeleton (regions/area-tab.html): CalGEM's wells here by status and how many are
 in a verified health protection zone, with the snapshot caveat (and Kern's
 callout); the map with the wells on; the wells themselves, filtered, sorted,
 paged and downloadable; the wells drilled by year; the operators and oil
@@ -176,3 +176,5 @@ history of wells in service.
     </ul>
 </details>
 {% endblock %}
+
+{% block tab-after %}{% if privacy_note %}<p class="is-size-7 has-text-grey mt-5">This page's location is only in its address; we don't store it.</p>{% endif %}{% endblock %}
