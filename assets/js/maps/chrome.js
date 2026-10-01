@@ -350,7 +350,11 @@
         } else if (rightFits) {
           dx += right;
         } else {
-          dy += up;
+          // No room either way (a tall popup on a phone, between the wrapped
+          // toolbar and the folded legend): up only as far as keeps its top
+          // -- the title and close button -- clear of the toolbar; the
+          // legend is the one that gets covered.
+          dy += Math.min(up, moved.top - inner.top);
         }
       }
     }

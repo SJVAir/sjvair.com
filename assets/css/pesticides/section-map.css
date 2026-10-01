@@ -162,6 +162,27 @@
   color: #7a7a7a;
 }
 
+/* A section's scheduled notices, edged in the notices orange so the block
+   reads as the same thing as the markers. */
+.section-popup .section-popup-notices {
+  margin: 0.5rem 0 0.6rem;
+  padding: 0.1rem 0 0.1rem 0.6rem;
+  border-left: 3px solid #d35400;
+  font-size: 0.85rem;
+}
+
+.section-popup .section-popup-notice {
+  padding: 0.2rem 0;
+}
+
+.section-popup .section-popup-notice p {
+  margin: 0;
+}
+
+.section-popup .section-popup-notice-chems {
+  color: #4a4a4a;
+}
+
 /* Footer actions: small pill buttons, a link and a button styled alike. */
 .section-popup .section-popup-actions {
   display: flex;

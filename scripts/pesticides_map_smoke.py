@@ -27,7 +27,7 @@ Usage:
 
 Every check on a page runs even after one fails, except that a map which
 never loads skips the checks that need it. Checks that need a particular
-state (the township grid for the township popup, `?sections=1` for "all
+state (the township grid for the township tap, `?sections=1` for "all
 sections", a lens for the lens popup, active notices or schools in view for
 their popups) report themselves skipped on pages without it. The markers checks
 leave the toggles as they found them. The lens check moves the map to zoom 9 (township level), so
@@ -154,6 +154,7 @@ return best;
 
 
 POPUP = '.maplibregl-popup.section-popup-wrap .section-popup'
+POPUP_CLEAR_EDGE = 10  # maps/chrome.js
 LOCATIONS_ZOOM_NOTE = 'Zoom in to see schools and child care.'
 LEGEND_ROWS = ".section-map-legend li:not(.is-marker)"
 
@@ -789,11 +790,11 @@ def url_param(page, name):
 def check_notices(page):
     """The notice markers: on (the page default or `?notices=`) they load
     from the notices endpoint into the `notices` source and render, the
-    legend lists them, and a click opens the notice popup (the section
-    popup idiom: the subline, the products and chemicals lists, the
-    SprayDays pill). The Options toggle clears the markers and the legend
-    row and writes `?notices=` against the page default; back on reloads
-    them. Ends with the toggle as it found it."""
+    legend lists them, and a marker's click opens its section's popup (the
+    one the square opens) with the section's notices listed up top and the
+    SprayDays pill. The Options toggle clears the markers, the legend row and
+    the open popup's notices and writes `?notices=` against the page
+    default; back on reloads them. Ends with the toggle as it found it."""
     state = page.instance_js("return { on: inst.showNotices, dflt: inst.data.showNotices !== '0', url: !!inst.data.noticesUrl };")
     if not state['url']:
         return None, 'no notices endpoint (skipped)'
@@ -810,79 +811,71 @@ def check_notices(page):
         return inst.sourceData.notices.features.filter(function (f) { return b.contains(f.geometry.coordinates); }).length;
     """)
     rows = page.marker_legend()
-    if 'Notice of intent' not in rows:
+    if not any(row.startswith('Notice of intent') for row in rows):
         problems.append('legend rows %s lack the notices row' % rows)
     if not state['dflt'] and url_param(page, 'notices') != '1':
         problems.append('URL lacks notices=1 with the layer on against the default: %s' % page.driver.current_url)
     popup_detail = 'no active notices in view'
+    opened_section = None
     if in_view:
         rendered = page.wait_for("var inst = (function () { %s })(); return !!inst && inst.map.queryRenderedFeatures({ layers: ['notices-circle'] }).length > 0;" % JS_INSTANCE, 10)
         if not rendered:
             problems.append('%d notices in view, none rendered' % in_view)
-        # A marker for one notice first (a section's several share a
-        # grouped marker and popup, checked below).
-        target = page.pick_point('notices', 'notices-circle', group=False)
+        # A marker opens its section's popup -- the one the square itself
+        # opens -- with the notices block up top and the SprayDays pill.
+        # Zoomed out the map first zooms in to the section grid.
+        target = page.pick_point('notices', 'notices-circle')
+        township = None
+        if target and target['id'].startswith('township:'):
+            # At the township level a bubble stands for a township's notices:
+            # with several sections it zooms in to them, where the section
+            # markers are picked from; with one it opens that section.
+            township = page.instance_js("var t = inst.noticeTownshipById[arguments[0]]; return t ? { sections: t.sections.length, count: t.feature.properties.count, only: t.sections[0].id } : null;", target['id'])
+            if township and township['sections'] > 1:
+                page.click_map(target['dx'], target['dy'], settle=0.8, instant=True)
+                ok, _ = page.wait_grid('section', 40)
+                if not ok or page.js("return !!document.querySelector('.maplibregl-popup')"):
+                    problems.append('township bubble %s (%s sections) did not zoom in to its sections without a popup' % (target['id'], township['sections']))
+                target = page.pick_point('notices', 'notices-circle')
+            elif township:
+                target = dict(target, id=township['only'])
         if not target:
-            popup_detail = 'no single-notice marker on bare canvas (single popup check skipped)'
-            if not page.pick_point('notices', 'notices-circle', group=True):
-                problems.append('no notice on bare canvas to click')
+            popup_detail = 'no notice marker on bare canvas (popup check skipped)'
         else:
+            count = page.instance_js("var f = inst.noticeById[arguments[0]]; return f ? f.properties.count : 0;", target['id'])
             page.click_map(target['dx'], target['dy'], settle=0.8, instant=True)
+            opened = page.wait_for("var inst = (function () { %s })(); return !!inst && inst.popupId === arguments[0] && !!document.querySelector(arguments[1] + ' .section-popup-notices');" % JS_INSTANCE, 30, target['id'], POPUP)
             result = page.instance_js("""
                 var el = document.querySelector(arguments[0]);
-                return { text: el ? el.innerText : '', notice: !!(el && el.classList.contains('notice-popup')),
-                         key: inst.popupKey, id: inst.openNoticeId,
+                return { key: inst.popupKey, id: inst.popupId, level: inst.level,
+                         rows: el ? el.querySelectorAll('.section-popup-notice').length : 0,
+                         noticeLinks: el ? el.querySelectorAll('.section-popup-notice a[href*="/notices/"]').length : 0,
                          spraydays: !!(el && el.querySelector('a[href^="https://spraydays.cdpr.ca.gov/"][target="_blank"]')),
-                         full: !!(el && el.querySelector('.section-popup-action[href*="/notices/"]')),
-                         lists: el ? el.querySelectorAll('.section-popup-chems, .section-popup-note').length : 0 };
+                         chemicals: !!(el && el.querySelector('.section-popup-label')) };
             """, POPUP)
-            if not result['notice'] or 'Notice of intent' not in result['text'] or 'Active' not in result['text']:
-                problems.append('notice popup text %r' % result['text'][:120])
-            if result['key'] != 'openNoticeId' or result['id'] != target['id']:
-                problems.append('popup state %s/%s for notice %s' % (result['key'], result['id'], target['id']))
-            if not result['spraydays'] or not result['full']:
-                problems.append('popup pills: spraydays=%s full=%s' % (result['spraydays'], result['full']))
-            if result['lists'] < 2:
-                problems.append('popup lists products and chemicals: %d block(s)' % result['lists'])
-            popup_detail = 'popup for notice %s (%s)' % (target['id'], result['text'].split('\n')[0][:40])
-    if in_view:
-        grouped = page.pick_point('notices', 'notices-circle', group=True)
-        if not grouped:
-            popup_detail += '; no multi-notice section in view (group check skipped)'
-        else:
-            page.click_map(grouped['dx'], grouped['dy'], settle=1.2, instant=True)
-            group = page.instance_js("""
-                var el = document.querySelector(arguments[0]);
-                var f = inst.noticeById[inst.openNoticeId];
-                var list = el && el.querySelector('.notice-group-list');
-                return { count: f ? f.properties.count : 0, id: inst.openNoticeId,
-                         entries: el ? el.querySelectorAll('.notice-group-entry').length : 0,
-                         links: el ? el.querySelectorAll('.notice-group-entry a[href*="/notices/"]').length : 0,
-                         header: el && el.querySelector('h4') ? el.querySelector('h4').innerText : '',
-                         scrolls: !!list && getComputedStyle(list).overflowY === 'auto',
-                         outlined: (inst.sourceData.selected && inst.sourceData.selected.geometry) ? true : false,
-                         selected: inst.selectedSectionId };
-            """, POPUP)
-            if group['id'] != grouped['id'] or group['entries'] != group['count'] or group['links'] != group['count']:
-                problems.append('group popup for %s: %s entries, %s notice links, wanted %s' % (grouped['id'], group['entries'], group['links'], group['count']))
-            if ('%d notices of intent' % group['count']) not in group['header']:
-                problems.append('group popup header %r' % group['header'])
-            if not group['scrolls']:
-                problems.append('group popup list does not scroll')
+            wanted = min(count, 3)
+            if not opened or result['key'] not in ('openGridId', 'openLensId', 'openAllSectionsId'):
+                problems.append('marker %s opened %s/%s, not its section popup' % (target['id'], result['key'], result['id']))
+            elif result['rows'] != wanted or result['noticeLinks'] != wanted:
+                problems.append('section popup lists %s notice rows (%s links), wanted %s' % (result['rows'], result['noticeLinks'], wanted))
+            if not result['spraydays']:
+                problems.append('section popup with notices lacks the SprayDays pill')
             outlined = page.wait_for("var inst = (function () { %s })(); return !!(inst.sourceData.selected && inst.sourceData.selected.geometry);" % JS_INSTANCE, 10)
             if not outlined:
-                problems.append('group popup left the section unoutlined')
-            page.instance_js("inst.popup && inst.popup.remove(); return true;")
-            cleared = page.wait_for("var inst = (function () { %s })(); return !(inst.sourceData.selected && inst.sourceData.selected.geometry);" % JS_INSTANCE, 5)
-            if not cleared:
-                problems.append('section outline lingered after the group popup closed')
-            popup_detail += '; group popup lists %s of %s, outlined and cleared' % (group['entries'], group['count'])
-    # Off: markers, legend row and popup go; the URL says so against the default.
+                problems.append('the section popup left its section unoutlined')
+            opened_section = target['id']
+            popup_detail = '%smarker %s opened its section popup (%s level) listing %s of %s notices' % (
+                'township bubble (%s sections) then ' % township['sections'] if township else '', target['id'], result['level'], result['rows'], count)
+    # Off: markers, legend row and the popup's notices go; the URL says so
+    # against the default.
     page.set_control('input[name="notices"]', False)
+    if opened_section and page.js("return !!document.querySelector(arguments[0] + ' .section-popup-notices')", POPUP):
+        problems.append('the open section popup kept its notices after toggle off')
+    page.instance_js("inst.popup && inst.popup.remove(); return true;")
     after = page.instance_js("return { count: (inst.sourceData.notices || {features: []}).features.length, popup: !!inst.popup && inst.popupKey === 'openNoticeId', bounds: inst.loadedNoticeBounds };")
     if after['count'] or after['bounds'] or after['popup']:
         problems.append('toggle off left %d markers, bounds %s, popup %s' % (after['count'], after['bounds'] is not None, after['popup']))
-    if 'Notice of intent' in page.marker_legend():
+    if any(row.startswith('Notice of intent') for row in page.marker_legend()):
         problems.append('legend kept the notices row after toggle off')
     expected_off = '0' if state['dflt'] else None
     if url_param(page, 'notices') != expected_off:
@@ -943,14 +936,19 @@ def check_locations(page):
         if not loaded:
             return False, 'locations never loaded (%d request(s))' % page.marker_requests('locations')
         count = page.source_count('locations')
+        # The source loads a margin around the view: count what's on screen.
+        in_view = page.instance_js("""
+            var b = inst.map.getBounds();
+            return inst.sourceData.locations.features.filter(function (f) { return b.contains(f.geometry.coordinates); }).length;
+        """)
         if page.js("return document.querySelector('.section-map-locations-note').textContent"):
             problems.append('zoom note shown at zoom %.2f' % state['zoom'])
-        if not count:
-            skipped = 'no locations in view at zoom %.2f' % state['zoom']
+        if not in_view:
+            skipped = 'no locations in view at zoom %.2f (%d loaded around it)' % (state['zoom'], count)
         else:
             rendered = page.wait_for("var inst = (function () { %s })(); return !!inst && inst.map.queryRenderedFeatures({ layers: ['locations-circle'] }).length > 0;" % JS_INSTANCE, 10)
             if not rendered:
-                problems.append('%d locations in the source, none rendered' % count)
+                problems.append('%d locations in view, none rendered' % in_view)
             target = page.pick_point('locations', 'locations-circle')
             if not target:
                 problems.append('no location on bare canvas to click')
@@ -1128,7 +1126,7 @@ def check_lens(page):
 
 def check_lens_popup(page):
     """Clicking a lens section opens the section popup (with the "Zoom in"
-    button, since the township popup is unreachable under the lens),
+    button: the lens is still the township view),
     selects and outlines it, and pins the lens: the pointer moving to
     another township leaves the lens and its popup in place. Escape closes
     the popup, which releases the lens: the next township hovered gets its
@@ -1326,46 +1324,44 @@ def check_style_swap(page):
     return (not problems), ('style %s, %d features kept' % (result['style'], result['features']) if not problems else '; '.join(problems))
 
 
-def check_township_popup(page):
-    """At the township zoom a click opens the township popup (name, section
-    count, the metric headline that follows the metric toggle); its "Zoom in
-    to sections" button reaches the section grid at the clicked spot."""
+def check_township_tap(page):
+    """At the township zoom a click on a township (a touch screen's tap: a
+    mouse has already raised the lens by hovering) raises that township's
+    lens and opens no popup of its own; townships have none. Ends at the
+    section grid, where the checks after it expect to start."""
     if page.instance_js("return inst.level") != 'township':
         return None, 'section level (skipped)'
     target = page.pick('inst.sourceData.grid.features')
     if not target:
         return False, 'no township with data on bare canvas to click'
-    # The township popup is reachable where the lens hasn't drawn (its
-    # sections take the click otherwise): with the cache emptied an
-    # uncached township waits out the 50 ms rest and a request, and an
-    # instant move-and-click lands before either (a sweep in would let the
-    # rest elapse over the township on the way).
+    # With the lens cleared and its cache emptied, an instant move-and-click
+    # lands on the township itself before hovering could raise the lens.
     page.instance_js("inst.lensCache = {}; inst.clearLens();")
     page.click_map(target['dx'], target['dy'], settle=1.0, instant=True)
-    text = page.popup_text() or ''
     problems = []
-    if page.instance_js('return inst.openGridId') != target['id']:
-        problems.append('openGridId is %s, clicked %s' % (page.instance_js('return inst.openGridId'), target['id']))
-    if 'Township' not in text or 'lbs' not in text or 'Zoom in to sections' not in text:
-        problems.append('popup text %r' % text[:120])
-    page.set_control('input[name="metric"][value="applications"]', True)
-    text_after = page.popup_text() or ''
-    if 'application' not in text_after:
-        problems.append('popup headline did not follow the metric: %r' % text_after[:120])
-    page.set_control('input[name="metric"][value="lbs_chemical"]', True)
-    started = time.time()
-    page.js("document.querySelector('%s .section-map-zoom').click()" % POPUP)
-    ok, secs = page.wait_grid('section', 40)
-    if not ok:
-        problems.append('section grid did not load after Zoom in')
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        if page.instance_js('return inst.lensId === arguments[0] && inst.lensFeatures.length > 0', target['id']):
+            break
+        time.sleep(0.25)
     else:
-        page.timings['zoom_in_s'] = round(time.time() - started, 2)
+        problems.append('lens is %s, tapped %s' % (page.instance_js('return inst.lensId'), target['id']))
     if page.js("return !!document.querySelector(arguments[0])", POPUP):
-        problems.append('township popup still open after Zoom in')
-    zoom = page.instance_js('return [inst.map.getZoom(), inst.sectionZoom(), inst.sourceData.grid.features.length]')
-    if zoom and zoom[0] < zoom[1]:
-        problems.append('zoom %.2f is below sectionZoom %s' % (zoom[0], zoom[1]))
-    detail = 'township %s; Zoom in -> %d sections at zoom %.2f in %ss' % (target['id'], zoom[2], zoom[0], page.timings.get('zoom_in_s', '?'))
+        problems.append('a popup opened: %r' % (page.popup_text() or '')[:120])
+    sections = page.instance_js('return inst.lensFeatures.length')
+    # The checks after this one start at the section grid, where the old
+    # township popup's "Zoom in to sections" used to leave them.
+    page.instance_js("""
+        var rect = inst.map.getCanvas().getBoundingClientRect();
+        var at = inst.map.unproject([rect.width / 2 + arguments[0], rect.height / 2 + arguments[1]]);
+        inst.clearLens();
+        inst.map.jumpTo({ center: at, zoom: inst.sectionZoom() });
+        return true;
+    """, target['dx'], target['dy'])
+    ok, _ = page.wait_grid('section', 40)
+    if not ok:
+        problems.append('section grid did not load after zooming in')
+    detail = 'township %s raised a lens of %s sections, no popup; then to the section grid' % (target['id'], sections)
     return (not problems), (detail if not problems else '; '.join(problems))
 
 
@@ -1696,6 +1692,11 @@ def check_phone_layout(page):
     clear = 'no cell to click'
     if target:
         page.click_map(target['dx'], target['dy'], settle=0.3, instant=True)
+        if page.instance_js("return inst.level") == 'township' and not page.js("return !!document.querySelector('.maplibregl-popup')"):
+            # A tap on a township raises its lens; the next opens one of its
+            # sections. ("All sections" draws them already: one tap does it.)
+            page.wait_for("var inst = (function () { %s })(); return !!inst && inst.lensFeatures.length > 0;" % JS_INSTANCE, 10)
+            page.click_map(target['dx'], target['dy'], settle=0.6, instant=True)
         close = page.js("var b = document.querySelector('.maplibregl-popup-close-button'); return b ? b.getBoundingClientRect().width * b.getBoundingClientRect().height : null;")
         if close is None or close < 32 * 32 - 1:
             problems.append('popup close button %s px^2' % close)
@@ -1713,9 +1714,15 @@ def check_phone_layout(page):
                 problems.append('popup runs off the map: %s vs %s' % (popup, box))
             if popup['top'] < band:
                 problems.append('popup under the toolbar band (top %.0f < %.0f)' % (popup['top'], band))
-            if legend and popup['left'] < legend['right'] and popup['right'] > legend['left'] and popup['top'] < legend['bottom'] and popup['bottom'] > legend['top']:
+            over_legend = legend and popup['left'] < legend['right'] and popup['right'] > legend['left'] and popup['top'] < legend['bottom'] and popup['bottom'] > legend['top']
+            # A popup taller than the room between the toolbar and the legend
+            # (less the gap the map keeps from each, POPUP_CLEAR_EDGE in
+            # maps/chrome.js) keeps its top clear and covers the folded
+            # legend instead.
+            too_tall = legend and popup['bottom'] - popup['top'] > legend['top'] - band - 2 * POPUP_CLEAR_EDGE
+            if over_legend and not too_tall:
                 problems.append('popup over the legend panel: %s vs %s' % (popup, legend))
-            clear = 'popup %.0fpx wide, clear' % (popup['right'] - popup['left'])
+            clear = 'popup %.0fpx wide, %s' % (popup['right'] - popup['left'], 'taller than the room, over the folded legend' if over_legend else 'clear')
     page.screenshot('-phone')
     detail = '%dpx: legend folded, %d filter label(s) hidden, attribution folded, status centred, close button %s px^2, %s' % (
         result['width'], result['filters'], 'n/a' if close is None else '%.0f' % close, clear)
@@ -1888,7 +1895,7 @@ CHECKS = [
     ('lens popup', check_lens_popup),
     ('all sections', check_all_sections),
     ('style swap', check_style_swap),
-    ('township popup', check_township_popup),
+    ('township tap', check_township_tap),
     ('section popup', check_section_popup),
     ('selection', check_selection_survives_metric),
     ('popup clear', check_popup_clear),
