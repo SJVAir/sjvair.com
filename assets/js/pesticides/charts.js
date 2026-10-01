@@ -8,7 +8,7 @@
  * fires on page load and again for every swapped-in element.
  *
  * Two kinds: `line` (the by-year trend, optionally with a dashed second
- * series `y2`, readout `labels`, per-year readout `notes`, a marked year
+ * series `y2`, tip `labels`, per-year tip `notes`, a marked year
  * `marker` and `whole` for counts) and `bars` (the by-month totals).
  * Colours come from CSS custom properties on `.explorer-chart`, so the Sass
  * stays the one place the palette lives.
@@ -32,7 +32,8 @@
   // "107M", "88.5M", "45.2k" for axis ticks; small numbers written out.
   function compact(value) {
     var size = Math.abs(value);
-    if (size < 10000) return full(value);
+    // A whole tick is written whole: "5", not "5.0", on a count axis.
+    if (size < 10000) return Number.isInteger(value) ? value.toLocaleString('en-US') : full(value);
     var steps = [[1e6, 'M'], [1e3, 'k']];
     for (var i = 0; i < steps.length; i++) {
       if (size >= steps[i][0]) {
@@ -92,17 +93,45 @@
     };
   }
 
+  // A tip floating over a plot (in uPlot's over layer, so it moves nothing):
+  // makeTip() once per chart, placeTip() on each cursor move with a bold first
+  // line and plain lines after, beside (cx, cy) in the over layer's pixels and
+  // flipped to its left near the right edge; hideTip() off the data.
+  function makeTip() {
+    var tip = document.createElement('div');
+    tip.className = 'chart-tip';
+    tip.hidden = true;
+    return tip;
+  }
+
+  function placeTip(u, tip, title, lines, cx, cy) {
+    tip.innerHTML = '';
+    var head = document.createElement('strong');
+    head.textContent = title;
+    tip.appendChild(head);
+    lines.forEach(function (text) {
+      var line = document.createElement('span');
+      line.textContent = text;
+      tip.appendChild(line);
+    });
+    tip.hidden = false;
+    var left = cx + 12;
+    if (left + tip.offsetWidth > u.over.clientWidth) left = cx - tip.offsetWidth - 12;
+    tip.style.left = Math.max(0, left) + 'px';
+    tip.style.top = Math.max(0, Math.min(cy - tip.offsetHeight / 2, u.over.clientHeight - tip.offsetHeight)) + 'px';
+  }
+
   function line(el, figure, data) {
     var colors = palette(figure);
     var readout = figure.querySelector('.chart-readout');
     var x = data.x, y = data.y;
-    // Optional: a second series (dashed), labels for the readout, and a
+    // Optional: a second series (dashed), labels for the tip, and a
     // marked year (the dairy trend's coverage change).
     var y2 = data.y2 || null;
     var labels = data.labels || null;
     var marker = data.marker || null;
-    // Optional: a note per year for the readout (a share), and `whole` for
-    // counts (whole-number ticks and readout).
+    // Optional: a note per year for the tip (a share), and `whole` for
+    // counts (whole-number ticks and tip).
     var notes = data.notes || null;
     var whole = !!data.whole;
     var count = function (value) { return whole ? Math.round(value).toLocaleString('en-US') : full(value); };
@@ -110,6 +139,20 @@
     // null where there's nothing to compare to.
     var compare = data.compare && data.compare.length ? data.compare : null;
     var selectedIndex = data.selected == null ? -1 : x.indexOf(data.selected);
+    // The tip says what the readout above the chart used to, beside the
+    // point; the readout's reserved line goes.
+    if (readout) readout.hidden = true;
+    var tip = makeTip();
+    // The hovered year's tip, beside its point on the line: the value, then
+    // the second series, the year's note and the baseline where there are any.
+    var showTip = function (u, index) {
+      if (index == null || y[index] == null) { tip.hidden = true; return; }
+      var lines = [labels ? count(y[index]) + ' ' + labels[0] : amount(y[index], data.unit)];
+      if (y2 && y2[index] != null) lines.push(count(y2[index]) + ' ' + labels[1]);
+      if (notes && notes[index]) lines.push(notes[index]);
+      if (compare && compare[index] != null) lines.push((data.compare_label || 'valley average') + ' ' + amount(compare[index], data.unit));
+      placeTip(u, tip, String(x[index]), lines, u.valToPos(x[index], 'x'), u.valToPos(y[index], 'y'));
+    };
     var pad = x.length > 1 ? 0.5 : 1;
     var series = [
       {},
@@ -140,6 +183,7 @@
         spanGaps: false,
       });
     }
+    // A chart can ask for its own height (data.height); a wide one reads better taller.
     var opts = Object.assign(size(el, data.height || LINE_HEIGHT), {
       legend: {show: false},
       select: {show: false},
@@ -198,33 +242,129 @@
           ctx.fill();
           ctx.restore();
         }],
-        setCursor: [function (u) {
-          if (!readout) return;
-          var index = u.cursor.idx;
-          if (index == null) {
-            readout.textContent = '';
-            return;
-          }
-          var text;
-          if (labels) {
-            text = x[index] + ' · ' + count(y[index]) + ' ' + labels[0] +
-              (y2 ? ' · ' + count(y2[index]) + ' ' + labels[1] : '');
-          } else {
-            text = x[index] + ' · ' + amount(y[index], data.unit);
-          }
-          if (notes && notes[index]) text += ' · ' + notes[index];
-          if (compare && compare[index] != null) {
-            text += ' · ' + (data.compare_label || 'valley average') + ' ' + amount(compare[index], data.unit);
-          }
-          readout.textContent = text;
-        }],
+        setCursor: [function (u) { showTip(u, u.cursor.idx); }],
       },
     });
     if (whole) opts.axes[1].incrs = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
     var columns = [x, y];
     if (y2) columns.push(y2);
     if (compare) columns.push(compare);
-    return new uPlot(opts, columns, el);
+    var plot = new uPlot(opts, columns, el);
+    plot.over.appendChild(tip);
+    return plot;
+  }
+
+  // A 100% stacked bar per year: data.series [{label, values, color}], the
+  // bottom of the stack first; each year's parts as shares of its total, so
+  // the chart shows the mix, not the volume (the trend above has that). Each
+  // part is a bar from 0 to its running share, drawn tallest first so the
+  // ones below show through. The readout keeps to one line (the year and its
+  // total); the hovered year's shares go into the legend, which is always
+  // there, so the chart doesn't move as the cursor does.
+  function stack(el, figure, data) {
+    var colors = palette(figure);
+    var readout = figure.querySelector('.chart-readout');
+    var legendValues = figure.querySelectorAll('.chart-legend.is-series [data-share]');
+    var x = data.x;
+    var parts = data.series || [];
+    var totals = x.map(function (year, j) {
+      return parts.reduce(function (sum, part) { return sum + (part.values[j] || 0); }, 0);
+    });
+    var shares = parts.map(function (part) {
+      return part.values.map(function (value, j) { return totals[j] ? 100 * (value || 0) / totals[j] : 0; });
+    });
+    var running = x.map(function () { return 0; });
+    var cumulative = shares.map(function (share) {
+      running = running.map(function (sum, j) { return sum + share[j]; });
+      return running.slice();
+    });
+    var indexes = x.map(function (year, j) { return j; });
+    var selectedIndex = data.selected == null ? -1 : x.indexOf(data.selected);
+    // Every few years a label, so a 15-year axis doesn't crowd.
+    var every = Math.max(1, Math.ceil(x.length / 8));
+    var order = parts.map(function (part, i) { return i; }).reverse();
+    var series = [{}].concat(order.map(function (i) {
+      return {
+        stroke: parts[i].color,
+        width: 0,
+        fill: parts[i].color,
+        paths: uPlot.paths.bars({size: [0.75, 60], align: 0}),
+        points: {show: false},
+      };
+    }));
+    var showShares = function (index) {
+      Array.prototype.forEach.call(legendValues, function (span) {
+        var i = Number(span.getAttribute('data-share'));
+        span.textContent = index == null ? '' : ' ' + Math.round(shares[i][index]) + '%';
+      });
+    };
+    // The band under the cursor: its sector, then the year, share and amount.
+    var tip = makeTip();
+    var showTip = function (u, index) {
+      var top = u.cursor.top;
+      if (index == null || top == null || top < 0) { tip.hidden = true; return; }
+      var value = u.posToVal(top, 'y');
+      var part = -1;
+      for (var i = 0; i < parts.length; i++) {
+        if (value <= cumulative[i][index] + 1e-9) { part = i; break; }
+      }
+      if (part < 0 || value < 0 || !shares[part][index]) { tip.hidden = true; return; }
+      placeTip(u, tip, parts[part].label,
+        [x[index] + ' · ' + Math.round(shares[part][index]) + '% · ' + amount(parts[part].values[index] || 0, data.unit)],
+        u.cursor.left, top);
+    };
+    var opts = Object.assign(size(el, data.height || BARS_HEIGHT), {
+      legend: {show: false},
+      select: {show: false},
+      cursor: {x: false, y: false, drag: {x: false, y: false}, points: {show: false}},
+      scales: {
+        x: {time: false, distr: 2, range: function (u, min, max) { return [min - 0.5, max + 0.5]; }},
+        y: {range: [0, 100]},
+      },
+      axes: [
+        Object.assign(axisBase(colors), {
+          grid: {show: false},
+          splits: function () { return indexes; },
+          values: function (u, splits) {
+            return splits.map(function (index) { return index % every === (x.length - 1) % every ? String(x[index]) : ''; });
+          },
+          size: 26,
+        }),
+        Object.assign(axisBase(colors), {
+          grid: {stroke: colors.grid, width: 1},
+          splits: function () { return [0, 25, 50, 75, 100]; },
+          values: function (u, splits) { return splits.map(function (value) { return value + '%'; }); },
+          size: 46,
+        }),
+      ],
+      series: series,
+      hooks: {
+        draw: [function (u) {
+          // The scope year: its bar outlined.
+          if (selectedIndex < 0) return;
+          var ctx = u.ctx;
+          var slot = u.bbox.width / x.length;
+          var cx = u.valToPos(selectedIndex, 'x', true);
+          ctx.save();
+          ctx.strokeStyle = colors.text;
+          ctx.lineWidth = 1.5 * devicePixelRatio;
+          ctx.strokeRect(cx - slot * 0.375, u.bbox.top, slot * 0.75, u.bbox.height);
+          ctx.restore();
+        }],
+        setCursor: [function (u) {
+          var hovered = u.cursor.idx;
+          var index = hovered == null ? (selectedIndex < 0 ? null : selectedIndex) : hovered;
+          if (readout) readout.textContent = index == null ? '' : x[index] + ' · ' + amount(totals[index], data.unit) + ' in all';
+          showShares(index);
+          showTip(u, hovered);
+        }],
+      },
+    });
+    var plot = new uPlot(opts, [indexes].concat(order.map(function (i) { return cumulative[i]; })), el);
+    plot.over.appendChild(tip);
+    // Before any hover, the legend shows the scope year's shares.
+    showShares(selectedIndex < 0 ? null : selectedIndex);
+    return plot;
   }
 
   function bars(el, figure, data) {
@@ -319,7 +459,7 @@
       var data;
       try { data = JSON.parse(script.textContent); } catch (err) { return; }
       if (!data.x || !data.x.length) return;
-      var plot = data.type === 'bars' ? bars(el, figure, data) : line(el, figure, data);
+      var plot = data.type === 'bars' ? bars(el, figure, data) : data.type === 'stack' ? stack(el, figure, data) : line(el, figure, data);
       el.dataset.rendered = '1';
       instances.push({el: el, plot: plot});
     });
