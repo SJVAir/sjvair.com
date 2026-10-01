@@ -262,6 +262,11 @@ body.emissions
       strong
         font-size: $size-4
         font-variant-numeric: tabular-nums
+  // The shared data-tab layout (area-tab.html): each part keeps its gap
+  // from the next. A .box or .notification loses its bottom margin as the
+  // last child of its block, which left the map flush against the stats.
+  .tab-stats > :last-child
+    margin-bottom: 1.5rem !important
   // An area page's tabs (area-header.html): under the header, before the
   // tab's content, scrolling sideways on a phone rather than wrapping.
   .area-header
