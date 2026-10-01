@@ -229,6 +229,81 @@
     return new uPlot(opts, columns, el);
   }
 
+  // A stacked area by year: data.series [{label, values, color}], bottom of
+  // the stack first. Each band is the space between its running total and the
+  // one below; the readout lists the hovered year's parts and their total.
+  function stack(el, figure, data) {
+    var colors = palette(figure);
+    var readout = figure.querySelector('.chart-readout');
+    var x = data.x;
+    var parts = data.series || [];
+    var running = x.map(function () { return 0; });
+    var totals = parts.map(function (part) {
+      running = running.map(function (sum, j) { return sum + (part.values[j] || 0); });
+      return running.slice();
+    });
+    var top = totals.length ? totals[totals.length - 1] : [];
+    var selectedIndex = data.selected == null ? -1 : x.indexOf(data.selected);
+    var pad = x.length > 1 ? 0.5 : 1;
+    var series = [{}].concat(parts.map(function (part, i) {
+      return {stroke: part.color, width: 1, fill: i === 0 ? part.color : undefined, points: {show: false}};
+    }));
+    var bands = parts.slice(1).map(function (part, i) { return {series: [i + 2, i + 1], fill: part.color}; });
+    var opts = Object.assign(size(el, data.height || LINE_HEIGHT), {
+      legend: {show: false},
+      select: {show: false},
+      cursor: {y: false, drag: {x: false, y: false}, points: {show: false}},
+      scales: {
+        x: {time: false, range: [x[0] - pad, x[x.length - 1] + pad]},
+        y: {range: function (u, min, max) { return [0, (max || 1) * 1.08]; }},
+      },
+      axes: [
+        Object.assign(axisBase(colors), {
+          grid: {show: false},
+          splits: yearSplits(x),
+          values: function (u, splits) { return splits.map(function (value) { return String(value); }); },
+          size: 26,
+        }),
+        Object.assign(axisBase(colors), {
+          grid: {stroke: colors.grid, width: 1},
+          values: function (u, splits) { return splits.map(compact); },
+          space: 24,
+          size: 46,
+        }),
+      ],
+      series: series,
+      bands: bands,
+      hooks: {
+        draw: [function (u) {
+          // The scope year: a thin rule down the stack.
+          if (selectedIndex < 0) return;
+          var ctx = u.ctx;
+          var cx = u.valToPos(x[selectedIndex], 'x', true);
+          ctx.save();
+          ctx.strokeStyle = colors.text;
+          ctx.globalAlpha = 0.5;
+          ctx.lineWidth = devicePixelRatio;
+          ctx.beginPath();
+          ctx.moveTo(cx, u.bbox.top);
+          ctx.lineTo(cx, u.bbox.top + u.bbox.height);
+          ctx.stroke();
+          ctx.restore();
+        }],
+        setCursor: [function (u) {
+          if (!readout) return;
+          var index = u.cursor.idx;
+          if (index == null) { readout.textContent = ''; return; }
+          var text = x[index] + ' · ' + amount(top[index], data.unit);
+          for (var i = parts.length - 1; i >= 0; i--) {
+            text += ' · ' + parts[i].label + ' ' + full(parts[i].values[index] || 0);
+          }
+          readout.textContent = text;
+        }],
+      },
+    });
+    return new uPlot(opts, [x].concat(totals), el);
+  }
+
   function bars(el, figure, data) {
     var colors = palette(figure);
     var readout = figure.querySelector('.chart-readout');
@@ -321,7 +396,7 @@
       var data;
       try { data = JSON.parse(script.textContent); } catch (err) { return; }
       if (!data.x || !data.x.length) return;
-      var plot = data.type === 'bars' ? bars(el, figure, data) : line(el, figure, data);
+      var plot = data.type === 'bars' ? bars(el, figure, data) : data.type === 'stack' ? stack(el, figure, data) : line(el, figure, data);
       el.dataset.rendered = '1';
       instances.push({el: el, plot: plot});
     });

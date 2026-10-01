@@ -528,6 +528,69 @@ def county_context(scope):
     return cache.get_or_set(scope.key('context'), compute, CACHE_TIMEOUT)
 
 
+def county_context_trend(scope):
+    """
+    The permitted facilities' share of CARB's all-sources estimate, by year,
+    for the scope's county (a county page): [{'year', 'share', 'facilities',
+    'total'}], years both have. [] where county_context has nothing (toxics,
+    ammonia) or before CEPAM is imported. CEPAM holds its years after the
+    base year as projections, so a move in the share after it is mostly the
+    facilities' own.
+    """
+    if scope.toxics or scope.pollutant.precursor or scope.county is None:
+        return []
+    field = scope.pollutant.key
+
+    def compute():
+        sums = dict(
+            CountyInventory.objects
+            .filter(county=scope.county, inventory=cepam.INVENTORY)
+            .values_list('year')
+            .annotate(total=Sum(field))
+        )
+        facilities = {row['year']: row['value'] for row in by_year(scope)}
+        rows = []
+        for year in sorted(sums):
+            total = cepam.tons_per_year(sums[year] or 0)
+            if total and year in facilities:
+                rows.append({'year': year, 'share': facilities[year] / total, 'facilities': facilities[year], 'total': total})
+        return rows
+    return cache.get_or_set(scope.key('context-trend'), compute, CACHE_TIMEOUT)
+
+
+# The sectors chart's stack: this many, largest in the scope year, then "Other".
+STACK_SECTORS = 5
+
+
+def sector_stack(scope):
+    """
+    The scope's sectors by year for a stacked chart: {'years': [...],
+    'series': [{'sector', 'label', 'values': [...]}]}, the STACK_SECTORS
+    largest in the scope year then "Other" summing the rest; None with
+    fewer than two years or nothing reported.
+    """
+    trends = sector_trends(scope)
+    years = sorted({row['year'] for points in trends.values() for row in points})
+    if len(years) < 2:
+        return None
+    by_sector = {sector: {row['year']: row['value'] for row in points} for sector, points in trends.items()}
+    def latest(sector):
+        values = by_sector[sector]
+        return values.get(scope.year, values.get(years[-1], 0)) or 0
+    ranked = sorted(by_sector, key=latest, reverse=True)
+    top = [sector for sector in ranked[:STACK_SECTORS] if latest(sector) > 0]
+    if not top:
+        return None
+    series = [{'sector': sector, 'label': Facility.Sector(sector).label,
+               'values': [by_sector[sector].get(year, 0) for year in years]} for sector in top]
+    rest = [sector for sector in ranked if sector not in top]
+    if rest:
+        other = [sum(by_sector[sector].get(year, 0) for sector in rest) for year in years]
+        if any(other):
+            series.append({'sector': 'other', 'label': 'All other sectors', 'values': other})
+    return {'years': years, 'series': series}
+
+
 def _rank_of(value, values):
     return 1 + sum(1 for other in values if other > value)
 

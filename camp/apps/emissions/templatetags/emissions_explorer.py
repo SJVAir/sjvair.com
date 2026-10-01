@@ -6,7 +6,7 @@ from django.contrib.humanize.templatetags.humanize import ordinal
 from django.urls import reverse
 from django.utils.html import format_html
 
-from camp.apps.emissions import dairies, sectors
+from camp.apps.emissions import cepam, dairies, sectors
 
 register = template.Library()
 
@@ -283,6 +283,76 @@ def digester_trend_chart(points, year=None):
         'has_data': any(row['digesters'] for row in rows),
         'title': 'Dairies with an operating digester',
         'sentence': '',
+        'first_year': years[0] if years else None,
+        'last_year': years[-1] if years else None,
+    }
+
+
+# The sectors stack's colours, largest first, then "All other sectors" in grey.
+STACK_COLORS = ['#08519c', '#3182bd', '#6baed6', '#fd8d3c', '#a1d99b']
+STACK_OTHER = '#c8d1da'
+
+
+@register.inclusion_tag('pesticides/includes/trend-chart.html')
+def sector_stack_chart(stack, pollutant, year=None, heading=None, height=None):
+    """
+    The scope's emissions by year, stacked by sector (stats.sector_stack): the
+    largest few, then the rest together, so the trend above shows what moved
+    it. Drawn by charts.js's 'stack' type; nothing for a weighted toxic (a
+    share has no sum to stack) or too little history.
+    """
+    if not stack or pollutant.weighted:
+        return {'has_data': False}
+    series = [
+        {'label': row['label'], 'values': [pollutant.display(value) or 0 for value in row['values']],
+         'color': STACK_OTHER if row['sector'] == 'other' else STACK_COLORS[i % len(STACK_COLORS)]}
+        for i, row in enumerate(stack['series'])
+    ]
+    return {
+        'chart_id': f'chart-{uuid.uuid4().hex[:8]}',
+        'chart': {
+            'type': 'stack',
+            'unit': pollutant.unit,
+            'x': stack['years'],
+            'series': series,
+            'selected': year if year in stack['years'] else None,
+            'height': height,
+        },
+        'has_data': True,
+        'heading': heading,
+        'title': f'{pollutant.label} by sector ({pollutant.unit}/yr)',
+        'sentence': '',
+        'legend': series,
+        'first_year': stack['years'][0],
+        'last_year': stack['years'][-1],
+    }
+
+
+@register.inclusion_tag('pesticides/includes/trend-chart.html')
+def context_share_chart(points, pollutant, year=None, heading=None, height=None):
+    """
+    Permitted facilities' share of CARB's all-sources estimate by year
+    (stats.county_context_trend), a percent line; the readout gives both
+    tonnages. Nothing without CEPAM years.
+    """
+    rows = sorted(points or [], key=lambda row: row['year'])
+    years = [row['year'] for row in rows]
+    return {
+        'chart_id': f'chart-{uuid.uuid4().hex[:8]}',
+        'chart': {
+            'type': 'line',
+            'unit': '%',
+            'x': years,
+            'y': [round(row['share'] * 100, 2) for row in rows],
+            'notes': [f"{row['facilities']:,.0f} of {row['total']:,.0f} tons" for row in rows],
+            'selected': year if year in years else None,
+            'height': height,
+        },
+        'has_data': len(rows) > 1,
+        'heading': heading,
+        'title': f"Permitted facilities' share of all {pollutant.label} sources (%)",
+        'sentence': '',
+        'note': f"CARB's all-sources estimate after {cepam.BASE_YEAR} is projected from its {cepam.BASE_YEAR} inventory, so changes since then are mostly the facilities' own.",
         'first_year': years[0] if years else None,
         'last_year': years[-1] if years else None,
     }

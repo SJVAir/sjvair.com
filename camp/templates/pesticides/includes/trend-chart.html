@@ -7,6 +7,10 @@
     <div class="chart-canvas" data-chart="{{ chart_id }}" role="img"
          aria-label="{{ title }}, {{ first_year }} to {{ last_year }}{% if sentence %}. {{ sentence }}{% endif %}"></div>
     {{ chart|json_script:chart_id }}
+    {% if legend %}
+        {# A stacked chart's series, in stack order (emissions sector_stack_chart). #}
+        <p class="chart-legend is-series">{% for item in legend %}<span><span class="chart-key is-swatch" style="background: {{ item.color }}"></span>{{ item.label }}</span>{% endfor %}</p>
+    {% endif %}
     {% if compare_label %}
         <p class="chart-legend">
             <span class="chart-key is-line"></span>{{ compare_label }}

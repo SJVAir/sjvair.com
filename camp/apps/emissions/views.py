@@ -980,6 +980,7 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
                 for row in top_sectors
             ],
             by_year=stats.by_year(scope) if tab in ('overview', 'facilities') else [],
+            sector_stack=stats.sector_stack(scope) if tab == 'overview' else None,
             map_config=self.get_map_config(base) if tab in ('overview', 'facilities', 'oil-gas') else None,
             compliance_line=compliance_line,
             toxics_breakdown=stats.toxics_breakdown(scope) if scope.toxics and tab == 'overview' else None,
@@ -1106,6 +1107,7 @@ class RegionPage(RegionLookupMixin, AreaPage):
             kind=region.type_label,
             population=(region.metadata or {}).get('population'),
             context_bar=stats.county_context(county_scope) if county_scope else None,
+            context_trend=stats.county_context_trend(county_scope) if county_scope else [],
             nei_context=nei.context(county_scope) if county_scope else None,
             ghg_table=ghg.county_table(region) if region.type == Region.Type.COUNTY and tab == 'facilities' else None,
             **extra,

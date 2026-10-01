@@ -250,6 +250,33 @@ class CountyContextTests(StatsTestCase):
         assert stats.county_context(scope(year=2023)) is None
 
 
+class TrendChartDataTests(StatsTestCase):
+    """The Overview's sectors stack and all-sources share by year."""
+
+    def test_context_trend_is_the_facilities_share_by_year(self):
+        for year, nox in ((2023, 1.0), (2024, 2.0)):
+            CountyInventory.objects.create(county=self.fresno, year=year, inventory=cepam.INVENTORY, source_type='mobile', eic='723', nox=nox)
+        rows = stats.county_context_trend(scope(county='fresno'))
+        assert [row['year'] for row in rows] == [2023, 2024]
+        for row in rows:
+            assert round(row['share'], 6) == round(row['facilities'] / row['total'], 6)
+        assert round(rows[1]['total'], 6) == 2.0 * 365
+        # Valley-wide (no county), toxics and ammonia: no line.
+        assert stats.county_context_trend(scope()) == []
+        assert stats.county_context_trend(scope(county='fresno', toxics=1)) == []
+
+    def test_sector_stack_keeps_the_largest_then_the_rest(self):
+        stack = stats.sector_stack(scope())
+        assert stack['years'] == sorted(stack['years']) and len(stack['years']) >= 2
+        labels = [row['label'] for row in stack['series']]
+        assert len(stack['series']) <= stats.STACK_SECTORS + 1
+        # Every year's parts add up to that year's total.
+        totals = {row['year']: row['value'] for row in stats.by_year(scope())}
+        for i, year in enumerate(stack['years']):
+            assert round(sum(row['values'][i] for row in stack['series']), 6) == round(totals[year], 6)
+        assert labels[0]  # largest first, by name
+
+
 class FacilityDetailStatsTests(StatsTestCase):
     def test_facility_ranks(self):
         rows = {row['pollutant'].key: row for row in stats.facility_ranks(self.cement, 2024)}
