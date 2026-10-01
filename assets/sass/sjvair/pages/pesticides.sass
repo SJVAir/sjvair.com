@@ -1134,8 +1134,7 @@ body.pesticides
 
     // The district page's schools chapter: the demographics strip reads as the
     // chapter's intro rather than its own boxed panel, the filter bar sits
-    // tight above the table, and everything past the first fifteen rows is
-    // hidden until the toggle reveals it.
+    // tight above the table.
     .district-demographics
         margin-bottom: 1.25rem
         .stat-row
@@ -1153,13 +1152,6 @@ body.pesticides
         // "MDM-T17S-R23E-16" on one line.
         td:last-child
             white-space: nowrap
-        tbody tr.is-collapsed
-            display: none
-            &.is-revealed
-                display: table-row
-
-    .schools-toggle
-        margin-top: 0.25rem
 
     // The school districts a place overlaps, under the schools filters: the
     // largest few, the rest revealed by "Show all".

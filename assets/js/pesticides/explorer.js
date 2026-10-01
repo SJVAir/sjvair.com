@@ -69,16 +69,16 @@
     trigger.setAttribute('aria-expanded', active ? 'true' : 'false');
   });
   // A list that renders every item and hides the ones past its first few
-  // (`.is-collapsed`: the schools table past fifteen, the school districts
-  // box past five) reveals them in place: the button's [data-reveal-toggle]
+  // (`.is-collapsed`: the school districts box past five, the "In and around"
+  // lists past a dozen) reveals them in place: the button's [data-reveal-toggle]
   // flips them within its [data-reveal-scope]. Delegated from the document
   // so it survives the htmx swaps a filter or sort makes, and driven off the
   // button's own data attributes so a re-render comes back collapsed
   // without any state to restore.
   document.addEventListener('click', function (evt) {
-    var button = evt.target.closest ? evt.target.closest('[data-reveal-toggle], [data-schools-toggle]') : null;
+    var button = evt.target.closest ? evt.target.closest('[data-reveal-toggle]') : null;
     if (!button) return;
-    var scope = button.closest('[data-reveal-scope]') || button.closest('.schools-nearby');
+    var scope = button.closest('[data-reveal-scope]');
     if (!scope) return;
     var expanded = button.getAttribute('aria-expanded') === 'true';
     scope.querySelectorAll('.is-collapsed').forEach(function (item) {

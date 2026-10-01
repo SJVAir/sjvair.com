@@ -2439,6 +2439,10 @@ class AreaSchoolsMixin:
         district = area.region if area.kind == 'region' and area.region.type == Region.Type.SCHOOL_DISTRICT else None
         groups = places.area_schools(area, year, all_years, concern=concern)
         schools = places.schools_panel(groups, self.request.GET, district=district)
+        # A page of the table at a time, like the other browsers; get_page
+        # turns a junk or out-of-range ?page= into the first or last page.
+        page_obj = Paginator(schools['rows'], places.SCHOOLS_PER_PAGE).get_page(self.request.GET.get('page'))
+        schools['rows'] = page_obj.object_list
         # A district's own page is the district; anywhere else, those it overlaps.
         districts = places.area_districts(area) if district is None else []
         point_hidden = []
@@ -2452,6 +2456,8 @@ class AreaSchoolsMixin:
             area=area,
             tab_label='Schools',
             schools=schools,
+            page_obj=page_obj,
+            is_paginated=page_obj.has_other_pages(),
             school_count=len(rows) - child_care,
             child_care_count=child_care,
             district=district,

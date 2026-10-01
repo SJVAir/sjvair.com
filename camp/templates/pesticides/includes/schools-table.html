@@ -2,9 +2,8 @@
 {% comment %}
 A place's schools and child care, as one sortable, filterable table (a
 district's own: its run-by filter and count only show there).
-`schools` is places.schools_panel(): every matching row is in the one
-<tbody>, and the rows past the first fifteen carry `is_collapsed` so the
-"Show the other N" control can reveal them in place. The City column is only
+`schools` is places.schools_panel(), its rows the current page (the view
+pages them). The City column is only
 drawn where the district's sites sit in more than one postal city. Every link
 carries the page's scope, so a section page opens on the same year and scope
 as the row.
@@ -28,7 +27,7 @@ as the row.
         </thead>
         <tbody>
             {% for row in schools.rows %}
-            <tr{% if row.is_collapsed %} class="is-collapsed"{% endif %}>
+            <tr>
                 {# What it is, and the district that runs it, under its name rather than in two columns of their own. #}
                 <td>{{ row.display_name }}<span class="school-kind">{{ row.type_label }}{% if row.run_by_name %} · {% if row.run_by_url %}<a href="{{ row.run_by_url }}{{ scope_qs }}">{{ row.run_by_name }}</a>{% else %}{{ row.run_by_name }}{% endif %}{% endif %}</span></td>
                 {% if schools.show_city %}<td>{{ row.display_city|default:"—" }}</td>{% endif %}
@@ -44,11 +43,5 @@ as the row.
         </tbody>
     </table>
 </div>
-{% if schools.hidden %}
-{# A district can run to a couple of hundred sites; the rest are one click away rather than a page of scrolling. #}
-<button type="button" class="button is-small is-light schools-toggle"
-    data-reveal-toggle aria-expanded="false"
-    data-show-label="Show the other {{ schools.hidden|intcomma }}"
-    data-hide-label="Show fewer">Show the other {{ schools.hidden|intcomma }}</button>
-{% endif %}
+{% include 'pesticides/includes/pagination.html' %}
 {% endwith %}
