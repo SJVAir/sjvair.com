@@ -826,6 +826,13 @@ class AreaTabTests(RollupTestMixin, TestCase):
         response = self.client.get(url)
         assert response.status_code == 301 and response['Location'] == self.tab_url('community')
 
+    def test_overview_heads_how_it_was_applied_with_its_year(self):
+        html = self.client.get(self.tab_url('overview'), {'year': 2023}).content.decode()
+        assert '<h2 class="title is-4">In 2023</h2>' in html
+        assert html.index('In 2023') < html.index('How it was applied') < html.index('Over time')
+        html = self.client.get(self.tab_url('overview'), {'year': 'all'}).content.decode()
+        assert '<h2 class="title is-4">Across 2022–2023</h2>' in html
+
     def test_overview_points_to_the_notices_tab(self):
         html = self.client.get(self.tab_url('overview')).content.decode()
         assert self.tab_url('notices') in html

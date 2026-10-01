@@ -55,30 +55,39 @@
 
 {% include 'pesticides/includes/section-map.html' %}
 
-{# As the emissions explorer's area Overview: the charts in a wide column, #}
-{# what's applied here stacked as cards beside them, the scheduled notices #}
-{# at the top of that stack. #}
+{# As the emissions explorer's area Overview: the wide column says what the #}
+{# scope is made of, then its history; what's applied here is stacked as #}
+{# cards beside it, the scheduled notices at the top of that stack. #}
 <div class="columns mt-5 overview-columns">
-    <section class="column is-7-desktop over-time">
-        <h2 class="title is-4">Over time</h2>
-        {% trend_chart by_year year compare=compare_by_year compare_label=compare_label height=240 %}
-        {% if by_month %}
-            <div class="mt-5">
-            {# The heatmap's top row is the same year the bars drew, so only #}
-            {# one of them runs. The bars are the fallback for a place with a #}
-            {# single year loaded, where a one-row grid would say less. #}
-            {% if by_year_month|length > 1 %}
-                {% month_heatmap by_year_month year %}
-            {% else %}
-                {% month_chart by_month year_label %}
-            {% endif %}
-            {% if peak_month %}<p class="mt-3">Spraying peaks in {{ peak_month }} here.</p>{% endif %}
-            </div>
-        {% else %}
-            <p class="has-text-grey">No confirmed applications on record{% if year_label %} for {{ year_label }}{% endif %}.</p>
+    <div class="column is-7-desktop">
+        {% if by_method %}
+        {# The scope's year, as the stat row and the cards' "Lbs (2023)" read it: a snapshot, not a trend. #}
+        <section class="in-scope">
+            <h2 class="title is-4">{% if all_years %}Across {{ year_label }}{% else %}In {{ year_label }}{% endif %}</h2>
+            <div class="by-method">{% include 'pesticides/includes/method-breakdown.html' %}</div>
+        </section>
+        <hr>
         {% endif %}
-        {% if by_method %}<div class="by-method mt-5">{% include 'pesticides/includes/method-breakdown.html' %}</div>{% endif %}
-    </section>
+        <section class="over-time">
+            <h2 class="title is-4">Over time</h2>
+            {% trend_chart by_year year compare=compare_by_year compare_label=compare_label height=240 %}
+            {% if by_month %}
+                <div class="mt-5">
+                {# The heatmap's top row is the same year the bars drew, so only #}
+                {# one of them runs. The bars are the fallback for a place with a #}
+                {# single year loaded, where a one-row grid would say less. #}
+                {% if by_year_month|length > 1 %}
+                    {% month_heatmap by_year_month year %}
+                {% else %}
+                    {% month_chart by_month year_label %}
+                {% endif %}
+                {% if peak_month %}<p class="mt-3">Spraying peaks in {{ peak_month }} here.</p>{% endif %}
+                </div>
+            {% else %}
+                <p class="has-text-grey">No confirmed applications on record{% if year_label %} for {{ year_label }}{% endif %}.</p>
+            {% endif %}
+        </section>
+    </div>
     <div class="column top-lists">
         <div class="box right-now">
             <p>
