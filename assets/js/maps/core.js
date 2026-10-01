@@ -437,7 +437,18 @@
     window.history.replaceState(window.history.state, '', path);
   }
 
+  // A legend's first title as a checkbox that shows or hides the map's own
+  // layer, so an overlay (the methane plumes, the wells) can be seen alone.
+  // Carries data-main-layer; the map binds the change and keeps the state.
+  function mainLayerToggle(html, on) {
+    return html.replace(/^<p class="legend-title">([\s\S]*?)<\/p>/, function (match, title) {
+      return '<div class="legend-layer"><label class="legend-toggle"><input type="checkbox" data-main-layer' +
+        (on ? ' checked' : '') + '> <span class="legend-title">' + title + '</span></label></div>';
+    });
+  }
+
   window.SJVAirMaps = {
+    mainLayerToggle: mainLayerToggle,
     TILE_STYLES: Object.keys(TILE_STYLE_PATHS),
     EMPTY: EMPTY,
     ramps: { sequential: RAMPS, diverging: DIVERGING_RAMPS },

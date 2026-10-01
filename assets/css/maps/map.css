@@ -104,6 +104,30 @@
   display: none;
 }
 
+/* A folded legend folds its key, not its switches (the explorer's layer
+   checkbox, .legend-layer, and its wells and methane checkboxes,
+   .legend-overlay > .legend-toggle): they're the only way to turn those
+   layers on and off, so they stay in view under the Legend header. A
+   module's legend is the panel body's child, whatever its class. */
+.map-panel.is-collapsed .map-panel-body:has(.legend-toggle) {
+  display: block;
+}
+
+.map-panel.is-collapsed .map-panel-body:has(.legend-toggle) > * > :not(.legend-overlay, .legend-layer),
+.map-panel.is-collapsed .map-panel-body:has(.legend-toggle) .legend-overlay > :not(.legend-toggle) {
+  display: none;
+}
+
+.map-panel.is-collapsed .map-panel-body:has(.legend-toggle) .legend-overlay {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.map-panel.is-collapsed .map-panel-body:has(.legend-toggle) :is(.legend-overlay, .legend-layer) ~ .legend-overlay {
+  margin-top: 0.35rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .map-panel-chevron {
     transition: none;
@@ -144,6 +168,19 @@
   left: 10px;
   bottom: 10px;
   max-width: 17rem;
+}
+
+/* A panel never grows past the map: it stops below the toolbar row and its
+   body scrolls, rather than rising out of the map over the page above. */
+.map-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100% - 3.5rem);
+}
+
+.map-panel-body {
+  min-height: 0;
+  overflow-y: auto;
 }
 
 /* Expanded: the map takes the viewport below the site navbar; panels ride
@@ -425,3 +462,23 @@ html.map-expanded .navbar {
   margin: 0;
   max-width: 28rem;
 }
+
+/* The legend's first title as the map's own layer's checkbox
+   (SJVAirMaps.mainLayerToggle): read as the title it replaces. */
+.legend-layer .legend-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  cursor: pointer;
+}
+.legend-layer .legend-title {
+  margin: 0;
+}
+
+/* A layer switched off: its key fades, so the legend says what's showing. */
+.map-panel-body > :has(.legend-layer input:not(:checked)) > :not(.legend-layer, .legend-overlay) {
+  opacity: 0.4;
+}
+
