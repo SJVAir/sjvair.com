@@ -21,16 +21,19 @@
 
 {% include 'emissions/includes/facility-map.html' %}
 
-{% if context_bar %}{% include 'emissions/includes/context-bar.html' %}{% endif %}
-{% if nei_context %}{% include 'emissions/includes/nei-context-bar.html' %}{% endif %}
-
-<div class="columns mt-5">
-    <div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='Top facilities' rows=facility_card view_all_url=facilities_tab_url %}</div>
-    <div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='Top sectors' rows=sector_card view_all_url='' %}</div>
+{# The context and the trend on the left, the top facilities and sectors stacked on the right. #}
+<div class="columns mt-5 overview-columns">
+    <div class="column is-7-desktop">
+        {% if context_bar %}{% include 'emissions/includes/context-bar.html' %}{% endif %}
+        {% if nei_context %}{% include 'emissions/includes/nei-context-bar.html' %}{% endif %}
+        {% if toxics_breakdown %}{% include 'emissions/includes/toxics-breakdown.html' %}{% endif %}
+        {% emissions_trend_chart by_year pollutant year heading="Over time" %}
+    </div>
+    <div class="column">
+        {% include 'emissions/includes/rank-card.html' with title='Top facilities' rows=facility_card view_all_url=facilities_tab_url %}
+        <div class="mt-5">{% include 'emissions/includes/rank-card.html' with title='Top sectors' rows=sector_card view_all_url='' %}</div>
+    </div>
 </div>
-{% if toxics_breakdown %}{% include 'emissions/includes/toxics-breakdown.html' %}{% endif %}
-
-{% emissions_trend_chart by_year pollutant year heading="Over time" %}
 
 {% elif tab == 'community' %}
 {% include 'emissions/includes/community-card.html' %}

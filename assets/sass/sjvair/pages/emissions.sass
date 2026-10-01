@@ -262,6 +262,14 @@ body.emissions
       strong
         font-size: $size-4
         font-variant-numeric: tabular-nums
+  // A region Overview's right column stacks its two cards: each its own
+  // height, not the column's (the pesticides card stretches to fill a row).
+  .overview-columns .related-card
+    height: auto
+  // ...and its trend takes the left column's full width (pesticides caps a
+  // trend at 32rem, sized for a narrow column of its own).
+  .overview-columns .trend-chart
+    max-width: none
   // The shared data-tab layout (area-tab.html): each part keeps its gap
   // from the next. A .box or .notification loses its bottom margin as the
   // last child of its block, which left the map flush against the stats.
