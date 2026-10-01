@@ -280,8 +280,6 @@
     });
     var indexes = x.map(function (year, j) { return j; });
     var selectedIndex = data.selected == null ? -1 : x.indexOf(data.selected);
-    // Every few years a label, so a 15-year axis doesn't crowd.
-    var every = Math.max(1, Math.ceil(x.length / 8));
     var order = parts.map(function (part, i) { return i; }).reverse();
     var series = [{}].concat(order.map(function (i) {
       return {
@@ -325,8 +323,13 @@
         Object.assign(axisBase(colors), {
           grid: {show: false},
           splits: function () { return indexes; },
+          // Every bar labelled; a slot too narrow for "2010" gets "’10".
           values: function (u, splits) {
-            return splits.map(function (index) { return index % every === (x.length - 1) % every ? String(x[index]) : ''; });
+            var slot = u.bbox.width / (window.devicePixelRatio || 1) / x.length;
+            return splits.map(function (index) {
+              var year = String(x[index]);
+              return slot < 34 ? '’' + year.slice(-2) : year;
+            });
           },
           size: 26,
         }),
