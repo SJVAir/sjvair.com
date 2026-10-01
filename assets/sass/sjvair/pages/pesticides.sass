@@ -268,6 +268,23 @@ body.pesticides
             width: 100%
         .u-over
             cursor: crosshair
+        // A chart's hover tip (charts.js): the hovered year beside its point,
+        // or a stacked bar's band under the cursor.
+        .chart-tip
+            position: absolute
+            z-index: 2
+            pointer-events: none
+            display: flex
+            flex-direction: column
+            padding: 0.3rem 0.5rem
+            background: $white
+            border: 1px solid $grey-lighter
+            border-radius: $radius
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15)
+            font-size: $size-7
+            white-space: nowrap
+            &[hidden]
+                display: none
         // Names the dashed baseline, which the hover readout otherwise only
         // says once the cursor is on the chart.
         .chart-legend
@@ -281,6 +298,26 @@ body.pesticides
             display: inline-block
             width: 1.25rem
             border-top: 1.5px dashed $grey
+        // A stacked chart's series, each with its share of the hovered year.
+        .chart-legend.is-series
+            flex-wrap: wrap
+            gap: 0.25rem 0.9rem
+            > span
+                display: inline-flex
+                align-items: center
+                gap: 0.35rem
+        // A fixed width, so the shares filling in on hover don't re-wrap the
+        // legend and move the chart.
+        .chart-legend-share
+            display: inline-block
+            min-width: 2.4em
+            font-variant-numeric: tabular-nums
+            color: $text
+        .chart-key.is-swatch
+            display: inline-block
+            width: 0.7rem
+            height: 0.7rem
+            border-radius: 2px
         .trend-delta
             margin-top: 0.35rem
             font-size: 0.9rem

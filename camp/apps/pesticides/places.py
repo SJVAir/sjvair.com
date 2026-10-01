@@ -755,6 +755,17 @@ def place_context(area, year, all_years=False, concern=False, params=None):
         build_by_year_month,
     )
 
+    # How the application-method mix has moved, year by year; every year
+    # whatever the scope's year, so cached per area like by_year.
+    def build_by_method_year():
+        rows = area.rollup_rows()
+        return stats.by_method_by_year(stats.narrow_rows(rows, concern) if concern else rows)
+
+    by_method_year = stats.cached(
+        stats.all_years_key('place-by-method-year', area.cache_key(), *scope_key),
+        build_by_method_year,
+    )
+
     # A county reads against the average valley county: same kind of place,
     # same axis. Nothing for a city, district or radius -- an average county
     # is the wrong size to compare those to, and a baseline that doesn't
@@ -771,6 +782,7 @@ def place_context(area, year, all_years=False, concern=False, params=None):
         'compare_by_year': compare_by_year,
         'compare_label': 'Average valley county' if compare_by_year else '',
         'by_year_month': by_year_month,
+        'by_method_year': by_method_year,
         **upcoming,
         'records_url': area.records_url(year, all_years, concern),
         # The chemicals-of-concern card's "Show all" narrows the records

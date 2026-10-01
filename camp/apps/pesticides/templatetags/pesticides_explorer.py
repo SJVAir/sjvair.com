@@ -341,6 +341,44 @@ def month_chart(by_month, year_label=None):
     }
 
 
+# The application methods' colours, as the method bar's (pesticides.sass
+# .method-bar-seg): the stacked chart's bands are the same methods.
+METHOD_COLORS = {'G': '#3498db', 'A': '#f1c40f', 'F': '#d35400', 'O': '#7a7a7a', '': '#b5b5b5'}
+
+
+@register.inclusion_tag('pesticides/includes/trend-chart.html')
+def method_stack_chart(stack, year=None, height=None):
+    """
+    Each year's pounds split by application method, a 100% stacked bar per
+    year (stats.by_method_by_year), so how the mix has shifted shows beside
+    the trend of the total. Drawn by charts.js's 'stack' type; nothing with
+    fewer than two years.
+    """
+    if not stack:
+        return {'has_data': False}
+    series = [
+        {'label': row['label'], 'values': row['values'], 'color': METHOD_COLORS[row['method']]}
+        for row in stack['series']
+    ]
+    return {
+        'chart_id': _chart_id(),
+        'chart': {
+            'type': 'stack',
+            'unit': 'pounds',
+            'x': stack['years'],
+            'series': series,
+            'selected': year if year in stack['years'] else None,
+            'height': height,
+        },
+        'has_data': True,
+        'title': 'How it was applied, share of each year\'s pounds',
+        'sentence': '',
+        'legend': series,
+        'first_year': stack['years'][0],
+        'last_year': stack['years'][-1],
+    }
+
+
 # The seasonality heatmap's scale: five steps sampled from the county map's
 # default ramp, so a heavy month and a heavy county look the same shade.
 HEATMAP_CLASSES = 5

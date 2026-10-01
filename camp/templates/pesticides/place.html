@@ -71,6 +71,7 @@
         <section class="over-time">
             <h2 class="title is-4">Over time</h2>
             {% trend_chart by_year year compare=compare_by_year compare_label=compare_label height=240 %}
+            {% if by_method_year %}<div class="mt-5">{% method_stack_chart by_method_year year height=200 %}</div>{% endif %}
             {% if by_month %}
                 <div class="mt-5">
                 {# The heatmap's top row is the same year the bars drew, so only #}

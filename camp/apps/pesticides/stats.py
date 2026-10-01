@@ -353,6 +353,31 @@ def by_method(rows, year, lbs_field='lbs_chemical', all_years=False, apps_field=
     return ranked + [r for r in out if r['method'] in leftover]
 
 
+def by_method_by_year(rows, lbs_field='lbs_chemical'):
+    """
+    Pounds per application method per loaded year, for the stacked chart of
+    how the mix has changed: {'years': [...], 'series': [{method, label,
+    values}]} in METHOD_ORDER (Ground at the bottom of the stack), a method
+    with no pounds in any year left out. A code CDPR adds later counts as
+    Other, as in by_method. None with fewer than two years.
+    """
+    totals = {}
+    years = set()
+    for r in rows.order_by().values('year', 'method').annotate(lbs=Sum(lbs_field)):
+        method = r['method'] if r['method'] in METHOD_LABELS else 'O'
+        totals[(r['year'], method)] = totals.get((r['year'], method), 0) + (r['lbs'] or 0)
+        years.add(r['year'])
+    years = sorted(years)
+    if len(years) < 2:
+        return None
+    series = []
+    for method in METHOD_ORDER:
+        values = [totals.get((year, method), 0) for year in years]
+        if any(values):
+            series.append({'method': method, 'label': METHOD_LABELS[method], 'values': values})
+    return {'years': years, 'series': series}
+
+
 NOT_RECORDED = 'Not recorded'
 
 

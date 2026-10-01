@@ -317,3 +317,20 @@ class PercentFilterTests(TestCase):
         assert percent(0.0002) == '<0.1%'
         assert percent(0) == '0%'
         assert css_percent(0.0614) == '6.14%'
+
+
+class MethodStackChartTests(TestCase):
+    def test_a_stack_in_the_method_colours_with_the_scope_year_selected(self):
+        from camp.apps.pesticides.templatetags.pesticides_explorer import METHOD_COLORS, method_stack_chart
+        stack = {'years': [2022, 2023], 'series': [
+            {'method': 'G', 'label': 'Ground', 'values': [10, 20]},
+            {'method': 'F', 'label': 'Field fumigation', 'values': [5, 0]},
+        ]}
+        context = method_stack_chart(stack, 2023)
+        assert context['chart']['type'] == 'stack' and context['chart']['selected'] == 2023
+        assert [s['color'] for s in context['chart']['series']] == [METHOD_COLORS['G'], METHOD_COLORS['F']]
+        assert context['legend'] == context['chart']['series']
+
+    def test_nothing_without_a_stack(self):
+        from camp.apps.pesticides.templatetags.pesticides_explorer import method_stack_chart
+        assert method_stack_chart(None) == {'has_data': False}
