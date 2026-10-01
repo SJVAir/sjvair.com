@@ -6,29 +6,7 @@
 {% block breadcrumb-list %}<li class="is-active"><a aria-current="page">{{ area.page_title }}</a></li>{% endblock %}
 
 {% block explorer-content %}
-<div class="content detail-header">
-    <h1 class="mb-1">{{ area.label }}</h1>
-    <p class="identifiers has-text-grey">
-        {% if area.kind == 'point' %}
-            Within {{ area.radius }} mile{{ area.radius|pluralize }}
-        {% else %}
-            {{ area.region.type_label }}
-            {% if area.region.metadata.community_url %}
-            {# An AB 617 community's page at the Valley Air District: its plan and steering committee. #}
-            &middot; <a href="{{ area.region.metadata.community_url }}" target="_blank" rel="noopener">Community page</a>
-            {% endif %}
-        {% endif %}
-    </p>
-    {% if area.kind == 'point' and radius_options %}
-    <nav class="radius-switcher" aria-label="Radius">
-        <div class="buttons has-addons are-small">
-            {% for option in radius_options %}
-            <a class="button{% if option.current %} is-selected is-primary{% endif %}" href="{{ option.url }}"{% if option.current %} aria-current="page"{% endif %}>{{ option.miles }} mi</a>
-            {% endfor %}
-        </div>
-    </nav>
-    {% endif %}
-</div>
+{% include 'regions/includes/area-header.html' %}
 
 {# Every figure carries a line of context under it, so the row sits on one #}
 {# baseline and each number says what it is: what it was last year, what it #}
@@ -85,9 +63,7 @@
             No notices of intent are currently scheduled here.
         {% endif %}
     </p>
-    {% if upcoming %}
-        {% include 'pesticides/includes/upcoming-notices.html' %}
-    {% endif %}
+    {% if upcoming_count %}<p class="mt-1"><a href="{{ notices_tab_url }}">See them day by day</a></p>{% endif %}
     <p class="mt-2 mb-0"><a href="{{ spraydays_url }}" target="_blank" rel="noopener">Sign up for SprayDays notices</a> to be alerted before applications happen near you.</p>
 </div>
 
@@ -151,45 +127,7 @@
     </div>
 </section>
 
-{% if is_school_district %}
-<section class="schools-nearby mt-6">
-    {# Most rows are child care, not schools, so the heading says both. #}
-    <h2 class="title is-4">Schools &amp; child care in this district</h2>
 
-    {% if district_demographics %}
-    <div class="district-demographics">
-        <h3 class="title is-6 mb-2">Who goes to school here{% if district_demographics.year_label %} <span class="source-stamp">{{ district_demographics.year_label }}</span>{% endif %}</h3>
-        <div class="level stat-row">
-            {% if district_demographics.enrollment != None %}
-            <div class="level-item has-text-centered">
-                <div><p class="heading">Students enrolled</p><p class="title">{{ district_demographics.enrollment|intcomma }}</p></div>
-            </div>
-            {% endif %}
-            {% for metric in district_demographics.metrics %}
-            <div class="level-item has-text-centered">
-                <div><p class="heading">{{ metric.label }}</p><p class="title">{{ metric.pct|floatformat:"-1" }}%</p></div>
-            </div>
-            {% endfor %}
-        </div>
-        <p class="is-size-7 has-text-grey">Enrollment and student groups as the <a href="https://www.cde.ca.gov/ds/si/ds/pubschls.asp" target="_blank" rel="noopener">California Department of Education</a> reports them for this district.</p>
-    </div>
-    {% endif %}
-
-    {% if schools.total %}
-    <p class="is-size-7 has-text-grey mt-4">
-        &ldquo;Lbs nearby&rdquo; is the pesticide use reported in the three-mile-square block of
-        sections around each site &mdash; the section it sits in and the eight around it{% if year_label %}, in {{ year_label }}{% endif %}{% if concern %},
-        {{ narrow_label|lower }} only{% endif %}.{% if schools.sort_is_default %} Rows start with the highest
-        pounds nearby first; click a column heading to sort by something else.{% endif %}
-    </p>
-    {% include 'pesticides/includes/schools-table.html' %}
-    {% else %}
-    <p class="has-text-grey">{% if district_demographics %}We don't have school or child care addresses for this district yet.{% else %}No schools or child care on record here.{% endif %}</p>
-    {% endif %}
-</section>
-{% endif %}
-
-{% include 'regions/includes/within.html' with within_name=area.label %}
 
 <div class="buttons mt-6 explorer-actions">
     <a class="button" href="{{ records_url }}">

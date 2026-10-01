@@ -203,7 +203,8 @@ class UpcomingNoticeLinkTests(TestCase):
         fresno = Region.objects.get(pk=9001)
         section = Region.objects.get(pk=9101)
         pages = {
-            'place': reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': fresno.slug}),
+            # A place's notices, day by day, are on its Notices tab.
+            'place': reverse('pesticides:region-notices', kwargs={'sqid': fresno.sqid, 'slug': fresno.slug}),
             'section': reverse('pesticides:section-detail', kwargs={'sqid': section.sqid}),
             'chemical': Chemical.objects.get(pk=1).get_absolute_url(),
         }

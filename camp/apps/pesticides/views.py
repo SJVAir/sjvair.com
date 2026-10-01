@@ -30,7 +30,7 @@ from camp.apps.pesticides.models import (
     Chemical, Commodity, FumigationMethod, PesticideNotice, PesticideUse, PesticideUseRollup, PesticideUseTotal,
     Product, ProductChemical,
 )
-from camp.apps.regions.models import Region
+from camp.apps.regions.models import Location, Region
 from camp.utils import mapconfig
 from camp.utils import mapfigure
 
@@ -2102,14 +2102,133 @@ class NoticeDetail(vanilla.DetailView):
         )
 
 
-class NearMe(vanilla.TemplateView):
+# A place page's tabs, in order: (key, label, icon, icon class). Each is its
+# own URL (region/<sqid>/<slug>/<key>/, near/<key>/), Overview the page itself.
+AREA_TABS = (
+    ('overview', 'Overview', 'fa-map', 'is-map'),
+    ('notices', 'Notices', 'fa-calendar-clock', 'is-notices'),
+    ('records', 'Records', 'fa-table-list', 'is-records'),
+    ('schools', 'Schools', 'fa-school', 'is-commodities'),
+    ('community', 'Community', 'fa-city', 'is-chemicals'),
+)
+
+
+class AreaPageMixin:
+    """
+    What every tab of a place page shares -- a region's or a near-me
+    point's: the area, its header and tab row (regions/includes/area-header.html),
+    the page's scope (year and narrowing; a place page is its own county),
+    and a tab's URL. The region and near-me mixins below say which area.
+    """
+    tab = 'overview'
+
+    def get_area(self):
+        raise NotImplementedError
+
+    def area_tab_url(self, key):
+        raise NotImplementedError
+
+    @cached_property
+    def area(self):
+        return self.get_area()
+
+    @cached_property
+    def scope(self):
+        year, all_years = stats.resolve_year_param(self.request.GET.get('year'))
+        return year, all_years, scope_concern(self.request)
+
+    def scope_query(self):
+        """The page's scope for a link to another of its tabs ('year=2023&narrow=...')."""
+        year, all_years, concern = self.scope
+        return stats.scope_query(year, all_years, None, concern).lstrip('?')
+
+    def available_tabs(self):
+        """Which tabs this area has something for; Overview, Notices and Records always do."""
+        from camp.apps.ces import stats as ces_stats
+        model, _ = ces_stats.current_model()
+        return {
+            'overview': True,
+            'notices': True,
+            'records': True,
+            'schools': self.area.locations().exists(),
+            'community': model is not None or self.area.kind == 'region',
+        }
+
+    def tabs(self):
+        available = self.available_tabs()
+        return [
+            {'key': key, 'label': label, 'icon': icon, 'icon_class': icon_class,
+             'url': self.area_tab_url(key), 'current': key == self.tab}
+            for key, label, icon, icon_class in AREA_TABS
+            if available[key] or key == self.tab
+        ]
+
+    def header_context(self):
+        area = self.area
+        links = []
+        if area.kind == 'point':
+            kind = f'Within {area.radius} mile{"" if area.radius == 1 else "s"}'
+        else:
+            kind = area.region.type_label
+            community_url = (area.region.metadata or {}).get('community_url')
+            if community_url:
+                # An AB 617 community's page at the Valley Air District.
+                links.append({'label': 'Community page', 'url': community_url})
+        return {
+            'name': area.label,
+            'kind': kind,
+            'header_links': links,
+            'tabs': self.tabs(),
+            'explorer_base': 'pesticides/base.html',
+            'area_crumbs': [{'label': area.page_title, 'url': self.area_tab_url('overview')}],
+        }
+
+    def tab_scope_context(self):
+        year, all_years, concern = self.scope
+        return year_context(year, all_years, scope_county(self.request), county_scope=False, concern=concern)
+
+
+class RegionAreaMixin(AreaPageMixin):
+    """
+    A place page for a county/city/ZIP/district/AB 617 `Region`. MTRS sections
+    aren't included -- SectionDetail already covers those -- so an
+    out-of-range `type` (including MTRS) 404s the same as an unresolved sqid.
+    """
+
+    # In dispatch, not get: a tab built on another view (the Records tab on
+    # RecordsBrowser) reads the area in its own dispatch.
+    def dispatch(self, request, *args, **kwargs):
+        region = (
+            Region.objects
+            .filter(sqid=kwargs['sqid'], type__in=places.PLACE_REGION_TYPES)
+            .select_related('boundary')
+            .first()
+        )
+        if region is None or not region.boundary_id:
+            raise Http404
+        if region.slug != kwargs['slug']:
+            canonical = region.get_pesticides_tab_url(self.tab)
+            query = request.GET.urlencode()
+            return redirect(f'{canonical}?{query}' if query else canonical, permanent=True)
+        self.region = region
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_area(self):
+        return places.region_area(self.region)
+
+    def area_tab_url(self, key):
+        url = self.region.get_pesticides_tab_url(key)
+        query = self.scope_query()
+        return f'{url}?{query}' if query else url
+
+
+class NearMeAreaMixin(AreaPageMixin):
     """
     A place page centered on a lat/lng from the address bar (?lat=&lng=&
     radius=&label=), never stored server-side. Coordinates are validated in
     get() -- an invalid or missing pair bounces to the landing page's find
     form rather than rendering a broken page.
     """
-    template_name = 'pesticides/place.html'
 
     def _parse_coords(self, data):
         try:
@@ -2129,94 +2248,238 @@ class NearMe(vanilla.TemplateView):
             return None, None, None
         return lat, lng, radius
 
-    def get(self, request, *args, **kwargs):
+    def dispatch(self, request, *args, **kwargs):
         lat, lng, radius = self._parse_coords(request.GET)
         if lat is None:
             return redirect(reverse('pesticides:home') + '?find=1')
         self.lat, self.lng, self.radius = lat, lng, radius
         # Truncate here, on the request's own GET, so every link built from
-        # it below (year picker, radius switcher) carries the same
+        # it below (year picker, radius switcher, tabs) carries the same
         # already-truncated label instead of the raw oversized one.
         label = request.GET.get('label')
         if label and len(label) > 120:
             request.GET = request.GET.copy()
             request.GET['label'] = label[:120]
-        return super().get(request, *args, **kwargs)
+        return super().dispatch(request, *args, **kwargs)
 
-    def _radius_url(self, miles):
-        params = self.request.GET.copy()
-        params['radius'] = miles
-        return f'{self.request.path}?{params.urlencode()}'
-
-    def get_context_data(self, **kwargs):
-        year, all_years = stats.resolve_year_param(self.request.GET.get('year'))
+    def get_area(self):
         label = (self.request.GET.get('label') or f'{self.lat:.3f}, {self.lng:.3f}')[:120]
-        concern = scope_concern(self.request)
-        area = places.point_area(self.lat, self.lng, self.radius, label=label)
-        context = places.place_context(area, year, all_years, concern, params=self.request.GET)
-        radius_options = [
-            {'miles': miles, 'url': self._radius_url(miles), 'current': miles == self.radius}
+        return places.point_area(self.lat, self.lng, self.radius, label=label)
+
+    def point_query(self, **changes):
+        """The point's own parameters (lat, lng, radius, label) plus the scope."""
+        params = {'lat': self.request.GET.get('lat'), 'lng': self.request.GET.get('lng'),
+                  'radius': self.radius, 'label': self.request.GET.get('label') or ''}
+        params.update(changes)
+        query = urlencode({key: value for key, value in params.items() if value not in (None, '')})
+        scope = self.scope_query()
+        return f'{query}&{scope}' if scope else query
+
+    def area_tab_url(self, key):
+        name = 'pesticides:near-me' if key == 'overview' else f'pesticides:near-me-{key}'
+        return f'{reverse(name)}?{self.point_query()}'
+
+    def header_context(self):
+        context = super().header_context()
+        path = self.request.path
+        context['radius_options'] = [
+            {'miles': miles, 'url': f'{path}?{self.point_query(radius=miles)}', 'current': miles == self.radius}
             for miles in places.RADIUS_CHOICES
         ]
-        return super().get_context_data(
-            section=None,
-            years=stats.years_loaded(),
-            **context,
-            **_place_cards(context),
-            **year_context(year, all_years, scope_county(self.request), county_scope=False, concern=concern),
-            privacy_note=True,
-            radius_options=radius_options,
-            api_docs_url=API_DOCS_URL,
-            client_docs_url=CLIENT_DOCS_URL,
-            **kwargs,
-        )
+        context['privacy_note'] = True
+        return context
 
 
-class RegionPage(vanilla.TemplateView):
-    """
-    A place page for a county/city/ZIP/place `Region`. MTRS sections aren't
-    included -- SectionDetail already covers those -- so an out-of-range
-    `type` (including MTRS) 404s the same as an unresolved sqid.
-    """
+class AreaOverviewMixin:
+    """A place page's Overview: its stats, map, notices line, trends and top lists."""
     template_name = 'pesticides/place.html'
 
-    def get(self, request, *args, **kwargs):
-        region = (
-            Region.objects
-            .filter(sqid=kwargs['sqid'], type__in=places.PLACE_REGION_TYPES)
-            .select_related('boundary')
-            .first()
-        )
-        if region is None or not region.boundary_id:
-            raise Http404
-        if region.slug != kwargs['slug']:
-            canonical = region.get_pesticides_url()
-            query = request.GET.urlencode()
-            return redirect(f'{canonical}?{query}' if query else canonical, permanent=True)
-        self.region = region
-        return super().get(request, *args, **kwargs)
-
     def get_context_data(self, **kwargs):
-        year, all_years = stats.resolve_year_param(self.request.GET.get('year'))
-        concern = scope_concern(self.request)
-        area = places.region_area(self.region)
+        year, all_years, concern = self.scope
+        area = self.area
         context = places.place_context(area, year, all_years, concern, params=self.request.GET)
-        within = places.regions_within(self.region) if self.region.boundary_id else None
-        # Not part of place_context: that block is cached per area and year,
-        # and the compared year is the reader's choice.
-        movers_rows = area.rollup_rows()
-        if concern:
-            movers_rows = stats.narrow_rows(movers_rows, concern)
+        extra = {}
+        if area.kind == 'region':
+            # Not part of place_context: that block is cached per area and
+            # year, and the compared year is the reader's choice.
+            movers_rows = area.rollup_rows()
+            if concern:
+                movers_rows = stats.narrow_rows(movers_rows, concern)
+            extra['movers'] = movers_context(movers_rows, year, all_years, 'chemical')
         return super().get_context_data(
             section=None,
             years=stats.years_loaded(),
-            within=within,
-            movers=movers_context(movers_rows, year, all_years, 'chemical'),
             **context,
             **_place_cards(context),
-            **year_context(year, all_years, scope_county(self.request), county_scope=False, concern=concern),
-            privacy_note=False,
+            **extra,
+            **self.header_context(),
+            **self.tab_scope_context(),
+            notices_tab_url=self.area_tab_url('notices'),
             api_docs_url=API_DOCS_URL,
             client_docs_url=CLIENT_DOCS_URL,
             **kwargs,
         )
+
+
+class AreaCommunityMixin:
+    """A place page's Community tab: CalEnviroScreen across it, and In and around."""
+    template_name = 'pesticides/area-community.html'
+    tab = 'community'
+
+    def get_context_data(self, **kwargs):
+        from camp.apps.ces import stats as ces_stats
+        area = self.area
+        within = places.regions_within(area.region) if area.kind == 'region' else None
+        return super().get_context_data(
+            section=None,
+            area=area,
+            tab_label='Community',
+            community=ces_stats.tract_summary(area.geometry()),
+            community_about_url=reverse('pesticides:about') + '#calenviroscreen',
+            show_top_tracts=area.kind == 'region' and area.region.type == Region.Type.COUNTY,
+            within=within,
+            **self.header_context(),
+            **self.tab_scope_context(),
+            **kwargs,
+        )
+
+
+class AreaNoticesMixin:
+    """
+    A place page's Notices tab: the notices of intent scheduled in it, day by
+    day, on the map with the notices on, with the place's archive a link away.
+    """
+    template_name = 'pesticides/area-notices.html'
+
+    def get_context_data(self, **kwargs):
+        year, all_years, concern = self.scope
+        area = self.area
+        return super().get_context_data(
+            section=None,
+            area=area,
+            tab_label='Notices',
+            **places.upcoming_context(area, concern),
+            map_config=section_map_config(year, all_years=all_years, concern=concern, **area.map_kwargs()),
+            archive_url=area.notices_url(concern) + '&past=1',
+            spraydays_url=places.SPRAYDAYS_URL,
+            **self.header_context(),
+            **self.tab_scope_context(),
+            **kwargs,
+        )
+
+
+class AreaRecordsMixin:
+    """
+    A place page's Records tab: the records browser (RecordsBrowser) narrowed
+    to the place -- its stats, map, filters and table -- under the place's
+    header and tabs. The place's own filter (its region, county, or point
+    and radius) is added to the request before the browser reads it, and
+    isn't offered as a chip to clear: the tab is the place.
+    """
+    template_name = 'pesticides/area-records.html'
+
+    def dispatch(self, request, *args, **kwargs):
+        params = request.GET.copy()
+        for key, value in self.area.area_params().items():
+            params[key] = value
+        request.GET = params
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_active_filters(self):
+        region = self.area.region
+        own = {region.name, getattr(region, 'display_name', region.name)} if region is not None else set()
+        return [chip for chip in super().get_active_filters()
+            if chip['label'] not in own and not chip['label'].startswith('Within ')]
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(
+            section=None,
+            area=self.area,
+            tab_label='Records',
+            **self.header_context(),
+            **self.tab_scope_context(),
+        )
+        return context
+
+
+class AreaSchoolsMixin:
+    """
+    A place page's Schools tab: the schools and child care centres in it,
+    each with the use reported around it, on the map with them on. A school
+    district's page adds who goes to school there and its run-by filter;
+    anywhere else, the school districts the place overlaps.
+    """
+    template_name = 'pesticides/area-schools.html'
+
+    def get_context_data(self, **kwargs):
+        year, all_years, concern = self.scope
+        area = self.area
+        district = area.region if area.kind == 'region' and area.region.type == Region.Type.SCHOOL_DISTRICT else None
+        groups = places.area_schools(area, year, all_years, concern=concern)
+        schools = places.schools_panel(groups, self.request.GET, district=district)
+        districts = []
+        if district is None and area.kind == 'region':
+            districts = places.regions_within(area.region)['school_districts']
+        point_hidden = []
+        if area.kind == 'point':
+            point_hidden = [{'name': key, 'value': self.request.GET.get(key)}
+                for key in ('lat', 'lng', 'radius', 'label') if self.request.GET.get(key)]
+        rows = groups['run_by'] + groups['others']
+        child_care = sum(1 for row in rows if row['type'] == Location.Type.CHILD_CARE)
+        return super().get_context_data(
+            section=None,
+            area=area,
+            tab_label='Schools',
+            schools=schools,
+            school_count=len(rows) - child_care,
+            child_care_count=child_care,
+            district=district,
+            district_demographics=places.district_demographics(district) if district else None,
+            school_districts=districts,
+            point_hidden=point_hidden,
+            map_config=section_map_config(year, all_years=all_years, show_locations=True, concern=concern, **area.map_kwargs()),
+            **self.header_context(),
+            **self.tab_scope_context(),
+            **kwargs,
+        )
+
+
+class NearMe(NearMeAreaMixin, AreaOverviewMixin, vanilla.TemplateView):
+    pass
+
+
+class RegionPage(RegionAreaMixin, AreaOverviewMixin, vanilla.TemplateView):
+    pass
+
+
+class NearMeNotices(NearMeAreaMixin, AreaNoticesMixin, vanilla.TemplateView):
+    tab = 'notices'
+
+
+class RegionNotices(RegionAreaMixin, AreaNoticesMixin, vanilla.TemplateView):
+    tab = 'notices'
+
+
+class NearMeRecords(NearMeAreaMixin, AreaRecordsMixin, RecordsBrowser):
+    tab = 'records'
+
+
+class RegionRecords(RegionAreaMixin, AreaRecordsMixin, RecordsBrowser):
+    tab = 'records'
+
+
+class NearMeSchools(NearMeAreaMixin, AreaSchoolsMixin, vanilla.TemplateView):
+    tab = 'schools'
+
+
+class RegionSchools(RegionAreaMixin, AreaSchoolsMixin, vanilla.TemplateView):
+    tab = 'schools'
+
+
+class NearMeCommunity(NearMeAreaMixin, AreaCommunityMixin, vanilla.TemplateView):
+    tab = 'community'
+
+
+class RegionCommunity(RegionAreaMixin, AreaCommunityMixin, vanilla.TemplateView):
+    tab = 'community'

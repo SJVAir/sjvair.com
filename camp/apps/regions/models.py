@@ -129,6 +129,11 @@ class Region(TimeStampedModel):
         """This region's page in the pesticides explorer (the app that owns the URL keeps the name)."""
         return reverse('pesticides:region', kwargs={'sqid': self.sqid, 'slug': self.slug})
 
+    def get_pesticides_tab_url(self, tab):
+        """One tab of this region's pesticides page ('overview', 'notices', 'records', 'schools', 'community')."""
+        name = 'pesticides:region' if tab == 'overview' else f'pesticides:region-{tab}'
+        return reverse(name, kwargs={'sqid': self.sqid, 'slug': self.slug})
+
     @property
     def monitors(self):
         """
