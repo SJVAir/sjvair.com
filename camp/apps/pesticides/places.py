@@ -297,8 +297,8 @@ def schools_nearby(region, year, all_years=False, concern=False):
     for a day per district and year; it only changes on import.
     """
     key = ':'.join([
-        # v3: entries gained their display fields and the run-by district.
-        'pesticides:schools-nearby:v3',
+        # v4: entries link the district that runs them.
+        'pesticides:schools-nearby:v6',
         str(region.pk),
         stats.year_param(year, all_years) or 'none',
         concern or '',
@@ -310,6 +310,7 @@ def schools_nearby(region, year, all_years=False, concern=False):
         rows = PesticideUseRollup.objects.all()
         if concern:
             rows = stats.narrow_rows(rows, concern)
+        districts = district_urls()
 
         # select_related: the table prints each location's city.
         run_by = list(Location.objects
@@ -320,14 +321,14 @@ def schools_nearby(region, year, all_years=False, concern=False):
         ) if district_code else []
         others = list(region.district_locations
             .exclude(pk__in=[location.pk for location in run_by])
-            .select_related('city')
+            .select_related('city', 'school_district')
             .order_by('name', 'pk')
         )
 
         groups = {
-            'run_by': [_school_entry(location, rows, year, all_years, is_run_by=True)
+            'run_by': [_school_entry(location, rows, year, all_years, is_run_by=True, districts=districts)
                 for location in run_by],
-            'others': [_school_entry(location, rows, year, all_years, is_run_by=False)
+            'others': [_school_entry(location, rows, year, all_years, is_run_by=False, districts=districts)
                 for location in others],
         }
         for entries in groups.values():
@@ -356,7 +357,7 @@ def area_schools(area, year, all_years=False, concern=False):
         return schools_nearby(area.region, year, all_years, concern=concern)
 
     key = ':'.join([
-        'pesticides:area-schools:v1',
+        'pesticides:area-schools:v4',
         area.cache_key(),
         stats.year_param(year, all_years) or 'none',
         concern or '',
@@ -366,9 +367,10 @@ def area_schools(area, year, all_years=False, concern=False):
         rows = PesticideUseRollup.objects.all()
         if concern:
             rows = stats.narrow_rows(rows, concern)
+        districts = district_urls()
         others = [
-            _school_entry(location, rows, year, all_years, is_run_by=False)
-            for location in area.locations().select_related('city').order_by('name', 'pk')
+            _school_entry(location, rows, year, all_years, is_run_by=False, districts=districts)
+            for location in area.locations().select_related('city', 'school_district').order_by('name', 'pk')
         ]
         others.sort(key=lambda entry: (-entry['lbs'], entry['display_name']))
         cities = {entry['display_city'].lower() for entry in others if entry['display_city']}
@@ -377,7 +379,25 @@ def area_schools(area, year, all_years=False, concern=False):
     return stats.cached(key, build, ttl=SCHOOLS_NEARBY_TTL)
 
 
-def _school_entry(location, rows, year, all_years, is_run_by):
+def district_urls():
+    """
+    Each school district's page, by its seven-digit CDE code (the start of
+    its CDS code, which is how a public school names the district that runs
+    it), and by name as `name:<name>` (all a private school's record gives):
+    {key: url}.
+    """
+    urls = {}
+    for external_id, name, sqid, slug in (Region.objects
+            .filter(type=Region.Type.SCHOOL_DISTRICT, boundary__isnull=False)
+            .values_list('external_id', 'name', 'sqid', 'slug')):
+        url = reverse('pesticides:region', kwargs={'sqid': sqid, 'slug': slug})
+        if external_id:
+            urls[external_id[:7]] = url
+        urls.setdefault(f'name:{name}', url)
+    return urls
+
+
+def _school_entry(location, rows, year, all_years, is_run_by, districts=None):
     totals = stats.block_totals(rows, location.point, year, all_years)
     section = totals['section']
     metadata = location.metadata or {}
@@ -388,12 +408,32 @@ def _school_entry(location, rows, year, all_years, is_run_by):
         'type': location.type,
         'type_label': str(location.short_type),
         'run_by_name': metadata.get('district_name') or '',
+        'run_by_url': _run_by_url(location, metadata, districts or {}),
         'is_run_by': is_run_by,
         'lbs': totals['lbs'],
         'applications': totals['applications'],
         'section_sqid': section.sqid if section is not None else None,
         'section_mtrs': (section.external_id or section.name) if section is not None else None,
     }
+
+
+def _run_by_url(location, metadata, districts):
+    """
+    The page of the district a site names: by its CDE code (a public
+    school's), else -- a private school carries the district it sits in, but
+    no code -- the district region it was resolved into, when the names agree.
+    A county office of education has no district page.
+    """
+    url = districts.get(metadata.get('district_code') or '')
+    if url:
+        return url
+    name = metadata.get('district_name')
+    district = location.school_district
+    if district is not None and district.name == name:
+        return district.get_pesticides_url()
+    # A private school in one of two overlapping districts (an elementary
+    # and a high school district) may have resolved into the other one.
+    return districts.get(f'name:{name}') if name else None
 
 
 def _display_name(location, text):

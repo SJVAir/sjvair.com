@@ -1101,6 +1101,13 @@ body.pesticides
             margin-bottom: 0
 
     .schools-table
+        .school-kind
+            display: block
+            font-size: $size-7
+            color: $grey
+        // "MDM-T17S-R23E-16" on one line.
+        td:last-child
+            white-space: nowrap
         tbody tr.is-collapsed
             display: none
             &.is-revealed

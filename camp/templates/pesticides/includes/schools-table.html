@@ -55,9 +55,7 @@ as the row.
         <thead>
             <tr>
                 <th>{% sort_link 'name' 'School or child care' param='schools_sort' %}</th>
-                <th>{% sort_link 'type' 'Type' param='schools_sort' %}</th>
                 {% if schools.show_city %}<th>{% sort_link 'city' 'City' param='schools_sort' %}</th>{% endif %}
-                <th>Run by</th>
                 <th class="has-text-right">{% sort_link 'lbs' 'Lbs nearby' param='schools_sort' %}</th>
                 <th class="has-text-right">{% sort_link 'applications' 'Applications' param='schools_sort' %}</th>
                 <th>Section</th>
@@ -66,16 +64,15 @@ as the row.
         <tbody>
             {% for row in schools.rows %}
             <tr{% if row.is_collapsed %} class="is-collapsed"{% endif %}>
-                <td>{{ row.display_name }}</td>
-                <td>{{ row.type_label }}</td>
+                {# What it is, and the district that runs it, under its name rather than in two columns of their own. #}
+                <td>{{ row.display_name }}<span class="school-kind">{{ row.type_label }}{% if row.run_by_name %} · {% if row.run_by_url %}<a href="{{ row.run_by_url }}{{ scope_qs }}">{{ row.run_by_name }}</a>{% else %}{{ row.run_by_name }}{% endif %}{% endif %}</span></td>
                 {% if schools.show_city %}<td>{{ row.display_city|default:"—" }}</td>{% endif %}
-                <td>{{ row.run_by_name|default:"—" }}</td>
                 <td class="has-text-right">{{ row.lbs|lbs }}</td>
                 <td class="has-text-right">{{ row.applications|intcomma }}</td>
                 <td>{% if row.section_sqid %}<a href="{% url 'pesticides:section-detail' sqid=row.section_sqid %}{{ scope_qs }}" title="Square-mile section {{ row.section_mtrs }}">{{ row.section_mtrs }}</a>{% else %}&mdash;{% endif %}</td>
             </tr>
             {% empty %}
-            <tr><td colspan="{% if schools.show_city %}7{% else %}6{% endif %}" class="has-text-centered has-text-grey">
+            <tr><td colspan="{% if schools.show_city %}5{% else %}4{% endif %}" class="has-text-centered has-text-grey">
                 No schools match. <a href="{% qs_replace schools_q=None schools_type=None schools_run_by=None %}">Clear the filters</a>
             </td></tr>
             {% endfor %}

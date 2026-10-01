@@ -432,16 +432,16 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         cache.clear()
         html = self.client.get(self.url).content.decode()
         # CDSS shouts its names; CDE's are already properly cased.
-        assert '<td>Away Child Care</td>' in html
+        assert '<td>Away Child Care<span' in html
         assert 'AWAY CHILD CARE' not in html
-        assert '<td>Selma High</td>' in html
+        assert '<td>Selma High<span' in html
 
     def test_panel_leaves_a_shouted_cde_name_alone(self):
         self.inside.name = 'SELMA HIGH'
         self.inside.save()
         cache.clear()
         html = self.client.get(self.url).content.decode()
-        assert '<td>SELMA HIGH</td>' in html
+        assert '<td>SELMA HIGH<span' in html
 
     def test_the_city_column_is_dropped_when_every_site_shares_one(self):
         # The postal city is shouted in the CDSS directory and title-cased for
@@ -476,9 +476,11 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         self.inside.save()
         cache.clear()
         html = self.client.get(self.url).content.decode()
-        assert '<td>Selma Unified</td>' in html
-        # Child care has no administering district.
-        assert '<td>&mdash;</td>' in html or '<td>—</td>' in html
+        # Under the name, after what it is, linking the district's page.
+        district_url = reverse('pesticides:region', kwargs={'sqid': self.district.sqid, 'slug': 'selma-unified'})
+        assert f'<span class="school-kind">Public school · <a href="{district_url}">Selma Unified</a></span>' in html
+        # Child care has no administering district: just what it is.
+        assert '<span class="school-kind">Child care</span>' in html
 
     def test_panel_section_links_carry_the_scope(self):
         section_url = reverse('pesticides:section-detail', kwargs={'sqid': Region.objects.get(pk=9101).sqid})
