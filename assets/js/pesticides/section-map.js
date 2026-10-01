@@ -475,6 +475,11 @@
   // and county views) the markers would pile into one heap, and the bubble
   // says more.
   var NOTICE_SPLIT_MIN_PX = 16;
+  // Zoomed far out (the valley view) a township is narrower than its bubble,
+  // so bubbles that would overlap merge into one carrying their total; a
+  // click zooms in until they part. From about zoom 8 townships are wide
+  // enough that none do.
+  var NOTICE_MERGE = { maxZoom: 9, radius: 32 };
   var NOTICE_COUNT_FALLBACK_FONT = ['Noto Sans Bold'];
   // How many of a section's notices its popup lists before "N more".
   var SECTION_POPUP_NOTICES = 3;
@@ -954,6 +959,8 @@
     } else {
       this.clearAllSections();
     }
+    // Township bubbles or each section's markers, whichever the mode now asks for.
+    this.drawNotices();
   };
 
   SectionMap.prototype.onNoticesToggle = function (event) {
@@ -1064,7 +1071,13 @@
     this.ensureSource('outline');
     this.ensureSource('outline-mask');
     this.ensureSource('locations');
-    this.ensureSource('notices');
+    this.ensureSource('notices', {
+      cluster: true,
+      clusterMaxZoom: NOTICE_MERGE.maxZoom,
+      clusterRadius: NOTICE_MERGE.radius,
+      // Notices, not markers: each marker already stands for several.
+      clusterProperties: { total: ['+', ['get', 'count']] },
+    });
 
     this.ensureLayer({
       id: 'radius-fill', type: 'fill', source: 'radius',
@@ -1182,6 +1195,7 @@
       id: 'notices-circle', type: 'circle', source: 'notices',
       paint: {
         'circle-radius': ['case',
+          ['has', 'point_count'], ['case', ['>=', ['get', 'total'], NOTICE_TOWNSHIP.largeFrom], NOTICE_TOWNSHIP.large, NOTICE_TOWNSHIP.small],
           ['<=', ['get', 'count'], 1], NOTICE_MARKER.radius,
           ['!=', ['get', 'kind'], 'township'], NOTICE_GROUP_RADIUS,
           ['>=', ['get', 'count'], NOTICE_TOWNSHIP.largeFrom], NOTICE_TOWNSHIP.large,
@@ -1198,9 +1212,9 @@
     // serve.
     this.ensureLayer({
       id: 'notices-count', type: 'symbol', source: 'notices',
-      filter: ['>', ['get', 'count'], 1],
+      filter: ['any', ['has', 'point_count'], ['>', ['get', 'count'], 1]],
       layout: {
-        'text-field': ['to-string', ['get', 'count']],
+        'text-field': ['to-string', ['case', ['has', 'point_count'], ['get', 'total'], ['get', 'count']]],
         'text-font': this.styleTextFont(),
         'text-size': 11,
         'text-allow-overlap': true,
@@ -1985,11 +1999,33 @@
   SectionMap.prototype.bindMarkerEvents = function () {
     var self = this;
     var map = this.map;
-    var onNoticeMove = function (event) { self.setHover('notices', event.features[0].id); };
-    var onNoticeLeave = function () { self.clearHover('notices'); };
+    var onNoticeMove = function (event) {
+      var feature = event.features[0];
+      // A merged bubble has no id of its own (the source promotes `id`), so
+      // it takes the pointer without a hover state.
+      if (feature.properties.cluster) {
+        self.clearHover('notices');
+        map.getCanvas().style.cursor = 'pointer';
+        return;
+      }
+      self.setHover('notices', feature.id);
+    };
+    var onNoticeLeave = function () {
+      self.clearHover('notices');
+      if (!Object.keys(self.hoverIds).length) map.getCanvas().style.cursor = '';
+    };
     var onNoticeClick = function (event) {
       if (event.originalEvent.sectionMapTaken) return;
       var clicked = event.features[0];
+      if (clicked.properties.cluster) {
+        // Merged bubbles zoom in to where they part.
+        event.originalEvent.sectionMapTaken = true;
+        var center = clicked.geometry.coordinates;
+        map.getSource('notices').getClusterExpansionZoom(clicked.properties.cluster_id).then(function (zoom) {
+          map.easeTo({ center: center, zoom: zoom, animate: !self.reducedMotion });
+        });
+        return;
+      }
       var township = self.noticeTownshipById[clicked.id];
       if (township) {
         event.originalEvent.sectionMapTaken = true;
@@ -2028,12 +2064,15 @@
   SectionMap.prototype.bindGridEvents = function () {
     var self = this;
     var map = this.map;
-    // Zooming with the lens up can take its sections across the size where
-    // its townships' notices split out of their bubbles, or back.
+    // Zooming (with the lens up, or all sections drawn) can take the
+    // sections across the size where the notices split out of their
+    // township bubbles, or back.
     map.on('zoomend', function () {
-      if (self.level !== 'township' || !self.lensFeatures.length) return;
-      var split = self.sectionPixels() >= NOTICE_SPLIT_MIN_PX;
-      if (split !== !!self.noticesSplit) self.drawNotices();
+      if (self.level !== 'township') return;
+      var bigEnough = self.sectionPixels() >= NOTICE_SPLIT_MIN_PX;
+      var split = bigEnough && !!self.lensFeatures.length;
+      var allSplit = bigEnough && self.allSectionsActive();
+      if (split !== !!self.noticesSplit || allSplit !== !!self.noticesAllSplit) self.drawNotices();
     });
     map.on('mousemove', 'grid-fill', function (event) {
       // Under "all sections" the townships are only click plumbing.
@@ -3250,7 +3289,12 @@
     var groups = {};
     var order = [];
     var underLens = {};
-    this.noticesSplit = !!(this.lensHosts && this.lensFeatures.length && this.sectionPixels() >= NOTICE_SPLIT_MIN_PX);
+    var bigEnough = this.sectionPixels() >= NOTICE_SPLIT_MIN_PX;
+    // "All sections" draws every township's sections: each section's
+    // notices on it, as at the section level, once they're big enough.
+    this.noticesAllSplit = this.allSectionsActive() && bigEnough;
+    if (this.noticesAllSplit) return sectionFeatures.slice();
+    this.noticesSplit = !!(this.lensHosts && this.lensFeatures.length && bigEnough);
     if (this.noticesSplit) {
       this.lensHosts.forEach(function (host) { underLens[host.properties.id] = true; });
     }

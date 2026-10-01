@@ -936,14 +936,19 @@ def check_locations(page):
         if not loaded:
             return False, 'locations never loaded (%d request(s))' % page.marker_requests('locations')
         count = page.source_count('locations')
+        # The source loads a margin around the view: count what's on screen.
+        in_view = page.instance_js("""
+            var b = inst.map.getBounds();
+            return inst.sourceData.locations.features.filter(function (f) { return b.contains(f.geometry.coordinates); }).length;
+        """)
         if page.js("return document.querySelector('.section-map-locations-note').textContent"):
             problems.append('zoom note shown at zoom %.2f' % state['zoom'])
-        if not count:
-            skipped = 'no locations in view at zoom %.2f' % state['zoom']
+        if not in_view:
+            skipped = 'no locations in view at zoom %.2f (%d loaded around it)' % (state['zoom'], count)
         else:
             rendered = page.wait_for("var inst = (function () { %s })(); return !!inst && inst.map.queryRenderedFeatures({ layers: ['locations-circle'] }).length > 0;" % JS_INSTANCE, 10)
             if not rendered:
-                problems.append('%d locations in the source, none rendered' % count)
+                problems.append('%d locations in view, none rendered' % in_view)
             target = page.pick_point('locations', 'locations-circle')
             if not target:
                 problems.append('no location on bare canvas to click')
