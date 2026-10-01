@@ -1,0 +1,11 @@
+{% load pesticides_explorer %}
+{% if mode == 'past' and archive_months %}
+        <div class="box archive-months">
+            <p class="menu-label">Archive</p>
+            <ul class="menu-list">
+                {% for m in archive_months %}
+                <li><a href="{% qs_replace past=1 archive_year=m.year month=m.month page=None %}"{% if filter_year == m.year and filter_month == m.month %} class="is-active"{% endif %}>{{ m.label }} <span class="tag is-light">{{ m.count }}</span></a></li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}

@@ -1911,6 +1911,11 @@ class NoticeList(vanilla.ListView):
     paginate_by = 50
     template_name = 'pesticides/notice-list.html'
 
+    def paginate_queryset(self, queryset, page_size):
+        # An out-of-range or junk `?page=` lands on the nearest real page
+        # rather than a 404.
+        return self.get_paginator(queryset, page_size).get_page(self.request.GET.get(self.page_kwarg))
+
     def dispatch(self, request, *args, **kwargs):
         self.form = NoticeFilterForm(request.GET)
         self.form.is_valid()
@@ -1999,7 +2004,7 @@ class NoticeList(vanilla.ListView):
 
     def get_active_filters(self):
         filters = []
-        for param in ('chemical', 'product'):
+        for param in ('product', 'chemical'):
             obj = self.related.get(param)
             if obj and obj is not MISSING:
                 filters.append({'label': getattr(obj, 'display_name', obj.name), 'clear_url': clear_url(self.request, param)})
@@ -2010,6 +2015,10 @@ class NoticeList(vanilla.ListView):
         if self.point:
             filters.append({'label': f'Within {self.radius} mi', 'clear_url': clear_url(self.request, 'lat', 'lng', 'radius')})
         return filters
+
+    def get_clear_filters_url(self):
+        """Where "Clear filters" goes: the list in its mode, nothing else."""
+        return self.request.path + ('?past=1' if self.mode == 'past' else '')
 
     def get_map_config(self):
         chemical = self.related.get('chemical')
@@ -2048,6 +2057,7 @@ class NoticeList(vanilla.ListView):
             map_config=self.get_map_config(),
             active_filters=self.get_active_filters(),
             archive_months=self.get_archive_months(),
+            clear_filters_url=self.get_clear_filters_url(),
             filter_year=data.get('archive_year'),
             filter_month=data.get('month'),
             **year_ctx,
@@ -2365,39 +2375,12 @@ class AreaCommunityMixin:
         )
 
 
-class AreaNoticesMixin:
+class AreaNarrowedListMixin:
     """
-    A place page's Notices tab: the notices of intent scheduled in it, day by
-    day, on the map with the notices on, with the place's archive a link away.
+    A place tab that narrows one of the explorer's list browsers to the
+    place: the place's own filter is added to the request before the browser
+    reads it, and isn't offered as a chip to clear -- the tab is the place.
     """
-    template_name = 'pesticides/area-notices.html'
-
-    def get_context_data(self, **kwargs):
-        year, all_years, concern = self.scope
-        area = self.area
-        return super().get_context_data(
-            section=None,
-            area=area,
-            tab_label='Notices',
-            **places.upcoming_context(area, concern),
-            map_config=section_map_config(year, all_years=all_years, concern=concern, **area.map_kwargs()),
-            archive_url=area.notices_url(concern) + '&past=1',
-            spraydays_url=places.SPRAYDAYS_URL,
-            **self.header_context(),
-            **self.tab_scope_context(),
-            **kwargs,
-        )
-
-
-class AreaRecordsMixin:
-    """
-    A place page's Records tab: the records browser (RecordsBrowser) narrowed
-    to the place -- its stats, map, filters and table -- under the place's
-    header and tabs. The place's own filter (its region, county, or point
-    and radius) is added to the request before the browser reads it, and
-    isn't offered as a chip to clear: the tab is the place.
-    """
-    template_name = 'pesticides/area-records.html'
 
     def dispatch(self, request, *args, **kwargs):
         params = request.GET.copy()
@@ -2411,6 +2394,56 @@ class AreaRecordsMixin:
         own = {region.name, getattr(region, 'display_name', region.name)} if region is not None else set()
         return [chip for chip in super().get_active_filters()
             if chip['label'] not in own and not chip['label'].startswith('Within ')]
+
+
+class AreaNoticesMixin(AreaNarrowedListMixin):
+    """
+    A place page's Notices tab: the notice list (NoticeList) narrowed to the
+    place -- its filters, archive, map and rows -- under the place's header
+    and tabs, with the stat row always on what's scheduled now. The place's
+    own filter comes from AreaNarrowedListMixin.
+    """
+    template_name = 'pesticides/area-notices.html'
+
+    def get_clear_filters_url(self):
+        url = self.area_tab_url('notices')
+        if self.mode == 'past':
+            url += ('&' if '?' in url else '?') + 'past=1'
+        return url
+
+    def get_map_config(self):
+        year, all_years, concern = self.scope
+        chemical = self.related.get('chemical')
+        product = self.related.get('product')
+        return section_map_config(
+            year, all_years=all_years, concern=concern,
+            chemical=chemical if chemical and chemical is not MISSING else None,
+            product=product if product and product is not MISSING else None,
+            **self.area.map_kwargs(),
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        year, all_years, concern = self.scope
+        context.update(
+            section=None,
+            area=self.area,
+            tab_label='Notices',
+            **places.upcoming_context(self.area, concern),
+            **self.header_context(),
+            **self.tab_scope_context(),
+        )
+        return context
+
+
+class AreaRecordsMixin(AreaNarrowedListMixin):
+    """
+    A place page's Records tab: the records browser (RecordsBrowser) narrowed
+    to the place -- its stats, map, filters and table -- under the place's
+    header and tabs. The place's own filter (its region, county, or point
+    and radius) comes from AreaNarrowedListMixin.
+    """
+    template_name = 'pesticides/area-records.html'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -2439,6 +2472,10 @@ class AreaSchoolsMixin:
         district = area.region if area.kind == 'region' and area.region.type == Region.Type.SCHOOL_DISTRICT else None
         groups = places.area_schools(area, year, all_years, concern=concern)
         schools = places.schools_panel(groups, self.request.GET, district=district)
+        # A page of the table at a time, like the other browsers; get_page
+        # turns a junk or out-of-range ?page= into the first or last page.
+        page_obj = Paginator(schools['rows'], places.SCHOOLS_PER_PAGE).get_page(self.request.GET.get('page'))
+        schools['rows'] = page_obj.object_list
         # A district's own page is the district; anywhere else, those it overlaps.
         districts = places.area_districts(area) if district is None else []
         point_hidden = []
@@ -2451,8 +2488,9 @@ class AreaSchoolsMixin:
             section=None,
             area=area,
             tab_label='Schools',
-            tab_has_filters=True,
             schools=schools,
+            page_obj=page_obj,
+            is_paginated=page_obj.has_other_pages(),
             school_count=len(rows) - child_care,
             child_care_count=child_care,
             district=district,
@@ -2478,11 +2516,11 @@ class RegionPage(RegionAreaMixin, AreaOverviewMixin, vanilla.TemplateView):
     pass
 
 
-class NearMeNotices(NearMeAreaMixin, AreaNoticesMixin, vanilla.TemplateView):
+class NearMeNotices(NearMeAreaMixin, AreaNoticesMixin, NoticeList):
     tab = 'notices'
 
 
-class RegionNotices(RegionAreaMixin, AreaNoticesMixin, vanilla.TemplateView):
+class RegionNotices(RegionAreaMixin, AreaNoticesMixin, NoticeList):
     tab = 'notices'
 
 

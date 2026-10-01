@@ -487,26 +487,41 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         html = self.client.get(self.url, {'year': '2022', 'concern': '1'}).content.decode()
         assert f'{section_url}?year=2022&amp;narrow=concern' in html
 
-    def test_rows_past_the_cap_render_collapsed(self):
-        for index in range(20):
+    def make_many(self, count):
+        for index in range(count):
             self.make_location(f'EXTRA CARE {index:02d}')
         cache.clear()
 
-        response = self.client.get(self.url)
-        rows = response.context['schools']['rows']
-
-        assert len(rows) == 22
-        assert [row['is_collapsed'] for row in rows[:15]] == [False] * 15
-        assert all(row['is_collapsed'] for row in rows[15:])
+    def test_rows_past_a_page_go_to_the_next(self):
+        self.make_many(50)  # 52 sites with the fixture's two
+        response = self.client.get(self.url, {'schools_sort': 'name'})
+        assert len(response.context['schools']['rows']) == 50
+        assert response.context['is_paginated'] is True
+        assert response.context['schools']['matched'] == 52
         html = response.content.decode()
-        # Every row is in the one tbody; the rest are a click away.
-        assert html.count('Extra Care') == 20
-        assert html.count('class="is-collapsed"') == 7
-        assert 'Show the other 7' in html
+        assert 'is-collapsed' not in html and 'Show the other' not in html
+        assert 'page=2' in html and 'schools_sort=name' in html.split('page=2')[0].rsplit('href="', 1)[1]
 
-    def test_no_toggle_when_everything_fits(self):
-        html = self.client.get(self.url).content.decode()
-        assert 'data-schools-toggle' not in html
+        second = self.client.get(self.url, {'schools_sort': 'name', 'page': 2})
+        assert len(second.context['schools']['rows']) == 2
+
+    def test_filtering_resets_to_page_one(self):
+        self.make_many(50)
+        html = self.client.get(self.url, {'page': 2}).content.decode()
+        form = html[html.index('schools-filters'):html.index('</form>', html.index('schools-filters'))]
+        assert 'name="page"' not in form
+
+    def test_bad_page_is_not_a_500(self):
+        self.make_many(50)
+        for page in ('99', 'nope', '-1'):
+            response = self.client.get(self.url, {'page': page})
+            assert response.status_code == 200, page
+            assert response.context['schools']['rows'], page
+
+    def test_one_page_has_no_pagination(self):
+        response = self.client.get(self.url)
+        assert response.context['is_paginated'] is False
+        assert 'class="pagination' not in response.content.decode()
 
     def test_sorting_by_name(self):
         rows = self.client.get(self.url, {'schools_sort': 'name'}).context['schools']['rows']
@@ -673,6 +688,12 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         assert 'child care in this district' not in html
         assert 'Who goes to school here' not in html
         assert 'data-show-locations="0"' in html
+
+    def test_filters_sit_beside_the_map(self):
+        from camp.apps.pesticides.tests.test_area_layout import side
+        html = self.client.get(self.url).content.decode()
+        assert 'schools-filters' in side(html)
+        assert html.index('class="column tab-map"') < html.index('schools-table')
 
 
 class PlaceConcernScopeTests(RollupTestMixin, TestCase):

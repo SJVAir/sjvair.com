@@ -39,13 +39,11 @@ anywhere else, the school districts the place overlaps.
 
 {% block tab-map %}{% include 'pesticides/includes/section-map.html' %}{% endblock %}
 
-{% block tab-filters %}
-{% include 'pesticides/includes/schools-filters.html' %}
-{% include 'pesticides/includes/school-districts-box.html' %}
-{% endblock %}
+{% block tab-filters %}{% include 'pesticides/includes/schools-filters.html' %}{% endblock %}
+{% block tab-aside %}{% include 'pesticides/includes/school-districts-box.html' %}{% endblock %}
 
 {% block tab-table %}
-<section class="schools-nearby" data-reveal-scope>
+<section class="schools-nearby">
 {# Most rows are child care, not schools, so the heading says both. #}
 <h2 class="title is-4">Schools &amp; child care {% if district %}in this district{% else %}here{% endif %}</h2>
 {% if schools.total %}

@@ -2,10 +2,7 @@
 {% load humanize pesticides_explorer %}
 {% comment %}
 A place page's Records tab: the confirmed applications reported in the place
-(RecordsBrowser, narrowed to it). Laid out like the Records page -- the
-filters beside the map, the nine-column table the page's full width under
-them -- rather than the skeleton's filters-beside-table, which would squeeze
-the table.
+(RecordsBrowser, narrowed to it). Laid out like the Records page: the filters beside the map, the nine-column table the page's full width under them.
 {% endcomment %}
 {% block body-class %}{{ block.super }} place area-records records-page{% endblock %}
 
@@ -23,19 +20,9 @@ the table.
 </div>
 {% endblock %}
 
-{% block tab-map %}
-<div class="columns">
-    <div class="column is-3-desktop">{% include 'pesticides/includes/records-filters.html' %}</div>
-    <div class="column">
-        {% if active_filters %}
-        <div class="tags">
-            {% for f in active_filters %}<span class="tag is-info is-light is-medium">{{ f.label }} <a class="delete is-small ml-1" href="{{ f.clear_url }}" aria-label="Remove filter"></a></span>{% endfor %}
-        </div>
-        {% endif %}
-        {% include 'pesticides/includes/section-map.html' %}
-    </div>
-</div>
-{% endblock %}
+{% block tab-filters %}{% include 'pesticides/includes/records-filters.html' %}{% endblock %}
+
+{% block tab-map %}{% include 'pesticides/includes/section-map.html' %}{% endblock %}
 
 {% block tab-table %}
 <p class="summary-sentence mb-3">{{ summary_sentence }}</p>

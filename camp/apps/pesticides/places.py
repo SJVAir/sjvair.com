@@ -41,8 +41,8 @@ SPRAYDAYS_URL = 'https://spraydays.cdpr.ca.gov/'
 
 # -- The district page's schools table --
 
-# Rows past this many are rendered collapsed, with a control to show them.
-SCHOOLS_VISIBLE = 15
+# The schools table's page size.
+SCHOOLS_PER_PAGE = 50
 # The table's own filter and sort state, prefixed so it can't collide with
 # the page's own `sort` (the place page has none today; a list page would).
 SCHOOLS_Q_PARAM = 'schools_q'
@@ -509,12 +509,11 @@ def schools_panel(groups, params=None, district=None):
     """
     The one table a place's Schools tab draws from `area_schools`' groups:
     filtered (name search, type, run-by-only), sorted, and marked up for the
-    collapse. All of it happens here rather than in the database -- the list
+    paging. All of it happens here rather than in the database -- the list
     is cached whole and a few hundred entries at most.
 
-    `params` is the request's GET. Rows past SCHOOLS_VISIBLE carry
-    `is_collapsed`, so the template can render them all into one <tbody> and
-    let a click reveal the rest without another request.
+    `params` is the request's GET. Paging is the view's: this returns every
+    matching row, sorted.
     """
     params = params or {}
     rows = list(groups['run_by']) + list(groups['others'])
@@ -549,13 +548,11 @@ def schools_panel(groups, params=None, district=None):
     rows = _schools_sorted(rows, sort)
 
     return {
-        'rows': [dict(entry, is_collapsed=index >= SCHOOLS_VISIBLE)
-            for index, entry in enumerate(rows)],
+        'rows': rows,
         'show_city': groups.get('show_city', False),
         'total': len(groups['run_by']) + len(groups['others']),
         'run_by_count': len(groups['run_by']),
         'matched': len(rows),
-        'hidden': max(len(rows) - SCHOOLS_VISIBLE, 0),
         'sort': sort,
         'sort_is_default': sort == SCHOOLS_SORT_DEFAULT,
         'query': query,
