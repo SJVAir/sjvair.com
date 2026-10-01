@@ -93,6 +93,34 @@
     };
   }
 
+  // A tip floating over a plot (in uPlot's over layer, so it moves nothing):
+  // makeTip() once per chart, placeTip() on each cursor move with a bold first
+  // line and plain lines after, beside (cx, cy) in the over layer's pixels and
+  // flipped to its left near the right edge; hideTip() off the data.
+  function makeTip() {
+    var tip = document.createElement('div');
+    tip.className = 'chart-tip';
+    tip.hidden = true;
+    return tip;
+  }
+
+  function placeTip(u, tip, title, lines, cx, cy) {
+    tip.innerHTML = '';
+    var head = document.createElement('strong');
+    head.textContent = title;
+    tip.appendChild(head);
+    lines.forEach(function (text) {
+      var line = document.createElement('span');
+      line.textContent = text;
+      tip.appendChild(line);
+    });
+    tip.hidden = false;
+    var left = cx + 12;
+    if (left + tip.offsetWidth > u.over.clientWidth) left = cx - tip.offsetWidth - 12;
+    tip.style.left = Math.max(0, left) + 'px';
+    tip.style.top = Math.max(0, Math.min(cy - tip.offsetHeight / 2, u.over.clientHeight - tip.offsetHeight)) + 'px';
+  }
+
   function line(el, figure, data) {
     var colors = palette(figure);
     var readout = figure.querySelector('.chart-readout');
@@ -111,6 +139,17 @@
     // null where there's nothing to compare to.
     var compare = data.compare && data.compare.length ? data.compare : null;
     var selectedIndex = data.selected == null ? -1 : x.indexOf(data.selected);
+    var tip = makeTip();
+    // The hovered year's tip, beside its point on the line: the value, then
+    // the second series, the year's note and the baseline where there are any.
+    var showTip = function (u, index) {
+      if (index == null || y[index] == null) { tip.hidden = true; return; }
+      var lines = [labels ? count(y[index]) + ' ' + labels[0] : amount(y[index], data.unit)];
+      if (y2 && y2[index] != null) lines.push(count(y2[index]) + ' ' + labels[1]);
+      if (notes && notes[index]) lines.push(notes[index]);
+      if (compare && compare[index] != null) lines.push((data.compare_label || 'valley average') + ' ' + amount(compare[index], data.unit));
+      placeTip(u, tip, String(x[index]), lines, u.valToPos(x[index], 'x'), u.valToPos(y[index], 'y'));
+    };
     var pad = x.length > 1 ? 0.5 : 1;
     var series = [
       {},
@@ -201,8 +240,9 @@
           ctx.restore();
         }],
         setCursor: [function (u) {
-          if (!readout) return;
           var index = u.cursor.idx;
+          showTip(u, index);
+          if (!readout) return;
           if (index == null) {
             readout.textContent = '';
             return;
@@ -226,7 +266,9 @@
     var columns = [x, y];
     if (y2) columns.push(y2);
     if (compare) columns.push(compare);
-    return new uPlot(opts, columns, el);
+    var plot = new uPlot(opts, columns, el);
+    plot.over.appendChild(tip);
+    return plot;
   }
 
   // A 100% stacked bar per year: data.series [{label, values, color}], the
@@ -273,12 +315,8 @@
         span.textContent = index == null ? '' : ' ' + Math.round(shares[i][index]) + '%';
       });
     };
-    // The band under the cursor -- its sector, share and amount -- in a tip
-    // that floats over the plot (absolutely placed in uPlot's over layer, so
-    // it moves nothing).
-    var tip = document.createElement('div');
-    tip.className = 'chart-tip';
-    tip.hidden = true;
+    // The band under the cursor: its sector, then the year, share and amount.
+    var tip = makeTip();
     var showTip = function (u, index) {
       var top = u.cursor.top;
       if (index == null || top == null || top < 0) { tip.hidden = true; return; }
@@ -288,19 +326,9 @@
         if (value <= cumulative[i][index] + 1e-9) { part = i; break; }
       }
       if (part < 0 || value < 0 || !shares[part][index]) { tip.hidden = true; return; }
-      tip.innerHTML = '';
-      var name = document.createElement('strong');
-      name.textContent = parts[part].label;
-      var line = document.createElement('span');
-      line.textContent = x[index] + ' · ' + Math.round(shares[part][index]) + '% · ' + amount(parts[part].values[index] || 0, data.unit);
-      tip.appendChild(name);
-      tip.appendChild(line);
-      tip.hidden = false;
-      // Beside the cursor, flipped to its left near the right edge.
-      var left = u.cursor.left + 12;
-      if (left + tip.offsetWidth > u.over.clientWidth) left = u.cursor.left - tip.offsetWidth - 12;
-      tip.style.left = Math.max(0, left) + 'px';
-      tip.style.top = Math.max(0, Math.min(top - tip.offsetHeight / 2, u.over.clientHeight - tip.offsetHeight)) + 'px';
+      placeTip(u, tip, parts[part].label,
+        [x[index] + ' · ' + Math.round(shares[part][index]) + '% · ' + amount(parts[part].values[index] || 0, data.unit)],
+        u.cursor.left, top);
     };
     var opts = Object.assign(size(el, data.height || BARS_HEIGHT), {
       legend: {show: false},
