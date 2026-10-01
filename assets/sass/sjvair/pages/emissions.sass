@@ -228,18 +228,17 @@ body.emissions
       font-size: $size-7
       a
         padding: 0.2rem 0
-  // A list or table past its first few (sector-rows.html's `collapse`),
-  // until its "Show all" (explorer.js's [data-collapse-toggle]) reveals them.
+  // A card's rows past its first five (rank-card.html), until its View all
+  // (explorer.js's [data-collapse-toggle]) reveals them.
   [data-collapse-scope] .is-collapsed:not(.is-revealed)
     display: none
-  // The toggle sits right under its table, not a table-container's margin away.
-  [data-collapse-scope] > .table-container:has(+ .collapse-toggle)
-    margin-bottom: 0
-  .collapse-toggle
-    margin-top: 0.25rem
-    padding-left: 0
+  .related-card button.view-all
+    height: auto
+    padding: 0.75rem 1rem
     text-decoration: none
     color: $link
+    font-size: 0.8rem
+    font-weight: 600
   // An area page's tabs (area-header.html): under the header, before the
   // tab's content, scrolling sideways on a phone rather than wrapping.
   .area-header

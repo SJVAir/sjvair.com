@@ -357,6 +357,14 @@ class AreaTabTests(DairyPageTestCase):
         assert dict((label, current) for label, _, current in tabs)['Dairies']
         assert dict((label, href) for label, href, _ in tabs)['Overview'] == f'{self.fresno.get_emissions_url()}?year=2023&pollutant=rog'
 
+    def test_the_overview_has_top_facility_and_sector_cards(self):
+        overview = self.page(self.fresno.get_emissions_url(), {'year': '2023'})
+        facilities = overview[overview.index('card-header-title">Top facilities'):overview.index('card-header-title">Top sectors')]
+        assert f'href="{self.fresno.get_emissions_tab_url("facilities")}?year=2023">View all</a>' in facilities.replace('&amp;', '&')
+        assert '<td class="rank">1.</td>' in facilities
+        # Sectors expand in place: there's no area-filtered sector list to link.
+        assert 'data-collapse-scope' in overview[overview.index('card-header-title">Top facilities') - 200:]
+
     def test_each_tab_shows_its_own_content(self):
         overview = self.page(self.fresno.get_emissions_url(), {'year': '2023'})
         assert 'Top facilities' in overview and 'id="in-and-around"' not in overview

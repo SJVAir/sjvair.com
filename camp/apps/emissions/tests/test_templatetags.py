@@ -50,20 +50,6 @@ class PercentTests(TestCase):
         assert '42%' in html and '41.9%' not in html
 
 
-class SectorRowsTests(TestCase):
-    def rows(self, n):
-        return [{'sector': 'glass', 'label': f'Sector {i}', 'facilities': 1, 'value': float(n - i), 'share': 0.01} for i in range(n)]
-
-    def test_collapse_hides_rows_past_the_first_few_behind_a_toggle(self):
-        html = render_to_string('emissions/includes/sector-rows.html', {'rows': self.rows(8), 'pollutant': POLLUTANTS['nox'], 'collapse': 5})
-        assert html.count('<tr class="is-collapsed">') == 3
-        assert 'data-collapse-toggle' in html and 'Show all 8 sectors' in html
-
-    def test_short_or_uncollapsed_lists_show_every_row(self):
-        for context in ({'rows': self.rows(5), 'collapse': 5}, {'rows': self.rows(8)}):
-            html = render_to_string('emissions/includes/sector-rows.html', dict(context, pollutant=POLLUTANTS['nox']))
-            assert 'is-collapsed' not in html and 'data-collapse-toggle' not in html
-
 
 class TrendChartTests(TestCase):
     def test_chart_payload_and_sentence(self):

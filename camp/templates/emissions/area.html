@@ -24,24 +24,13 @@
 {% if context_bar %}{% include 'emissions/includes/context-bar.html' %}{% endif %}
 {% if nei_context %}{% include 'emissions/includes/nei-context-bar.html' %}{% endif %}
 
-<h2 class="title is-4 mt-5">Top facilities</h2>
-{% if top_rows %}
-{% include 'emissions/includes/facility-table.html' with rows=top_rows sortable=False hide_city=top_columns.hide_city hide_county=top_columns.hide_county %}
-{% for t in tabs %}{% if t.key == 'facilities' %}<p class="mt-2"><a href="{{ t.url }}">All {{ totals.facilities|intcomma }} facilities here →</a></p>{% endif %}{% endfor %}
-{% else %}
-<p class="has-text-grey">No facilities here reported {{ pollutant.name }} in {{ year }}.</p>
-{% endif %}
+<div class="columns mt-5">
+    <div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='Top facilities' rows=facility_card view_all_url=facilities_tab_url %}</div>
+    <div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='Top sectors' rows=sector_card view_all_url='' %}</div>
+</div>
 {% if toxics_breakdown %}{% include 'emissions/includes/toxics-breakdown.html' %}{% endif %}
 
-<div class="columns mt-5">
-    <div class="column">
-        <h2 class="title is-4">By sector</h2>
-        {% include 'emissions/includes/sector-rows.html' with rows=top_sectors collapse=5 %}
-    </div>
-    <div class="column">
-        {% emissions_trend_chart by_year pollutant year heading="Over time" %}
-    </div>
-</div>
+{% emissions_trend_chart by_year pollutant year heading="Over time" %}
 
 {% elif tab == 'facilities' %}
 <h2 class="title is-4" id="facilities">Facilities in {{ year }}</h2>

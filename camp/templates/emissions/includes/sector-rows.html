@@ -1,11 +1,5 @@
 {# emissions_explorer last: its percent and signed_pct (whole percents) win over the pesticides ones of the same name. #}
 {% load humanize pesticides_explorer emissions_explorer %}
-{% comment %}
-Sectors as a table. `collapse` (a number) shows that many rows and hides the
-rest behind a "Show all N" button that reveals them in place (explorer.js's
-[data-collapse-toggle]); without it every row shows (the Sectors page).
-{% endcomment %}
-<div data-collapse-scope>
 <div class="table-container">
 <table class="table is-fullwidth is-narrow sector-table is-stacked-mobile">
     <thead>
@@ -15,7 +9,7 @@ rest behind a "Show all N" button that reveals them in place (explorer.js's
     </thead>
     <tbody>
         {% for row in rows %}
-        <tr{% if collapse and forloop.counter > collapse %} class="is-collapsed"{% endif %}>
+        <tr>
             <td class="cell-name"><a href="{% url 'emissions:sector-detail' row.sector %}{{ scope_qs }}">{{ row.label }}</a>{% if show_description %}<br><span class="is-size-7 has-text-grey">{% sector_description row.sector %}</span>{% endif %}</td>
             <td class="has-text-right cell-meta" data-unit="facilities">{{ row.facilities|intcomma }}</td>
             <td class="has-text-right cell-value"{% if not pollutant.weighted %} data-unit="{{ pollutant.unit_label }}"{% endif %}>{{ row.value|amount:pollutant }}</td>
@@ -25,6 +19,4 @@ rest behind a "Show all N" button that reveals them in place (explorer.js's
         {% endfor %}
     </tbody>
 </table>
-</div>
-{% if collapse and rows|length > collapse %}<button type="button" class="button is-small is-text collapse-toggle" data-collapse-toggle aria-expanded="false" data-show-label="Show all {{ rows|length }} sectors" data-hide-label="Show fewer">Show all {{ rows|length }} sectors</button>{% endif %}
 </div>

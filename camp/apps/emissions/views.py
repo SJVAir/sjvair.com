@@ -853,9 +853,10 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
             top_rows = stats.with_ranks(table[:AREA_TABLE_ROWS], stats.ranks(scope))
             kwargs.setdefault('facility_count', table.count())
         elif tab == 'overview':
-            top_rows = stats.with_ranks(stats.facility_table(scope)[:10], stats.ranks(scope))
+            top_rows = stats.with_ranks(stats.facility_table(scope)[:5], stats.ranks(scope))
         else:
             top_rows = []
+        top_sectors = reporting_sectors(scope) if tab == 'overview' else []
         # A region page overrides this with its own "In and around" lists;
         # a near-me page (a point, not a region) has none.
         kwargs.setdefault('within', None)
@@ -882,9 +883,19 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
             county_share=total / county_total if county_total else None,
             tab=tab,
             tabs=area_tabs(self, area, tab),
+            facilities_tab_url=self.area_tab_url('facilities', self.tab_query('facilities')),
             top_rows=top_rows,
             top_columns=uniform_columns(top_rows),
-            top_sectors=reporting_sectors(scope) if tab == 'overview' else [],
+            top_sectors=top_sectors,
+            # The Overview's two cards (rank-card.html): five facilities, every sector.
+            facility_card=[
+                {'label': record.facility.name, 'url': record.facility.get_absolute_url(), 'value': record.value}
+                for _, record in top_rows[:5]
+            ] if tab == 'overview' else [],
+            sector_card=[
+                {'label': row['label'], 'url': reverse('emissions:sector-detail', args=[row['sector']]), 'value': row['value'], 'share': row['share']}
+                for row in top_sectors
+            ],
             by_year=stats.by_year(scope) if tab == 'overview' else [],
             map_config=self.get_map_config(base) if tab in ('overview', 'oil-gas') else None,
             compliance_line=compliance_line,
