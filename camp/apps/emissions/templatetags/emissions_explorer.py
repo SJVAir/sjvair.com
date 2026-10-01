@@ -120,7 +120,7 @@ def year_change(points, year):
 
 
 @register.inclusion_tag('pesticides/includes/trend-chart.html')
-def emissions_trend_chart(points, pollutant, year=None, title=None, heading=None):
+def emissions_trend_chart(points, pollutant, year=None, title=None, heading=None, height=None):
     """
     The by-year trend, drawn by js/pesticides/charts.js from the payload this
     embeds (same markup and chart type as the pesticides trend). `heading`, if
@@ -145,6 +145,7 @@ def emissions_trend_chart(points, pollutant, year=None, title=None, heading=None
             'x': years,
             'y': values,
             'selected': year if year in years else None,
+            'height': height,
         },
         # A series of zeros (a facility that never reported the pollutant) is no chart.
         'has_data': any(values),

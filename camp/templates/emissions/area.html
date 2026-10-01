@@ -27,7 +27,7 @@
         {% if context_bar %}{% include 'emissions/includes/context-bar.html' %}{% endif %}
         {% if nei_context %}{% include 'emissions/includes/nei-context-bar.html' %}{% endif %}
         {% if toxics_breakdown %}{% include 'emissions/includes/toxics-breakdown.html' %}{% endif %}
-        {% emissions_trend_chart by_year pollutant year heading="Over time" %}
+        {% emissions_trend_chart by_year pollutant year heading="Over time" height=240 %}
     </div>
     <div class="column">
         {% include 'emissions/includes/rank-card.html' with title='Top facilities' rows=facility_card view_all_url=facilities_tab_url %}

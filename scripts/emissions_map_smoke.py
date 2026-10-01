@@ -944,7 +944,8 @@ def main():
         check(results, 'its Dairies tab is the dairy page', dairies_href.split('?')[0] == tulare.replace(args.base, ''), dairies_href)
         # A tab is a page: following one swaps the page (boosted) and lands on its URL.
         driver.find_element(By.CSS_SELECTOR, '.area-tabs a[href*="/facilities/"]').click()
-        time.sleep(1.5)
+        # Wait for the swap rather than a fixed pause: a heavy page can take longer.
+        wait_for(driver, "return location.pathname.indexOf('/facilities/') !== -1 && !!document.querySelector('.area-tabs li.is-active a[href*=\"/facilities/\"]');")
         on_facilities = driver.execute_script(
             "var a = document.querySelector('.area-tabs li.is-active'); return a ? a.textContent.trim() : '';")
         check(results, 'the Facilities tab opens as its own page, marked current',
