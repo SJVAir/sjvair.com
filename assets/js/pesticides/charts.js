@@ -8,7 +8,7 @@
  * fires on page load and again for every swapped-in element.
  *
  * Two kinds: `line` (the by-year trend, optionally with a dashed second
- * series `y2`, readout `labels`, per-year readout `notes`, a marked year
+ * series `y2`, tip `labels`, per-year tip `notes`, a marked year
  * `marker` and `whole` for counts) and `bars` (the by-month totals).
  * Colours come from CSS custom properties on `.explorer-chart`, so the Sass
  * stays the one place the palette lives.
@@ -125,13 +125,13 @@
     var colors = palette(figure);
     var readout = figure.querySelector('.chart-readout');
     var x = data.x, y = data.y;
-    // Optional: a second series (dashed), labels for the readout, and a
+    // Optional: a second series (dashed), labels for the tip, and a
     // marked year (the dairy trend's coverage change).
     var y2 = data.y2 || null;
     var labels = data.labels || null;
     var marker = data.marker || null;
-    // Optional: a note per year for the readout (a share), and `whole` for
-    // counts (whole-number ticks and readout).
+    // Optional: a note per year for the tip (a share), and `whole` for
+    // counts (whole-number ticks and tip).
     var notes = data.notes || null;
     var whole = !!data.whole;
     var count = function (value) { return whole ? Math.round(value).toLocaleString('en-US') : full(value); };
@@ -139,6 +139,9 @@
     // null where there's nothing to compare to.
     var compare = data.compare && data.compare.length ? data.compare : null;
     var selectedIndex = data.selected == null ? -1 : x.indexOf(data.selected);
+    // The tip says what the readout above the chart used to, beside the
+    // point; the readout's reserved line goes.
+    if (readout) readout.hidden = true;
     var tip = makeTip();
     // The hovered year's tip, beside its point on the line: the value, then
     // the second series, the year's note and the baseline where there are any.
@@ -239,27 +242,7 @@
           ctx.fill();
           ctx.restore();
         }],
-        setCursor: [function (u) {
-          var index = u.cursor.idx;
-          showTip(u, index);
-          if (!readout) return;
-          if (index == null) {
-            readout.textContent = '';
-            return;
-          }
-          var text;
-          if (labels) {
-            text = x[index] + ' · ' + count(y[index]) + ' ' + labels[0] +
-              (y2 ? ' · ' + count(y2[index]) + ' ' + labels[1] : '');
-          } else {
-            text = x[index] + ' · ' + amount(y[index], data.unit);
-          }
-          if (notes && notes[index]) text += ' · ' + notes[index];
-          if (compare && compare[index] != null) {
-            text += ' · ' + (data.compare_label || 'valley average') + ' ' + amount(compare[index], data.unit);
-          }
-          readout.textContent = text;
-        }],
+        setCursor: [function (u) { showTip(u, u.cursor.idx); }],
       },
     });
     if (whole) opts.axes[1].incrs = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
