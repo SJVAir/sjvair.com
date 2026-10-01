@@ -467,8 +467,9 @@ def main():
         driver.get(args.base + '/tools/emissions/')
         link = driver.find_element(By.CSS_SELECTOR, '.find-area-counties a').get_attribute('href')
         driver.get(link)
-        outlined = wait_loaded(driver) and driver.execute_script(
-            "var m = window.EmissionsFacilityMap.instances()[0]; return !!m.outlineBounds;")
+        # The outline arrives on its own fetch, after the facilities can: wait for it.
+        outlined = wait_loaded(driver) and wait_for(driver,
+            "var m = window.EmissionsFacilityMap.instances()[0]; return !!(m && m.outlineBounds);")
         check(results, 'county page loads, outlined', outlined, link)
         settled_count(driver, feature_count)
         # The map sits below the header and stats box: bring it on screen
