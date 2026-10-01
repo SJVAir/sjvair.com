@@ -48,6 +48,12 @@ SCHOOLS_VISIBLE = 15
 SCHOOLS_Q_PARAM = 'schools_q'
 SCHOOLS_TYPE_PARAM = 'schools_type'
 SCHOOLS_RUN_BY_PARAM = 'schools_run_by'
+SCHOOLS_DISTRICT_PARAM = 'schools_district'
+# The "School districts here" box: this many of the largest by enrollment,
+# the rest a click away.
+DISTRICTS_VISIBLE = 5
+# ...and a district counts as "here" once this share of it is inside.
+DISTRICT_MIN_OVERLAP = 0.05
 SCHOOLS_SORT_PARAM = 'schools_sort'
 SCHOOLS_SORT_DEFAULT = '-lbs'
 SCHOOLS_SORT_KEYS = ('name', 'type', 'city', 'lbs', 'applications')
@@ -304,7 +310,7 @@ def schools_nearby(region, year, all_years=False, concern=False):
     """
     key = ':'.join([
         # v4: entries link the district that runs them.
-        'pesticides:schools-nearby:v6',
+        'pesticides:schools-nearby:v7',
         str(region.pk),
         stats.year_param(year, all_years) or 'none',
         concern or '',
@@ -363,7 +369,7 @@ def area_schools(area, year, all_years=False, concern=False):
         return schools_nearby(area.region, year, all_years, concern=concern)
 
     key = ':'.join([
-        'pesticides:area-schools:v4',
+        'pesticides:area-schools:v5',
         area.cache_key(),
         stats.year_param(year, all_years) or 'none',
         concern or '',
@@ -387,20 +393,57 @@ def area_schools(area, year, all_years=False, concern=False):
 
 def district_urls():
     """
-    Each school district's page, by its seven-digit CDE code (the start of
-    its CDS code, which is how a public school names the district that runs
-    it), and by name as `name:<name>` (all a private school's record gives):
-    {key: url}.
+    Each school district, by its seven-digit CDE code (the start of its CDS
+    code, which is how a public school names the district that runs it) and
+    by name as `name:<name>` (all a private school's record gives):
+    {key: {'url', 'sqid', 'name'}}.
     """
-    urls = {}
+    districts = {}
     for external_id, name, sqid, slug in (Region.objects
             .filter(type=Region.Type.SCHOOL_DISTRICT, boundary__isnull=False)
             .values_list('external_id', 'name', 'sqid', 'slug')):
-        url = reverse('pesticides:region', kwargs={'sqid': sqid, 'slug': slug})
+        entry = {'url': reverse('pesticides:region', kwargs={'sqid': sqid, 'slug': slug}), 'sqid': sqid, 'name': name}
         if external_id:
-            urls[external_id[:7]] = url
-        urls.setdefault(f'name:{name}', url)
-    return urls
+            districts[external_id[:7]] = entry
+        districts.setdefault(f'name:{name}', entry)
+    return districts
+
+
+def area_districts(area):
+    """
+    The school districts a place overlaps, for its Schools tab's "School
+    districts here" box: [{name, url, enrollment, is_collapsed}] in name order,
+    with all but the DISTRICTS_VISIBLE largest by enrollment collapsed (shown
+    on "Show all"). A district counts once a real part of it is inside
+    (DISTRICT_MIN_OVERLAP of its area): Kern High slivers into Tulare County
+    along the line, and by enrollment would be one of its five. Cached a day.
+    """
+    key = f'pesticides:area-districts:v2:{area.cache_key()}'
+
+    def build():
+        geometry = area.geometry()
+        candidates = (
+            Region.objects
+            .filter(type=Region.Type.SCHOOL_DISTRICT, boundary__geometry__intersects=geometry)
+            .exclude(boundary__geometry__touches=geometry)
+            .select_related('boundary')
+        )
+        rows = []
+        for region in candidates:
+            shape = region.boundary.geometry
+            if shape.area and shape.intersection(geometry).area / shape.area >= DISTRICT_MIN_OVERLAP:
+                rows.append((region.name, region.sqid, region.slug, region.metadata))
+        districts = [{
+            'name': name,
+            'url': reverse('pesticides:region', kwargs={'sqid': sqid, 'slug': slug}),
+            'enrollment': ((metadata or {}).get('enrollment') or {}).get('total') or 0,
+        } for name, sqid, slug, metadata in rows]
+        largest = {d['url'] for d in sorted(districts, key=lambda d: -d['enrollment'])[:DISTRICTS_VISIBLE]}
+        for d in districts:
+            d['is_collapsed'] = d['url'] not in largest
+        return sorted(districts, key=lambda d: d['name'].lower())
+
+    return stats.cached(key, build, ttl=SCHOOLS_NEARBY_TTL)
 
 
 def _school_entry(location, rows, year, all_years, is_run_by, districts=None):
@@ -414,7 +457,7 @@ def _school_entry(location, rows, year, all_years, is_run_by, districts=None):
         'type': location.type,
         'type_label': str(location.short_type),
         'run_by_name': metadata.get('district_name') or '',
-        'run_by_url': _run_by_url(location, metadata, districts or {}),
+        **_district_fields(location, metadata, districts or {}),
         'is_run_by': is_run_by,
         'lbs': totals['lbs'],
         'applications': totals['applications'],
@@ -423,23 +466,30 @@ def _school_entry(location, rows, year, all_years, is_run_by, districts=None):
     }
 
 
-def _run_by_url(location, metadata, districts):
+def _district_fields(location, metadata, districts):
     """
-    The page of the district a site names: by its CDE code (a public
-    school's), else -- a private school carries the district it sits in, but
-    no code -- the district region it was resolved into, when the names agree.
-    A county office of education has no district page.
+    `run_by_url`, the page of the district a site names -- by its CDE code (a
+    public school's), else the district it was resolved into when the names
+    agree (a private school carries its district's name but no code), else by
+    name (it may have resolved into an overlapping one); none for a county
+    office of education. And `district_sqid`/`district_name`, the district the
+    district filter files it under: the one it names, else -- child care
+    names none -- the one it sits in.
     """
-    url = districts.get(metadata.get('district_code') or '')
-    if url:
-        return url
     name = metadata.get('district_name')
-    district = location.school_district
-    if district is not None and district.name == name:
-        return district.get_pesticides_url()
-    # A private school in one of two overlapping districts (an elementary
-    # and a high school district) may have resolved into the other one.
-    return districts.get(f'name:{name}') if name else None
+    named = districts.get(metadata.get('district_code') or '')
+    containing = location.school_district
+    if named is None and containing is not None and containing.name == name:
+        named = {'url': containing.get_pesticides_url(), 'sqid': containing.sqid, 'name': containing.name}
+    if named is None and name:
+        named = districts.get(f'name:{name}')
+    if named is not None:
+        return {'run_by_url': named['url'], 'district_sqid': named['sqid'], 'district_name': named['name']}
+    return {
+        'run_by_url': None,
+        'district_sqid': containing.sqid if containing is not None else None,
+        'district_name': containing.name if containing is not None else '',
+    }
 
 
 def _display_name(location, text):
@@ -484,6 +534,15 @@ def schools_panel(groups, params=None, district=None):
     if run_by_only:
         rows = [entry for entry in rows if entry['is_run_by']]
 
+    # The districts the sites are filed under, for the district filter.
+    every = list(groups['run_by']) + list(groups['others'])
+    district_names = {entry['district_sqid']: entry['district_name'] for entry in every if entry.get('district_sqid')}
+    district_value = (params.get(SCHOOLS_DISTRICT_PARAM) or '').strip()
+    if district_value not in district_names:
+        district_value = ''
+    if district_value:
+        rows = [entry for entry in rows if entry.get('district_sqid') == district_value]
+
     sort = (params.get(SCHOOLS_SORT_PARAM) or '').strip() or SCHOOLS_SORT_DEFAULT
     if sort.lstrip('-') not in SCHOOLS_SORT_KEYS:
         sort = SCHOOLS_SORT_DEFAULT
@@ -504,7 +563,10 @@ def schools_panel(groups, params=None, district=None):
         'run_by_only': run_by_only,
         'type_options': [{'value': value, 'label': label, 'selected': value == type_value}
             for value, label in SCHOOLS_TYPE_OPTIONS],
-        'is_filtered': bool(query or type_value or run_by_only),
+        'is_filtered': bool(query or type_value or run_by_only or district_value),
+        'district_value': district_value,
+        'district_options': [{'value': sqid, 'label': name, 'selected': sqid == district_value}
+            for sqid, name in sorted(district_names.items(), key=lambda item: item[1].lower())],
         # The run-by filter and count are a district's alone.
         'is_district': district is not None,
         'district_name': district.short_name if district is not None else '',

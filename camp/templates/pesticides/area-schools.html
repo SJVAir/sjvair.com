@@ -39,8 +39,13 @@ anywhere else, the school districts the place overlaps.
 
 {% block tab-map %}{% include 'pesticides/includes/section-map.html' %}{% endblock %}
 
+{% block tab-filters %}
+{% include 'pesticides/includes/schools-filters.html' %}
+{% include 'pesticides/includes/school-districts-box.html' %}
+{% endblock %}
+
 {% block tab-table %}
-<section class="schools-nearby">
+<section class="schools-nearby" data-reveal-scope>
 {# Most rows are child care, not schools, so the heading says both. #}
 <h2 class="title is-4">Schools &amp; child care {% if district %}in this district{% else %}here{% endif %}</h2>
 {% if schools.total %}
@@ -57,14 +62,6 @@ anywhere else, the school districts the place overlaps.
 </section>
 {% endblock %}
 
-{% block tab-related %}
-{% if school_districts %}
-<section class="mt-6">
-    <h2 class="title is-5">School districts here</h2>
-    <p class="within-list">{% for d in school_districts %}<a href="{{ d.url }}{{ scope_qs }}">{{ d.name }}</a>{% if not forloop.last %}<span class="find-area-sep" aria-hidden="true"> · </span>{% endif %}{% endfor %}</p>
-</section>
-{% endif %}
-{% endblock %}
 
 {% block tab-notes %}
 <details class="data-notes">

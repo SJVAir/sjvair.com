@@ -853,3 +853,49 @@ class SchoolsTabMapTests(RollupTestMixin, TestCase):
         cache.clear()
         config = self.client.get(reverse('pesticides:near-me-schools'), {'lat': 36.71, 'lng': -119.79, 'radius': 3}).context['map_config']
         assert config['locations_area'] == 'lat=36.71000&lng=-119.79000&radius=3'
+
+
+class SchoolsTabFilterTests(RollupTestMixin, TestCase):
+    """The Schools tab's district filter and its "School districts here" box."""
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+        self.fresno = Region.objects.get(pk=9001)
+        # Six overlapping districts, by enrollment: Alpha 600 ... Foxtrot 100.
+        self.districts = [
+            make_district(f'{name} Unified', f'{name.lower()}-unified', f'1062{index:03d}0000000', enrollment={'total': 600 - index * 100})
+            for index, name in enumerate(('Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot'))
+        ]
+        for index, district in enumerate(self.districts[:2]):
+            Location.objects.create(
+                type=Location.Type.PUBLIC_SCHOOL, name=f'School {index}', external_id=f'x-{index}', source='cde-public',
+                point=Point(-119.79, 36.71, srid=4326),
+                metadata={'district_code': district.external_id[:7], 'district_name': district.name})
+        self.url = self.fresno.get_pesticides_tab_url('schools')
+
+    def test_the_district_filter_narrows_the_table(self):
+        response = self.client.get(self.url)
+        options = [option['label'] for option in response.context['schools']['district_options']]
+        assert options == ['Alpha Unified', 'Bravo Unified']  # only districts the sites are filed under
+        narrowed = self.client.get(self.url, {'schools_district': self.districts[1].sqid})
+        assert [row['display_name'] for row in narrowed.context['schools']['rows']] == ['School 1']
+        assert narrowed.context['schools']['is_filtered']
+
+    def test_an_unknown_district_is_ignored(self):
+        response = self.client.get(self.url, {'schools_district': 'nope'})
+        assert len(response.context['schools']['rows']) == 2 and not response.context['schools']['is_filtered']
+
+    def test_the_districts_box_shows_the_largest_five_in_name_order(self):
+        response = self.client.get(self.url)
+        districts = response.context['school_districts']
+        assert [d['name'] for d in districts] == [f'{n} Unified' for n in ('Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot')]
+        assert [d['name'] for d in districts if d['is_collapsed']] == ['Foxtrot Unified']
+        html = response.content.decode()
+        assert 'School districts here' in html and 'Show all 6' in html
+
+    def test_a_districts_own_page_has_neither(self):
+        district = self.districts[0]
+        response = self.client.get(district.get_pesticides_tab_url('schools'))
+        assert response.context['school_districts'] == []
+        assert 'id_schools_district' not in response.content.decode()

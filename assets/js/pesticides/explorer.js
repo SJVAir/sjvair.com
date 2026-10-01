@@ -68,20 +68,21 @@
     var active = open.classList.toggle('is-active');
     trigger.setAttribute('aria-expanded', active ? 'true' : 'false');
   });
-  // The district page's schools table renders every matching row and hides
-  // the ones past the first fifteen; this reveals them in place. Delegated
-  // from the document so it survives the htmx swaps a filter or sort makes,
-  // and driven off the button's own data attributes so a re-render comes
-  // back collapsed without any state to restore.
+  // A list that renders every item and hides the ones past its first few
+  // (`.is-collapsed`: the schools table past fifteen, the school districts
+  // box past five) reveals them in place: the button's [data-reveal-toggle]
+  // flips them within its [data-reveal-scope]. Delegated from the document
+  // so it survives the htmx swaps a filter or sort makes, and driven off the
+  // button's own data attributes so a re-render comes back collapsed
+  // without any state to restore.
   document.addEventListener('click', function (evt) {
-    var button = evt.target.closest ? evt.target.closest('[data-schools-toggle]') : null;
+    var button = evt.target.closest ? evt.target.closest('[data-reveal-toggle], [data-schools-toggle]') : null;
     if (!button) return;
-    var section = button.closest('.schools-nearby');
-    var table = section ? section.querySelector('.schools-table') : null;
-    if (!table) return;
+    var scope = button.closest('[data-reveal-scope]') || button.closest('.schools-nearby');
+    if (!scope) return;
     var expanded = button.getAttribute('aria-expanded') === 'true';
-    table.querySelectorAll('tbody tr.is-collapsed').forEach(function (row) {
-      row.classList.toggle('is-revealed', !expanded);
+    scope.querySelectorAll('.is-collapsed').forEach(function (item) {
+      item.classList.toggle('is-revealed', !expanded);
     });
     button.setAttribute('aria-expanded', expanded ? 'false' : 'true');
     button.textContent = expanded

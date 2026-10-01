@@ -2425,9 +2425,8 @@ class AreaSchoolsMixin:
         district = area.region if area.kind == 'region' and area.region.type == Region.Type.SCHOOL_DISTRICT else None
         groups = places.area_schools(area, year, all_years, concern=concern)
         schools = places.schools_panel(groups, self.request.GET, district=district)
-        districts = []
-        if district is None and area.kind == 'region':
-            districts = places.regions_within(area.region)['school_districts']
+        # A district's own page is the district; anywhere else, those it overlaps.
+        districts = places.area_districts(area) if district is None else []
         point_hidden = []
         if area.kind == 'point':
             point_hidden = [{'name': key, 'value': self.request.GET.get(key)}
@@ -2438,12 +2437,14 @@ class AreaSchoolsMixin:
             section=None,
             area=area,
             tab_label='Schools',
+            tab_has_filters=True,
             schools=schools,
             school_count=len(rows) - child_care,
             child_care_count=child_care,
             district=district,
             district_demographics=places.district_demographics(district) if district else None,
             school_districts=districts,
+            districts_hidden=sum(1 for d in districts if d['is_collapsed']),
             point_hidden=point_hidden,
             map_config=section_map_config(
                 year, all_years=all_years, show_locations=True, concern=concern,
