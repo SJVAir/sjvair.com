@@ -58,13 +58,16 @@ body.emissions
     &.is-wells
       --fa-primary-color: #7c2d12
       --fa-secondary-color: #d9a679
+    // The cow (the Dairies tabs): the size classes' amber-brown. These sat
+    // nested under the About rule above, a selector nothing matched, so the
+    // cow took the text colour -- link blue when its tab was current.
+    &.is-dairies
+      --fa-primary-color: #b45309
+      --fa-secondary-color: #fcd34d
   // On the dark hero (inactive tab) it inverts: a white circle, a slate "i".
   .hook .explorer-nav li:not(.is-active) .explorer-icon.is-about
     --fa-primary-color: #5a6b7b
     --fa-secondary-color: rgba(255, 255, 255, 0.92)
-    &.is-dairies
-      --fa-primary-color: #b45309
-      --fa-secondary-color: #fcd34d
   // The scope bar's two toggles, while off (on, they go white on the orange
   // fill): toxics in a warning red, minor sources in a fuel-pump gold.
   .explorer-scope-toggle:not(.is-set) .explorer-icon
