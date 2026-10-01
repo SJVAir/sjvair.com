@@ -176,6 +176,18 @@ def dairy_city(context, dairy):
 
 
 @register.filter
+def dollars_short(value):
+    """A dollar amount for a stat: '$75.2M', '$840K', '$950'; '—' for none."""
+    if value is None:
+        return '—'
+    value = float(value)
+    for size, suffix in ((1e9, 'B'), (1e6, 'M'), (1e3, 'K')):
+        if abs(value) >= size:
+            return f'${value / size:.1f}'.removesuffix('.0') + suffix
+    return f'${value:,.0f}'
+
+
+@register.filter
 def whole(value):
     """A head count, rounded, with commas: '2,310'; '—' for none (a blank CADD count)."""
     if value is None or value == '':

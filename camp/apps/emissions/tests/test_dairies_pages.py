@@ -85,19 +85,20 @@ class DairyTabScopeTests(DairyPageTestCase):
 class DairyTabContentTests(DairyPageTestCase):
     def test_headline_numbers(self):
         content = self.get().content.decode()
-        assert '<p class="heading">Total dairies</p><p class="title">2</p>' in content
-        assert '1 large dairy<' in content
+        assert '<p class="heading">Dairies</p><p class="title">2</p>' in content
+        assert '<p class="stat-note">1 large</p>' in content
+        # Milk cows lead, with all cattle in their note.
         assert '<p class="heading">Milk cows</p><p class="title">1,200</p>' in content
-        assert '<p class="heading">Total cattle</p><p class="title">1,750</p>' in content
+        assert ' of 1,750 cattle</p>' in content
         assert '<p class="heading">With a digester</p><p class="title">1</p>' in content
         assert '50% of dairies' in content
-        assert '69% of cattle' in content
+        assert '69% of 1,750 cattle' in content
         assert 'CAFO' not in content.split('stat-row')[1].split('</div>\n</div>')[0]
 
     def test_the_county_narrows_the_numbers_the_table_and_the_map(self):
         content = self.get({'county': 'kern'}).content.decode()
         assert 'SMALL DAIRY' in content and 'BIG DAIRY' not in content
-        assert '<p class="heading">Total dairies</p><p class="title">1</p>' in content
+        assert '<p class="heading">Dairies</p><p class="title">1</p>' in content
         assert dairy_map_data(content, 'county') == 'kern'
 
     def test_table(self):
@@ -496,14 +497,18 @@ class DairyIncludeTests(DairyPageTestCase):
     def test_stats_include_with_and_without_the_carb_tile(self):
         summary = dairies.summary(2023)
         html = render_to_string('emissions/includes/dairy-stats.html', {'summary': summary, 'year': 2023})
-        assert '<p class="heading">Total dairies</p><p class="title">2</p>' in html
-        assert 'CARB estimate' not in html
+        assert '<p class="heading">Dairies</p><p class="title">2</p>' in html
+        assert 'dairy-estimates' not in html
         html = render_to_string('emissions/includes/dairy-stats.html', {
             'summary': summary, 'year': 2023, 'pollutant': POLLUTANTS['rog'],
             'carb_estimate': {'tons': 730.0, 'share': 0.25, 'place': 'Fresno County'},
+            'ddrdp_totals': {'amount': 75198899, 'grants': 50, 'reduction': 819590},
         })
-        assert '<p class="heading">Dairy cattle, CARB estimate</p><p class="title">730 <span class="is-size-5">tons/yr ROG</span></p>' in html
-        assert '25% of Fresno County ROG' in html
+        # The estimates are a labelled second tier, under the herd's row.
+        assert 'Estimates &amp; funding, Fresno County' in html
+        assert '<dt>Dairy cattle ROG, CARB</dt>' in html and '<strong>730</strong> tons/yr' in html
+        assert "25% of the county's ROG" in html
+        assert '<strong>$75.2M</strong> in 50 grants' in html
 
     def test_table_hides_the_county_column(self):
         html = render_to_string('emissions/includes/dairy-table.html', {'rows': [], 'hide_county': True})
@@ -526,7 +531,7 @@ class MethaneTests(DairyPageTestCase):
         assert 'sort=-methane_kg_h">Methane observed ' in content
         big_row = content[content.index('BIG DAIRY</a>'):]
         assert '120 kg/h' in big_row[:big_row.index('</tr>')]
-        assert '<p class="heading">With observed methane plumes</p><p class="title">1</p>' in content
+        assert '<p class="heading">With methane observed</p><p class="title">1</p>' in content
         assert 'name="methane" value="1"' in content and 'With an observed methane source' in content
         assert 'Data by Carbon Mapper' not in content  # credited on About, not every page
         content = self.get({'year': '2023', 'methane': '1'}).content.decode()
@@ -550,4 +555,4 @@ class MethaneTests(DairyPageTestCase):
         SourceImport.objects.filter(source='carbon-mapper').delete()
         dairies.clear_caches(); methane.clear_caches()
         content = self.get({'year': '2023'}).content.decode()
-        assert 'Methane observed' not in content and 'name="methane"' not in content and 'With observed methane plumes' not in content
+        assert 'Methane observed' not in content and 'name="methane"' not in content and 'With methane observed' not in content

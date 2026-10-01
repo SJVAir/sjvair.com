@@ -118,6 +118,15 @@ class SharePctTests(TestCase):
         assert amount(0.012, CANCER) == '1.2%' and amount(2, POLLUTANTS['nox']) == '2.0'
 
 
+class DollarsShortTests(TestCase):
+    def test_dollars_short(self):
+        assert tags.dollars_short(75198899) == '$75.2M'
+        assert tags.dollars_short(3000000) == '$3M'
+        assert tags.dollars_short(840000) == '$840K'
+        assert tags.dollars_short(950) == '$950'
+        assert tags.dollars_short(None) == '—'
+
+
 class PercentileTests(TestCase):
     def test_rounds_down_so_no_tract_reads_100th(self):
         assert tags.percentile(99.989) == '99th'

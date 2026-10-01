@@ -327,6 +327,8 @@ class DairyAreaPage(DairyScopeMixin, vanilla.TemplateView):
     with its search, sort, pages and CSV, and the charts.
     """
     template_name = 'emissions/dairy-area.html'
+    # An area's page, one tab of it: no main explorer tab lights, as on its Overview.
+    section = None
 
     def get(self, request, *args, **kwargs):
         # The page is the area: a stray ?county= would ride along on every

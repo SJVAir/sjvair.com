@@ -53,7 +53,8 @@ class RouteTests(DairyAreaTestCase):
             content = self.get(region, {'year': '2023'}).content.decode()
             assert 'BIG DAIRY' in content, region
             assert 'SMALL DAIRY' not in content, region
-        assert self.get(self.fresno).context['section'] == 'dairies'
+        # An area's tab, not the Dairies tab: no main explorer tab lights (its own tab row marks Dairies).
+        assert self.get(self.fresno).context['section'] is None
 
     def test_other_types_and_retired_tracts_404(self):
         retired = make(Region.Type.TRACT, '06019000199', AROUND_PLANT, version='2010')
@@ -122,16 +123,16 @@ class ContentTests(DairyAreaTestCase):
     def test_stat_tiles_match_the_summary(self):
         content = self.get(self.fresno, {'year': '2023'}).content.decode()
         summary = dairies.summary(2023, area=areas.RegionArea(self.fresno))
-        assert f'<p class="heading">Total dairies</p><p class="title">{summary["dairies"]}</p>' in content
-        assert '<p class="heading">Total cattle</p><p class="title">1,600</p>' in content
+        assert f'<p class="heading">Dairies</p><p class="title">{summary["dairies"]}</p>' in content
+        assert ' of 1,600 cattle</p>' in content
         assert '<h1 class="title is-3 mb-1">Fresno County</h1>' in content
         assert '<title>Dairies in Fresno County | ' in content
 
     def test_county_page_has_the_carb_tile_and_chart_and_no_county_column(self):
         dairy_inventory(self.fresno, rog=2.0)
         content = self.get(self.fresno, {'year': '2023', 'pollutant': 'rog'}).content.decode()
-        assert '<p class="heading">Dairy cattle, CARB estimate</p><p class="title">730 <span class="is-size-5">tons/yr ROG</span></p>' in content
-        assert '25% of Fresno County ROG' in content
+        assert '<dt>Dairy cattle ROG, CARB</dt>' in content and '<strong>730</strong> tons/yr' in content
+        assert "25% of the county's ROG" in content.replace('&#x27;', "'")
         assert EMISSIONS_TITLE in content and HERD_TITLE in content and DIGESTER_TITLE in content
         # (Not the vacuous '<th>County</th>' check: the header is a sort_link
         # anchor, never a bare <th>County</th>, so that string can never appear.)
@@ -144,7 +145,7 @@ class ContentTests(DairyAreaTestCase):
         # (Not a bare "CARB estimate" substring check: the county link line
         # below legitimately reads "CARB estimates dairy emissions...". This
         # catches both the stat tile and the no-dairies line, not just the tile.)
-        assert 'Dairy cattle, CARB estimate' not in content and EMISSIONS_TITLE not in content
+        assert ', CARB</dt>' not in content and EMISSIONS_TITLE not in content
         assert HERD_TITLE in content and DIGESTER_TITLE in content
         assert f'CARB estimates dairy emissions by county: <a href="{self.fresno.get_emissions_dairies_url()}?year=2023&amp;pollutant=rog">Fresno County dairies →</a>' in content
         # (The column header is sortable, so it's a sort_link anchor, not a bare <th>County</th>.)
@@ -166,10 +167,10 @@ class ContentTests(DairyAreaTestCase):
         )
         ddrdp.apply(ddrdp.match([row]), '2026-06-27')
         content = self.get(self.fresno, {'year': '2023'}).content.decode()
-        assert '<p class="heading">DDRDP digester grants</p>' in content
-        assert '$1,500,000' in content
+        assert '<dt>Digester grants, CDFA</dt>' in content
+        assert '<strong>$1.5M</strong> in 1 grant' in content
         city_content = self.get(self.fresno_city, {'year': '2023'}).content.decode()
-        assert '<p class="heading">DDRDP digester grants</p>' not in city_content
+        assert 'Digester grants, CDFA' not in city_content
 
     def test_summary_and_digester_chart_count_the_same_dairies(self):
         cdp = make(Region.Type.CDP, 'Plantville', AROUND_PLANT)
@@ -184,7 +185,7 @@ class ContentTests(DairyAreaTestCase):
         from camp.apps.emissions.tests.test_carbonmapper import NEAR_BOTH, row
         carbonmapper.apply([row(name='a', lnglat=NEAR_BOTH)])
         content = self.get(self.fresno, {'year': '2023'}).content.decode()
-        assert '<p class="heading">With observed methane plumes</p><p class="title">1</p>' in content
+        assert '<p class="heading">With methane observed</p><p class="title">1</p>' in content
         assert self.get(self.fresno, {'year': '2023', 'methane': '1'}).context['summary']['dairies'] == 1
 
     def test_table_sorts_searches_and_pages(self):
@@ -285,11 +286,11 @@ class ContentTests(DairyAreaTestCase):
         CountyNEI.objects.create(county=self.fresno, year=2023, sector=nei.FERTILIZER_SECTOR, tons=2000)
         CountyNEI.objects.create(county=self.fresno, year=2023, sector=nei.LIVESTOCK_SECTOR, subsector=nei.DAIRY_SUBSECTOR, tons=4000)
         content = self.get(self.fresno, {'year': '2023'}).content.decode()
-        assert '<p class="heading">Ammonia, EPA estimate</p><p class="title">4,000 <span class="is-size-5">tons/yr</span></p>' in content
-        assert 'dairy cattle, 40% of the county&#x27;s ammonia (2023)' in content or "dairy cattle, 40% of the county's ammonia (2023)" in content
+        assert '<dt>Dairy cattle ammonia, EPA</dt>' in content and '<strong>4,000</strong> tons/yr' in content
+        assert '40% of the county&#x27;s ammonia (2023)' in content or "40% of the county's ammonia (2023)" in content
         # Not on a city's dairy page, and not without rows.
-        assert 'Ammonia, EPA estimate' not in self.get(self.fresno_city, {'year': '2023'}).content.decode()
-        assert 'Ammonia, EPA estimate' not in self.get(self.kern, {'year': '2023'}).content.decode()
+        assert 'Dairy cattle ammonia, EPA' not in self.get(self.fresno_city, {'year': '2023'}).content.decode()
+        assert 'Dairy cattle ammonia, EPA' not in self.get(self.kern, {'year': '2023'}).content.decode()
 
 
 class MapConfigTests(DairyAreaTestCase):

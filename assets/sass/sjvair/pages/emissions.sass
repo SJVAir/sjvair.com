@@ -239,6 +239,26 @@ body.emissions
     color: $link
     font-size: 0.8rem
     font-weight: 600
+  // The dairy headline's second, smaller tier (dairy-stats.html): estimates
+  // and funding, labelled, left-aligned, a step down from the herd's numbers.
+  .dairy-estimates
+    margin-top: -0.5rem
+    padding: 1rem 1.25rem
+    border: 1px solid $grey-lighter
+    border-radius: $radius-large
+    dl
+      display: grid
+      grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr))
+      gap: 0.75rem 1.5rem
+      margin-top: 0.4rem
+    dt
+      color: $grey-dark
+      font-size: $size-7
+    dd
+      margin: 0
+      strong
+        font-size: $size-4
+        font-variant-numeric: tabular-nums
   // An area page's tabs (area-header.html): under the header, before the
   // tab's content, scrolling sideways on a phone rather than wrapping.
   .area-header

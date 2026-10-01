@@ -1,70 +1,60 @@
 {% load humanize emissions_explorer %}
 {% comment %}
-The dairy headline tiles (dairies.summary), on the Dairies tab and a dairy
-region page: the counted dairies with the Large CAFOs, digesters with their
-share, milk cows with their share of cattle, and all cattle. `carb_estimate`
-({tons, share, place}; county dairy pages only) adds CARB's county estimate
-of dairy-cattle emissions in the scope pollutant, with dairy cattle's share
-of the county's all-sources total. `nei_dairy` (county dairy pages): EPA's
-dairy-cattle ammonia and its share of the county's.
-
-Two rows: the herd (CADD's counts) over what's estimated or observed about
-it (CARB's and EPA's estimates, Carbon Mapper, CDFA's grants), so eight
-tiles don't wrap into uneven lines. With nothing estimated but the methane
-count (the Valley-wide tab), that tile joins the herd row instead.
+The dairy headline (dairies.summary), on the Dairies tab and a dairy area
+page. One row about the herd -- dairies (with the Large CAFOs), milk cows
+(with all cattle), digesters, and methane observed (`methane_stamp`) --
+then, smaller and labelled, what's estimated or funded about it where the
+page has any: CARB's county dairy-cattle estimate (`carb_estimate`, {tons,
+share, place, flat_since}), EPA's dairy ammonia (`nei_dairy`) and CDFA's
+digester grants (`ddrdp_totals`), all county dairy pages only.
 {% endcomment %}
-<div class="dairy-stats">
+<div class="dairy-stats mb-5">
 <div class="level is-mobile stat-row box is-grid-mobile dairy-stats-herd">
     <div class="level-item has-text-centered"><div>
-        <p class="heading">Total dairies</p><p class="title">{{ summary.dairies|intcomma }}</p>
-        <p class="stat-note">{{ summary.large|intcomma }} large dair{{ summary.large|pluralize:"y,ies" }}</p>
-    </div></div>
-    <div class="level-item has-text-centered"><div>
-        <p class="heading">With a digester</p><p class="title">{{ summary.digesters|intcomma }}</p>
-        {% if summary.digester_share is not None %}<p class="stat-note">{{ summary.digester_share|percent }} of dairies</p>{% endif %}
+        <p class="heading">Dairies</p><p class="title">{{ summary.dairies|intcomma }}</p>
+        <p class="stat-note">{{ summary.large|intcomma }} large</p>
     </div></div>
     <div class="level-item has-text-centered"><div>
         <p class="heading">Milk cows</p><p class="title">{{ summary.milk_cows|whole }}</p>
-        {% if summary.milk_share is not None %}<p class="stat-note">{{ summary.milk_share|percent }} of cattle</p>{% endif %}
+        <p class="stat-note">{% if summary.milk_share is not None %}{{ summary.milk_share|percent }} of {% endif %}{{ summary.cattle|whole }} cattle</p>
     </div></div>
     <div class="level-item has-text-centered"><div>
-        <p class="heading">Total cattle</p><p class="title">{{ summary.cattle|whole }}</p>
-        <p class="stat-note">cows, heifers, calves &amp; beef</p>
+        <p class="heading">With a digester</p><p class="title">{{ summary.digesters|intcomma }}</p>
+        <p class="stat-note">{% if summary.digester_share is not None %}{{ summary.digester_share|percent }} of dairies{% endif %}</p>
     </div></div>
-    {% if methane_stamp and not carb_estimate and not nei_dairy and not ddrdp_totals %}
+    {% if methane_stamp %}
     <div class="level-item has-text-centered"><div>
-        <p class="heading">With observed methane plumes</p><p class="title">{{ summary.methane|intcomma }}</p>
-        <p class="stat-note">snapshots from overflights</p>
+        <p class="heading">With methane observed</p><p class="title">{{ summary.methane|intcomma }}</p>
+        <p class="stat-note">plumes within 1 km, from overflights</p>
     </div></div>
     {% endif %}
 </div>
 {% if carb_estimate or nei_dairy or ddrdp_totals %}
-<div class="level is-mobile stat-row box is-grid-mobile dairy-stats-emissions">
-    {% if carb_estimate %}
-    <div class="level-item has-text-centered"><div>
-        <p class="heading">Dairy cattle, CARB estimate</p><p class="title">{{ carb_estimate.tons|whole }} <span class="is-size-5">tons/yr {{ pollutant.label }}</span></p>
-        {% if carb_estimate.share is not None %}<p class="stat-note">{{ carb_estimate.share|percent }} of {{ carb_estimate.place }} {{ pollutant.label }}</p>{% endif %}
-        {% if carb_estimate.flat_since %}<p class="stat-note">Same every year since {{ carb_estimate.flat_since }}</p>{% endif %}
-    </div></div>
-    {% endif %}
-    {% if nei_dairy %}
-    <div class="level-item has-text-centered"><div>
-        <p class="heading">Ammonia, EPA estimate</p><p class="title">{{ nei_dairy.tons|whole }} <span class="is-size-5">tons/yr</span></p>
-        <p class="stat-note">dairy cattle, {{ nei_dairy.share|percent }} of the county's ammonia ({{ nei_dairy.year }})</p>
-    </div></div>
-    {% endif %}
-    {% if methane_stamp %}
-    <div class="level-item has-text-centered"><div>
-        <p class="heading">With observed methane plumes</p><p class="title">{{ summary.methane|intcomma }}</p>
-        <p class="stat-note">snapshots from overflights</p>
-    </div></div>
-    {% endif %}
-    {% if ddrdp_totals %}
-    <div class="level-item has-text-centered"><div>
-        <p class="heading">DDRDP digester grants</p><p class="title">${{ ddrdp_totals.amount|floatformat:0|intcomma }}</p>
-        <p class="stat-note">{{ ddrdp_totals.grants }} grant{{ ddrdp_totals.grants|pluralize }} · {{ ddrdp_totals.reduction|whole }} t CO2e/yr claimed</p>
-    </div></div>
-    {% endif %}
+<div class="dairy-estimates">
+    <p class="heading">Estimates &amp; funding{% if carb_estimate %}, {{ carb_estimate.place }}{% endif %}</p>
+    <dl>
+        {% if carb_estimate %}
+        <div>
+            <dt>Dairy cattle {{ pollutant.label }}, CARB</dt>
+            <dd><strong>{{ carb_estimate.tons|whole }}</strong> tons/yr</dd>
+            <dd class="stat-note">{% if carb_estimate.share is not None %}{{ carb_estimate.share|percent }} of the county's {{ pollutant.label }}{% endif %}{% if carb_estimate.flat_since %}{% if carb_estimate.share is not None %} · {% endif %}flat since {{ carb_estimate.flat_since }}{% endif %}</dd>
+        </div>
+        {% endif %}
+        {% if nei_dairy %}
+        <div>
+            <dt>Dairy cattle ammonia, EPA</dt>
+            <dd><strong>{{ nei_dairy.tons|whole }}</strong> tons/yr</dd>
+            <dd class="stat-note">{{ nei_dairy.share|percent }} of the county's ammonia ({{ nei_dairy.year }})</dd>
+        </div>
+        {% endif %}
+        {% if ddrdp_totals %}
+        <div>
+            <dt>Digester grants, CDFA</dt>
+            <dd><strong>{{ ddrdp_totals.amount|dollars_short }}</strong> in {{ ddrdp_totals.grants }} grant{{ ddrdp_totals.grants|pluralize }}</dd>
+            <dd class="stat-note">{{ ddrdp_totals.reduction|whole }} t CO2e/yr reduction claimed</dd>
+        </div>
+        {% endif %}
+    </dl>
 </div>
 {% endif %}
 </div>
