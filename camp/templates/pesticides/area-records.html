@@ -27,6 +27,7 @@ A place page's Records tab: the confirmed applications reported in the place
 {% block tab-table %}
 <p class="summary-sentence mb-3">{{ summary_sentence }}</p>
 {% include 'pesticides/includes/records-table.html' %}
+{% include 'pesticides/includes/pagination.html' %}
 {% endblock %}
 
 {% block tab-notes %}

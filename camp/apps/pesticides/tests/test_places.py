@@ -443,6 +443,11 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         html = self.client.get(self.url).content.decode()
         assert '<td>SELMA HIGH<span' in html
 
+    def test_count_line_reads_like_the_other_browsers(self):
+        html = self.client.get(self.url).content.decode()
+        assert 'summary-sentence' in html[:html.index('schools-table')]
+        assert 'schools-count' not in html
+
     def test_the_city_column_is_dropped_when_every_site_shares_one(self):
         # The postal city is shouted in the CDSS directory and title-cased for
         # display, so the comparison has to be case-insensitive.

@@ -9,7 +9,7 @@ carries the page's scope, so a section page opens on the same year and scope
 as the row.
 {% endcomment %}
 {% with schools_sort=schools.sort %}
-<p class="is-size-7 has-text-grey schools-count">
+<p class="summary-sentence mb-3">
     {{ schools.total|intcomma }} school{{ schools.total|pluralize }} and child care site{{ schools.total|pluralize }}
     {% if schools.is_district %}· {{ schools.run_by_count|intcomma }} run by {{ schools.district_name }}{% endif %}{% if schools.is_filtered %}
     · showing {{ schools.matched|intcomma }}{% endif %}

@@ -300,7 +300,18 @@ def resolve_map_center(*, section=None, region=None, point=None, radius=None, co
     return None, None, None
 
 
-class ExplorerListMixin:
+class NearestPageMixin:
+    """
+    A list's paging, the same on every browser: a junk or out-of-range
+    `?page=` lands on the nearest real page (the first or the last) rather
+    than a 404 -- a list shrinks under a bookmarked page as notices expire
+    or a filter narrows it.
+    """
+    def paginate_queryset(self, queryset, page_size):
+        return self.get_paginator(queryset, page_size).get_page(self.request.GET.get(self.page_kwarg))
+
+
+class ExplorerListMixin(NearestPageMixin):
     paginate_by = 50
     form_class = None
     section = None
@@ -1407,7 +1418,7 @@ class RecordsPaginator(Paginator):
         return super().count
 
 
-class RecordsBrowser(vanilla.ListView):
+class RecordsBrowser(NearestPageMixin, vanilla.ListView):
     """
     Filterable, paginated browser of individual PesticideUse records, with
     the interactive section map above the table. Its own class (not
@@ -1900,7 +1911,7 @@ NOTICE_RELATED_MODELS = {'chemical': Chemical, 'product': Product, 'region': PLA
 NOTICE_FIELD_MAP = {'chemical': 'chemicals', 'product': 'products'}
 
 
-class NoticeList(vanilla.ListView):
+class NoticeList(NearestPageMixin, vanilla.ListView):
     """
     SprayDays notices of intent -- active by default (still within the grace
     period, soonest first), or the archive (past the grace period, newest
@@ -1910,11 +1921,6 @@ class NoticeList(vanilla.ListView):
     model = PesticideNotice
     paginate_by = 50
     template_name = 'pesticides/notice-list.html'
-
-    def paginate_queryset(self, queryset, page_size):
-        # An out-of-range or junk `?page=` lands on the nearest real page
-        # rather than a 404.
-        return self.get_paginator(queryset, page_size).get_page(self.request.GET.get(self.page_kwarg))
 
     def dispatch(self, request, *args, **kwargs):
         self.form = NoticeFilterForm(request.GET)
