@@ -249,37 +249,6 @@ def paginated_count(kwargs):
     return paginator.count if paginator else len(kwargs.get('object_list', []))
 
 
-# Years `datetime()` can safely bracket (and that a notice could plausibly
-# carry). Anything outside is treated as "no year filter" rather than raising.
-MIN_FILTER_YEAR = 1900
-MAX_FILTER_YEAR = 2100
-
-
-def local_month_bounds(year, month=None):
-    """
-    None for a year outside MIN/MAX_FILTER_YEAR -- callers treat that as "no
-    year filter" instead of letting `datetime(year + 1, ...)` raise.
-
-    Otherwise [start, end) as America/Los_Angeles-aware datetimes for `year` (or
-    `year`/`month`), for filtering `scheduled_application` directly. Filtering
-    a raw field with these bounds -- rather than comparing a
-    TruncMonth(..., tzinfo=...) annotation via `__year`/`__month` -- sidesteps
-    a Django/Postgres quirk: TruncMonth's tzinfo shifts the value with
-    `AT TIME ZONE`, producing a naive timestamp that a later `__year`/`__month`
-    lookup then re-interprets in the DB session's timezone (UTC here), which
-    silently shifts the match window by the UTC offset.
-    """
-    if year is None or not (MIN_FILTER_YEAR <= year <= MAX_FILTER_YEAR):
-        return None
-    tz = settings.DEFAULT_TIMEZONE
-    start = datetime(year, month or 1, 1, tzinfo=tz)
-    if month:
-        end = datetime(year + 1, 1, 1, tzinfo=tz) if month == 12 else datetime(year, month + 1, 1, tzinfo=tz)
-    else:
-        end = datetime(year + 1, 1, 1, tzinfo=tz)
-    return start, end
-
-
 def centroid(region):
     """'lat,lng' of a region's boundary, as section_map_config wants it."""
     point = region.boundary.geometry.centroid
@@ -1970,7 +1939,7 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
         if self.mode == 'past':
             cutoff = timezone.now() - timedelta(days=stats.NOTICE_GRACE_DAYS)
             queryset = queryset.filter(scheduled_application__lt=cutoff)
-            bounds = local_month_bounds(data.get('archive_year'), data.get('month'))
+            bounds = stats.local_month_bounds(data.get('archive_year'), data.get('month'))
             if bounds is not None:
                 start, end = bounds
                 queryset = queryset.filter(scheduled_application__gte=start, scheduled_application__lt=end)

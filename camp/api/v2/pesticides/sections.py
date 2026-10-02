@@ -414,11 +414,18 @@ class ActiveNoticeListBase(generics.Endpoint):
     # See the comment on SectionListBase: the get() implementation lives on
     # this un-cached base so CachedEndpointMixin.get() on ActiveNoticeList
     # below is the one actually dispatched to.
+    past = False
+
+    def notices(self, params):
+        """The notices this endpoint serves before its filters, soonest first. Returns (queryset, error)."""
+        return stats._upcoming(PesticideNotice.objects.all()).order_by('scheduled_application', 'pk'), None
+
     def get(self, request):
         params = request.GET
-        notices = stats._upcoming(PesticideNotice.objects.all()).select_related(
-            'county', 'mtrs',
-        ).prefetch_related('chemicals', 'products').order_by('scheduled_application', 'pk')
+        notices, error = self.notices(params)
+        if error:
+            return bad_request(error)
+        notices = notices.select_related('county', 'mtrs').prefetch_related('chemicals', 'products')
         if params.get('bbox'):
             bbox, error = parse_bbox(params['bbox'])
             if error:
@@ -465,6 +472,9 @@ class ActiveNoticeListBase(generics.Endpoint):
                 'chemicals': [{'id': c.sqid, 'name': c.name, 'display_name': c.display_name, 'is_of_concern': c.is_of_concern} for c in n.chemicals.all()],
             },
         } for n in notices]
+        if self.past:
+            for feature in features:
+                feature['properties']['past'] = True
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
         return {'type': 'FeatureCollection', 'as_of': timezone.now().isoformat(), 'features': features}
 
@@ -551,4 +561,35 @@ class TownshipList(CachedEndpointMixin, TownshipListBase):
 
 class ActiveNoticeList(CachedEndpointMixin, ActiveNoticeListBase):
     """Active SprayDays notices of intent (scheduled from four days ago onward) as GeoJSON points. Optional `bbox=west,south,east,north`, `chemical` (chem code), `product` (prodno), `county` (slug), `narrow=concern|restricted|fumigant|aerial`. A request matching more than 2000 notices returns 400; narrow it with a bbox or a filter."""
+    cache_timeout = NOTICE_CACHE_TTL
+
+
+class ArchivedNoticeListBase(ActiveNoticeListBase):
+    past = True
+
+    def notices(self, params):
+        """Notices past the grace period, newest first; one month with `year` + `month`. Returns (queryset, error)."""
+        cutoff = timezone.now() - timedelta(days=stats.NOTICE_GRACE_DAYS)
+        notices = PesticideNotice.objects.filter(scheduled_application__lt=cutoff)
+        year, month = params.get('year'), params.get('month')
+        if year or month:
+            try:
+                year = int(year)
+                month = int(month) if month else None
+            except (TypeError, ValueError):
+                return None, 'year and month must be numbers'
+            if month is not None and not 1 <= month <= 12:
+                return None, 'month must be 1-12'
+            if month is None:
+                return None, 'month is required with year'
+            bounds = stats.local_month_bounds(year, month)
+            if bounds is None:
+                return None, 'year is out of range'
+            start, end = bounds
+            notices = notices.filter(scheduled_application__gte=start, scheduled_application__lt=end)
+        return notices.order_by('-scheduled_application', '-pk'), None
+
+
+class ArchivedNoticeList(CachedEndpointMixin, ArchivedNoticeListBase):
+    """Past SprayDays notices of intent (older than the four-day grace period) as GeoJSON points, newest first, each with `properties.past = true`. Same parameters and cap as notices/active/, plus optional `year` + `month` (1-12) for one month (America/Los_Angeles)."""
     cache_timeout = NOTICE_CACHE_TTL

@@ -4,7 +4,7 @@ already-filtered queryset so the same code serves chemical, product, and
 commodity pages. Aggregates run over PesticideUseRollup, the per-section,
 per-month rollup of PesticideUse rebuilt by camp.apps.pesticides.rollup.
 """
-from datetime import timedelta
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 from django.contrib.gis.db.models.functions import Centroid
@@ -1429,3 +1429,34 @@ def refresh_landing_stats():
     data = _build_landing_stats(year)
     cache.set(landing_key(year), data, LANDING_TTL)
     return data
+
+
+# Years `datetime()` can safely bracket (and that a notice could plausibly
+# carry). Anything outside is treated as "no year filter" rather than raising.
+MIN_FILTER_YEAR = 1900
+MAX_FILTER_YEAR = 2100
+
+
+def local_month_bounds(year, month=None):
+    """
+    None for a year outside MIN/MAX_FILTER_YEAR -- callers treat that as "no
+    year filter" instead of letting `datetime(year + 1, ...)` raise.
+
+    Otherwise [start, end) as America/Los_Angeles-aware datetimes for `year` (or
+    `year`/`month`), for filtering `scheduled_application` directly. Filtering
+    a raw field with these bounds -- rather than comparing a
+    TruncMonth(..., tzinfo=...) annotation via `__year`/`__month` -- sidesteps
+    a Django/Postgres quirk: TruncMonth's tzinfo shifts the value with
+    `AT TIME ZONE`, producing a naive timestamp that a later `__year`/`__month`
+    lookup then re-interprets in the DB session's timezone (UTC here), which
+    silently shifts the match window by the UTC offset.
+    """
+    if year is None or not (MIN_FILTER_YEAR <= year <= MAX_FILTER_YEAR):
+        return None
+    tz = settings.DEFAULT_TIMEZONE
+    start = datetime(year, month or 1, 1, tzinfo=tz)
+    if month:
+        end = datetime(year + 1, 1, 1, tzinfo=tz) if month == 12 else datetime(year, month + 1, 1, tzinfo=tz)
+    else:
+        end = datetime(year + 1, 1, 1, tzinfo=tz)
+    return start, end
