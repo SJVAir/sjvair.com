@@ -1,8 +1,11 @@
+from unittest import mock
+
 from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
+from camp.apps.pesticides.views import RecordsBrowser
 from camp.apps.regions.models import Region
 
 
@@ -30,7 +33,11 @@ class NearestPageTests(RollupTestMixin, TestCase):
                 assert response.status_code == 200, (url, page)
 
     def test_records_pager_sits_after_the_table(self):
-        html = self.client.get(reverse('pesticides:records')).content.decode()
-        assert html.index('records-table') < html.rindex('</table>')
-        if 'class="pagination' in html:
-            assert html.rindex('</table>') < html.index('class="pagination')
+        with mock.patch.object(RecordsBrowser, 'paginate_by', 1):
+            html = self.client.get(reverse('pesticides:records')).content.decode()
+        assert 'class="pagination' in html
+        table_end = html.rindex('</table>')
+        pager = html.index('class="pagination')
+        assert table_end < pager
+        # Past the table-container's closing tag, so outside the include's wrapper.
+        assert '</div>' in html[table_end:pager]

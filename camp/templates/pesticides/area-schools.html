@@ -54,6 +54,7 @@ anywhere else, the school districts the place overlaps.
     pounds nearby first; click a column heading to sort by something else.{% endif %}
 </p>
 {% include 'pesticides/includes/schools-table.html' %}
+{% include 'pesticides/includes/pagination.html' %}
 {% else %}
 <p class="has-text-grey">{% if district_demographics %}We don't have school or child care addresses for this district yet.{% else %}No schools or child care on record here.{% endif %}</p>
 {% endif %}
