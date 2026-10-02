@@ -1062,6 +1062,50 @@ class ActiveNoticeEndpointTests(TestCase):
         assert all(f['geometry'] is None or f['geometry']['type'] == 'Point' for f in data['features'])
 
 
+class ArchivedNoticeEndpointTests(TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.url = reverse('api:v2:pesticides:notice-archive')
+
+    def ids(self, **params):
+        return [f['properties']['id'] for f in self.client.get(self.url, params).json()['features']]
+
+    def test_only_past_notices(self):
+        past = PesticideNotice.objects.get(pk=1)
+        assert self.ids() == [past.sqid]
+        feature = self.client.get(self.url).json()['features'][0]
+        assert feature['properties']['past'] is True
+        active = self.client.get(reverse('api:v2:pesticides:notice-active')).json()['features'][0]
+        assert 'past' not in active['properties']
+        assert set(active['properties']) <= set(feature['properties'])
+
+    def test_month(self):
+        past = PesticideNotice.objects.get(pk=1)
+        assert self.ids(year=2020, month=1) == [past.sqid]
+        assert self.ids(year=2020, month=2) == []
+
+    def test_bad_month_is_a_400(self):
+        assert self.client.get(self.url, {'year': 2020, 'month': 13}).status_code == 400
+
+    def test_month_and_year_go_together(self):
+        for params in ({'month': 1}, {'year': 2020}):
+            response = self.client.get(self.url, params)
+            assert response.status_code == 400
+            assert response.json()['error'] == 'year and month go together'
+
+    def test_cap(self):
+        from camp.api.v2.pesticides import sections
+        original = sections.MAX_NOTICES
+        sections.MAX_NOTICES = 0
+        try:
+            assert self.client.get(self.url).status_code == 400
+        finally:
+            sections.MAX_NOTICES = original
+
+
 # ---------------------------------------------------------------------------
 # County outlines and township grid GeoJSON endpoints
 # ---------------------------------------------------------------------------

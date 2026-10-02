@@ -1,3 +1,5 @@
+import re
+
 from django.contrib.gis.geos import MultiPolygon, Polygon
 from django.core.cache import cache
 from django.test import TestCase
@@ -52,6 +54,23 @@ class NoticeListTests(TestCase):
         # Another county's archive has nothing in that month, so no month at all.
         other = Region.objects.filter(type=Region.Type.COUNTY).exclude(pk=archived.county_id).first()
         assert self.client.get(self.url, {'past': 1, 'county': other.slug}).context['archive_months'] == []
+
+    def test_summary_sentence_names_the_picked_month(self):
+        past = self.client.get(self.url, {'past': 1})
+        assert 'in the archive.' in past.content.decode()
+        month = self.client.get(self.url, {'past': 1, 'archive_year': 2020, 'month': 1})
+        assert 'in the archive in January 2020.' in ' '.join(month.content.decode().split())
+
+    def test_archive_months_has_all_months_first(self):
+        html = self.client.get(self.url, {'past': 1}).content.decode()
+        assert 'All months</a>' in html
+        assert html.index('All months') < html.index('January 2020')
+        all_link = html[html.rindex('<a', 0, html.index('All months')):html.index('All months')]
+        assert 'is-active' in all_link
+        picked = self.client.get(self.url, {'past': 1, 'archive_year': 2020, 'month': 1}).content.decode()
+        all_link = picked[picked.rindex('<a', 0, picked.index('All months')):picked.index('All months')]
+        assert 'is-active' not in all_link
+        assert 'month=' not in all_link
 
     def test_archive_months_only_built_for_the_archive(self):
         assert self.client.get(self.url).context['archive_months'] == []
@@ -218,14 +237,14 @@ class UpcomingNoticeLinkTests(TestCase):
         fresno = Region.objects.get(pk=9001)
         section = Region.objects.get(pk=9101)
         pages = {
-            # A place's notices, day by day, are on its Notices tab.
+            # A place's notices are on its Notices tab, as the list's rows.
             'place': reverse('pesticides:region-notices', kwargs={'sqid': fresno.sqid, 'slug': fresno.slug}),
             'section': reverse('pesticides:section-detail', kwargs={'sqid': section.sqid}),
             'chemical': Chemical.objects.get(pk=1).get_absolute_url(),
         }
         for name, url in pages.items():
             response = self.client.get(url)
-            upcoming = response.context.get('upcoming') or []
+            upcoming = response.context.get('upcoming') or response.context.get('object_list') or []
             assert upcoming, f'{name} has no upcoming notices to link'
             html = response.content.decode()
             for notice in upcoming:
@@ -257,8 +276,9 @@ class AreaNoticesTabTests(TestCase):
         response = self.client.get(self.url, {'past': 1})
         assert [n.pk for n in response.context['object_list']] == [1]
         assert [(m['year'], m['month'], m['count']) for m in response.context['archive_months']] == [(2020, 1, 1)]
-        # The stat row is what's scheduled now, whatever the mode.
-        assert response.context['upcoming_count'] == self.client.get(self.url).context['upcoming_count']
+        # The stat row counts what the list shows, whatever the mode.
+        assert response.context['notice_stats']['count'] == 1
+        assert self.client.get(self.url).context['notice_stats']['count'] == 1
 
     def test_chemical_filter_and_own_chip(self):
         kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
@@ -303,3 +323,123 @@ class AreaNoticesTabTests(TestCase):
         response = self.client.get(city.get_pesticides_tab_url('notices'))
         assert response.status_code == 200
         assert city.name not in [f['label'] for f in response.context['active_filters']]
+
+
+class CountyColumnTests(RollupTestMixin, TestCase):
+    """The County column is dropped where every row is the same county."""
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+        self.kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
+
+    def headers(self, html):
+        return html[html.index('<thead>'):html.index('</thead>')]
+
+    def test_hidden_on_one_county(self):
+        for url, params in (
+            (self.kern.get_pesticides_tab_url('notices'), {}),
+            (self.kern.get_pesticides_tab_url('records'), {}),
+            (reverse('pesticides:notice-list'), {'county': 'kern'}),
+            (reverse('pesticides:records'), {'county': 'kern'}),
+        ):
+            response = self.client.get(url, params)
+            assert response.context['county'] == self.kern, url
+            assert '<th>County</th>' not in self.headers(response.content.decode()), url
+
+    def test_shown_valley_wide_and_near_me(self):
+        near_me = {'lat': 36.71, 'lng': -119.79, 'radius': 3}
+        for url, params in (
+            (reverse('pesticides:notice-list'), {}),
+            (reverse('pesticides:records'), {}),
+            (reverse('pesticides:near-me-notices'), near_me),
+            (reverse('pesticides:near-me-records'), near_me),
+        ):
+            response = self.client.get(url, params)
+            assert response.status_code == 200, url
+            assert not response.context['county'], url
+            assert '<th>County</th>' in self.headers(response.content.decode()), url
+
+
+class NoticeModeTests(TestCase):
+    """Scheduled / Past is a filter on the whole notices page."""
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+        self.archived = PesticideNotice.objects.get(pk=1)
+        self.tab = self.archived.county.get_pesticides_tab_url('notices')
+
+    def form(self, html):
+        start = html.index('notice-filters')
+        return html[start:html.index('</form>', start)]
+
+    def test_mode_is_a_field_in_the_filter_box(self):
+        for url in (reverse('pesticides:notice-list'), self.tab):
+            form = self.form(self.client.get(url).content.decode())
+            assert 'name="past"' in form, url
+            assert 'tabs is-toggle' not in self.client.get(url).content.decode().split('notice-filters')[0], url
+
+    def test_mode_radios_are_keyboard_focusable(self):
+        form = self.form(self.client.get(self.tab).content.decode())
+        radios = re.findall(r'<input[^>]*name="past"[^>]*>', form)
+        assert len(radios) == 2
+        for radio in radios:
+            # `hidden` takes a control out of the tab order; screen-reader-only keeps it in.
+            assert ' hidden' not in radio and 'is-sr-only' in radio, radio
+
+    def test_switching_mode_drops_month_and_page(self):
+        html = self.client.get(self.tab, {'past': 1, 'archive_year': 2020, 'month': 1, 'page': 2}).content.decode()
+        form = self.form(html)
+        # The month and page ride along only while Past stays chosen; the
+        # Scheduled choice must not submit them.
+        assert 'name="page"' not in form
+        scheduled = re.search(r'<input[^>]*name="past"[^>]*value=""[^>]*>|<input[^>]*value=""[^>]*name="past"[^>]*>', form)
+        assert scheduled, 'no Scheduled option'
+
+    def test_a_stale_month_is_ignored_outside_past_mode(self):
+        for page in (reverse('pesticides:notice-list'), self.tab):
+            context = self.client.get(page, {'archive_year': 2020, 'month': 2}).context
+            assert context['filter_year'] is None and context['filter_month'] is None
+            assert context['map_config']['notices_url'].startswith('/api/2.0/pesticides/notices/active/')
+            assert 'name="archive_year"' not in self.form(self.client.get(page, {'archive_year': 2020, 'month': 2}).content.decode())
+
+    def test_stats_follow_the_mode(self):
+        past = self.client.get(self.tab, {'past': 1}).context
+        assert past['notice_stats']['count'] == 1
+        month = self.client.get(self.tab, {'past': 1, 'archive_year': 2020, 'month': 2}).context
+        assert month['notice_stats']['count'] == 0
+
+    def test_stats_follow_a_chemical_filter(self):
+        kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
+        chem = Chemical.objects.get(pk=1)
+        url = kern.get_pesticides_tab_url('notices')
+        assert self.client.get(url, {'chemical': chem.sqid}).context['notice_stats']['count'] == 1
+        # Chemical 1 is only on Kern's notice; Fresno's one lists chemical 2.
+        fresno = self.tab
+        assert self.client.get(fresno, {'chemical': chem.sqid}).context['notice_stats']['count'] == 0
+        other = Chemical.objects.get(pk=2)
+        assert self.client.get(fresno, {'chemical': other.sqid}).context['notice_stats']['count'] == 1
+
+    def test_map_follows_the_mode(self):
+        url = reverse('api:v2:pesticides:notice-archive')
+        for page in (reverse('pesticides:notice-list'), self.tab):
+            assert self.client.get(page).context['map_config']['notices_url'].startswith('/api/2.0/pesticides/notices/active/')
+            assert self.client.get(page, {'past': 1}).context['map_config']['notices_url'] == url
+            month = self.client.get(page, {'past': 1, 'archive_year': 2020, 'month': 1}).context['map_config']['notices_url']
+            assert month.startswith(url + '?') and 'year=2020' in month and 'month=1' in month
+
+    def test_popup_notices_link_keeps_the_mode(self):
+        for page in (reverse('pesticides:notice-list'), self.tab):
+            scheduled = self.client.get(page).context['map_config']['section_notices_url']
+            assert 'past=1' not in scheduled
+            past = self.client.get(page, {'past': 1}).context['map_config']['section_notices_url']
+            assert past.startswith(reverse('pesticides:notice-list') + '?section={id}') and 'past=1' in past
+            assert 'month=' not in past
+            month = self.client.get(page, {'past': 1, 'archive_year': 2020, 'month': 1}).context['map_config']['section_notices_url']
+            assert 'past=1' in month and 'archive_year=2020' in month and 'month=1' in month
+
+    def test_tab_skips_the_upcoming_context(self):
+        context = self.client.get(self.tab).context
+        for key in ('upcoming_days', 'upcoming', 'upcoming_by_county'):
+            assert key not in context, key

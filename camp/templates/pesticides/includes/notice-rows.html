@@ -1,11 +1,12 @@
 {% load humanize pesticides_explorer %}
+{# One county's page: every row is that county, so no County column. #}
 <div class="table-container">
     <table class="table is-fullwidth is-striped is-hoverable data-table notice-rows">
         <thead>
             <tr>
                 <th>Scheduled</th>
                 {% if not compact %}
-                <th>County</th>
+                {% if not county %}<th>County</th>{% endif %}
                 <th>Section</th>
                 {% endif %}
                 <th>Method</th>
@@ -18,7 +19,7 @@
             <tr>
                 <td><a href="{% url 'pesticides:notice-detail' sqid=notice.sqid %}">{{ notice.scheduled_application|date:'M j, Y g:i A' }}</a></td>
                 {% if not compact %}
-                <td>{% if notice.county %}<a href="{% region_url notice.county %}">{{ notice.county.short_name }}</a>{% else %}—{% endif %}</td>
+                {% if not county %}<td>{% if notice.county %}<a href="{% region_url notice.county %}">{{ notice.county.short_name }}</a>{% else %}—{% endif %}</td>{% endif %}
                 <td>
                     {% if notice.mtrs %}
                         <a href="{% url 'pesticides:section-detail' sqid=notice.mtrs.sqid %}">{{ notice.mtrs.external_id }}</a>
@@ -33,7 +34,7 @@
                 </td>
             </tr>
         {% empty %}
-            <tr><td colspan="{% if compact %}4{% else %}6{% endif %}" class="has-text-centered has-text-grey">No notices match.</td></tr>
+            <tr><td colspan="{% if compact %}4{% elif county %}5{% else %}6{% endif %}" class="has-text-centered has-text-grey">No notices match.</td></tr>
         {% endfor %}
         </tbody>
     </table>

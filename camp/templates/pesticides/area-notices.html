@@ -2,7 +2,8 @@
 {% load humanize pesticides_explorer %}
 {% comment %}
 A place page's Notices tab: the notice list narrowed to the place -- what
-SprayDays has scheduled there now, or its archive -- with the filters beside
+SprayDays has scheduled there now, or its archive, with the stat row on
+whichever it's showing -- with the filters beside
 the map.
 {% endcomment %}
 {% block body-class %}{{ block.super }} place area-notices{% endblock %}
@@ -11,22 +12,22 @@ the map.
 <div class="level stat-row box">
     <div class="level-item has-text-centered">
         <div>
-            <p class="heading">Scheduled now</p>
-            <p class="title">{{ upcoming_count|intcomma }}</p>
-            <p class="stat-note">notice{{ upcoming_count|pluralize }} of intent</p>
+            <p class="heading">{% if mode == 'active' %}Scheduled now{% else %}Past notices{% if filter_month_label %} in {{ filter_month_label }}{% endif %}{% endif %}</p>
+            <p class="title">{{ notice_stats.count|intcomma }}</p>
+            <p class="stat-note">notice{{ notice_stats.count|pluralize }}{% if mode == 'active' %} of intent{% endif %}</p>
         </div>
     </div>
     <div class="level-item has-text-centered">
         <div>
             <p class="heading">Acres</p>
-            <p class="title">{% if upcoming_acres is not None %}{{ upcoming_acres|floatformat:'-1'|intcomma }}{% else %}&mdash;{% endif %}</p>
-            <p class="stat-note">to be treated</p>
+            <p class="title">{% if notice_stats.acres is not None %}{{ notice_stats.acres|floatformat:'-1'|intcomma }}{% else %}&mdash;{% endif %}</p>
+            <p class="stat-note">{% if mode == 'active' %}to be treated{% else %}treated{% endif %}</p>
         </div>
     </div>
     <div class="level-item has-text-centered">
         <div>
             <p class="heading">Chemicals</p>
-            <p class="title">{{ upcoming_chemicals|length|intcomma }}</p>
+            <p class="title">{{ notice_stats.chemicals|length|intcomma }}</p>
             <p class="stat-note">restricted materials</p>
         </div>
     </div>
@@ -43,7 +44,7 @@ the map.
 
 {% block tab-table %}
 <p class="summary-sentence mb-3">
-    {{ count }} notice{{ count|pluralize }} {% if mode == 'active' %}currently scheduled{% else %}in the archive{% endif %} here.
+    {{ count }} notice{{ count|pluralize }} {% if mode == 'active' %}currently scheduled{% else %}in the archive{% if filter_month_label %} in {{ filter_month_label }}{% endif %}{% endif %} here.
 </p>
 {% include 'pesticides/includes/notice-rows.html' %}
 {% include 'pesticides/includes/pagination.html' %}

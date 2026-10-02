@@ -591,6 +591,13 @@ body.pesticides
             letter-spacing: 0.04em
         .field:not(:last-child)
             margin-bottom: 1rem
+        // Scheduled / Past: two buttons that are really radios.
+        .notice-mode .button
+            cursor: pointer
+            // The radio inside is screen-reader-only but focusable; show its focus on the button.
+            &:has(input:focus-visible)
+                outline: 2px solid $link
+                outline-offset: 2px
         ul
             list-style: none
             margin-left: 0
@@ -1139,10 +1146,6 @@ body.pesticides
         margin-bottom: 1.25rem
         .stat-row
             margin-bottom: 0.25rem
-
-    // The schools table's count, between the note and the table.
-    .schools-count
-        margin: 0.75rem 0 0.25rem
 
     .schools-table
         .school-kind

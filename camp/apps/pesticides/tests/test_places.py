@@ -443,6 +443,11 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         html = self.client.get(self.url).content.decode()
         assert '<td>SELMA HIGH<span' in html
 
+    def test_count_line_reads_like_the_other_browsers(self):
+        html = self.client.get(self.url).content.decode()
+        assert 'summary-sentence' in html[:html.index('schools-table')]
+        assert 'schools-count' not in html
+
     def test_the_city_column_is_dropped_when_every_site_shares_one(self):
         # The postal city is shouted in the CDSS directory and title-cased for
         # display, so the comparison has to be case-insensitive.
@@ -517,6 +522,14 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
             response = self.client.get(self.url, {'page': page})
             assert response.status_code == 200, page
             assert response.context['schools']['rows'], page
+
+    def test_pager_sits_after_the_table(self):
+        self.make_many(50)
+        html = self.client.get(self.url).content.decode()
+        table_end = html.rindex('</table>')
+        pager = html.index('class="pagination')
+        assert table_end < pager
+        assert '</div>' in html[table_end:pager]
 
     def test_one_page_has_no_pagination(self):
         response = self.client.get(self.url)

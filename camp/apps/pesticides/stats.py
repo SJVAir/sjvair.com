@@ -4,7 +4,7 @@ already-filtered queryset so the same code serves chemical, product, and
 commodity pages. Aggregates run over PesticideUseRollup, the per-section,
 per-month rollup of PesticideUse rebuilt by camp.apps.pesticides.rollup.
 """
-from datetime import timedelta
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 from django.contrib.gis.db.models.functions import Centroid
@@ -12,6 +12,7 @@ from django.contrib.gis.measure import D
 from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Case, Count, F, FloatField, Max, Min, Q, Sum, When
+from django.db.models.functions import Lower, Trim
 from django.utils import timezone
 
 from camp.apps.pesticides.models import (
@@ -989,6 +990,31 @@ def upcoming_by_day(notices, limit=UPCOMING_DAYS):
     ]
 
 
+def notice_summary(notices):
+    """
+    What a list of notices adds up to: how many, the acres among those that
+    give an amount in acres (None when none do), and the chemicals they list.
+    The notices page's stat row, whichever notices it's showing.
+    """
+    # Everything in SQL off the queryset's pks: its ordering, joins and
+    # distinct() are irrelevant to the totals, and a pk subquery keeps a
+    # join-multiplied queryset from double-counting.
+    ids = notices.order_by().values('pk')
+    rows = PesticideNotice.objects.filter(pk__in=ids)
+    acres = (
+        rows.annotate(units=Lower(Trim('treated_units')))
+        .filter(units=ACRES, treated_amount__isnull=False)
+        .exclude(treated_amount=0)
+        .aggregate(total=Sum('treated_amount'))['total']
+    )
+    chemicals = Chemical.objects.filter(pesticide_notices__in=ids).distinct()
+    return {
+        'count': rows.count(),
+        'acres': acres,
+        'chemicals': sorted(chemicals, key=lambda c: c.display_name),
+    }
+
+
 def notices_in_days(days):
     """
     The individual notices behind upcoming_by_day()'s rows, in order. The
@@ -1429,3 +1455,34 @@ def refresh_landing_stats():
     data = _build_landing_stats(year)
     cache.set(landing_key(year), data, LANDING_TTL)
     return data
+
+
+# Years `datetime()` can safely bracket (and that a notice could plausibly
+# carry). Anything outside is treated as "no year filter" rather than raising.
+MIN_FILTER_YEAR = 1900
+MAX_FILTER_YEAR = 2100
+
+
+def local_month_bounds(year, month=None):
+    """
+    None for a year outside MIN/MAX_FILTER_YEAR -- callers treat that as "no
+    year filter" instead of letting `datetime(year + 1, ...)` raise.
+
+    Otherwise [start, end) as America/Los_Angeles-aware datetimes for `year` (or
+    `year`/`month`), for filtering `scheduled_application` directly. Filtering
+    a raw field with these bounds -- rather than comparing a
+    TruncMonth(..., tzinfo=...) annotation via `__year`/`__month` -- sidesteps
+    a Django/Postgres quirk: TruncMonth's tzinfo shifts the value with
+    `AT TIME ZONE`, producing a naive timestamp that a later `__year`/`__month`
+    lookup then re-interprets in the DB session's timezone (UTC here), which
+    silently shifts the match window by the UTC offset.
+    """
+    if year is None or not (MIN_FILTER_YEAR <= year <= MAX_FILTER_YEAR):
+        return None
+    tz = settings.DEFAULT_TIMEZONE
+    start = datetime(year, month or 1, 1, tzinfo=tz)
+    if month:
+        end = datetime(year + 1, 1, 1, tzinfo=tz) if month == 12 else datetime(year, month + 1, 1, tzinfo=tz)
+    else:
+        end = datetime(year + 1, 1, 1, tzinfo=tz)
+    return start, end
