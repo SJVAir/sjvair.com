@@ -697,3 +697,24 @@ class ByMethodByYearTests(RollupTestMixin, TestCase):
         PesticideUseRollup.objects.filter(method='A').update(method='X')
         out = stats.by_method_by_year(PesticideUseRollup.objects.all())
         assert [row['method'] for row in out['series']] == ['G', 'O']
+
+
+class NoticeSummaryTests(TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def test_sums_acres_and_lists_chemicals_once_sorted(self):
+        PesticideNotice.objects.update(treated_amount=None)
+        notices = PesticideNotice.objects.all()
+        first, second = notices[0], notices[1]
+        PesticideNotice.objects.filter(pk=first.pk).update(treated_amount=10, treated_units='Acres')
+        PesticideNotice.objects.filter(pk=second.pk).update(treated_amount=500, treated_units='Cubic Feet')
+        summary = stats.notice_summary(PesticideNotice.objects.all())
+        assert summary['count'] == PesticideNotice.objects.count()
+        assert summary['acres'] == 10
+        names = [chemical.display_name for chemical in summary['chemicals']]
+        assert names == sorted(names)
+        assert len(names) == len({chemical.pk for chemical in summary['chemicals']})
+
+    def test_acres_is_none_when_nothing_is_in_acres(self):
+        PesticideNotice.objects.update(treated_units='Cubic Feet')
+        assert stats.notice_summary(PesticideNotice.objects.all())['acres'] is None

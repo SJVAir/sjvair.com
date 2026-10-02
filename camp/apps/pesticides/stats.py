@@ -989,6 +989,23 @@ def upcoming_by_day(notices, limit=UPCOMING_DAYS):
     ]
 
 
+def notice_summary(notices):
+    """
+    What a list of notices adds up to: how many, the acres among those that
+    give an amount in acres (None when none do), and the chemicals they list.
+    The notices page's stat row, whichever notices it's showing.
+    """
+    notices = notices.distinct().prefetch_related('chemicals')
+    count, acres, chemicals = 0, None, {}
+    for notice in notices:
+        count += 1
+        if notice.treated_amount and (notice.treated_units or '').strip().lower() == ACRES:
+            acres = (acres or 0) + notice.treated_amount
+        for chemical in notice.chemicals.all():
+            chemicals.setdefault(chemical.pk, chemical)
+    return {'count': count, 'acres': acres, 'chemicals': sorted(chemicals.values(), key=lambda c: c.display_name)}
+
+
 def notices_in_days(days):
     """
     The individual notices behind upcoming_by_day()'s rows, in order. The

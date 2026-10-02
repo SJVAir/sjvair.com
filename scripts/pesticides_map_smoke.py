@@ -345,7 +345,7 @@ class Page:
 
     def marker_requests(self, kind):
         """How many requests the notices or locations endpoint has had."""
-        pattern = {'notices': r'/pesticides/notices/active/', 'locations': r'/pesticides/locations/'}[kind]
+        pattern = {'notices': r'/pesticides/notices/a', 'locations': r'/pesticides/locations/'}[kind]
         return self.js("var needle = arguments[0]; return performance.getEntriesByType('resource').filter(function (r) { return r.name.indexOf(needle) !== -1; }).length", pattern)
 
     def source_count(self, source):
@@ -811,7 +811,7 @@ def check_notices(page):
         return inst.sourceData.notices.features.filter(function (f) { return b.contains(f.geometry.coordinates); }).length;
     """)
     rows = page.marker_legend()
-    if not any(row.startswith('Notice of intent') for row in rows):
+    if not any(row.startswith(('Notice of intent', 'Past notice')) for row in rows):
         problems.append('legend rows %s lack the notices row' % rows)
     if not state['dflt'] and url_param(page, 'notices') != '1':
         problems.append('URL lacks notices=1 with the layer on against the default: %s' % page.driver.current_url)
@@ -875,7 +875,7 @@ def check_notices(page):
     after = page.instance_js("return { count: (inst.sourceData.notices || {features: []}).features.length, popup: !!inst.popup && inst.popupKey === 'openNoticeId', bounds: inst.loadedNoticeBounds };")
     if after['count'] or after['bounds'] or after['popup']:
         problems.append('toggle off left %d markers, bounds %s, popup %s' % (after['count'], after['bounds'] is not None, after['popup']))
-    if any(row.startswith('Notice of intent') for row in page.marker_legend()):
+    if any(row.startswith(('Notice of intent', 'Past notice')) for row in page.marker_legend()):
         problems.append('legend kept the notices row after toggle off')
     expected_off = '0' if state['dflt'] else None
     if url_param(page, 'notices') != expected_off:

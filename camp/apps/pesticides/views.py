@@ -1162,7 +1162,7 @@ def page_url_pattern(name):
 MAP_STYLE = mapfigure.MAP_STYLE
 
 
-def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None, show_all_sections=False, locations_area=None):
+def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None, show_all_sections=False, locations_area=None, notices_url=None):
     year = year or stats.latest_year()
     scope = stats.scope_param(year, all_years, county, concern)
     scope_suffix = f'&{scope}' if scope else ''
@@ -1185,7 +1185,10 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # The covered counties' outlines, from the regions API.
         'counties_url': f"{reverse('api:v2:regions:region-geojson')}?type=county",
         'townships_url': '/api/2.0/pesticides/townships/',
-        'notices_url': '/api/2.0/pesticides/notices/active/',
+        # The notices layer: the active endpoint, or (notices_url given) the
+        # archive's, which the legend and popups word as "past".
+        'notices_url': notices_url or '/api/2.0/pesticides/notices/active/',
+        'notices_past': '1' if notices_url else '0',
         'locations_url': '/api/2.0/pesticides/locations/',
         'section_url_pattern': '/api/2.0/pesticides/sections/{id}/',
         'section_page_url': page_url_pattern('pesticides:section-detail'),
@@ -1899,6 +1902,11 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
         self.concern = scope_concern(request)
         self.point, self.radius = resolve_point_and_radius(self.form.cleaned_data)
         self.mode = 'past' if self.form.cleaned_data.get('past') else 'active'
+        # The archive's year and month mean nothing to the active notices; a
+        # stale one in the address (Scheduled chosen after a month) is ignored.
+        data = self.form.cleaned_data
+        self.archive_year = data.get('archive_year') if self.mode == 'past' else None
+        self.archive_month = data.get('month') if self.mode == 'past' else None
         self.year, self.all_years = stats.resolve_year_param(request.GET.get('year'))
         return super().dispatch(request, *args, **kwargs)
 
@@ -1933,13 +1941,12 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
         return queryset
 
     def get_queryset(self):
-        data = self.form.cleaned_data
         queryset = self.filtered_notices().select_related('county', 'mtrs').prefetch_related('chemicals', 'products')
 
         if self.mode == 'past':
             cutoff = timezone.now() - timedelta(days=stats.NOTICE_GRACE_DAYS)
             queryset = queryset.filter(scheduled_application__lt=cutoff)
-            bounds = stats.local_month_bounds(data.get('archive_year'), data.get('month'))
+            bounds = stats.local_month_bounds(self.archive_year, self.archive_month)
             if bounds is not None:
                 start, end = bounds
                 queryset = queryset.filter(scheduled_application__gte=start, scheduled_application__lt=end)
@@ -1995,6 +2002,15 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
         """Where "Clear filters" goes: the list in its mode, nothing else."""
         return self.request.path + ('?past=1' if self.mode == 'past' else '')
 
+    def get_notices_url(self):
+        """The map's notices endpoint: the active one, or the archive's (in its month, if one is chosen)."""
+        if self.mode != 'past':
+            return None
+        url = reverse('api:v2:pesticides:notice-archive')
+        if self.archive_year and self.archive_month:
+            url += '?' + urlencode({'year': self.archive_year, 'month': self.archive_month})
+        return url
+
     def get_map_config(self):
         chemical = self.related.get('chemical')
         product = self.related.get('product')
@@ -2014,10 +2030,10 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
             product=product if product and product is not MISSING else None,
             county=self.county.slug if self.county else None,
             concern=self.concern,
+            notices_url=self.get_notices_url(),
         )
 
     def get_context_data(self, **kwargs):
-        data = self.form.cleaned_data
         # The site-wide `?year=` picker doesn't apply to notices (they're
         # scheduled, not reported by year), but the nav links still carry it,
         # so take the scope context and drop year_options -- that's what
@@ -2033,8 +2049,9 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
             active_filters=self.get_active_filters(),
             archive_months=self.get_archive_months(),
             clear_filters_url=self.get_clear_filters_url(),
-            filter_year=data.get('archive_year'),
-            filter_month=data.get('month'),
+            filter_year=self.archive_year,
+            filter_month=self.archive_month,
+            filter_month_label=f'{calendar.month_name[self.archive_month]} {self.archive_year}' if self.archive_year and self.archive_month else '',
             **year_ctx,
             **kwargs,
         )
@@ -2375,8 +2392,8 @@ class AreaNoticesMixin(AreaNarrowedListMixin):
     """
     A place page's Notices tab: the notice list (NoticeList) narrowed to the
     place -- its filters, archive, map and rows -- under the place's header
-    and tabs, with the stat row always on what's scheduled now. The place's
-    own filter comes from AreaNarrowedListMixin.
+    and tabs, with a stat row on the notices it lists (scheduled now, or past
+    ones). The place's own filter comes from AreaNarrowedListMixin.
     """
     template_name = 'pesticides/area-notices.html'
 
@@ -2394,17 +2411,18 @@ class AreaNoticesMixin(AreaNarrowedListMixin):
             year, all_years=all_years, concern=concern,
             chemical=chemical if chemical and chemical is not MISSING else None,
             product=product if product and product is not MISSING else None,
+            notices_url=self.get_notices_url(),
             **self.area.map_kwargs(),
         )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        year, all_years, concern = self.scope
         context.update(
             section=None,
             area=self.area,
             tab_label='Notices',
-            **places.upcoming_context(self.area, concern),
+            # What the list below it adds up to: its mode, month and filters.
+            notice_stats=stats.notice_summary(self.get_queryset()),
             **self.header_context(),
             **self.tab_scope_context(),
         )

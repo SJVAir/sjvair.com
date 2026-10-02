@@ -2381,16 +2381,25 @@
   // layer off): soonest first, the first few in full, the rest a link away.
   // Up top, under the headline -- a spray that may start this week is the
   // most pressing thing a section's popup can say.
+  // Whether a notice is a past one: the archive endpoint's features say so,
+  // and the page says it for the whole layer (`notices-past`).
+  SectionMap.prototype.isPastNotice = function (n) {
+    return !!(n && n.past) || this.data.noticesPast === '1';
+  };
+
   SectionMap.prototype.sectionNoticesHtml = function (id) {
     var group = this.noticeById ? this.noticeById[id] : null;
     var notices = (group && group.properties.notices) || [];
     if (!notices.length) return '';
     var self = this;
     var more = notices.length - SECTION_POPUP_NOTICES;
+    var past = this.isPastNotice(notices[0]);
     var moreUrl = this.data.sectionNoticesUrl ? fillUrl(this.data.sectionNoticesUrl, id) : '';
     return (
       '<div class="section-popup-notices">' +
-      '<p class="section-popup-label">' + (notices.length === 1 ? 'Notice of intent' : notices.length + ' notices of intent') + '</p>' +
+      '<p class="section-popup-label">' + (past
+        ? (notices.length === 1 ? 'Past notice' : notices.length + ' past notices')
+        : (notices.length === 1 ? 'Notice of intent' : notices.length + ' notices of intent')) + '</p>' +
       notices.slice(0, SECTION_POPUP_NOTICES).map(function (n) { return self.sectionNoticeRowHtml(n); }).join('') +
       (more > 0 ? '<p class="section-popup-note">' + linkHtml(moreUrl, more + ' more') + '</p>' : '') +
       '</div>'
@@ -3131,7 +3140,7 @@
     if (this.showLocations) rows = rows.concat(MARKER_LEGEND);
     // A number on a marker is how many notices it stands for; zoomed out a marker
     // can gather several sections, and a click zooms in to them.
-    if (this.showNotices) rows.push({ color: NOTICE_COLOR, label: 'Notice of intent (numbered: how many)' });
+    if (this.showNotices) rows.push({ color: NOTICE_COLOR, label: (this.data.noticesPast === '1' ? 'Past notice' : 'Notice of intent') + ' (numbered: how many)' });
     for (var i = 0; i < rows.length; i++) {
       var li = document.createElement('li');
       li.className = 'is-marker';
@@ -3400,7 +3409,7 @@
     var self = this;
     return (
       '<div class="section-popup notice-popup notice-group-popup">' +
-      '<h4>' + notices.length + ' notices of intent</h4>' +
+      '<h4>' + notices.length + (this.isPastNotice(notices[0]) ? ' past notices' : ' notices of intent') + '</h4>' +
       '<p class="section-popup-sub">' + subParts.join(' · ') + '</p>' +
       '<div class="notice-group-list">' +
       notices.map(function (n) { return self.noticeEntryHtml(n); }).join('') +
@@ -3414,7 +3423,7 @@
   SectionMap.prototype.noticeEntryHtml = function (n) {
     var self = this;
     var when = escapeHtml(formatDateTime(n.scheduled_application));
-    var through = n.scheduled_end ? ', may begin through ' + escapeHtml(formatDate(n.scheduled_end)) : '';
+    var through = n.scheduled_end && !this.isPastNotice(n) ? ', may begin through ' + escapeHtml(formatDate(n.scheduled_end)) : '';
     var treated = n.treated_amount
       ? '<strong>' + formatNumber(n.treated_amount) + ' ' + escapeHtml((n.treated_units || '').toLowerCase()) + '</strong>'
       : '';
@@ -3458,10 +3467,11 @@
     var subParts = [];
     if (props.county) subParts.push(escapeHtml(shortCounty(props.county)));
     if (props.section) subParts.push(linkHtml(props.section_id ? this.sectionUrl(props.section_id) : '', props.section));
-    var sub = 'Notice of intent' + (subParts.length ? ' · ' + subParts.join(' · ') : '');
+    var past = this.isPastNotice(props);
+    var sub = (past ? 'Past notice' : 'Notice of intent') + (subParts.length ? ' · ' + subParts.join(' · ') : '');
 
     var when = escapeHtml(formatDateTime(props.scheduled_application));
-    var through = props.scheduled_end ? ', may begin through ' + escapeHtml(formatDate(props.scheduled_end)) : '';
+    var through = props.scheduled_end && !past ? ', may begin through ' + escapeHtml(formatDate(props.scheduled_end)) : '';
     var treated = props.treated_amount
       ? '<strong>' + formatNumber(props.treated_amount) + ' ' + escapeHtml((props.treated_units || '').toLowerCase()) + '</strong>'
       : '';
@@ -3477,7 +3487,7 @@
 
     return (
       '<div class="section-popup notice-popup">' +
-      '<h4>' + when + ' <span class="tag is-warning is-light">Active</span></h4>' +
+      '<h4>' + when + (past ? '' : ' <span class="tag is-warning is-light">Active</span>') + '</h4>' +
       '<p class="section-popup-sub">' + sub + through + '</p>' +
       (headline ? '<p class="section-popup-metric">' + headline + '</p>' : '') +
       '<p class="section-popup-label">Products</p>' + products +
