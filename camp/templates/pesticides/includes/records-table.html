@@ -1,10 +1,11 @@
 {% load pesticides_explorer %}
+{# One county's page: every row is that county, so no County column. #}
 <div class="table-container">
     <table class="table is-fullwidth is-striped is-hoverable data-table records-table">
         <thead>
             <tr>
                 <th>{% sort_link 'date' 'Date' %}</th>
-                <th>County</th>
+                {% if not county %}<th>County</th>{% endif %}
                 <th>Section</th>
                 <th>Commodity</th>
                 <th>Product</th>
@@ -18,7 +19,7 @@
             {% for use in object_list %}
             <tr>
                 <td>{{ use.application_date|date:'M j, Y'|default:'—' }}</td>
-                <td>{% if use.county %}<a href="{% region_url use.county %}">{{ use.county.short_name }}</a>{% else %}—{% endif %}</td>
+                {% if not county %}<td>{% if use.county %}<a href="{% region_url use.county %}">{{ use.county.short_name }}</a>{% else %}—{% endif %}</td>{% endif %}
                 <td>
                     {% if use.mtrs %}
                         <a href="{% url 'pesticides:section-detail' sqid=use.mtrs.sqid %}">{{ use.mtrs.external_id }}</a>
@@ -41,7 +42,7 @@
                 <td>{% if use.fume_method %}<span title="{{ use.fume_method.name }}">{{ use.aerial_ground|method_label }} — {{ use.fume_method.short_name }}</span>{% else %}{{ use.aerial_ground|method_label }}{% endif %}</td>
             </tr>
             {% empty %}
-            <tr><td colspan="9" class="has-text-centered has-text-grey">No records match.</td></tr>
+            <tr><td colspan="{% if county %}8{% else %}9{% endif %}" class="has-text-centered has-text-grey">No records match.</td></tr>
             {% endfor %}
         </tbody>
     </table>

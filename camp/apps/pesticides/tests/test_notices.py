@@ -303,3 +303,39 @@ class AreaNoticesTabTests(TestCase):
         response = self.client.get(city.get_pesticides_tab_url('notices'))
         assert response.status_code == 200
         assert city.name not in [f['label'] for f in response.context['active_filters']]
+
+
+class CountyColumnTests(RollupTestMixin, TestCase):
+    """The County column is dropped where every row is the same county."""
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+        self.kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
+
+    def headers(self, html):
+        return html[html.index('<thead>'):html.index('</thead>')]
+
+    def test_hidden_on_one_county(self):
+        for url, params in (
+            (self.kern.get_pesticides_tab_url('notices'), {}),
+            (self.kern.get_pesticides_tab_url('records'), {}),
+            (reverse('pesticides:notice-list'), {'county': 'kern'}),
+            (reverse('pesticides:records'), {'county': 'kern'}),
+        ):
+            response = self.client.get(url, params)
+            assert response.context['county'] == self.kern, url
+            assert '<th>County</th>' not in self.headers(response.content.decode()), url
+
+    def test_shown_valley_wide_and_near_me(self):
+        near_me = {'lat': 36.71, 'lng': -119.79, 'radius': 3}
+        for url, params in (
+            (reverse('pesticides:notice-list'), {}),
+            (reverse('pesticides:records'), {}),
+            (reverse('pesticides:near-me-notices'), near_me),
+            (reverse('pesticides:near-me-records'), near_me),
+        ):
+            response = self.client.get(url, params)
+            assert response.status_code == 200, url
+            assert not response.context['county'], url
+            assert '<th>County</th>' in self.headers(response.content.decode()), url
