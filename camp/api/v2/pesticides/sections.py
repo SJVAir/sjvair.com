@@ -573,15 +573,14 @@ class ArchivedNoticeListBase(ActiveNoticeListBase):
         notices = PesticideNotice.objects.filter(scheduled_application__lt=cutoff)
         year, month = params.get('year'), params.get('month')
         if year or month:
+            if not (year and month):
+                return None, 'year and month go together'
             try:
-                year = int(year)
-                month = int(month) if month else None
+                year, month = int(year), int(month)
             except (TypeError, ValueError):
                 return None, 'year and month must be numbers'
-            if month is not None and not 1 <= month <= 12:
+            if not 1 <= month <= 12:
                 return None, 'month must be 1-12'
-            if month is None:
-                return None, 'month is required with year'
             bounds = stats.local_month_bounds(year, month)
             if bounds is None:
                 return None, 'year is out of range'
@@ -591,5 +590,5 @@ class ArchivedNoticeListBase(ActiveNoticeListBase):
 
 
 class ArchivedNoticeList(CachedEndpointMixin, ArchivedNoticeListBase):
-    """Past SprayDays notices of intent (older than the four-day grace period) as GeoJSON points, newest first, each with `properties.past = true`. Same parameters and cap as notices/active/, plus optional `year` + `month` (1-12) for one month (America/Los_Angeles)."""
+    """Past SprayDays notices of intent (older than the four-day grace period) as GeoJSON points, newest first, each with `properties.past = true`. Same parameters and cap as notices/active/, plus optional `year` and `month` (1-12), given together, for one month (America/Los_Angeles)."""
     cache_timeout = NOTICE_CACHE_TTL

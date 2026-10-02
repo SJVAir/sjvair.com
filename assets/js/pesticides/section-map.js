@@ -499,6 +499,9 @@
   // on any plausible screen.
   var LOCATIONS_MAX_BBOX_DEGREES = 12;
   var LOCATIONS_ZOOM_NOTE = 'Zoom in to see schools and child care.';
+  // The notices endpoint refuses (400) a view with more notices than its cap.
+  var NOTICES_PAST_CAP_NOTE = 'Too many past notices to map here \u2014 zoom in or pick a month.';
+  var NOTICES_CAP_NOTE = 'Too many notices to map here \u2014 zoom in.';
   // "Within about a mile": a school's own square-mile section plus the ring
   // around it -- the sections whose centre is within 1.5 miles of that
   // section's centre. Same rule as stats.block_totals on the server.
@@ -3185,6 +3188,7 @@
         // already-resolved response isn't cancelled by aborting either.
         if (!self.showNotices) return;
         self.loadedNoticeBounds = bounds;
+        self.clearNoticesCapNote();
         self.renderNotices(geojson);
       })
       .catch(function (err) {
@@ -3195,12 +3199,27 @@
         logError('failed to load notices', err);
         self.loadedNoticeBounds = null;
         self.clearNotices();
+        // A 400 is the cap: say so, rather than leave an empty map unexplained.
+        if (err && err.status === 400) {
+          self.setStatus(self.isPastMode() ? NOTICES_PAST_CAP_NOTE : NOTICES_CAP_NOTE);
+        }
       });
+  };
+
+  // The "too many notices" line is ours to clear -- only if it's still up.
+  SectionMap.prototype.clearNoticesCapNote = function () {
+    var el = this.shell && this.shell.statusEl;
+    if (el && (el.textContent === NOTICES_PAST_CAP_NOTE || el.textContent === NOTICES_CAP_NOTE)) this.setStatus('');
+  };
+
+  SectionMap.prototype.isPastMode = function () {
+    return this.data.noticesPast === '1';
   };
 
   // Takes the markers off the map; a notice popup goes with them (its
   // marker is gone), as it did with the Leaflet layer.
   SectionMap.prototype.clearNotices = function () {
+    this.clearNoticesCapNote();
     this.clearHover('notices');
     this.noticeById = {};
     this.noticeFeatures = [];

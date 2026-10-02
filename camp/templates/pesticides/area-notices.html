@@ -44,7 +44,7 @@ the map.
 
 {% block tab-table %}
 <p class="summary-sentence mb-3">
-    {{ count }} notice{{ count|pluralize }} {% if mode == 'active' %}currently scheduled{% else %}in the archive{% endif %} here.
+    {{ count }} notice{{ count|pluralize }} {% if mode == 'active' %}currently scheduled{% else %}in the archive{% if filter_month_label %} in {{ filter_month_label }}{% endif %}{% endif %} here.
 </p>
 {% include 'pesticides/includes/notice-rows.html' %}
 {% include 'pesticides/includes/pagination.html' %}

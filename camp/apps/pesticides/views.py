@@ -2,7 +2,7 @@ import calendar
 import hashlib
 import math
 import random
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from types import SimpleNamespace
 from urllib.parse import unquote, urlencode
 
@@ -1162,7 +1162,7 @@ def page_url_pattern(name):
 MAP_STYLE = mapfigure.MAP_STYLE
 
 
-def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None, show_all_sections=False, locations_area=None, notices_url=None):
+def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None, show_all_sections=False, locations_area=None, notices_url=None, section_notices_extra=None):
     year = year or stats.latest_year()
     scope = stats.scope_param(year, all_years, county, concern)
     scope_suffix = f'&{scope}' if scope else ''
@@ -1197,7 +1197,8 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # carrying the page's scope. Built here rather than in the JS so
         # there's one place that decides what the scope looks like.
         'section_records_url': reverse('pesticides:records') + '?section={id}' + scope_suffix,
-        'section_notices_url': reverse('pesticides:notice-list') + '?section={id}' + scope_suffix,
+        # (In past mode the list link carries the mode and month along.)
+        'section_notices_url': reverse('pesticides:notice-list') + '?section={id}' + scope_suffix + (f'&{section_notices_extra}' if section_notices_extra else ''),
         # The bare-sqid redirect: it 301s to the slugged detail URL, so the
         # JS doesn't need the slug.
         'chemical_page_url': page_url_pattern('pesticides:chemical-redirect'),
@@ -2002,6 +2003,15 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
         """Where "Clear filters" goes: the list in its mode, nothing else."""
         return self.request.path + ('?past=1' if self.mode == 'past' else '')
 
+    def get_list_mode_params(self):
+        """The query string that keeps the list in its mode (and month) from a link built elsewhere; '' in scheduled mode."""
+        if self.mode != 'past':
+            return ''
+        params = {'past': 1}
+        if self.archive_year and self.archive_month:
+            params.update(archive_year=self.archive_year, month=self.archive_month)
+        return urlencode(params)
+
     def get_notices_url(self):
         """The map's notices endpoint: the active one, or the archive's (in its month, if one is chosen)."""
         if self.mode != 'past':
@@ -2031,6 +2041,7 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
             county=self.county.slug if self.county else None,
             concern=self.concern,
             notices_url=self.get_notices_url(),
+            section_notices_extra=self.get_list_mode_params(),
         )
 
     def get_context_data(self, **kwargs):
@@ -2412,6 +2423,7 @@ class AreaNoticesMixin(AreaNarrowedListMixin):
             chemical=chemical if chemical and chemical is not MISSING else None,
             product=product if product and product is not MISSING else None,
             notices_url=self.get_notices_url(),
+            section_notices_extra=self.get_list_mode_params(),
             **self.area.map_kwargs(),
         )
 

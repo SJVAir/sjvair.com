@@ -715,6 +715,19 @@ class NoticeSummaryTests(TestCase):
         assert names == sorted(names)
         assert len(names) == len({chemical.pk for chemical in summary['chemicals']})
 
+    def test_acres_match_ignores_case_and_whitespace(self):
+        PesticideNotice.objects.update(treated_amount=None)
+        first, second, third = PesticideNotice.objects.all()[:3]
+        PesticideNotice.objects.filter(pk=first.pk).update(treated_amount=10, treated_units=' ACRES ')
+        PesticideNotice.objects.filter(pk=second.pk).update(treated_amount=5, treated_units='acres')
+        PesticideNotice.objects.filter(pk=third.pk).update(treated_amount=7, treated_units='Sq Ft')
+        assert stats.notice_summary(PesticideNotice.objects.all())['acres'] == 15
+
+    def test_a_joined_ordered_queryset_counts_each_notice_once(self):
+        notices = PesticideNotice.objects.filter(chemicals__isnull=False).order_by('-scheduled_application')
+        summary = stats.notice_summary(notices)
+        assert summary['count'] == notices.distinct().count()
+
     def test_acres_is_none_when_nothing_is_in_acres(self):
         PesticideNotice.objects.update(treated_units='Cubic Feet')
         assert stats.notice_summary(PesticideNotice.objects.all())['acres'] is None

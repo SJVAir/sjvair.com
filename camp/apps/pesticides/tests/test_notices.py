@@ -55,6 +55,23 @@ class NoticeListTests(TestCase):
         other = Region.objects.filter(type=Region.Type.COUNTY).exclude(pk=archived.county_id).first()
         assert self.client.get(self.url, {'past': 1, 'county': other.slug}).context['archive_months'] == []
 
+    def test_summary_sentence_names_the_picked_month(self):
+        past = self.client.get(self.url, {'past': 1})
+        assert 'in the archive.' in past.content.decode()
+        month = self.client.get(self.url, {'past': 1, 'archive_year': 2020, 'month': 1})
+        assert 'in the archive in January 2020.' in ' '.join(month.content.decode().split())
+
+    def test_archive_months_has_all_months_first(self):
+        html = self.client.get(self.url, {'past': 1}).content.decode()
+        assert 'All months</a>' in html
+        assert html.index('All months') < html.index('January 2020')
+        all_link = html[html.rindex('<a', 0, html.index('All months')):html.index('All months')]
+        assert 'is-active' in all_link
+        picked = self.client.get(self.url, {'past': 1, 'archive_year': 2020, 'month': 1}).content.decode()
+        all_link = picked[picked.rindex('<a', 0, picked.index('All months')):picked.index('All months')]
+        assert 'is-active' not in all_link
+        assert 'month=' not in all_link
+
     def test_archive_months_only_built_for_the_archive(self):
         assert self.client.get(self.url).context['archive_months'] == []
 
@@ -411,6 +428,16 @@ class NoticeModeTests(TestCase):
             assert self.client.get(page, {'past': 1}).context['map_config']['notices_url'] == url
             month = self.client.get(page, {'past': 1, 'archive_year': 2020, 'month': 1}).context['map_config']['notices_url']
             assert month.startswith(url + '?') and 'year=2020' in month and 'month=1' in month
+
+    def test_popup_notices_link_keeps_the_mode(self):
+        for page in (reverse('pesticides:notice-list'), self.tab):
+            scheduled = self.client.get(page).context['map_config']['section_notices_url']
+            assert 'past=1' not in scheduled
+            past = self.client.get(page, {'past': 1}).context['map_config']['section_notices_url']
+            assert past.startswith(reverse('pesticides:notice-list') + '?section={id}') and 'past=1' in past
+            assert 'month=' not in past
+            month = self.client.get(page, {'past': 1, 'archive_year': 2020, 'month': 1}).context['map_config']['section_notices_url']
+            assert 'past=1' in month and 'archive_year=2020' in month and 'month=1' in month
 
     def test_tab_skips_the_upcoming_context(self):
         context = self.client.get(self.tab).context

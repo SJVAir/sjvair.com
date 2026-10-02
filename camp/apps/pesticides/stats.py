@@ -12,6 +12,7 @@ from django.contrib.gis.measure import D
 from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Case, Count, F, FloatField, Max, Min, Q, Sum, When
+from django.db.models.functions import Lower, Trim
 from django.utils import timezone
 
 from camp.apps.pesticides.models import (
@@ -995,15 +996,23 @@ def notice_summary(notices):
     give an amount in acres (None when none do), and the chemicals they list.
     The notices page's stat row, whichever notices it's showing.
     """
-    notices = notices.distinct().prefetch_related('chemicals')
-    count, acres, chemicals = 0, None, {}
-    for notice in notices:
-        count += 1
-        if notice.treated_amount and (notice.treated_units or '').strip().lower() == ACRES:
-            acres = (acres or 0) + notice.treated_amount
-        for chemical in notice.chemicals.all():
-            chemicals.setdefault(chemical.pk, chemical)
-    return {'count': count, 'acres': acres, 'chemicals': sorted(chemicals.values(), key=lambda c: c.display_name)}
+    # Everything in SQL off the queryset's pks: its ordering, joins and
+    # distinct() are irrelevant to the totals, and a pk subquery keeps a
+    # join-multiplied queryset from double-counting.
+    ids = notices.order_by().values('pk')
+    rows = PesticideNotice.objects.filter(pk__in=ids)
+    acres = (
+        rows.annotate(units=Lower(Trim('treated_units')))
+        .filter(units=ACRES, treated_amount__isnull=False)
+        .exclude(treated_amount=0)
+        .aggregate(total=Sum('treated_amount'))['total']
+    )
+    chemicals = Chemical.objects.filter(pesticide_notices__in=ids).distinct()
+    return {
+        'count': rows.count(),
+        'acres': acres,
+        'chemicals': sorted(chemicals, key=lambda c: c.display_name),
+    }
 
 
 def notices_in_days(days):
