@@ -363,6 +363,14 @@ class NoticeModeTests(TestCase):
             assert 'name="past"' in form, url
             assert 'tabs is-toggle' not in self.client.get(url).content.decode().split('notice-filters')[0], url
 
+    def test_mode_radios_are_keyboard_focusable(self):
+        form = self.form(self.client.get(self.tab).content.decode())
+        radios = re.findall(r'<input[^>]*name="past"[^>]*>', form)
+        assert len(radios) == 2
+        for radio in radios:
+            # `hidden` takes a control out of the tab order; screen-reader-only keeps it in.
+            assert ' hidden' not in radio and 'is-sr-only' in radio, radio
+
     def test_switching_mode_drops_month_and_page(self):
         html = self.client.get(self.tab, {'past': 1, 'archive_year': 2020, 'month': 1, 'page': 2}).content.decode()
         form = self.form(html)

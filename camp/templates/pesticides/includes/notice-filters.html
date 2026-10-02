@@ -6,8 +6,8 @@
         <label class="label">Notices</label>
         <div class="control">
             <div class="buttons has-addons are-small">
-                <label class="button{% if mode == 'active' %} is-selected is-primary{% endif %}"><input type="radio" name="past" value=""{% if mode == 'active' %} checked{% endif %} hidden> Scheduled</label>
-                <label class="button{% if mode == 'past' %} is-selected is-primary{% endif %}"><input type="radio" name="past" value="1"{% if mode == 'past' %} checked{% endif %} hidden> Past</label>
+                <label class="button{% if mode == 'active' %} is-selected is-primary{% endif %}"><input type="radio" name="past" value=""{% if mode == 'active' %} checked{% endif %} class="is-sr-only"> Scheduled</label>
+                <label class="button{% if mode == 'past' %} is-selected is-primary{% endif %}"><input type="radio" name="past" value="1"{% if mode == 'past' %} checked{% endif %} class="is-sr-only"> Past</label>
             </div>
         </div>
     </div>

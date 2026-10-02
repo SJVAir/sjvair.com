@@ -594,6 +594,10 @@ body.pesticides
         // Scheduled / Past: two buttons that are really radios.
         .notice-mode .button
             cursor: pointer
+            // The radio inside is screen-reader-only but focusable; show its focus on the button.
+            &:has(input:focus-visible)
+                outline: 2px solid $link
+                outline-offset: 2px
         ul
             list-style: none
             margin-left: 0

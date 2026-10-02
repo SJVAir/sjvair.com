@@ -811,8 +811,10 @@ def check_notices(page):
         return inst.sourceData.notices.features.filter(function (f) { return b.contains(f.geometry.coordinates); }).length;
     """)
     rows = page.marker_legend()
-    if not any(row.startswith(('Notice of intent', 'Past notice')) for row in rows):
-        problems.append('legend rows %s lack the notices row' % rows)
+    # The legend words the layer for the page's mode: past only with ?past=1.
+    label = 'Past notice' if url_param(page, 'past') == '1' else 'Notice of intent'
+    if not any(row.startswith(label) for row in rows):
+        problems.append('legend rows %s lack the "%s" row' % (rows, label))
     if not state['dflt'] and url_param(page, 'notices') != '1':
         problems.append('URL lacks notices=1 with the layer on against the default: %s' % page.driver.current_url)
     popup_detail = 'no active notices in view'
