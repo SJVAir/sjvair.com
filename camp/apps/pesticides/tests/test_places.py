@@ -120,7 +120,9 @@ class NearMeTests(RollupTestMixin, TestCase):
         self.assertTemplateUsed(response, 'pesticides/place.html')
         html = response.content.decode()
         assert 'near Selma, Fresno County' in html and 'Within 3 miles' in html
-        assert 'only in this page' in html and 'spraydays.cdpr.ca.gov' in html
+        assert 'spraydays.cdpr.ca.gov' in html
+        # No privacy line until there's a privacy policy to point at.
+        assert "we don't store" not in html
         assert response.context['map_config']['radius'] == 3
         assert [o['miles'] for o in response.context['radius_options']] == [1, 3, 5]
         assert [o['miles'] for o in response.context['radius_options'] if o['current']] == [3]

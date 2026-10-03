@@ -22,6 +22,5 @@
             {% include 'pesticides/includes/note-help.html' with key='ab617' anchor='ab617' %}
         </p>
     {% endif %}
-    <p class="is-size-7 has-text-grey">Address searches are sent to MapTiler; place names are matched here in your browser. We don't store locations.</p>
     {{ find_area_places|json_script:"find-area-places" }}
 </section>

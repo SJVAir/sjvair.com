@@ -2355,7 +2355,6 @@ class NearMeAreaMixin(AreaPageMixin):
             {'miles': miles, 'url': f'{path}?{self.point_query(radius=miles)}', 'current': miles == self.radius}
             for miles in places.RADIUS_CHOICES
         ]
-        context['privacy_note'] = True
         return context
 
 
