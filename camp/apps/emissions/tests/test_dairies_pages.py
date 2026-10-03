@@ -189,7 +189,7 @@ class DairyTabContentTests(DairyPageTestCase):
         places = json.loads(re.search(r'id="find-area-places"[^>]*>(.*?)</script>', content, re.S).group(1))
         fresno = next(place for place in places if place['name'] == 'Fresno County')
         assert fresno['url'] == self.fresno.get_emissions_dairies_url()
-        jumps = re.search(r'<p class="find-area-counties">(.*?)</p>', content, re.S).group(1)
+        jumps = re.search(r'<p class="[^"]*find-area-counties">(.*?)</p>', content, re.S).group(1)
         hrefs = re.findall(r'href="([^"]*)"', jumps)
         assert hrefs and all('/dairies/?' in href and 'county=' not in href and 'pollutant=pm10' in href for href in hrefs)
 

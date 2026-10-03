@@ -45,7 +45,10 @@ history of wells in service.
 {% block tab-map %}{% include 'emissions/includes/facility-map.html' %}{% endblock %}
 
 {% block tab-filters %}
-<form method="get" class="explorer-filters box" hx-trigger="submit, change delay:250ms">
+{# The Valley's tab (OilGasPage, `find_field`) leads its filter box with "Find your area", beside the form: Enter there would submit it. #}
+<div class="explorer-filters box">
+{% if find_field %}{% include 'emissions/includes/find-field.html' %}{% endif %}
+<form method="get" hx-trigger="submit, change delay:250ms">
     {% for key, value in point_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
     {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
     <input type="hidden" name="sort" value="{{ sort }}">
@@ -86,8 +89,9 @@ history of wells in service.
         <label class="checkbox"><input type="checkbox" name="hpz" value="1"{% if filters.hpz %} checked{% endif %}> In a health-protection zone</label>
     </div>
     {# Every field applies itself as it changes; there's nothing to Apply. #}
-    <p class="filters-clear"><a href="{{ clear_filters_url }}">Clear filters</a></p>
+    {% if filters.q or filters.status or filters.operator or filters.field or filters.hpz %}<p class="filters-clear"><a href="{{ clear_filters_url }}">Clear filters</a></p>{% endif %}
 </form>
+</div>
 {% endblock %}
 
 {% block tab-table %}
@@ -176,5 +180,3 @@ history of wells in service.
     </ul>
 </details>
 {% endblock %}
-
-{% block tab-after %}{% if privacy_note %}<p class="is-size-7 has-text-grey mt-5">This page's location is only in its address; we don't store it.</p>{% endif %}{% endblock %}

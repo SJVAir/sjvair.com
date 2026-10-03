@@ -7,7 +7,9 @@
 {% block explorer-content %}
 <div class="columns">
     <div class="column is-3-desktop">
-        <form method="get" class="explorer-filters box" hx-trigger="submit, change delay:250ms">
+        <div class="explorer-filters box">
+        {% include 'emissions/includes/find-field.html' %}
+        <form method="get" hx-trigger="submit, change delay:250ms">
             {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
             <input type="hidden" name="sort" value="{{ sort }}">
             <div class="field">
@@ -32,11 +34,10 @@
                 </select></div></div>
                 <p class="help">About 660 large sources; <a href="{% url 'emissions:about' %}#compliance">what this covers</a>.</p>
             </div>
-            {# Cities, urban areas, communities (CDPs) and ZIP codes; a facility counts in the one its map point falls in, as on the region pages. #}
-            {% url 'api:v2:emissions:places' as places_url %}{% include 'pesticides/includes/entity-picker.html' with kind='region' label='City, community or ZIP' selected=region search_url=places_url autosubmit=1 %}
             {# Every field applies itself as it changes; there's nothing to Apply. #}
-            <p class="filters-clear"><a href="{{ request.path }}{{ scope_qs }}">Clear filters</a></p>
+            {% if filters.q or filters.sector or filters.compliance %}<p class="filters-clear"><a href="{{ request.path }}{{ scope_qs }}">Clear filters</a></p>{% endif %}
         </form>
+        </div>
     </div>
     <div class="column">
         {% include 'emissions/includes/facility-table.html' with sortable=True %}

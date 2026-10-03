@@ -87,7 +87,7 @@ class OverlayConfigTests(MethaneTestCase):
         assert views.methane_overlay({'methane': '1'}) is None
 
     def test_every_map_offers_the_overlay(self):
-        """Off by default, but on for the dairy pages and the oil & gas sector, where the plumes are """
+        """Offered on the main map and Overviews (off), and the dairy and oil & gas maps (on); the facility-only maps have none."""
         from camp.apps.emissions.tests.test_views import map_data
         from camp.apps.emissions.tests.test_wells import make_well
         region = self.plant.county
@@ -98,9 +98,7 @@ class OverlayConfigTests(MethaneTestCase):
             region.get_emissions_tab_url('oil-gas'): '1',
             region.get_emissions_dairies_url(): '1',
             reverse('emissions:dairy-list'): '1',
-            reverse('emissions:sector-detail', args=['oil-gas']): '',
             reverse('emissions:oil-gas'): '1',
-            self.plant.get_absolute_url(): '',
         }
         for url, on in defaults.items():
             content = self.client.get(url, {'year': 2023}).content.decode()
@@ -108,6 +106,8 @@ class OverlayConfigTests(MethaneTestCase):
             assert map_data(content, 'methane-plumes-url') == reverse('api:v2:emissions:methane-plumes', args=['__id__']).replace('__id__', '{id}'), url
             assert map_data(content, 'methane') == on, url
             assert map_data(content, 'methane-default') == on, url
+        for url in (self.plant.get_absolute_url(), region.get_emissions_tab_url('facilities'), reverse('emissions:sector-detail', args=['oil-gas'])):
+            assert map_data(self.client.get(url, {'year': 2023}).content.decode(), 'methane-url') == '', url
         content = self.client.get(reverse('emissions:map'), {'methane': '1'}).content.decode()
         assert map_data(content, 'methane') == '1'
         content = self.client.get(reverse('emissions:dairy-list'), {'methane': '0'}).content.decode()

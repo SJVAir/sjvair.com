@@ -49,27 +49,19 @@ class FacilitySortTests(ListTestCase):
 
 
 class RegionFilterTests(ListTestCase):
-    def test_filters_to_the_facilities_whose_point_is_in_the_region(self):
+    """?region= was the list's place filter; a place has its own Facilities tab now, and the old links go there."""
+
+    def test_a_region_redirects_to_its_facilities_tab(self):
         cdp = make(Region.Type.CDP, 'Plantville', AROUND_PLANT)
-        assert self.names(area=areas.RegionArea(cdp)) == ['TEST PLANT']
-
-        content = self.client.get(reverse('emissions:facility-list'), {'region': cdp.sqid}).content.decode()
-        assert 'TEST PLANT' in content
-        assert 'TEST CEMENT' not in content
-        # The picker shows the chosen region, ready to clear.
-        assert 'Plantville <button' in content
-
-    def test_ignores_regions_it_does_not_search(self):
+        response = self.client.get(reverse('emissions:facility-list'), {'region': cdp.sqid, 'sector': 'glass', 'page': '2'})
+        assert response.status_code == 301
+        assert response['Location'] == f"{cdp.get_emissions_tab_url('facilities')}?sector=glass"
         tract = make(Region.Type.TRACT, '06019000100', AROUND_PLANT)
-        content = self.client.get(reverse('emissions:facility-list'), {'region': tract.sqid}).content.decode()
-        assert 'TEST CEMENT' in content
+        assert self.client.get(reverse('emissions:facility-list'), {'region': tract.sqid})['Location'].startswith(tract.get_emissions_tab_url('facilities'))
 
-    def test_csv_follows_the_region(self):
-        urban = make(Region.Type.URBAN_AREA, 'Plantville', AROUND_PLANT)
-        response = self.client.get(reverse('emissions:facility-list'), {'region': urban.sqid, 'format': 'csv'})
-        body = response.content.decode()
-        assert 'TEST PLANT' in body
-        assert 'TEST CEMENT' not in body
+    def test_an_unknown_region_is_ignored(self):
+        content = self.client.get(reverse('emissions:facility-list'), {'region': 'nope'}).content.decode()
+        assert 'TEST CEMENT' in content and 'TEST PLANT' in content
 
 
 class FacilityTableLinkTests(ListTestCase):
@@ -93,8 +85,8 @@ class PlaceSearchTests(ListTestCase):
         results = self.search('plantv')
         assert ('Plantville', 'AB 617 community') in [(r['name'], r['detail']) for r in results]
         assert community.sqid in [r['id'] for r in results]
-        # The id works as the facility list's ?region= filter.
-        assert self.client.get(reverse('emissions:facility-list'), {'region': community.sqid}).status_code == 200
+        # The id is a region page's: the facility list's old ?region= sends it to its Facilities tab.
+        assert self.client.get(reverse('emissions:facility-list'), {'region': community.sqid}).status_code == 301
 
     def test_cities_urban_areas_cdps_and_zips_prefix_first(self):
         zipcode = make(Region.Type.ZIPCODE, '93999', AROUND_PLANT)
@@ -160,7 +152,10 @@ class FacilityListLayoutTests(ListTestCase):
     def test_filters_sit_in_the_sidebar_with_sectors_a_to_z(self):
         content = self.client.get(reverse('emissions:facility-list')).content.decode()
         form = content[content.index('class="explorer-filters box"'):content.index('</form>')]
-        assert 'id="facility-q"' in form and 'id="facility-sector"' in form and 'data-kind="region"' in form
+        assert 'id="facility-q"' in form and 'id="facility-sector"' in form
+        # "Find your area" leads the box (a place's own Facilities tab); the old place picker is gone.
+        assert form.index('Find your area') < form.index('id="facility-q"') and 'data-kind="region"' not in form
+        assert f'data-near-url="{reverse("emissions:near-me-facilities")}"' in form
         # Scoped to the sector select itself: the facility list also carries
         # a compliance filter select now, whose own options aren't part of
         # this alphabetical-sectors check.

@@ -496,6 +496,5 @@ class NearMeDairies(views.NearLookupMixin, DairyAreaPage):
             population=None,
             county_region=None,
             radius_options=self.radius_options(),
-            privacy_note=True,
             **kwargs,
         )

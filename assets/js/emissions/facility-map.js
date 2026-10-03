@@ -315,8 +315,10 @@
       self.map.on('mouseenter', layer, function () { self.map.getCanvas().style.cursor = 'pointer'; });
       self.map.on('mouseleave', layer, function () { self.map.getCanvas().style.cursor = ''; });
     });
-    // The legend's own-layer checkbox; a page can start it off (data-main-layer="0", an Oil & gas tab).
-    this.mainLayer = this.data.mainLayer !== '0';
+    // The legend's own-layer checkbox; a page can start it off (data-main-layer="0"),
+    // or leave the facilities off the map altogether ("none": an Oil & gas map, wells and methane only).
+    this.noFacilities = this.data.mainLayer === 'none';
+    this.mainLayer = !this.noFacilities && this.data.mainLayer !== '0';
     this.methane = window.EmissionsMethaneOverlay ? new window.EmissionsMethaneOverlay(this, { before: 'facilities' }) : null;
     // The scope bar's links (year, pollutant, toggles) and the near-me radius
     // buttons were rendered before
@@ -537,7 +539,12 @@
   // The facilities always load (switching back to them is then instant);
   // the areas load when they're the view.
   FacilityMap.prototype.load = function () {
-    this.loadFacilities();
+    if (this.noFacilities) {
+      this.el.dataset.loaded = '1';
+      this.shell.updateLegend();
+    } else {
+      this.loadFacilities();
+    }
     if (this.view === 'areas') this.loadAreas();
     this.loadOutline();
     this.showNearby();
@@ -954,6 +961,12 @@
   FacilityMap.prototype.legend = function (body) {
     var legend = body.querySelector('.facility-map-legend');
     if (!legend) return;
+    if (this.noFacilities) {
+      // Only the overlays: their own checkboxes and keys, no facility key.
+      if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = false;
+      legend.innerHTML = this.wellsLegendHtml() + this.methaneLegendHtml();
+      return;
+    }
     this.renderLegend(body, legend);
     legend.innerHTML = M.mainLayerToggle(legend.innerHTML, this.mainLayer);
   };
@@ -1321,7 +1334,8 @@
     this.shell.setSourceData('areas', M.EMPTY);
     this.shell.setStatus('');
     this.readViewState();
-    this.mainLayer = this.data.mainLayer !== '0';
+    this.noFacilities = this.data.mainLayer === 'none';
+    this.mainLayer = !this.noFacilities && this.data.mainLayer !== '0';
     this.applyView();
     this.applyWells();
     if (this.wells) this.loadWells();

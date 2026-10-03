@@ -154,8 +154,8 @@ class PageTests(ComplianceTestCase):
         content = self.client.get(facilities, {'year': '2024'}).content.decode()
         assert '<p class="heading">Tracked by EPA</p><p class="title">1</p>' in content
         assert '1 with an unaddressed violation</a>' in content
-        assert f'href="{reverse("emissions:facility-list")}?year=2024&amp;compliance=hpv&amp;county=fresno"' in content or \
-               f'href="{reverse("emissions:facility-list")}?compliance=hpv&amp;county=fresno"' in content
+        # The county's own Facilities tab, filtered to them.
+        assert f'href="{facilities}?year=2024&amp;compliance=hpv"' in content or f'href="{facilities}?compliance=hpv"' in content
         assert '<p class="heading">Tracked by EPA</p>' not in self.client.get(kern.get_emissions_tab_url('facilities'), {'year': '2024'}).content.decode()
         near = self.client.get(reverse('emissions:near-me-facilities'), {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'year': '2024'}).content.decode()
         assert '<p class="heading">Tracked by EPA</p>' in near and 'county=' not in near.split('compliance=hpv')[1][:40]

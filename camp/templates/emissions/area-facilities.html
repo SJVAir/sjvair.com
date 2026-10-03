@@ -52,7 +52,7 @@ and on a county the largest greenhouse-gas reporters.
         <p class="help">About 660 large sources; <a href="{% url 'emissions:about' %}#compliance">what this covers</a>.</p>
     </div>
     {# Every field applies itself as it changes; there's nothing to Apply. #}
-    <p class="filters-clear"><a href="{{ clear_filters_url }}">Clear filters</a></p>
+    {% if filters.q or filters.sector or filters.compliance %}<p class="filters-clear"><a href="{{ clear_filters_url }}">Clear filters</a></p>{% endif %}
 </form>
 {% endblock %}
 
@@ -79,5 +79,3 @@ and on a county the largest greenhouse-gas reporters.
 {% block tab-notes %}
 <p class="is-size-7 has-text-grey mt-4">Source: California Air Resources Board facility emissions inventory (CEIDARS); EPA compliance from ICIS-Air. <a href="{% url 'emissions:about' %}">About this data</a>.</p>
 {% endblock %}
-
-{% block tab-after %}{% if privacy_note %}<p class="is-size-7 has-text-grey mt-5">This page's location is only in its address; we don't store it.</p>{% endif %}{% endblock %}

@@ -21,6 +21,5 @@
             {% for community in find_area_ab617 %}<a href="{{ community.url }}{{ find_area_qs }}">{{ community.name }}</a>{% if not forloop.last %}<span class="find-area-sep" aria-hidden="true">·</span>{% endif %}{% endfor %}
         </p>
     {% endif %}
-    <p class="is-size-7 has-text-grey">Address searches are sent to MapTiler; place names are matched here in your browser. We don't store locations.</p>
     {{ find_area_places|json_script:"find-area-places" }}
 </section>

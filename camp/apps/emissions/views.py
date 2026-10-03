@@ -123,11 +123,9 @@ def list_filters(get):
     """The facility table's own filters (beyond the scope), validated."""
     sector = get.get('sector')
     sort = get.get('sort')
-    region = get_filter_region(get.get('region'))
     compliance_value = get.get('compliance')
     return {
         'sector': sector if sector in Facility.Sector.values else None,
-        'area': areas.RegionArea(region) if region else None,
         'q': (get.get('q') or '').strip() or None,
         'sort': sort if sort in stats.SORTS else '-value',
         'compliance': compliance_value if compliance_value in compliance.FILTERS else None,
@@ -206,6 +204,14 @@ class FacilityList(ScopeMixin, vanilla.TemplateView):
     section = 'facilities'
 
     def get(self, request, *args, **kwargs):
+        # ?region= was the list's place filter; a place has its own Facilities tab now.
+        region = get_filter_region(request.GET.get('region'), types=AREA_PAGE_TYPES)
+        if region is not None:
+            query = request.GET.copy()
+            for name in ('region', 'page'):
+                query.pop(name, None)
+            encoded = query.urlencode()
+            return redirect(region.get_emissions_tab_url('facilities') + (f'?{encoded}' if encoded else ''), permanent=True)
         if request.GET.get('format') == 'csv':
             return self.csv_response()
         return super().get(request, *args, **kwargs)
@@ -213,6 +219,7 @@ class FacilityList(ScopeMixin, vanilla.TemplateView):
     def get_context_data(self, **kwargs):
         scope = self.get_scope()
         filters = list_filters(self.request.GET)
+        places = find_area_places('emissions:region-facilities')
         page = page_of(stats.facility_table(scope, **filters), self.request.GET.get('page'))
         return super().get_context_data(
             rows=stats.with_ranks(page.object_list, stats.ranks(scope)),
@@ -220,9 +227,15 @@ class FacilityList(ScopeMixin, vanilla.TemplateView):
             is_paginated=page.has_other_pages(),
             sort=filters['sort'],
             filters=filters,
-            region=filters['area'].region if filters['area'] else None,
             sector_options=sector_options(),
             compliance_options=compliance.FILTER_LABELS,
+            # "Find your area", the filter box's first field: a place's own Facilities tab.
+            find_field=True,
+            find_area_places=places,
+            find_area_counties=[p for p in places if p['type'] == Region.Type.COUNTY],
+            find_area_qs=scope.query(county=None),
+            find_near_url=reverse('emissions:near-me-facilities'),
+            maptiler_key=settings.MAPTILER_API_KEY,
             **kwargs,
         )
 
@@ -387,7 +400,6 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
                 scope, mode='compact', highlight=facility,
                 params=scope.params(year=shown_year, minor='1', county=None),
                 nearby=schools.geojson(nearby) if nearby else None,
-                methane=methane_overlay(self.request.GET),
             ),
             **kwargs,
         )
@@ -431,10 +443,8 @@ class SectorDetail(ScopeMixin, vanilla.TemplateView):
             facility_count=table.count(),
             map_config=facility_map_config(
                 scope, mode='compact', sector=self.sector, fit=True,
-                # Off by default, like the Facilities list: the wells and
-                # methane sources have the Oil & gas tab (OilGasPage).
-                wells=wells_overlay(self.request.GET),
-                methane=methane_overlay(self.request.GET),
+                # Facilities only, a dataset page: the wells and methane
+                # sources have the Oil & gas tab (OilGasPage).
             ),
             oil_gas_url=reverse('emissions:oil-gas') + scope.query(county=None) if self.sector == Facility.Sector.OIL_GAS else None,
             **kwargs,
@@ -506,6 +516,29 @@ def wells_block(area, scope, *, kern=False):
         'year': scope.year,
         'past_year': scope.year is not None and scope.year != stats.latest_year(),
     }
+
+
+# The area tabs whose map has the Areas view (a facility choropleth): the
+# ones about facilities.
+AREAS_VIEW_TABS = ('overview', 'facilities')
+
+
+def area_tab_layers(get, tab, *, nearby=None):
+    """
+    An area tab's map layers (facility_map_config kwargs): each dataset page
+    maps only its dataset and what goes with it. The Overview has them all,
+    the overlays starting off (Kern's 66,000 wells are too many to load by
+    default); Facilities, only facilities; Oil & gas, only the wells and
+    methane, both on; Schools, the sites with the facilities, and the wells
+    one checkbox away (both are what it counts near a site).
+    """
+    if tab == 'oil-gas':
+        return {'main_layer': None, 'wells': wells_overlay(get, default=True), 'methane': methane_overlay(get, default=True)}
+    if tab == 'facilities':
+        return {}
+    if tab == 'schools':
+        return {'wells': wells_overlay(get), 'nearby': nearby}
+    return {'wells': wells_overlay(get), 'methane': methane_overlay(get)}
 
 
 def methane_overlay(get, *, default=False):
@@ -613,8 +646,9 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         # Where to pin the highlighted facility (a facility page), lng,lat.
         # Frame the loaded facilities rather than the Valley (a sector page).
         'fit': '1' if fit else '',
-        # '0' starts the facilities (the legend's first checkbox) off: an Oil & gas tab, about the wells.
-        'main_layer': '' if main_layer else '0',
+        # The facilities layer: on (''), offered but off ('0'), or not on this
+        # map at all ('none': an Oil & gas map, only wells and methane).
+        'main_layer': 'none' if main_layer is None else ('' if main_layer else '0'),
         'highlight_point': f'{point.x:.5f},{point.y:.5f}' if point is not None else '',
         'center': center or (f'{point.y},{point.x}' if point is not None else ''),
         'zoom': zoom or (11 if point is not None else ''),
@@ -869,28 +903,6 @@ def area_links(regions):
     } for region in regions]
 
 
-def facility_list_url(scope, area, **extra):
-    """
-    The facility list narrowed to the area where the list can be: ?county= for
-    a county, ?region= for the types its region filter searches (cities,
-    urban areas, CDPs, ZIPs), nothing for the rest. `extra` adds filters.
-    """
-    params = dict(scope.params(county=None), **extra)
-    region = getattr(area, 'region', None)
-    if region is not None:
-        if region.type == Region.Type.COUNTY:
-            params['county'] = region.slug
-        elif region.type in areas.FILTER_REGION_TYPES:
-            params['region'] = region.sqid
-    query = urlencode(params)
-    return f"{reverse('emissions:facility-list')}{'?' + query if query else ''}"
-
-
-def compliance_list_url(scope, area):
-    """The facility list filtered to unaddressed HPVs, narrowed to the area where the list can be."""
-    return facility_list_url(scope, area, compliance='hpv')
-
-
 def dairy_page_query(scope, year):
     """
     The area's dairy page's query from an emissions scope: the year, and the
@@ -1051,7 +1063,7 @@ class AreaPage(OilGasTabMixin, ScopeMixin, vanilla.TemplateView):
         tab = self.tab
         scope = self.area_scope()
         summary = compliance.area_summary(scope) if tab == 'facilities' else None
-        compliance_line = dict(summary, url=compliance_list_url(base, area)) if summary else None
+        compliance_line = dict(summary, url=self.area_tab_url('facilities', '&'.join(filter(None, [self.tab_query('facilities'), 'compliance=hpv'])))) if summary else None
         totals = stats.totals(scope)
         total = totals['value'] or 0
         county = self.get_county()
@@ -1240,14 +1252,9 @@ class RegionPage(RegionLookupMixin, AreaPage):
         level = areas.NEXT_LEVEL.get(self.region.type)
         return facility_map_config(
             scope, mode='compact', params=scope.params(county=None),
-            areas_view=map_view(self.request.GET, level, year=scope.year, share=scope.pollutant.unit == 'share') if level else None,
+            areas_view=map_view(self.request.GET, level, year=scope.year, share=scope.pollutant.unit == 'share') if level and self.tab in AREAS_VIEW_TABS else None,
             outline_url=reverse('api:v2:regions:region-detail', args=[self.region.sqid]),
-            # Wells start on only on the Oil & gas tab (66,000 in Kern are too
-            # many to load by default on its Overview); ?wells=1 still shows them.
-            wells=wells_overlay(self.request.GET, default=self.tab == 'oil-gas'),
-            main_layer=self.tab != 'oil-gas',
-            methane=methane_overlay(self.request.GET, default=self.tab == 'oil-gas'),
-            nearby=getattr(self, 'site_geojson', None),
+            **area_tab_layers(self.request.GET, self.tab, nearby=getattr(self, 'site_geojson', None)),
         )
 
     def get_context_data(self, **kwargs):
@@ -1414,13 +1421,10 @@ class NearMe(NearLookupMixin, AreaPage):
     def get_map_config(self, scope):
         return facility_map_config(
             scope, mode='compact', params=scope.params(county=None),
-            areas_view=map_view(self.request.GET, Region.Type.TRACT, year=scope.year, share=scope.pollutant.unit == 'share'),
+            areas_view=map_view(self.request.GET, Region.Type.TRACT, year=scope.year, share=scope.pollutant.unit == 'share') if self.tab in AREAS_VIEW_TABS else None,
             center=f'{self.near.lat:.4f},{self.near.lng:.4f}', zoom=RADIUS_ZOOMS[self.near.radius],
             radius=self.near.radius,
-            wells=wells_overlay(self.request.GET, default=self.tab == 'oil-gas'),
-            main_layer=self.tab != 'oil-gas',
-            methane=methane_overlay(self.request.GET, default=self.tab == 'oil-gas'),
-            nearby=getattr(self, 'site_geojson', None),
+            **area_tab_layers(self.request.GET, self.tab, nearby=getattr(self, 'site_geojson', None)),
         )
 
     def get_context_data(self, **kwargs):
@@ -1435,7 +1439,6 @@ class NearMe(NearLookupMixin, AreaPage):
             population=None,
             context_bar=None,
             radius_options=self.radius_options(),
-            privacy_note=True,
             community=ces_stats.tract_summary(self.near.geometry) if self.tab == 'community' else None,
             wells_block=wells_block(self.near, self.get_scope()) if self.tab == 'oil-gas' else None,
             **kwargs,
@@ -1525,11 +1528,12 @@ class OilGasPage(OilGasTabMixin, ScopeMixin, vanilla.TemplateView):
             wells_block=wells_block(area, scope, kern=True),
             map_config=facility_map_config(
                 scope, mode='compact', params=scope.params(county=None),
-                wells=wells_overlay(self.request.GET, default=True), main_layer=False,
+                wells=wells_overlay(self.request.GET, default=True), main_layer=None,
                 methane=methane_overlay(self.request.GET, default=True),
             ),
             point_params={}, clear_filters_url=self.area_tab_url('oil-gas', self.tab_query('oil-gas')),
             scope_qs=scope.query(county=None), scope_params=scope.params(county=None), county_options=[],
+            find_field=True,
             find_area_places=places,
             find_area_counties=[p for p in places if p['type'] == Region.Type.COUNTY and p['name'] in with_wells],
             find_area_qs=scope.query(county=None),

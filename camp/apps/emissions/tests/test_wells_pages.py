@@ -204,7 +204,8 @@ class ValleyOilGasTabTests(WellsPagesTestCase):
         table = content[content.index('well-table'):content.index('</table>', content.index('well-table'))]
         assert table.count('<tr>') == 5  # header + all four wells
         assert 'class="is-active"><a href="/tools/emissions/oil-gas/' in content.replace("is-active\"", 'is-active"')
-        assert 'id="find"' in content and self.kern.get_emissions_tab_url('oil-gas') in content
+        box = content[content.index('class="explorer-filters box"'):content.index('</form>', content.index('class="explorer-filters box"'))]
+        assert 'Find your area' in box and self.kern.get_emissions_tab_url('oil-gas') in content
         assert 'Top operators' in content and 'Schools and child care near wells' in content
         response = self.client.get(url, {'format': 'csv'})
         assert response['Content-Type'] == 'text/csv' and len(response.content.decode().strip().splitlines()) == 5
@@ -217,3 +218,18 @@ class ValleyOilGasTabTests(WellsPagesTestCase):
         self.add_wells()
         content = self.get(reverse('emissions:oil-gas'))
         assert 'href="/tools/emissions/oil-gas/?operator=TEST+OIL+LLC"' in content
+
+
+class TabLayerTests(WellsPagesTestCase):
+    """Each dataset page maps its dataset and what goes with it (views.area_tab_layers)."""
+
+    def test_each_tab_maps_its_own_layers(self):
+        self.add_wells()
+        oil_gas = self.get(self.kern.get_emissions_tab_url('oil-gas'))
+        assert map_data(oil_gas, 'main-layer') == 'none' and map_data(oil_gas, 'wells-url') and map_data(oil_gas, 'areas') == ''
+        facilities = self.get(self.kern.get_emissions_tab_url('facilities'))
+        assert map_data(facilities, 'main-layer') == '' and map_data(facilities, 'wells-url') == '' and map_data(facilities, 'areas') == '1'
+        overview = self.get(self.kern.get_emissions_url())
+        assert map_data(overview, 'wells-url') and map_data(overview, 'wells') == '' and map_data(overview, 'areas') == '1'
+        valley = self.get(reverse('emissions:oil-gas'))
+        assert map_data(valley, 'main-layer') == 'none'

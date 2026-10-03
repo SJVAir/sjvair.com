@@ -45,7 +45,7 @@ and a chart) and hide the table's County column.
         </div>
     </div>
     {# Every field applies itself as it changes; there's nothing to Apply. #}
-    <p class="filters-clear"><a href="{{ request.path }}{{ scope_qs }}">Clear filters</a></p>
+    {% if filters.q %}<p class="filters-clear"><a href="{{ request.path }}{{ scope_qs }}">Clear filters</a></p>{% endif %}
 </form>
 {% endblock %}
 
@@ -61,5 +61,4 @@ and a chart) and hide the table's County column.
 
 {% block tab-after %}
 {% include 'regions/includes/within.html' with within_name=name %}
-{% if privacy_note %}<p class="is-size-7 has-text-grey mt-5">This page's location is only in its address; we don't store it.</p>{% endif %}
 {% endblock %}

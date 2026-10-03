@@ -1,13 +1,11 @@
 {% extends 'emissions/area-oil-gas.html' %}
 {% comment %}
 The top-level Oil & gas tab (views.OilGasPage): an area's Oil & gas tab
-(area-oil-gas.html) for every covered county at once, with a find box into
-an area's own tab beside the map.
+(area-oil-gas.html) for every covered county at once, its filter box led
+by "Find your area" into an area's own tab.
 {% endcomment %}
 
 {% block breadcrumb-list %}<li class="is-active"><a aria-current="page">Oil &amp; gas</a></li>{% endblock %}
-
-{% block tab-aside %}{% include 'emissions/includes/find-area.html' with compact=True %}{% endblock %}
 
 {% block tab-related %}
 {{ block.super }}

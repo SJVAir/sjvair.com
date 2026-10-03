@@ -1,0 +1,26 @@
+{% comment %}
+"Find your area" as the first field of a top-level tab's filter box
+(Facilities, Dairies, Oil & gas): a place or an address takes you to that
+area's own tab for the same thing. The same container the find script
+(pesticides/find-area.js) binds to as find-area.html's box -- `.find-area`
+with its data-* and the four ids -- so nothing else changes. It sits beside
+the filter <form>, not in it: Enter in the search would otherwise submit the
+filters. Context: find_area_places (each with the tab's url), find_near_url,
+find_area_counties (optional jump links), find_area_qs, maptiler_key, year.
+{% endcomment %}
+<div class="field find-area find-field" data-maptiler-key="{{ maptiler_key }}" data-near-url="{{ find_near_url }}" data-year="{{ year }}" data-query="{{ find_area_qs }}">
+    <label class="label" for="find-area-query">Find your area</label>
+    <div class="field has-addons mb-1">
+        <div class="control is-expanded has-icons-left">
+            <input class="input" type="search" id="find-area-query" placeholder="City, ZIP, county or address" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="find-area-results">
+            <span class="icon is-small is-left"><span class="fa-regular fa-magnifying-glass"></span></span>
+        </div>
+        <div class="control"><button type="button" class="button" id="find-area-locate" aria-label="Use my location" title="Use my location"><span class="icon"><span class="fa-regular fa-location-crosshairs"></span></span></button></div>
+    </div>
+    <ul class="find-area-results" id="find-area-results" role="listbox" hidden></ul>
+    <p class="help" id="find-area-status"></p>
+    {% if find_area_counties %}
+    <p class="help find-area-counties">Or a county: {% for county in find_area_counties %}<a href="{{ county.url }}{{ find_area_qs }}">{{ county.short_name }}</a>{% if not forloop.last %}<span class="find-area-sep" aria-hidden="true">·</span>{% endif %}{% endfor %}</p>
+    {% endif %}
+    {{ find_area_places|json_script:"find-area-places" }}
+</div>

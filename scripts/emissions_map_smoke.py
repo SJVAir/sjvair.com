@@ -254,11 +254,18 @@ return null;
 # clear of the chrome: [x, y] from the canvas centre, or null.
 COUNTY_PIXEL = """
 var m = window.EmissionsDairyMap.instances()[0], map = m.map, c = map.getCanvas(), r = c.getBoundingClientRect();
-for (var y = 60; y < r.height - 30; y += 5) for (var x = 20; x < r.width - 20; x += 5) {
-  var f = map.queryRenderedFeatures([x, y], {layers: ['counties-fill']});
-  if (!f.length || f[0].properties._empty !== 0) continue;
-  if (document.elementFromPoint(r.left + x, r.top + y) !== c) continue;
-  return [x - r.width / 2, y - r.height / 2];
+// Outward from the centre, so the pick stays clear of the map's edges, where
+// the page's sticky scope bar can cover it once the move scrolls the page.
+for (var d = 0; d < Math.max(r.width, r.height) / 2; d += 5) {
+  for (var dy = -d; dy <= d; dy += 5) for (var dx = -d; dx <= d; dx += 5) {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) !== d) continue;
+    var x = r.width / 2 + dx, y = r.height / 2 + dy;
+    if (x < 20 || y < 60 || x > r.width - 20 || y > r.height - 30) continue;
+    var f = map.queryRenderedFeatures([x, y], {layers: ['counties-fill']});
+    if (!f.length || f[0].properties._empty !== 0) continue;
+    if (document.elementFromPoint(r.left + x, r.top + y) !== c) continue;
+    return [dx, dy];
+  }
 }
 return null;
 """
