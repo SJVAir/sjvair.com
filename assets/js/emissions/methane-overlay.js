@@ -144,17 +144,37 @@
     return [[b.getWest(), b.getNorth()], [b.getEast(), b.getNorth()], [b.getEast(), b.getSouth()], [b.getWest(), b.getSouth()]];
   };
 
+  // A plume's image once it has loaded, else null and its download queued.
+  // At the Valley's zoom every source is in view: started all at once, the
+  // ~700 downloads can exhaust the browser (ERR_INSUFFICIENT_RESOURCES), so
+  // at most IMAGE_LOADS run at a time and the rest wait their turn.
+  var IMAGE_LOADS = 8;
+
   Overlay.prototype.image = function (url) {
-    var self = this;
     var img = this.images[url];
     if (!img) {
       img = this.images[url] = new Image();
       img.crossOrigin = 'anonymous'; // drawn to a canvas WebGL reads back
-      img.onload = function () { self.scheduleRedraw(); };
-      img.onerror = function () { img.failed = true; };
-      img.src = url;
+      this.queue = this.queue || [];
+      this.queue.push([img, url]);
+      this.pump();
     }
     return img.complete && img.naturalWidth && !img.failed ? img : null;
+  };
+
+  Overlay.prototype.pump = function () {
+    var self = this;
+    this.loading = this.loading || 0;
+    while (this.loading < IMAGE_LOADS && this.queue && this.queue.length) {
+      var next = this.queue.shift();
+      var img = next[0];
+      this.loading += 1;
+      img.onload = function () { self.loading -= 1; self.scheduleRedraw(); self.pump(); };
+      img.onerror = (function (failed) {
+        return function () { failed.failed = true; self.loading -= 1; self.pump(); };
+      })(img);
+      img.src = next[1];
+    }
   };
 
   // Images arrive one by one; draw them in a batch on the next frame.
