@@ -1,6 +1,6 @@
 from resticus import generics, http
 
-from camp.apps.emissions import areas, dairies, methane
+from camp.apps.emissions import areas, dairies
 from camp.apps.emissions.models import Dairy
 from camp.apps.emissions.pollutants import POLLUTANTS
 from camp.apps.emissions.views import AREA_PAGE_TYPES, area_links, get_filter_region, radius_area
@@ -174,13 +174,6 @@ class DairyDetail(generics.Endpoint):
                 'operating': digester.operating_in(year) if year is not None else False,
             } for digester in dairy.digesters.order_by('operational_year')],
             'areas': area_links(dairies.dairy_areas(dairy)),
-            'methane': {
-                'sources': [{
-                    'name': s.source_name, 'sector': s.sector_label, 'rate_text': s.rate_text,
-                    'rate': s.emission_kg_h, 'unc': s.uncertainty_kg_h, 'persistence': s.persistence,
-                    'obs': s.observations, 'det': s.detections, 'viewer_url': s.viewer_url,
-                } for s in methane.for_dairy(dairy)],
-            },
             'grants': [{
                 'project_name': g.project_name,
                 'amount': float(g.grant_amount) if g.grant_amount is not None else None,

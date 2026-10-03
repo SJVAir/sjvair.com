@@ -17,7 +17,7 @@ from django.urls import reverse
 
 import vanilla
 
-from camp.apps.emissions import areas, dairies, methane, nei, stats, views
+from camp.apps.emissions import areas, dairies, nei, stats, views
 from camp.apps.emissions.models import HERD_FIELDS
 from camp.apps.emissions.pollutants import CRITERIA
 from camp.apps.emissions.views import AREA_PAGE_TYPES, ScopeMixin, radius_area, region_page_title, region_title
@@ -42,12 +42,11 @@ DIGESTER_VALUES = frozenset(value for value, label in DIGESTER_OPTIONS if value)
 
 
 def search_filters(get):
-    """The table's own filters, validated: a name search, the sort, and the methane checkbox."""
+    """The table's own filters, validated: a name search and the sort."""
     sort = get.get('sort')
     return {
         'q': (get.get('q') or '').strip() or None,
         'sort': sort if sort in dairies.TABLE_SORTS else dairies.DEFAULT_SORT,
-        'methane': get.get('methane') if get.get('methane') in dairies.METHANE_FILTERS else None,
     }
 
 
@@ -235,9 +234,6 @@ class DairyScopeMixin(ScopeMixin):
                 'toxics': 'CARB reports no toxic air contaminants for dairy cattle',
                 'minor': 'Minor sources are small permitted facilities; dairies have none',
             },
-            # The methane column/filter/tile are offered only once an
-            # import has run (methane.stamp() is None before then).
-            'methane_stamp': methane.stamp(),
         }
         context.update(kwargs)
         return super().get_context_data(**context)
@@ -298,7 +294,7 @@ class DairyList(DairyScopeMixin, vanilla.TemplateView):
         # county), the same as the home page's.
         places = views.find_area_places('emissions:region-dairies')
         return super().get_context_data(
-            summary=dairies.summary(scope.year, county=scope.county, methane=filters['methane']),
+            summary=dairies.summary(scope.year, county=scope.county),
             rows=page.object_list,
             page_obj=page,
             is_paginated=page.has_other_pages(),
@@ -368,7 +364,7 @@ class DairyAreaPage(DairyScopeMixin, vanilla.TemplateView):
         county = self.carb_county()
         filters = search_filters(self.request.GET)
         page = Paginator(self.rows(), PAGE_SIZE).get_page(self.request.GET.get('page'))
-        summary = dairies.summary(scope.year, area=area, methane=filters['methane'])
+        summary = dairies.summary(scope.year, area=area)
         trend = dairies.trend(area=area)
         # [] off county pages and for a pollutant CARB doesn't report (the
         # scope has already fallen back to one it does, so a county page

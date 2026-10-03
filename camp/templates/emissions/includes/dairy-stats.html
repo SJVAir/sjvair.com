@@ -2,7 +2,7 @@
 {% comment %}
 The dairy headline (dairies.summary), on the Dairies tab and a dairy area
 page. One row about the herd -- dairies (with the Large CAFOs), milk cows
-(with all cattle), digesters, and methane observed (`methane_stamp`) --
+(with all cattle) and digesters --
 then, smaller and labelled, what's estimated or funded about it where the
 page has any: CARB's county dairy-cattle estimate (`carb_estimate`, {tons,
 share, place, flat_since}), EPA's dairy ammonia (`nei_dairy`) and CDFA's
@@ -22,12 +22,6 @@ digester grants (`ddrdp_totals`), all county dairy pages only.
         <p class="heading">With a digester</p><p class="title">{{ summary.digesters|intcomma }}</p>
         <p class="stat-note">{% if summary.digester_share is not None %}{{ summary.digester_share|percent }} of dairies{% endif %}</p>
     </div></div>
-    {% if methane_stamp %}
-    <div class="level-item has-text-centered"><div>
-        <p class="heading">With methane observed</p><p class="title">{{ summary.methane|intcomma }}</p>
-        <p class="stat-note">plumes within 1 km, from overflights</p>
-    </div></div>
-    {% endif %}
 </div>
 {% if carb_estimate or nei_dairy or ddrdp_totals %}
 <div class="dairy-estimates">

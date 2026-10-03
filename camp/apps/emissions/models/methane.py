@@ -13,9 +13,11 @@ class MethaneSource(models.Model):
     since 2016, with Carbon Mapper's estimate of its emission rate. Each rate
     is an instantaneous estimate with wide uncertainty, not an annual total,
     and a site with no source hasn't been shown to be clean (see the About
-    page's Methane section). Refreshed monthly by import_carbon_mapper,
-    which links each source to the nearest CADD dairy and the nearest
-    CEIDARS facility with a trusted point within 1 km.
+    page's Methane section). Refreshed monthly by import_carbon_mapper.
+    Deliberately not linked to any dairy or facility: which operator a
+    source belongs to is for researchers to establish, not for us to infer
+    from proximity, so the explorer shows a source by its own location and
+    Carbon Mapper's sector only.
 
     Licence: Carbon Mapper's custom non-commercial terms (LICENSE). The data
     is shown only on our own pages, never re-licensed or offered as a
@@ -67,9 +69,6 @@ class MethaneSource(models.Model):
     observations = models.IntegerField(_('Observation dates'), default=0)
     detections = models.IntegerField(_('Detection dates'), default=0)
     county = models.ForeignKey('regions.Region', verbose_name=_('County'), on_delete=models.PROTECT, related_name='methane_sources')
-    dairy = models.ForeignKey('emissions.Dairy', verbose_name=_('Nearest dairy'), null=True, blank=True, on_delete=models.SET_NULL, related_name='methane_sources')
-    facility = models.ForeignKey('emissions.Facility', verbose_name=_('Nearest facility'), null=True, blank=True, on_delete=models.SET_NULL, related_name='methane_sources')
-    distance_m = models.FloatField(_('Distance to the match (m)'), null=True, blank=True)
     fetched_at = models.DateTimeField(_('Fetched at'), auto_now=True)
 
     class Meta:

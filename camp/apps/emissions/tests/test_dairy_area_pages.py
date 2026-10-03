@@ -180,13 +180,14 @@ class ContentTests(DairyAreaTestCase):
         assert by_year[2023] == 1
         assert context['trend'] == dairies.trend(area=areas.RegionArea(cdp))
 
-    def test_methane_tile_and_filter_on_an_area_page(self):
+    def test_no_methane_attributed_to_dairies(self):
+        # A source beside a dairy is on the map, but no tile, column or filter ties it to the dairy.
         from camp.apps.emissions.importers import carbonmapper
         from camp.apps.emissions.tests.test_carbonmapper import NEAR_BOTH, row
         carbonmapper.apply([row(name='a', lnglat=NEAR_BOTH)])
         content = self.get(self.fresno, {'year': '2023'}).content.decode()
-        assert '<p class="heading">With methane observed</p><p class="title">1</p>' in content
-        assert self.get(self.fresno, {'year': '2023', 'methane': '1'}).context['summary']['dairies'] == 1
+        assert 'With methane observed' not in content and 'name="methane"' not in content
+        assert 'Methane observed' not in content
 
     def test_table_sorts_searches_and_pages(self):
         # cadd_ids 1-3 are make_dairies()'s; 60 more Fresno dairies make two pages.

@@ -237,35 +237,18 @@ class FacilityAmmoniaRowTests(TestCase):
 
 
 class MethaneCardTests(TestCase):
+    """A facility page doesn't tie a nearby Carbon Mapper source to the facility."""
     fixtures = ['regions.yaml', 'emissions.yaml']
 
     def setUp(self):
         from camp.apps.emissions.importers import carbonmapper
-        from camp.apps.emissions.tests.test_carbonmapper import AT_GAS_STATION, NEAR_BOTH, row
-        from camp.apps.emissions.tests.test_dairies import make_dairies
+        from camp.apps.emissions.tests.test_carbonmapper import NEAR_BOTH, row
         cache.clear()
-        make_dairies()
         Facility.objects.filter(name='TEST PLANT').update(point_source=Facility.PointSource.CENSUS)
-        Facility.objects.filter(name='TEST GAS STATION').update(point_source=Facility.PointSource.CARB, sector=Facility.Sector.OIL_GAS)
-        carbonmapper.apply([row(name='near', lnglat=NEAR_BOTH, rate='120', unc='40'), row(name='og', lnglat=AT_GAS_STATION, sector='1B2')])
+        carbonmapper.apply([row(name='near', lnglat=NEAR_BOTH, rate='120', unc='40')])
 
-    def detail(self, name):
-        return self.client.get(Facility.objects.get(name=name).get_absolute_url()).content.decode()
-
-    def test_card_rows(self):
-        content = self.detail('TEST PLANT')
-        assert 'card-header-title">Methane plumes observed nearby' in content
-        assert '120 ± 40 kg/h' in content
-        assert '5 detections of 12 passes' in content and 'Source record →' in content
-        # Carbon Mapper is credited on the About and data provider pages, not on every page.
-        assert 'Data by Carbon Mapper' not in content and 'Carbon Mapper estimate' not in content
-        assert 'BIG DAIRY' in content  # the nearest dairy is named
-        assert 'not an annual total' in content
-
-    def test_card_is_hidden_for_oil_gas_groupings(self):
-        from camp.apps.emissions.models import MethaneSource
-        assert MethaneSource.objects.get(source_name='og').facility.name == 'TEST GAS STATION'
-        assert 'Methane plumes observed nearby' not in self.detail('TEST GAS STATION')
-
-    def test_no_card_without_a_source(self):
-        assert 'Methane plumes observed nearby' not in self.detail('TEST CEMENT')
+    def test_no_card_even_beside_a_source(self):
+        content = self.client.get(Facility.objects.get(name='TEST PLANT').get_absolute_url()).content.decode()
+        assert 'Methane plumes observed nearby' not in content and '120 ± 40 kg/h' not in content
+        # The source is still on the facility's map, by its own location.
+        assert 'data-methane-url="' in content

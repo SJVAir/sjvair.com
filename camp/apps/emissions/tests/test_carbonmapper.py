@@ -28,7 +28,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
 
-from camp.apps.emissions import dairies, methane
+from camp.apps.emissions import methane
 from camp.apps.emissions.importers import carbonmapper
 from camp.apps.emissions.models import Facility, MethanePlume, MethaneSource, SourceImport
 from camp.apps.emissions.tests.test_dairies import make_dairies
@@ -41,8 +41,7 @@ SAMPLE_PNG = (Path(__file__).parent / 'data' / 'sample-plume.png').read_bytes()
 # TEST PLANT is at (-119.787, 36.737), BIG DAIRY at (-119.785, 36.735).
 NEAR_BOTH = (-119.786, 36.736)          # ~130 m from each
 JUST_INSIDE = (-119.785, 36.7435)       # 0.0085° north of BIG DAIRY: ~945 m
-JUST_OUTSIDE = (-119.785, 36.7445)      # 0.0095° north: ~1,056 m
-AT_GAS_STATION = (-119.018, 35.373)     # TEST GAS STATION (untrusted point); SMALL DAIRY is ~380 m away
+AT_GAS_STATION = (-119.018, 35.373)     # by TEST GAS STATION and SMALL DAIRY, in Kern
 OFFSHORE = (-121.0, 34.9)               # inside the bbox, outside every covered county
 
 
@@ -176,34 +175,17 @@ class ApplyTests(TestCase):
         self.plant.point_source = Facility.PointSource.CENSUS
         self.plant.save()
 
-    def test_import_creates_links_and_records_the_licence(self):
+    def test_import_records_the_licence_and_links_nothing(self):
         report = carbonmapper.apply([row()])
         source = MethaneSource.objects.get(source_name='CH4-test-1')
-        assert source.county.slug == 'fresno'
-        assert source.dairy == self.big and source.facility == self.plant
-        assert 100 < source.distance_m < 200
-        assert (report.created, report.dairy_matches, report.facility_matches) == (1, 1, 1)
+        assert source.county.slug == 'fresno' and report.created == 1
+        # Beside BIG DAIRY and TEST PLANT, but tied to neither: attributing a
+        # source to an operator is for researchers, not a proximity guess.
+        assert not hasattr(source, 'dairy') and not hasattr(source, 'facility')
         stamp = SourceImport.latest('carbon-mapper')
         assert stamp.notes['license'] == MethaneSource.LICENSE
         assert stamp.notes['attribution'] == MethaneSource.ATTRIBUTION
-        assert stamp.notes['sources'] == 1
-
-    def test_nearest_within_a_kilometre(self):
-        # TEST PLANT (a trusted point) is ~744 m from JUST_INSIDE; untrust it so the dairy's distance is the one tested.
-        Facility.objects.filter(name='TEST PLANT').update(point_source='')
-        carbonmapper.apply([row(name='in', lnglat=JUST_INSIDE), row(name='out', lnglat=JUST_OUTSIDE)])
-        inside, outside = MethaneSource.objects.get(source_name='in'), MethaneSource.objects.get(source_name='out')
-        assert inside.dairy == self.big and 900 < inside.distance_m < 1000
-        assert outside.dairy is None and outside.facility is None and outside.distance_m is None
-
-    def test_an_untrusted_point_never_matches(self):
-        # TEST GAS STATION has a point but point_source '' (untrusted): the source keeps the dairy only.
-        carbonmapper.apply([row(name='gs', lnglat=AT_GAS_STATION, sector='1B2')])
-        source = MethaneSource.objects.get(source_name='gs')
-        assert source.facility is None and source.dairy == self.small and source.county.slug == 'kern'
-        Facility.objects.filter(name='TEST GAS STATION').update(point_source=Facility.PointSource.CARB)
-        carbonmapper.apply([row(name='gs', lnglat=AT_GAS_STATION, sector='1B2')])
-        assert MethaneSource.objects.get(source_name='gs').facility.name == 'TEST GAS STATION'
+        assert stamp.notes['sources'] == 1 and 'dairy_matches' not in stamp.notes
 
     def test_clip_co2_and_duplicates(self):
         report = carbonmapper.apply([
@@ -221,10 +203,10 @@ class ApplyTests(TestCase):
         a = MethaneSource.objects.get()
         assert a.source_name == 'a' and a.emission_kg_h == 200 and a.detections == 7
 
-    def test_import_bumps_both_generations(self):
-        before = (methane.generation(), dairies.generation())
+    def test_import_bumps_the_methane_generation(self):
+        before = methane.generation()
         carbonmapper.apply([row()])
-        assert methane.generation() == before[0] + 1 and dairies.generation() == before[1] + 1
+        assert methane.generation() == before + 1
 
 
 class CommandTests(TestCase):

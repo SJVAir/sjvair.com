@@ -266,10 +266,9 @@ class GHGReportAdmin(ReadOnlyAdminMixin, base_admin.ModelAdmin):
 
 @admin.register(MethaneSource)
 class MethaneSourceAdmin(ReadOnlyAdminMixin, base_admin.ModelAdmin):
-    list_display = ['source_name', 'gas', 'sector_label', 'emission_kg_h', 'uncertainty_kg_h', 'persistence', 'detections', 'observations', 'county', 'dairy', 'facility', 'distance_m', 'fetched_at']
+    list_display = ['source_name', 'gas', 'sector_label', 'emission_kg_h', 'uncertainty_kg_h', 'persistence', 'detections', 'observations', 'county', 'fetched_at']
     list_filter = ['gas', 'sector_label', 'county']
-    search_fields = ['source_name', 'dairy__name', 'facility__name']
-    raw_id_fields = ['dairy', 'facility']
+    search_fields = ['source_name']
 
 
 @admin.register(DigesterGrant)

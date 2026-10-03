@@ -234,16 +234,12 @@
   Overlay.prototype.openPopup = function (feature, lngLat) {
     var self = this;
     var p = feature.properties;
-    // Nested objects arrive as JSON strings in MapLibre feature properties.
-    var link = p.facility ? JSON.parse(p.facility) : null;
-    var dairy = p.dairy ? JSON.parse(p.dairy) : null;
-    // The source (what it is, what's near it, its typical rate and how often
+    // The source (Carbon Mapper's sector, its typical rate and how often
     // it's been seen), then the plume on the map with a stepper through its
-    // passes.
+    // passes. Deliberately no "near" dairy or facility: which operator a
+    // source belongs to is for researchers to establish, not a proximity guess.
     var html = '<div class="facility-popup methane-popup">' +
       '<p class="facility-popup-name">' + escapeHtml(p.sector) + ' methane source</p>' +
-      (dairy ? '<p class="methane-near">Near ' + escapeHtml(dairy.name) + '</p>' : '') +
-      (link ? '<p class="methane-near">Near <a href="' + escapeHtml(link.url) + '">' + escapeHtml(link.name) + '</a></p>' : '') +
       '<dl class="methane-facts">' +
         '<dt>Rate</dt><dd>' + escapeHtml(p.rate_text) + '</dd>' +
         '<dt>Seen</dt><dd>' + p.det + ' of ' + p.obs + ' pass' + (p.obs === 1 ? '' : 'es') + '</dd>' +

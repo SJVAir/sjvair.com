@@ -22,14 +22,14 @@ Everything is cached a day under a generation number that import_cadd bumps
 import time
 
 from django.core.cache import cache
-from django.db.models import Count, Exists, F, Max, OuterRef, Q, Subquery, Sum, Value
+from django.db.models import Count, Exists, F, OuterRef, Q, Subquery, Sum
 from django.db.models.fields.json import KeyTextTransform
-from django.db.models.functions import Coalesce, Lower
+from django.db.models.functions import Lower
 
 from camp.apps.emissions import areas, cepam, cities, stats
 from camp.apps.emissions.models import (
     LARGE_MATURE_COWS, LARGE_OTHER_CATTLE, MEDIUM_MATURE_COWS, MEDIUM_OTHER_CATTLE,
-    CountyInventory, Dairy, DairyHerd, Digester, DigesterGrant, MethaneSource, SizeClass,
+    CountyInventory, Dairy, DairyHerd, Digester, DigesterGrant, SizeClass,
 )
 from camp.apps.emissions.pollutants import POLLUTANTS
 from camp.apps.regions.models import Region
@@ -57,9 +57,7 @@ HERD_CLASSES = (
     ('young_calves', 'Calves (younger)'),
     ('beef_cattle', 'Beef cattle'),
 )
-TABLE_SORTS = ('name', '-name', 'city', '-city', 'county', '-county', 'mature_cows', '-mature_cows', 'methane_kg_h', '-methane_kg_h')
-# ?methane=1 keeps only dairies with a linked Carbon Mapper source (methane.for_dairy / the dairy table's annotation).
-METHANE_FILTERS = ('1',)
+TABLE_SORTS = ('name', '-name', 'city', '-city', 'county', '-county', 'mature_cows', '-mature_cows')
 DEFAULT_SORT = '-mature_cows'
 # The Dairies tab map's views and its Counties measures.
 VIEWS = ('dairies', 'counties')
@@ -133,13 +131,8 @@ def city_url(city):
     return city_urls().get(cities.lookup_key(city)) if city else None
 
 
-def _where(county, area, methane=None):
-    return f"{county.pk if county else 'all'}:{area.key if area else 'anywhere'}:{methane or 'all'}"
-
-
-def _methane():
-    """The outer herd's dairy's linked Carbon Mapper CH4 sources (import_carbon_mapper resolves the link)."""
-    return MethaneSource.objects.filter(dairy=OuterRef('dairy'), gas=MethaneSource.Gas.CH4)
+def _where(county, area):
+    return f"{county.pk if county else 'all'}:{area.key if area else 'anywhere'}"
 
 
 def years():
@@ -211,18 +204,15 @@ def _operating(year):
     return Digester.objects.operating_in(year).filter(dairy=OuterRef('dairy'))
 
 
-def summary(year, *, county=None, area=None, methane=None):
+def summary(year, *, county=None, area=None):
     """
     The year's counted dairies and how many are Large CAFOs; their milk cows,
     mature dairy cows and all cattle (mature dairy cows plus other cattle);
-    how many ran a digester and how many have a Carbon Mapper methane source
-    linked (`methane`, honouring `methane='1'`); milk cows as a share of all
-    cattle and digesters as a share of the dairies.
+    how many ran a digester; milk cows as a share of all cattle and
+    digesters as a share of the dairies.
     """
     def compute():
         queryset = herds(year, county=county, area=area)
-        if methane == '1':
-            queryset = queryset.filter(Exists(_methane()))
         row = queryset.aggregate(
             dairies=Count('pk'), mature_cows=Sum('mature_cows'), other_cattle=Sum('other_cattle'),
             milk_cows=Sum('milk_cows'), large=Count('pk', filter=Q(size_class=SizeClass.LARGE)),
@@ -238,18 +228,14 @@ def summary(year, *, county=None, area=None, methane=None):
             'large': row['large'],
             'digesters': digesters,
             'digester_share': digesters / row['dairies'] if row['dairies'] else None,
-            'methane': queryset.filter(Exists(_methane())).count() if year is not None else 0,
         }
-    return cache.get_or_set(key('summary', year, _where(county, area, methane)), compute, stats.CACHE_TIMEOUT)
+    return cache.get_or_set(key('summary', year, _where(county, area)), compute, stats.CACHE_TIMEOUT)
 
 
-def table(year, *, county=None, area=None, q=None, sort=DEFAULT_SORT, methane=None):
+def table(year, *, county=None, area=None, q=None, sort=DEFAULT_SORT):
     """
     The year's counted herds with their dairies, `digester` and
-    `digester_since` annotated, plus `methane` (bool, a linked Carbon Mapper
-    CH4 source), `methane_kg_h` (that source's largest rate, null with
-    none) and `methane_detections` (their detections summed), in a
-    TABLE_SORTS order. `methane='1'` keeps only the dairies with a source.
+    `digester_since` annotated, in a TABLE_SORTS order.
     """
     operating = _operating(year) if year is not None else Digester.objects.none()
     queryset = (
@@ -258,31 +244,18 @@ def table(year, *, county=None, area=None, q=None, sort=DEFAULT_SORT, methane=No
         .annotate(
             digester=Exists(operating),
             digester_since=Subquery(operating.order_by('operational_year').values('operational_year')[:1]),
-            methane=Exists(_methane()),
-            methane_kg_h=Subquery(_methane().order_by().values('dairy').annotate(m=Max('emission_kg_h')).values('m')[:1]),
-            methane_detections=Coalesce(
-                Subquery(_methane().order_by().values('dairy').annotate(n=Sum('detections')).values('n')[:1]), Value(0),
-            ),
         )
     )
     if q:
         queryset = queryset.filter(dairy__name__icontains=q)
-    if methane == '1':
-        queryset = queryset.filter(methane=True)
     sort = sort if sort in TABLE_SORTS else DEFAULT_SORT
-    if sort.lstrip('-') == 'methane_kg_h':
-        # A dairy with no linked source isn't "the lowest rate": it sorts
-        # first ascending and last descending, out of the way of the ones
-        # Carbon Mapper actually observed.
-        ordered = F('methane_kg_h').desc(nulls_last=True) if sort.startswith('-') else F('methane_kg_h').asc(nulls_first=True)
-    else:
-        expression = {
-            'name': Lower('dairy__name'),
-            'city': Lower(KeyTextTransform('city', 'dairy__address')),
-            'county': F('dairy__county__name'),
-            'mature_cows': F('mature_cows'),
-        }[sort.lstrip('-')]
-        ordered = expression.desc() if sort.startswith('-') else expression.asc()
+    expression = {
+        'name': Lower('dairy__name'),
+        'city': Lower(KeyTextTransform('city', 'dairy__address')),
+        'county': F('dairy__county__name'),
+        'mature_cows': F('mature_cows'),
+    }[sort.lstrip('-')]
+    ordered = expression.desc() if sort.startswith('-') else expression.asc()
     return queryset.order_by(ordered, Lower('dairy__name'))
 
 

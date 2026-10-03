@@ -1,22 +1,23 @@
 {% load humanize %}
 {% comment %}
 The oil-gas sector page's list of Carbon Mapper's oil & gas methane sources
-(methane.oil_gas_sources): CEIDARS' oil & gas rows are permit groupings whose
-point is an office, so the plumes are listed here instead of on facility pages.
+(methane.oil_gas_sources), by Carbon Mapper's sector. Each is shown by its own
+location: we don't attribute a source to a facility or operator (see the
+About page's Methane section).
 {% endcomment %}
 {% if methane_oil_gas is not None %}
 <h2 class="title is-4 mt-5" id="methane">Methane sources observed at oil &amp; gas sites</h2>
 {% if methane_oil_gas %}
 <div class="table-container">
 <table class="table is-fullwidth is-narrow">
-    <thead><tr>{% if not here %}<th>County</th>{% endif %}<th>Rate</th><th>Seen</th><th>Nearest facility</th><th></th></tr></thead>
+    <thead><tr>{% if not here %}<th>County</th>{% endif %}<th>Rate</th><th>Seen</th><th>Location</th><th></th></tr></thead>
     <tbody>
     {% for item in methane_oil_gas|slice:methane_list_rows %}
     <tr>
         {% if not here %}<td>{{ item.county.short_name }}</td>{% endif %}
         <td>{{ item.source.rate_text }}</td>
         <td>{{ item.source.detections }} of {{ item.source.observations }} passes</td>
-        <td>{% if item.facility %}<a href="{{ item.facility.get_absolute_url }}">{{ item.facility.name }}</a>{% else %}<span class="has-text-grey">{{ item.source.point.y|floatformat:4 }}, {{ item.source.point.x|floatformat:4 }}</span>{% endif %}</td>
+        <td class="has-text-grey">{{ item.source.point.y|floatformat:4 }}, {{ item.source.point.x|floatformat:4 }}</td>
         <td><a href="{{ item.source.viewer_url }}">Source record →</a></td>
     </tr>
     {% endfor %}

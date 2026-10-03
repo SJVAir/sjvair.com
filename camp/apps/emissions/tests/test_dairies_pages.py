@@ -538,29 +538,11 @@ class MethaneTests(DairyPageTestCase):
         from camp.apps.emissions.tests.test_carbonmapper import NEAR_BOTH, row
         carbonmapper.apply([row(name='a', lnglat=NEAR_BOTH, rate='120', unc='40')])
 
-    def test_column_filter_and_tile(self):
+    def test_the_source_is_on_the_map_but_not_tied_to_a_dairy(self):
         content = self.get({'year': '2023'}).content.decode()
-        # The column header is sortable, so it's a sort_link anchor (label
-        # plus an icon span) rather than a bare <th>Methane observed</th>.
-        assert 'sort=-methane_kg_h">Methane observed ' in content
-        big_row = content[content.index('BIG DAIRY</a>'):]
-        assert '120 kg/h' in big_row[:big_row.index('</tr>')]
-        assert '<p class="heading">With methane observed</p><p class="title">1</p>' in content
-        assert 'name="methane" value="1"' in content and 'With an observed methane source' in content
-        assert 'Data by Carbon Mapper' not in content  # credited on About, not every page
-        content = self.get({'year': '2023', 'methane': '1'}).content.decode()
-        assert 'BIG DAIRY' in content and 'SMALL DAIRY' not in content and 'checked' in content
-
-    def test_a_source_without_a_rate_shows_its_detections_alone(self):
-        from camp.apps.emissions import dairies
-        from camp.apps.emissions.importers import carbonmapper
-        from camp.apps.emissions.tests.test_carbonmapper import NEAR_BOTH, row
-        carbonmapper.apply([row(name='a', lnglat=NEAR_BOTH, rate='', unc='', detection_date_count='1')])
-        dairies.clear_caches()
-        content = self.get({'year': '2023'}).content.decode()
-        big_row = content[content.index('BIG DAIRY</a>'):]
-        big_row = big_row[:big_row.index('</tr>')]
-        assert '1 detection' in big_row and 'kg/h' not in big_row
+        assert 'data-methane-url="' in content
+        assert 'Methane observed' not in content and 'name="methane"' not in content and 'With methane observed' not in content
+        assert 'methane_kg_h' not in content
 
     def test_no_import_shows_nothing(self):
         from camp.apps.emissions import dairies, methane

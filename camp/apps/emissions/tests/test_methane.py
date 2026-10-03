@@ -10,11 +10,7 @@ from camp.apps.emissions.models import Facility, MethaneSource
 from camp.apps.emissions.tests.test_carbonmapper import AT_GAS_STATION, NEAR_BOTH, row
 from camp.apps.emissions.tests.test_dairies import make_dairies
 
-# Inside Fresno county but >1 km from both TEST PLANT and BIG DAIRY (unlike
-# test_carbonmapper's JUST_OUTSIDE, which is ~1,056 m from BIG DAIRY but only
-# ~854 m from TEST PLANT -- fine for testing the dairy boundary alone, but
-# this test also has TEST PLANT trusted, so it would still pick up a
-# facility match there).
+# Inside Fresno county, away from TEST PLANT and BIG DAIRY.
 LONE = (-119.75, 36.76)
 
 
@@ -48,11 +44,11 @@ class CollectionTests(MethaneTestCase):
         p = near['properties']
         assert (p['group'], p['sector'], p['rate'], p['unc'], p['obs'], p['det']) == ('livestock', 'Livestock', 120.5, 40.2, 12, 5)
         assert p['rate_text'] == '120 ± 40 kg/h' and p['county'] == 'Fresno County'
-        assert p['dairy'] == {'id': self.big.sqid, 'name': 'BIG DAIRY'}
-        assert p['facility'] == {'id': self.plant.sqid, 'name': 'TEST PLANT', 'url': self.plant.get_absolute_url()}
+        # Beside BIG DAIRY and TEST PLANT, but tied to neither (see MethaneSource).
+        assert 'dairy' not in p and 'facility' not in p
         assert p['viewer_url'] == 'https://data.carbonmapper.org/#36.73600,-119.78600'
         lone = by_name['lone']['properties']
-        assert lone['group'] == 'waste' and lone['dairy'] is None and lone['facility'] is None
+        assert lone['group'] == 'waste'
 
     def test_collection_is_cached_under_the_generation(self):
         assert methane.collection()['properties']['sources'] == 3
@@ -62,19 +58,11 @@ class CollectionTests(MethaneTestCase):
         assert methane.collection()['properties']['sources'] == 2
 
 
-class FacilityAndSectorTests(MethaneTestCase):
-    def test_near_facility_and_the_oil_gas_suppression(self):
-        assert [s.source_name for s in methane.near_facility(self.plant)] == ['near']
-        station = Facility.objects.get(name='TEST GAS STATION')
-        assert MethaneSource.objects.get(source_name='og').facility == station
-        assert methane.near_facility(station) == []
-        assert methane.near_facility(Facility.objects.get(name='TEST CEMENT')) == []
-
-    def test_for_dairy_and_oil_gas_list(self):
-        assert [s.source_name for s in methane.for_dairy(self.big)] == ['near']
-        assert methane.for_dairy(self.closed) == []
+class OilGasListTests(MethaneTestCase):
+    def test_oil_gas_sources_by_carbon_mappers_sector(self):
         rows = methane.oil_gas_sources()
-        assert [(r['source'].source_name, r['county'].slug, r['facility'].name) for r in rows] == [('og', 'kern', 'TEST GAS STATION')]
+        assert [(r['source'].source_name, r['county'].slug) for r in rows] == [('og', 'kern')]
+        assert 'facility' not in rows[0]
 
 
 class ViewTests(MethaneTestCase):

@@ -1,9 +1,9 @@
 """
 Carbon Mapper's public catalog of methane point sources, for the Valley
 bbox: fetch the sources CSV, keep the CH4 sources inside a covered county,
-link each to the nearest CADD dairy and the nearest CEIDARS facility with a
-trusted point within MATCH_METERS, and write MethaneSource rows. methane.py
-is the read side.
+and write MethaneSource rows. methane.py is the read side. A source isn't
+linked to any dairy or facility (see MethaneSource): attributing a plume to
+an operator is for researchers, not a proximity guess.
 
 The catalog endpoint works unauthenticated; when CARBON_MAPPER_API_KEY is
 set, fetch_csv sends it as a bearer token (a higher rate limit, per Carbon
@@ -30,8 +30,7 @@ from django.utils.dateparse import parse_datetime
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from camp.apps.emissions import dairies
-from camp.apps.emissions.models import Dairy, DairyHerd, Facility, MethaneSource, MethanePlume, SourceImport
+from camp.apps.emissions.models import MethaneSource, MethanePlume, SourceImport
 from camp.apps.regions.models import Region
 
 URL = 'https://api.carbonmapper.org/api/v1/catalog/sources-csv'
@@ -45,15 +44,13 @@ COARSE_DEGREES = 0.012
 PLUMES_URL = 'https://api.carbonmapper.org/api/v1/catalog/plumes/annotated'
 PLUME_PAGE_SIZE = 500
 # A plume's payload carries no source id -- matched to the nearest
-# MethaneSource within the same radius sources are matched to a dairy or
-# facility (MATCH_METERS; the "1000m" in a source_name's own eps).
+# MethaneSource within the radius Carbon Mapper clusters a source's plumes
+# by (MATCH_METERS; the "1000m" in a source_name's own eps).
 PLUME_MATCH_METERS = MATCH_METERS
 COLUMNS = (
     'source_name', 'source_latitude', 'source_longitude', 'gas', 'observation_date_count',
     'detection_date_count', 'source_persistence', 'source_emission', 'source_emission_uncertainty', 'ipcc_sector',
 )
-FIELDS = ('gas', 'point', 'ipcc_sector', 'sector_label', 'persistence', 'emission_kg_h', 'uncertainty_kg_h',
-          'observations', 'detections', 'county', 'dairy', 'facility', 'distance_m')
 
 # The ipcc_sector column reads "Livestock (4B)", not the bare code: pull the
 # trailing parenthesized code out, falling back to the raw value (the test
@@ -147,16 +144,6 @@ def nearest(queryset, point):
     return match[0], match[1].m
 
 
-def herded_dairies():
-    """Dairies CADD has counted cattle at in some year: a site that never had a herd isn't a plume's source."""
-    return Dairy.objects.filter(pk__in=DairyHerd.objects.filter(dairies.COUNTED).values('dairy'))
-
-
-def trusted_facilities():
-    """Facilities whose point can be trusted to be the site (Phase 2's rule), never an address geocode or a legacy point."""
-    return Facility.objects.filter(point__isnull=False, point_source__in=Facility.TRUSTED_POINT_SOURCES)
-
-
 @dataclass
 class Report:
     fetched: int = 0
@@ -166,15 +153,12 @@ class Report:
     created: int = 0
     updated: int = 0
     deleted: int = 0
-    dairy_matches: int = 0
-    facility_matches: int = 0
 
     def lines(self):
         return [
             f'Carbon Mapper: {self.fetched:,} rows; {self.co2:,} CO2 skipped, {self.outside:,} outside the covered counties, '
             f'{self.skipped:,} unparseable or duplicate.',
-            f'{self.created:,} sources created, {self.updated:,} updated, {self.deleted:,} removed (no longer in the catalog); '
-            f'{self.dairy_matches:,} linked to a dairy and {self.facility_matches:,} to a facility within {MATCH_METERS:,} m.',
+            f'{self.created:,} sources created, {self.updated:,} updated, {self.deleted:,} removed (no longer in the catalog).',
         ]
 
 
@@ -182,16 +166,13 @@ def apply(rows):
     """
     Upsert every CH4 source inside a covered county on `source_name`, delete
     the rest, stamp SourceImport(SOURCE) with the licence, and bump the
-    methane and dairies cache generations (the dairy table's methane column
-    is cached under the dairies one). `rows` is the whole bbox: a partial
-    list would delete the rest.
+    methane cache generation. `rows` is the whole bbox: a partial list would
+    delete the rest.
     """
-    from camp.apps.emissions import dairies, methane
+    from camp.apps.emissions import methane
 
     report = Report(fetched=len(rows))
     index = county_index()
-    facilities = trusted_facilities()
-    dairy_candidates = herded_dairies()
     with transaction.atomic():
         existing = {source.source_name: source for source in MethaneSource.objects.all()}
         seen = set()
@@ -209,14 +190,6 @@ def apply(rows):
                 continue
             seen.add(values['source_name'])
             values['county'] = county
-            dairy_pk, dairy_m = nearest(dairy_candidates, values['point'])
-            facility_pk, facility_m = nearest(facilities, values['point'])
-            values['dairy_id'] = dairy_pk
-            values['facility_id'] = facility_pk
-            distances = [m for m in (dairy_m, facility_m) if m is not None]
-            values['distance_m'] = min(distances) if distances else None
-            report.dairy_matches += dairy_pk is not None
-            report.facility_matches += facility_pk is not None
             source = existing.get(values['source_name'])
             if source is None:
                 MethaneSource.objects.create(**values)
@@ -233,11 +206,9 @@ def apply(rows):
                 'license': MethaneSource.LICENSE, 'license_url': MethaneSource.LICENSE_URL,
                 'attribution': MethaneSource.ATTRIBUTION, 'sources': len(seen),
                 'created': report.created, 'updated': report.updated, 'deleted': report.deleted,
-                'dairy_matches': report.dairy_matches, 'facility_matches': report.facility_matches,
             },
         )
     methane.clear_caches()
-    dairies.clear_caches()
     return report
 
 

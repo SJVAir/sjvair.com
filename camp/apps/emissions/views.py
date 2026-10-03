@@ -360,8 +360,6 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
             ab617_region=areas.facility_ab617_region(facility),
             compliance_card=compliance.facility_card(facility),
             ghg_card=ghg_card,
-            methane_sources=methane.near_facility(facility) if methane.enabled() else [],
-            methane_stamp=methane.stamp(),
             nearby=nearby,
             nearby_shown=schools.SHOWN,
             nearby_groups=nearby_groups(nearby),
@@ -423,7 +421,6 @@ class SectorDetail(ScopeMixin, vanilla.TemplateView):
             wells_stamp=wells.stamp(),
             methane_oil_gas=methane.oil_gas_sources() if self.sector == Facility.Sector.OIL_GAS and methane.enabled() else None,
             methane_list_rows=METHANE_LIST_ROWS,
-            methane_stamp=methane.stamp(),
             **kwargs,
         )
 

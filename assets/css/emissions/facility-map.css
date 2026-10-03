@@ -226,11 +226,8 @@
   background: #fff;
 }
 
-/* The methane source popup: what and where, two facts, then the plume on
-   the map with a stepper through its passes, and the source record link. */
-.methane-popup .methane-near {
-  color: #4a4a4a;
-}
+/* The methane source popup: its sector, two facts, then the plume on the
+   map with a stepper through its passes, and the source record link. */
 .methane-popup .methane-facts {
   display: grid;
   grid-template-columns: auto 1fr;

@@ -84,6 +84,10 @@ class OilGasMethaneListTests(TestCase):
     def test_the_oil_gas_page_lists_sources(self):
         content = self.client.get(reverse('emissions:sector-detail', args=['oil-gas'])).content.decode()
         assert 'Methane sources observed at oil &amp; gas sites' in content
-        assert '500 ± 150 kg/h' in content and 'Kern' in content and 'TEST GAS STATION' in content
+        listing = content[content.index('id="methane"'):]
+        listing = listing[:listing.index('</table>')]
+        assert '500 ± 150 kg/h' in listing and 'Kern' in listing
+        # Shown by its own location, not tied to the station beside it.
+        assert '35.3730, -119.0180' in listing and 'TEST GAS STATION' not in listing
         assert 'Data by Carbon Mapper' not in content  # credited on About, not every page
         assert 'Methane sources observed' not in self.client.get(reverse('emissions:sector-detail', args=['glass'])).content.decode()

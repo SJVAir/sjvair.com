@@ -1,7 +1,7 @@
 """
 The read side of Carbon Mapper's methane sources (carbonmapper.py writes
-them): the GeoJSON our maps draw, the facility card's rows, the oil & gas
-list. Everything is cached a day under a generation number that
+them): the GeoJSON our maps draw, the plumes behind a source, the oil &
+gas list. No source is tied to a dairy or facility (see MethaneSource). Everything is cached a day under a generation number that
 import_carbon_mapper bumps (clear_caches), the dairies pattern. The data is
 Carbon Mapper's, under its non-commercial terms: every dict leaving this
 module that reaches a page carries MethaneSource.ATTRIBUTION.
@@ -10,10 +10,10 @@ import time
 
 from django.core.cache import cache
 
-from camp.apps.emissions.models import Facility, MethanePlume, MethaneSource, SourceImport
+from camp.apps.emissions.models import MethanePlume, MethaneSource, SourceImport
 
 SOURCE = 'carbon-mapper'
-CACHE_VERSION = 2  # 2: GeoJSON features carry their newest plume
+CACHE_VERSION = 3  # 2: GeoJSON features carry their newest plume; 3: no dairy or facility on them
 GENERATION_KEY = 'emissions:methane:generation'
 CACHE_TIMEOUT = 60 * 60 * 24
 
@@ -51,7 +51,7 @@ def attribution():
 
 
 def sources():
-    return MethaneSource.objects.filter(gas=MethaneSource.Gas.CH4).select_related('county', 'dairy', 'facility')
+    return MethaneSource.objects.filter(gas=MethaneSource.Gas.CH4).select_related('county')
 
 
 def newest_plumes():
@@ -84,8 +84,6 @@ def feature(source, plume=None):
             'rate': source.emission_kg_h, 'unc': source.uncertainty_kg_h, 'rate_text': source.rate_text,
             'persistence': source.persistence, 'obs': source.observations, 'det': source.detections,
             'county': source.county.name,
-            'dairy': {'id': source.dairy.sqid, 'name': source.dairy.name} if source.dairy else None,
-            'facility': {'id': source.facility.sqid, 'name': source.facility.name, 'url': source.facility.get_absolute_url()} if source.facility else None,
             'viewer_url': source.viewer_url,
             'plume': plume_summary(plume),
         },
@@ -107,26 +105,6 @@ def collection():
             'features': features,
         }
     return cache.get_or_set(key('geojson'), compute, CACHE_TIMEOUT)
-
-
-def near_facility(facility):
-    """
-    The sources the import linked to this facility (their nearest trusted
-    point within 1 km), nearest first. Empty for oil & gas permit groupings:
-    their point is an office address, not the wells, so a plume "near" it
-    says nothing (the sector page lists the Valley's oil & gas sources).
-    """
-    if facility.sector == Facility.Sector.OIL_GAS:
-        return []
-    return cache.get_or_set(
-        key('facility', facility.pk),
-        lambda: list(sources().filter(facility=facility).order_by('distance_m', 'pk')),
-        CACHE_TIMEOUT,
-    )
-
-
-def for_dairy(dairy):
-    return list(sources().filter(dairy=dairy))
 
 
 def plume_rate_text(plume):
@@ -172,13 +150,13 @@ def source_plumes(source):
 
 
 def oil_gas_sources():
-    """Every oil & gas source, by county then rate, with its facility where the import matched one."""
+    """Every oil & gas source (Carbon Mapper's sector), by county then rate."""
     def compute():
         codes = [code for code, (group, label) in MethaneSource.SECTORS.items() if group == MethaneSource.Group.OIL_GAS]
         rows = []
         for source in sources():
             if any(source.ipcc_sector.startswith(code) for code in codes):
-                rows.append({'source': source, 'county': source.county, 'facility': source.facility})
+                rows.append({'source': source, 'county': source.county})
         rows.sort(key=lambda r: (r['county'].name, -(r['source'].emission_kg_h or 0), r['source'].source_name))
         return rows
     return cache.get_or_set(key('oil-gas'), compute, CACHE_TIMEOUT)
