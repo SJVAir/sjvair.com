@@ -568,18 +568,19 @@ class ArchivedNoticeListBase(ActiveNoticeListBase):
     past = True
 
     def notices(self, params):
-        """Notices past the grace period, newest first; one month with `year` + `month`. Returns (queryset, error)."""
+        """Notices past the grace period, newest first; one year with `year`, one month with `year` + `month`. Returns (queryset, error)."""
         cutoff = timezone.now() - timedelta(days=stats.NOTICE_GRACE_DAYS)
         notices = PesticideNotice.objects.filter(scheduled_application__lt=cutoff)
         year, month = params.get('year'), params.get('month')
         if year or month:
-            if not (year and month):
-                return None, 'year and month go together'
+            if not year:
+                return None, 'month needs a year'
             try:
-                year, month = int(year), int(month)
+                year = int(year)
+                month = int(month) if month else None
             except (TypeError, ValueError):
                 return None, 'year and month must be numbers'
-            if not 1 <= month <= 12:
+            if month is not None and not 1 <= month <= 12:
                 return None, 'month must be 1-12'
             bounds = stats.local_month_bounds(year, month)
             if bounds is None:
@@ -590,5 +591,5 @@ class ArchivedNoticeListBase(ActiveNoticeListBase):
 
 
 class ArchivedNoticeList(CachedEndpointMixin, ArchivedNoticeListBase):
-    """Past SprayDays notices of intent (older than the four-day grace period) as GeoJSON points, newest first, each with `properties.past = true`. Same parameters and cap as notices/active/, plus optional `year` and `month` (1-12), given together, for one month (America/Los_Angeles)."""
+    """Past SprayDays notices of intent (older than the four-day grace period) as GeoJSON points, newest first, each with `properties.past = true`. Same parameters and cap as notices/active/, plus optional `year` (a whole year) and `month` (1-12, needs a `year`) for one year or month (America/Los_Angeles)."""
     cache_timeout = NOTICE_CACHE_TTL

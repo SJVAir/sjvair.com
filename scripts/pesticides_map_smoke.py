@@ -46,7 +46,7 @@ import os
 import re
 import sys
 import time
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, parse_qsl, urlparse
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -904,12 +904,14 @@ def check_locations(page):
     location popup, which fills in the block figure ("within about a
     mile") and carries the "District page" pill. Zoomed out past
     LOCATIONS_MIN_ZOOM the layer stays empty and the legend note and the
-    status line say why. The Options toggle clears the markers and the
+    status line say why -- except on a place's Schools tab (a
+    `locationsArea`), where the place's own sites load once at any zoom, by
+    the area's params rather than a bbox, and no zoom note shows. The Options toggle clears the markers and the
     legend rows and writes `?locations=` against the page default; back on
     reloads them. Ends with the toggle as it found it. Skips itself (after
     the load and toggle steps) where the layer's zoom has no school in
     view to click."""
-    state = page.instance_js("return { on: inst.showLocations, dflt: inst.data.showLocations === '1', url: !!inst.data.locationsUrl, zoom: inst.map.getZoom() };")
+    state = page.instance_js("return { on: inst.showLocations, dflt: inst.data.showLocations === '1', url: !!inst.data.locationsUrl, area: inst.data.locationsArea || '', zoom: inst.map.getZoom() };")
     if not state['url']:
         return None, 'no locations endpoint (skipped)'
     problems = []
@@ -922,7 +924,7 @@ def check_locations(page):
         problems.append('legend rows %s lack the school/child care rows' % rows)
     if not state['dflt'] and url_param(page, 'locations') != '1':
         problems.append('URL lacks locations=1 with the layer on against the default: %s' % page.driver.current_url)
-    too_far = state['zoom'] < 9
+    too_far = state['zoom'] < 9 and not state['area']
     count = 0
     popup_detail = ''
     skipped = None
@@ -945,6 +947,18 @@ def check_locations(page):
         """)
         if page.js("return document.querySelector('.section-map-locations-note').textContent"):
             problems.append('zoom note shown at zoom %.2f' % state['zoom'])
+        if state['area']:
+            bounds = page.instance_js('return inst.loadedLocationBounds')
+            if bounds != 'area':
+                problems.append('area page did not load by area (bounds %r)' % bounds)
+            if not count:
+                problems.append('area page loaded no locations')
+            names = page.js("return performance.getEntriesByType('resource').map(function (r) { return r.name; }).filter(function (n) { return n.indexOf('/pesticides/locations/') !== -1; })")
+            area_keys = set(k for k, _ in parse_qsl(state['area']))
+            for name in names:
+                query = parse_qs(urlparse(name).query)
+                if 'bbox' in query or not area_keys <= set(query):
+                    problems.append('locations request %s is not the area request (%s)' % (name, state['area']))
         if not in_view:
             skipped = 'no locations in view at zoom %.2f (%d loaded around it)' % (state['zoom'], count)
         else:
@@ -995,6 +1009,8 @@ def check_locations(page):
     if too_far:
         if page.js("return document.querySelector('.section-map-locations-note').textContent") != LOCATIONS_ZOOM_NOTE:
             problems.append('toggle on again: note missing')
+    elif state['area'] and page.js("return document.querySelector('.section-map-locations-note').textContent"):
+        problems.append('toggle on again: zoom note shown on an area page')
     else:
         reloaded = page.wait_for('var inst = (function () { %s })(); return !!(inst && inst.loadedLocationBounds);' % JS_INSTANCE, 20)
         if not reloaded or (count and not page.source_count('locations')):
@@ -1223,7 +1239,9 @@ def check_all_sections(page):
     sections are drawn (well over a thousand at a county zoom), the township
     fills step aside, the legend takes the all-sections note, a ramp change
     reshades the drawn sections, and switching the mode off puts the
-    township grid back and drops `sections` from the URL."""
+    township grid back and writes `sections=` against the page default
+    (dropped where all sections is off by default, `sections=0` where the
+    page turns it on, like a place's Schools tab)."""
     if not page.instance_js('return inst.showAllSections'):
         return None, 'not a ?sections=1 page (skipped)'
     if page.instance_js("return inst.level") != 'township':
@@ -1286,13 +1304,17 @@ def check_all_sections(page):
         problems.append('ramp change: %s after %ss' % (reshaded, reshade_s))
     page.set_control('select[name="ramp"]', 'blues')
     # Off again: the township grid returns and the URL forgets the mode.
+    dflt = page.instance_js("return inst.data.showAllSections === '1'")
     page.set_control('input[name="sections"]', False)
     after = page.instance_js("""
         return { features: inst.allSectionsFeatures.length, gridFill: JSON.stringify(inst.map.getPaintProperty('grid-fill', 'fill-opacity')),
                  levelText: document.querySelector('.section-map-level').textContent, url: location.search };
     """)
-    if after['features'] or after['gridFill'] == '0' or 'sections=' in after['url'] or 'across every township' in after['levelText']:
+    wanted = '0' if dflt else None
+    if after['features'] or after['gridFill'] == '0' or 'across every township' in after['levelText']:
         problems.append('mode did not switch off cleanly: %s' % after)
+    if url_param(page, 'sections') != wanted:
+        problems.append('URL after switching off: %s (wanted sections=%s)' % (after['url'], wanted))
     detail = '%d blocks, %d sections (%d rendered) in %ss; reshade visible after %ss' % (result['blocks'], result['features'], result['rendered'], secs, reshade_s)
     return (not problems), (detail if not problems else '; '.join(problems))
 
