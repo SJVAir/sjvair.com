@@ -277,7 +277,13 @@ class NearestPageMixin:
     or a filter narrows it.
     """
     def paginate_queryset(self, queryset, page_size):
-        return self.get_paginator(queryset, page_size).get_page(self.request.GET.get(self.page_kwarg))
+        paginator = self.get_paginator(queryset, page_size)
+        try:
+            number = int(self.request.GET.get(self.page_kwarg))
+        except (TypeError, ValueError):
+            number = 1
+        # Django's get_page sends a number below 1 to the last page.
+        return paginator.get_page(max(number, 1))
 
 
 class ExplorerListMixin(NearestPageMixin):

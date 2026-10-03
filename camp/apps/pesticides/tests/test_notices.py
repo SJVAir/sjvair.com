@@ -1,4 +1,6 @@
 import re
+from html import unescape
+from urllib.parse import parse_qs, urlparse
 
 from django.contrib.gis.geos import MultiPolygon, Polygon
 from django.core.cache import cache
@@ -297,14 +299,15 @@ class UpcomingNoticeLinkTests(TestCase):
         fresno = Region.objects.get(pk=9001)
         section = Region.objects.get(pk=9101)
         pages = {
-            # A place's notices are on its Notices tab, as the list's rows.
-            'place': reverse('pesticides:region-notices', kwargs={'sqid': fresno.sqid, 'slug': fresno.slug}),
-            'section': reverse('pesticides:section-detail', kwargs={'sqid': section.sqid}),
-            'chemical': Chemical.objects.get(pk=1).get_absolute_url(),
+            # A place's notices are on its Notices tab, as the list's rows;
+            # the other pages carry their own `upcoming` list.
+            'place': (reverse('pesticides:region-notices', kwargs={'sqid': fresno.sqid, 'slug': fresno.slug}), 'object_list'),
+            'section': (reverse('pesticides:section-detail', kwargs={'sqid': section.sqid}), 'upcoming'),
+            'chemical': (Chemical.objects.get(pk=1).get_absolute_url(), 'upcoming'),
         }
-        for name, url in pages.items():
+        for name, (url, key) in pages.items():
             response = self.client.get(url)
-            upcoming = response.context.get('upcoming') or response.context.get('object_list') or []
+            upcoming = response.context.get(key) or []
             assert upcoming, f'{name} has no upcoming notices to link'
             html = response.content.decode()
             for notice in upcoming:
@@ -376,6 +379,29 @@ class AreaNoticesTabTests(TestCase):
         clear = response.context['clear_filters_url']
         assert clear.startswith(reverse('pesticides:near-me-notices')) and 'lat=36.71' in clear and 'label=near+Selma' in clear
         assert not [f for f in response.context['active_filters'] if f['label'].startswith('Within ')]
+
+    def test_near_me_archive_links_keep_the_point(self):
+        url = reverse('pesticides:near-me-notices')
+        # Put the archived notice in a section, and the point on that section.
+        section = Region.objects.get(pk=9101)
+        PesticideNotice.objects.filter(pk=1).update(mtrs_id=section.pk)
+        centre = section.boundary.geometry.centroid
+        point = {'lat': round(centre.y, 4), 'lng': round(centre.x, 4), 'radius': 3, 'label': 'near Selma'}
+        response = self.client.get(url, {**point, 'past': 1})
+        assert response.context['archive_months']
+        html = response.content.decode()
+        box = html[html.index('archive-months'):]
+        box = box[:box.index('</ul>')]
+        links = [unescape(h) for h in re.findall(r'href="([^"]*)"', box)]
+        assert len(links) == len(response.context['archive_months']) + 1
+        for link in links:
+            query = parse_qs(urlparse(link).query)
+            # Query-only links stay on the page they're on.
+            assert urlparse(link).path in ('', url), link
+            assert query['past'] == ['1'], link
+            for name, value in point.items():
+                assert query[name] == [str(value)], (link, name)
+        assert parse_qs(urlparse(links[0]).query)['month'] == ['all']
 
     def test_filter_form_carries_year_and_label(self):
         html = self.client.get(self.url, {'year': 2022}).content.decode()
