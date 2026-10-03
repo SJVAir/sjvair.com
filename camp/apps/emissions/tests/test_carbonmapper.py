@@ -95,7 +95,7 @@ class ParseTests(TestCase):
         parsed = [carbonmapper.parse_row(r) for r in rows]
         assert all(p is not None for p in parsed)
         first = parsed[0]
-        assert set(first) == {'source_name', 'gas', 'point', 'ipcc_sector', 'sector_label', 'persistence',
+        assert set(first) == {'source_name', 'gas', 'point', 'ipcc_sector', 'persistence',
                               'emission_kg_h', 'uncertainty_kg_h', 'observations', 'detections'}
         assert first['point'].srid == 4326 and -122 < first['point'].x < -118 and 34 < first['point'].y < 39
         assert {p['gas'] for p in parsed} <= {'CH4', 'CO2'}
@@ -104,7 +104,7 @@ class ParseTests(TestCase):
     def test_parse_row_shapes(self):
         parsed = carbonmapper.parse_row(row())
         assert parsed['emission_kg_h'] == 120.5 and parsed['uncertainty_kg_h'] == 40.2
-        assert (parsed['ipcc_sector'], parsed['sector_label']) == ('4B', 'Livestock')
+        assert parsed['ipcc_sector'] == '4B' and MethaneSource(ipcc_sector='4B').sector_label == 'Dairies & livestock'
         assert (parsed['observations'], parsed['detections']) == (12, 5)
         assert carbonmapper.parse_row(row(rate='', unc=''))['emission_kg_h'] is None
         assert carbonmapper.parse_row(row(name='')) is None
@@ -118,12 +118,12 @@ class ParseTests(TestCase):
     def test_real_sector_label_format_extracts_the_code(self):
         # Carbon Mapper's ipcc_sector column reads "Livestock (4B)", not the bare code.
         parsed = carbonmapper.parse_row(row(sector='Solid Waste (6A)'))
-        assert (parsed['ipcc_sector'], parsed['sector_label']) == ('6A', 'Solid waste')
+        assert parsed['ipcc_sector'] == '6A' and MethaneSource(ipcc_sector='6A').sector_label == 'Waste, water & recycling'
 
     def test_uncoded_sectors_read_plainly(self):
         # Carbon Mapper also sends a bare 'Other' and 'NA' (not attributed), with no code.
-        assert carbonmapper.parse_row(row(sector='Other'))['sector_label'] == 'Other'
-        assert carbonmapper.parse_row(row(sector='NA'))['sector_label'] == 'Not attributed'
+        assert carbonmapper.parse_row(row(sector='Other'))['ipcc_sector'] == 'OTHER'
+        assert carbonmapper.parse_row(row(sector='NA'))['ipcc_sector'] == 'NA' and MethaneSource(ipcc_sector='NA').sector_label == 'Other'
 
 
 class ParsePlumeTests(TestCase):
@@ -275,7 +275,7 @@ class ApplyPlumesTests(TestCase):
         # Beside TEST PLANT (-119.787, 36.737); NEAR_BOTH is ~130m away.
         self.source = MethaneSource.objects.create(
             source_name='CH4_4B_1000m_-119.787_36.737', gas=MethaneSource.Gas.CH4,
-            point=Point(-119.787, 36.737, srid=4326), ipcc_sector='4B', sector_label='Livestock', county=fresno,
+            point=Point(-119.787, 36.737, srid=4326), ipcc_sector='4B', county=fresno,
         )
 
     def test_import_creates_links_and_fetches_the_image(self):

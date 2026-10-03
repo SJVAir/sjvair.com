@@ -267,7 +267,7 @@ class GHGReportAdmin(ReadOnlyAdminMixin, base_admin.ModelAdmin):
 @admin.register(MethaneSource)
 class MethaneSourceAdmin(ReadOnlyAdminMixin, base_admin.ModelAdmin):
     list_display = ['source_name', 'gas', 'sector_label', 'emission_kg_h', 'uncertainty_kg_h', 'persistence', 'detections', 'observations', 'county', 'fetched_at']
-    list_filter = ['gas', 'sector_label', 'county']
+    list_filter = ['gas', 'ipcc_sector', 'county']
     search_fields = ['source_name']
 
 

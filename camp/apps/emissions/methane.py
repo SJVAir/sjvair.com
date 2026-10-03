@@ -13,7 +13,7 @@ from django.core.cache import cache
 from camp.apps.emissions.models import MethanePlume, MethaneSource, SourceImport
 
 SOURCE = 'carbon-mapper'
-CACHE_VERSION = 3  # 2: GeoJSON features carry their newest plume; 3: no dairy or facility on them
+CACHE_VERSION = 4  # 2: GeoJSON features carry their newest plume; 3: no dairy or facility on them; 4: sector names from SECTORS
 GENERATION_KEY = 'emissions:methane:generation'
 CACHE_TIMEOUT = 60 * 60 * 24
 

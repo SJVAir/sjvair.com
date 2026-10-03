@@ -22,4 +22,8 @@ class Migration(migrations.Migration):
             model_name='methanesource',
             name='facility',
         ),
+        migrations.RemoveField(
+            model_name='methanesource',
+            name='sector_label',
+        ),
     ]

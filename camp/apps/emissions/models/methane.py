@@ -42,19 +42,24 @@ class MethaneSource(models.Model):
 
     # IPCC 2006 source categories as Carbon Mapper codes them, longest
     # prefix wins: the map's colour group and the label shown for the sector.
+    # Only the code is stored (ipcc_sector); the label comes from here, so
+    # rewording one is an edit, not a re-import. Where a category matches one
+    # of the explorer's facility sectors exactly it borrows that name; the two
+    # broader ones (oil & gas across the whole chain, energy industries) keep
+    # Carbon Mapper's wording rather than being narrowed to one of ours.
     SECTORS = {
-        '4B': (Group.LIVESTOCK, 'Livestock'),
+        '4B': (Group.LIVESTOCK, 'Dairies & livestock'),
         '1B2': (Group.OIL_GAS, 'Oil & gas'),
         '1B1': (Group.OTHER, 'Coal mining'),
         '1A1': (Group.OTHER, 'Energy industries'),
         '1A2': (Group.OTHER, 'Manufacturing & construction'),
-        '6A': (Group.WASTE, 'Solid waste'),
-        '6B': (Group.WASTE, 'Wastewater'),
+        '6A': (Group.WASTE, 'Waste, water & recycling'),
+        '6B': (Group.WASTE, 'Waste, water & recycling'),
         '4C': (Group.OTHER, 'Rice cultivation'),
         # Carbon Mapper's two uncoded values ('Other', and 'NA' for a source
         # it hasn't attributed to a sector), with no IPCC code in parens.
         'OTHER': (Group.OTHER, 'Other'),
-        'NA': (Group.OTHER, 'Not attributed'),
+        'NA': (Group.OTHER, 'Other'),
     }
 
     sqid = SqidsField(alphabet=shuffle_alphabet('emissions.MethaneSource'))
@@ -62,7 +67,6 @@ class MethaneSource(models.Model):
     gas = models.CharField(_('Gas'), max_length=3, choices=Gas.choices, db_index=True)
     point = models.PointField(_('Point'))
     ipcc_sector = models.CharField(_('IPCC sector'), max_length=8, blank=True)
-    sector_label = models.CharField(_('Sector'), max_length=32, blank=True)
     persistence = models.FloatField(_('Persistence'), null=True, blank=True)
     emission_kg_h = models.FloatField(_('Emission rate (kg/h)'), null=True, blank=True)
     uncertainty_kg_h = models.FloatField(_('Emission uncertainty (kg/h)'), null=True, blank=True)
@@ -76,7 +80,7 @@ class MethaneSource(models.Model):
         indexes = [models.Index(fields=['county', 'gas'])]
 
     def __str__(self):
-        return f'{self.source_name} ({self.sector_label or self.ipcc_sector or "?"})'
+        return f'{self.source_name} ({self.sector_label})'
 
     @classmethod
     def sector_for(cls, code):
@@ -92,6 +96,11 @@ class MethaneSource(models.Model):
     @property
     def group(self):
         return self.sector_for(self.ipcc_sector)[0]
+
+    @property
+    def sector_label(self):
+        """The sector's name for display, from SECTORS by the stored code."""
+        return self.sector_for(self.ipcc_sector)[1]
 
     @property
     def viewer_url(self):
@@ -164,6 +173,11 @@ class MethanePlume(models.Model):
 
     def __str__(self):
         return self.plume_id
+
+    @property
+    def sector_label(self):
+        """Its source's sector name (a plume has no sector of its own); blank without a source."""
+        return self.source.sector_label if self.source_id else ''
 
     @property
     def bounds_bbox(self):

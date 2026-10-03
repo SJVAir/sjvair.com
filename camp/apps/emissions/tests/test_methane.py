@@ -42,7 +42,7 @@ class CollectionTests(MethaneTestCase):
         near = by_name['near']
         assert near['id'] == self.near.sqid and near['geometry'] == {'type': 'Point', 'coordinates': [-119.786, 36.736]}
         p = near['properties']
-        assert (p['group'], p['sector'], p['rate'], p['unc'], p['obs'], p['det']) == ('livestock', 'Livestock', 120.5, 40.2, 12, 5)
+        assert (p['group'], p['sector'], p['rate'], p['unc'], p['obs'], p['det']) == ('livestock', 'Dairies & livestock', 120.5, 40.2, 12, 5)
         assert p['rate_text'] == '120 ± 40 kg/h' and p['county'] == 'Fresno County'
         # Beside BIG DAIRY and TEST PLANT, but tied to neither (see MethaneSource).
         assert 'dairy' not in p and 'facility' not in p

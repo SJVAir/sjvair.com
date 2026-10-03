@@ -106,13 +106,11 @@ def parse_row(row):
     if not name or lat is None or lng is None or not (-90 <= lat <= 90 and -180 <= lng <= 180) or (lat == 0 and lng == 0):
         return None
     code = _sector_code(row.get('ipcc_sector'))[:8]
-    group, label = MethaneSource.sector_for(code)
     return {
         'source_name': name,
         'gas': (row.get('gas') or '').strip().upper()[:3],
         'point': Point(lng, lat, srid=4326),
         'ipcc_sector': code,
-        'sector_label': label[:32],
         'persistence': _float(row.get('source_persistence')),
         'emission_kg_h': _float(row.get('source_emission')),
         'uncertainty_kg_h': _float(row.get('source_emission_uncertainty')),

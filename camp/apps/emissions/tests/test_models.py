@@ -203,23 +203,35 @@ class MethaneSourceTests(TestCase):
         from camp.apps.regions.models import Region
         values = dict(
             source_name='CH4-test-1', gas='CH4', point=Point(-119.786, 36.736, srid=4326),
-            ipcc_sector='4B', sector_label='Livestock', persistence=0.6,
+            ipcc_sector='4B', persistence=0.6,
             emission_kg_h=120.0, uncertainty_kg_h=40.0, observations=12, detections=5,
             county=Region.objects.get(type=Region.Type.COUNTY, slug='fresno'),
         )
         values.update(overrides)
         return MethaneSource.objects.create(**values)
 
+    def test_a_plume_takes_its_sources_sector(self):
+        from datetime import datetime, timezone
+        from django.contrib.gis.geos import Point, Polygon
+        from camp.apps.emissions.models import MethanePlume
+        bounds = Polygon.from_bbox((-119.79, 36.73, -119.78, 36.74))
+        bounds.srid = 4326
+        values = dict(observed_at=datetime(2024, 6, 1, tzinfo=timezone.utc), point=Point(-119.786, 36.736, srid=4326), bounds=bounds)
+        assert MethanePlume(plume_id='p1', source=self.make(), **values).sector_label == 'Dairies & livestock'
+        assert MethanePlume(plume_id='p2', **values).sector_label == ''
+
     def test_sector_groups_and_labels(self):
         from camp.apps.emissions.models import MethaneSource
-        assert MethaneSource.sector_for('4B') == ('livestock', 'Livestock')
+        assert MethaneSource.sector_for('4B') == ('livestock', 'Dairies & livestock')
         assert MethaneSource.sector_for('1B2') == ('oil-gas', 'Oil & gas')
-        assert MethaneSource.sector_for('6A') == ('waste', 'Solid waste')
-        assert MethaneSource.sector_for('6B') == ('waste', 'Wastewater')
+        assert MethaneSource.sector_for('6A') == ('waste', 'Waste, water & recycling')
+        assert MethaneSource.sector_for('6B') == ('waste', 'Waste, water & recycling')
+        assert MethaneSource.sector_for('NA') == ('other', 'Other')
         assert MethaneSource.sector_for('1B1') == ('other', 'Coal mining')
         assert MethaneSource.sector_for('9Z') == ('other', '9Z')
         assert MethaneSource.sector_for('') == ('other', 'Unknown sector')
-        assert self.make().group == 'livestock'
+        source = self.make()
+        assert source.group == 'livestock' and source.sector_label == 'Dairies & livestock'
         assert self.make(source_name='x', ipcc_sector='1B2').group == 'oil-gas'
 
     def test_viewer_url_rate_text_and_licence(self):
@@ -232,7 +244,7 @@ class MethaneSourceTests(TestCase):
         assert MethaneSource.ATTRIBUTION == 'Data by Carbon Mapper®'
         assert MethaneSource.LICENSE == 'Carbon Mapper non-commercial terms, https://carbonmapper.org/terms'
         assert MethaneSource.LICENSE_URL == 'https://carbonmapper.org/terms'
-        assert source.sqid and str(source) == 'CH4-test-1 (Livestock)'
+        assert source.sqid and str(source) == 'CH4-test-1 (Dairies & livestock)'
 
     def test_methane_generation(self):
         from django.core.cache import cache
