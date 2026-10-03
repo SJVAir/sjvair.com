@@ -54,7 +54,8 @@ class CommodityFilterForm(SearchForm):
 class NoticeFilterForm(forms.Form):
     method = forms.ChoiceField(label=_('Method'), required=False, choices=[('', _('Any'))])
     past = forms.BooleanField(label=_('Archive'), required=False)
-    month = forms.IntegerField(required=False, min_value=1, max_value=12)
+    # 1-12, or "all" for the whole archive (no month); anything else is no month.
+    month = forms.CharField(required=False)
     # Narrows the archive to a year. Bounded so an out-of-range value is a
     # validation error (and so no filter) rather than a ValueError out of
     # `datetime()`. Named `archive_year` to keep it off the site-wide
@@ -70,6 +71,16 @@ class NoticeFilterForm(forms.Form):
     lat = forms.FloatField(required=False, widget=forms.HiddenInput)
     lng = forms.FloatField(required=False, widget=forms.HiddenInput)
     radius = forms.ChoiceField(required=False, choices=RADIUS_CHOICES, widget=forms.HiddenInput)
+
+    def clean_month(self):
+        value = (self.cleaned_data.get('month') or '').strip()
+        if value == 'all':
+            return value
+        if value.isascii() and value.isdigit() and 1 <= int(value) <= 12:
+            return int(value)
+        if value:
+            raise forms.ValidationError(_('Enter a month from 1 to 12, or "all".'))
+        return None
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

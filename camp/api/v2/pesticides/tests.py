@@ -1090,11 +1090,15 @@ class ArchivedNoticeEndpointTests(TestCase):
     def test_bad_month_is_a_400(self):
         assert self.client.get(self.url, {'year': 2020, 'month': 13}).status_code == 400
 
-    def test_month_and_year_go_together(self):
-        for params in ({'month': 1}, {'year': 2020}):
-            response = self.client.get(self.url, params)
-            assert response.status_code == 400
-            assert response.json()['error'] == 'year and month go together'
+    def test_year_alone_is_the_whole_year(self):
+        past = PesticideNotice.objects.get(pk=1)
+        assert self.ids(year=2020) == [past.sqid]
+        assert self.ids(year=2019) == []
+
+    def test_month_needs_a_year(self):
+        response = self.client.get(self.url, {'month': 1})
+        assert response.status_code == 400
+        assert response.json()['error'] == 'month needs a year'
 
     def test_cap(self):
         from camp.api.v2.pesticides import sections

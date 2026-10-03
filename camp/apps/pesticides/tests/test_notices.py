@@ -56,13 +56,13 @@ class NoticeListTests(TestCase):
         assert self.client.get(self.url, {'past': 1, 'county': other.slug}).context['archive_months'] == []
 
     def test_summary_sentence_names_the_picked_month(self):
-        past = self.client.get(self.url, {'past': 1})
+        past = self.client.get(self.url, {'past': 1, 'month': 'all'})
         assert 'in the archive.' in past.content.decode()
         month = self.client.get(self.url, {'past': 1, 'archive_year': 2020, 'month': 1})
         assert 'in the archive in January 2020.' in ' '.join(month.content.decode().split())
 
     def test_archive_months_has_all_months_first(self):
-        html = self.client.get(self.url, {'past': 1}).content.decode()
+        html = self.client.get(self.url, {'past': 1, 'month': 'all'}).content.decode()
         assert 'All months</a>' in html
         assert html.index('All months') < html.index('January 2020')
         all_link = html[html.rindex('<a', 0, html.index('All months')):html.index('All months')]
@@ -70,7 +70,48 @@ class NoticeListTests(TestCase):
         picked = self.client.get(self.url, {'past': 1, 'archive_year': 2020, 'month': 1}).content.decode()
         all_link = picked[picked.rindex('<a', 0, picked.index('All months')):picked.index('All months')]
         assert 'is-active' not in all_link
-        assert 'month=' not in all_link
+        assert 'month=all' in all_link and 'archive_year' not in all_link
+
+    def test_past_lands_on_the_newest_month(self):
+        # Scheduled -> Past sends `past=1` alone: same as picking the newest month.
+        response = self.client.get(self.url, {'past': 1})
+        assert response.context['filter_year'] == 2020 and response.context['filter_month'] == 1
+        assert [n.pk for n in response.context['object_list']] == [1]
+        notices_url = response.context['map_config']['notices_url']
+        assert 'year=2020' in notices_url and 'month=1' in notices_url
+        html = response.content.decode()
+        assert 'in the archive in January 2020.' in ' '.join(html.split())
+        all_link = html[html.rindex('<a', 0, html.index('All months')):html.index('All months')]
+        assert 'is-active' not in all_link
+        jan_link = html[html.rindex('<a', 0, html.index('January 2020 <')):html.index('January 2020 <')]
+        assert 'is-active' in jan_link
+
+    def test_past_with_an_empty_archive_has_no_month(self):
+        other = Region.objects.filter(type=Region.Type.COUNTY).exclude(pk=PesticideNotice.objects.get(pk=1).county_id).first()
+        response = self.client.get(self.url, {'past': 1, 'county': other.slug})
+        assert response.status_code == 200
+        assert response.context['filter_year'] is None and response.context['filter_month'] is None
+        assert list(response.context['object_list']) == []
+        assert response.context['map_config']['notices_url'] == reverse('api:v2:pesticides:notice-archive')
+
+    def test_all_months_is_an_explicit_choice(self):
+        response = self.client.get(self.url, {'past': 1, 'month': 'all'})
+        assert response.status_code == 200
+        assert response.context['filter_year'] is None and response.context['filter_month'] is None
+        assert [n.pk for n in response.context['object_list']] == [1]
+        assert response.context['map_config']['notices_url'] == reverse('api:v2:pesticides:notice-archive')
+        html = response.content.decode()
+        all_link = html[html.rindex('<a', 0, html.index('All months')):html.index('All months')]
+        assert 'is-active' in all_link
+        assert '<input type="hidden" name="month" value="all">' in html
+        # ...and it doesn't leak into Scheduled.
+        assert 'value="all"' not in self.client.get(self.url, {'month': 'all'}).content.decode()
+
+    def test_bad_month_is_ignored(self):
+        for month in ('13', '0', 'x'):
+            response = self.client.get(self.url, {'past': 1, 'month': month})
+            assert response.status_code == 200, month
+            assert response.context['filter_month'] == 1, month
 
     def test_archive_months_only_built_for_the_archive(self):
         assert self.client.get(self.url).context['archive_months'] == []
@@ -272,6 +313,16 @@ class AreaNoticesTabTests(TestCase):
         for page in ('99', 'nope'):
             assert self.client.get(self.url, {'page': page}).status_code == 200
 
+    def test_past_lands_on_the_newest_month(self):
+        response = self.client.get(self.url, {'past': 1})
+        assert (response.context['filter_year'], response.context['filter_month']) == (2020, 1)
+        assert [n.pk for n in response.context['object_list']] == [1]
+        assert response.context['notice_stats']['count'] == 1
+        notices_url = response.context['map_config']['notices_url']
+        assert 'year=2020' in notices_url and 'month=1' in notices_url
+        assert response.context['map_config']['section_notices_url'].count('month=1') == 1
+        assert 'in the archive in January 2020 here.' in ' '.join(self.client.get(self.url, {'past': 1}).content.decode().split())
+
     def test_past_mode_lists_the_archive_and_counts_only_the_place(self):
         response = self.client.get(self.url, {'past': 1})
         assert [n.pk for n in response.context['object_list']] == [1]
@@ -425,7 +476,7 @@ class NoticeModeTests(TestCase):
         url = reverse('api:v2:pesticides:notice-archive')
         for page in (reverse('pesticides:notice-list'), self.tab):
             assert self.client.get(page).context['map_config']['notices_url'].startswith('/api/2.0/pesticides/notices/active/')
-            assert self.client.get(page, {'past': 1}).context['map_config']['notices_url'] == url
+            assert self.client.get(page, {'past': 1, 'month': 'all'}).context['map_config']['notices_url'] == url
             month = self.client.get(page, {'past': 1, 'archive_year': 2020, 'month': 1}).context['map_config']['notices_url']
             assert month.startswith(url + '?') and 'year=2020' in month and 'month=1' in month
 
@@ -433,11 +484,20 @@ class NoticeModeTests(TestCase):
         for page in (reverse('pesticides:notice-list'), self.tab):
             scheduled = self.client.get(page).context['map_config']['section_notices_url']
             assert 'past=1' not in scheduled
-            past = self.client.get(page, {'past': 1}).context['map_config']['section_notices_url']
+            past = self.client.get(page, {'past': 1, 'month': 'all'}).context['map_config']['section_notices_url']
             assert past.startswith(reverse('pesticides:notice-list') + '?section={id}') and 'past=1' in past
-            assert 'month=' not in past
+            assert 'month=all' in past and 'archive_year' not in past
+            newest = self.client.get(page, {'past': 1}).context['map_config']['section_notices_url']
+            assert 'archive_year=2020' in newest and 'month=1' in newest
             month = self.client.get(page, {'past': 1, 'archive_year': 2020, 'month': 1}).context['map_config']['section_notices_url']
             assert 'past=1' in month and 'archive_year=2020' in month and 'month=1' in month
+
+    def test_options_label_follows_the_mode(self):
+        for page in (reverse('pesticides:notice-list'), self.tab):
+            assert 'Notices of intent</label>' in self.client.get(page).content.decode()
+            assert 'Past notices</label>' not in self.client.get(page).content.decode()
+            past = self.client.get(page, {'past': 1}).content.decode()
+            assert 'Past notices</label>' in past and 'Notices of intent</label>' not in past
 
     def test_tab_skips_the_upcoming_context(self):
         context = self.client.get(self.tab).context

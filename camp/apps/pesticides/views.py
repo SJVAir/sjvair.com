@@ -1907,8 +1907,18 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
         # stale one in the address (Scheduled chosen after a month) is ignored.
         data = self.form.cleaned_data
         self.archive_year = data.get('archive_year') if self.mode == 'past' else None
-        self.archive_month = data.get('month') if self.mode == 'past' else None
+        month = data.get('month') if self.mode == 'past' else None
+        # `month=all` is the explicit "every month" choice; a month is a number.
+        self.archive_all = month == 'all'
+        self.archive_month = None if self.archive_all else month
+        self._archive_months = None
         self.year, self.all_years = stats.resolve_year_param(request.GET.get('year'))
+        # Past with no month asked for lands on the newest month that has an
+        # archived notice under the page's filters; none, and it's all (empty).
+        if self.mode == 'past' and not (self.archive_all or self.archive_year or self.archive_month):
+            months = self.get_archive_months()
+            if months:
+                self.archive_year, self.archive_month = months[0]['year'], months[0]['month']
         return super().dispatch(request, *args, **kwargs)
 
     def filtered_notices(self):
@@ -1965,6 +1975,11 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
         """
         if self.mode != 'past':
             return []
+        if self._archive_months is None:
+            self._archive_months = self._build_archive_months()
+        return self._archive_months
+
+    def _build_archive_months(self):
         cutoff = timezone.now() - timedelta(days=stats.NOTICE_GRACE_DAYS)
         months = (
             self.filtered_notices()
@@ -2008,8 +2023,12 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
         if self.mode != 'past':
             return ''
         params = {'past': 1}
-        if self.archive_year and self.archive_month:
-            params.update(archive_year=self.archive_year, month=self.archive_month)
+        if self.archive_year:
+            params['archive_year'] = self.archive_year
+        if self.archive_month:
+            params['month'] = self.archive_month
+        elif self.archive_all:
+            params['month'] = 'all'
         return urlencode(params)
 
     def get_notices_url(self):
@@ -2017,8 +2036,13 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
         if self.mode != 'past':
             return None
         url = reverse('api:v2:pesticides:notice-archive')
-        if self.archive_year and self.archive_month:
-            url += '?' + urlencode({'year': self.archive_year, 'month': self.archive_month})
+        params = {}
+        if self.archive_year:
+            params['year'] = self.archive_year
+            if self.archive_month:
+                params['month'] = self.archive_month
+        if params:
+            url += '?' + urlencode(params)
         return url
 
     def get_map_config(self):
@@ -2062,6 +2086,7 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
             clear_filters_url=self.get_clear_filters_url(),
             filter_year=self.archive_year,
             filter_month=self.archive_month,
+            filter_all_months=self.archive_all,
             filter_month_label=f'{calendar.month_name[self.archive_month]} {self.archive_year}' if self.archive_year and self.archive_month else '',
             **year_ctx,
             **kwargs,
