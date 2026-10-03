@@ -1,0 +1,26 @@
+<section class="box find-area" id="find" data-maptiler-key="{{ maptiler_key }}" data-near-url="{% if find_near_url %}{{ find_near_url }}{% else %}{% url 'emissions:near-me' %}{% endif %}" data-year="{{ year }}" data-query="{{ region_qs|default:find_area_qs }}">
+    <h2 class="title is-5">Find your area</h2>
+    <div class="field has-addons">
+        <div class="control is-expanded has-icons-left">
+            <input class="input" type="search" id="find-area-query" placeholder="Search a city, ZIP, county, or address" autocomplete="off" aria-label="Search a city, ZIP, county, or address" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="find-area-results"{% if focus_find %} autofocus{% endif %}>
+            <span class="icon is-left"><span class="fa-regular fa-magnifying-glass"></span></span>
+        </div>
+        <div class="control"><button type="button" class="button is-primary" id="find-area-locate" aria-label="Use my location" title="Use my location"><span class="icon"><span class="fa-regular fa-location-crosshairs"></span></span>{# Icon-only in a narrow sidebar (compact) and on phones, so the search field keeps its room. #}<span class="{% if compact %}is-sr-only{% else %}is-hidden-mobile{% endif %}">Use my location</span></button></div>
+    </div>
+    <ul class="find-area-results" id="find-area-results" role="listbox" hidden></ul>
+    <p class="help" id="find-area-status"></p>
+    {% if find_area_counties %}
+        <p class="find-area-counties">
+            <span class="has-text-grey">Or jump to a county:</span>
+            {% for county in find_area_counties %}<a href="{{ county.url }}{{ find_area_qs }}">{{ county.short_name }}</a>{% if not forloop.last %}<span class="find-area-sep" aria-hidden="true">·</span>{% endif %}{% endfor %}
+        </p>
+    {% endif %}
+    {% if find_area_ab617 %}
+        <p class="find-area-counties">
+            <span class="has-text-grey"><span class="icon is-small has-tooltip-multiline has-tooltip-arrow" data-tooltip="Communities CARB has selected under AB 617 (2017) for community air monitoring and emissions-reduction plans, run with the Valley Air District."><span class="fa-regular fa-circle-info" aria-hidden="true"></span></span> AB 617 communities:</span>
+            {% for community in find_area_ab617 %}<a href="{{ community.url }}{{ find_area_qs }}">{{ community.name }}</a>{% if not forloop.last %}<span class="find-area-sep" aria-hidden="true">·</span>{% endif %}{% endfor %}
+        </p>
+    {% endif %}
+    <p class="is-size-7 has-text-grey">Address searches are sent to MapTiler; place names are matched here in your browser. We don't store locations.</p>
+    {{ find_area_places|json_script:"find-area-places" }}
+</section>

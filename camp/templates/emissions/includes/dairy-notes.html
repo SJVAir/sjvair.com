@@ -1,0 +1,3 @@
+{% comment %}A dairy tab's foot, with or without dairies this year: the county's CARB estimate link (off county pages) and what the numbers are.{% endcomment %}
+{% if county_dairies_url %}<p class="mt-4">CARB estimates dairy emissions by county: <a href="{{ county_dairies_url }}{{ scope_qs }}">{{ county_region.name }} dairies →</a></p>{% endif %}
+<p class="is-size-7">These are CARB's counts: herds, digesters, and CARB's county estimate of dairy cattle emissions. Nothing here estimates one dairy's emissions. <a href="{% url 'emissions:about' %}#dairies">How the dairy data works</a>.</p>

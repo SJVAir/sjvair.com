@@ -1,0 +1,27 @@
+{% load humanize %}
+{% comment %}
+The facility page's "Schools and child care nearby" card (camp.apps.emissions.schools).
+Context: `nearby` (the two groups; the include is skipped when it's None) and
+`nearby_shown` (rows listed per group before "and N more").
+{% endcomment %}
+<div class="card">
+    <header class="card-header"><p class="card-header-title">Schools and child care nearby</p></header>
+    <div class="card-content">
+        {% if nearby.within_1000ft or nearby.within_quarter_mile %}
+        {% for heading, rows, more in nearby_groups %}
+        {% if rows %}
+        <p class="heading{% if not forloop.first %} mt-3{% endif %} mb-1">{{ heading }}</p>
+        <ul class="nearby-list">
+            {% for row in rows|slice:nearby_shown %}
+            <li>{{ row.name }} <span class="has-text-grey is-size-7">{{ row.type_label }} · {{ row.feet|intcomma }} ft</span></li>
+            {% endfor %}
+        </ul>
+        {% if more %}<p class="is-size-7 has-text-grey">and {{ more|intcomma }} more</p>{% endif %}
+        {% endif %}
+        {% endfor %}
+        {% else %}
+        <p>None within ¼ mile.</p>
+        {% endif %}
+        <p class="is-size-7 has-text-grey mt-3">Straight-line distances between map points. <a href="{% url 'emissions:about' %}#schools">Why 1,000 ft and ¼ mile</a></p>
+    </div>
+</div>

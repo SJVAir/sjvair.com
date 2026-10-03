@@ -1,0 +1,40 @@
+{# emissions_explorer last: its percent and signed_pct (whole percents) win over the pesticides ones of the same name. #}
+{% load humanize pesticides_explorer emissions_explorer %}
+{% comment %}
+Dairies (DairyHerd rows from dairies.table) as a table. On the Dairies tab it's
+`sortable`, and with `zoom` a name moves the tab's map to the dairy
+(dairy-map.js). `hide_county` hides the County column too -- a county dairy
+page hides it (the page is the county).
+{% endcomment %}
+<div class="table-container">
+<table class="table is-fullwidth is-hoverable is-narrow dairy-table is-stacked-mobile">
+    <thead>
+        <tr>
+            <th>{% if sortable %}{% sort_link 'name' 'Dairy' %}{% else %}Dairy{% endif %}</th>
+            <th>{% if sortable %}{% sort_link 'city' 'City' %}{% else %}City{% endif %}</th>
+            {% if not hide_county %}<th>{% if sortable %}{% sort_link 'county' 'County' %}{% else %}County{% endif %}</th>{% endif %}
+            <th class="has-text-right">{% if sortable %}{% sort_link 'mature_cows' 'Mature dairy cows' %}{% else %}Mature dairy cows{% endif %}</th>
+            <th class="has-text-right">Other cattle</th>
+            <th>EPA size</th>
+            <th>Digester since</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for herd in rows %}
+        {% with dairy=herd.dairy %}
+        <tr>
+            <td class="cell-name">{% if zoom %}<a href="#dairy-map" class="dairy-zoom" data-dairy="{{ dairy.sqid }}" data-lng="{{ dairy.point.x|stringformat:'.5f' }}" data-lat="{{ dairy.point.y|stringformat:'.5f' }}">{{ dairy.name }}</a>{% else %}{{ dairy.name }}{% endif %}</td>
+            <td class="cell-meta">{% dairy_city dairy %}</td>
+            {% if not hide_county %}<td class="cell-meta"><a href="{{ dairy.county.get_emissions_dairies_url }}{{ region_qs }}">{{ dairy.county.name|cut:" County" }}</a></td>{% endif %}
+            <td class="has-text-right cell-value"{% if herd.mature_cows is not None %} data-unit="cows"{% endif %}>{{ herd.mature_cows|whole }}</td>
+            <td class="has-text-right cell-meta"{% if herd.other_cattle is not None %} data-unit="other cattle"{% endif %}>{{ herd.other_cattle|whole }}</td>
+            <td class="cell-meta" data-label="EPA size">{{ herd.get_size_class_display }}</td>
+            <td class="cell-meta{% if not herd.digester %} is-none{% endif %}" data-label="Digester since">{% if herd.digester %}{% if herd.digester_since %}{{ herd.digester_since }}{% else %}<span title="Start year unknown">yes</span>{% endif %}{% else %}—{% endif %}</td>
+        </tr>
+        {% endwith %}
+        {% empty %}
+        <tr><td colspan="7">No dairies match.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>

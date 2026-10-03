@@ -1,0 +1,151 @@
+{% extends 'emissions/base.html' %}
+{% load humanize %}
+
+{% block title %}About the data | {{ block.super }}{% endblock %}
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">About</a></li>{% endblock %}
+
+{% block explorer-content %}
+<div class="columns about-layout">
+{# The contents first in the markup: at the top on a phone, a sticky column #}
+{# beside the text on a desktop (the pesticides About's layout). #}
+<nav class="column is-3-desktop about-toc" aria-label="On this page">
+    <p class="menu-label">On this page</p>
+    <ul class="menu-list">
+        <li><a href="#coverage">What this covers</a></li>
+        <li><a href="#districts">Two air districts</a></li>
+        <li><a href="#carb-estimates">CARB's estimates of all sources</a></li>
+        <li><a href="#units">Pollutants and units</a></li>
+        <li><a href="#minor-sources">Minor sources</a></li>
+        <li><a href="#years">Years and changes</a></li>
+        <li><a href="#weighted-toxics">Toxicity-weighted emissions</a></li>
+        <li><a href="#dairies">Dairies</a></li>
+        <li><a href="#schools">Schools and child care</a></li>
+        <li><a href="#calenviroscreen">CalEnviroScreen</a></li>
+        <li><a href="#compliance">Compliance</a></li>
+        <li><a href="#ammonia">Ammonia</a></li>
+        <li><a href="#oil-gas">Oil and gas</a></li>
+        <li><a href="#greenhouse-gases">Greenhouse gases</a></li>
+        <li><a href="#methane">Methane</a></li>
+        <li><a href="#sources">Sources</a></li>
+    </ul>
+</nav>
+<div class="column about-main">
+<div class="content explainer">
+<h2 id="coverage">What this covers</h2>
+<p>The Facility Emissions Explorer shows air pollution reported by <strong>permitted stationary sources</strong> in the San Joaquin Valley's eight counties: power plants, glass and cement plants, oil fields, food processors, dairies with permits, landfills, hospitals, gas stations and thousands more. The data is the California Air Resources Board's facility inventory (CEIDARS), which the air districts report to CARB every year. For the Valley's dairies, permitted or not, see <a href="#dairies">Dairies</a>.</p>
+<p>It does <strong>not</strong> cover cars and trucks, farm equipment, trains, most farming and dust, consumer products, wildfires, or facilities too small to need a permit. Those are most of the valley's air pollution; see <a href="#carb-estimates">CARB's estimates of all sources</a>.</p>
+<p>Alongside counties, cities, ZIP areas, census tracts and school districts, the Valley's four <strong>AB 617 communities</strong> -- Arvin/Lamont, South Central Fresno, Shafter and Stockton, selected by CARB for community air monitoring and emissions-reduction planning -- have their own pages too, each linking to its page at the Valley Air District.</p>
+
+<h2 id="districts">Two air districts</h2>
+<p>Seven of the eight counties are entirely within the San Joaquin Valley Air Pollution Control District. Kern County is split: its desert and mountain east is the Eastern Kern Air Pollution Control District, which regulates Kern's largest cement plants, US Borax at Boron and Edwards Air Force Base. Each facility's page names the district that regulates it and how to report a problem to them.</p>
+
+<h2 id="carb-estimates">CARB's estimates of all sources</h2>
+<p>For context, pages compare permitted facilities with CARB's estimate of all emissions in a county: stationary, areawide (farming, dust, consumer products, residential wood burning), mobile (vehicles and equipment) and natural sources. Those estimates come from CARB's CEPAM model, whose most recent inventory uses <strong>2017 as its base year</strong>; every other year is CARB's projection from it, not a new inventory. CARB publishes them in tons per day, which the explorer converts to tons per year.</p>
+
+<h2 id="units">Pollutants and units</h2>
+<ul>
+    <li><strong>NOx</strong> (nitrogen oxides) and <strong>ROG</strong> (reactive organic gases) form ozone and fine particles.</li>
+    <li><strong>Total PM</strong> is all particulate matter. CARB's facility inventory doesn't report PM2.5 by facility, so the explorer shows Total PM and PM10 instead.</li>
+    <li><strong>SOx</strong> (sulfur oxides), <strong>CO</strong> (carbon monoxide) and <strong>TOG</strong> (total organic gases) round out the criteria pollutants.</li>
+    <li>Criteria pollutants are in <strong>tons per year</strong>. <strong>Toxic air contaminants</strong> are in <strong>pounds per year</strong>, because the amounts are small; see <a href="#weighted-toxics">Toxicity-weighted emissions</a> for how they're compared.</li>
+</ul>
+
+<h2 id="minor-sources">Minor sources</h2>
+<p>Gas stations, dry cleaners, auto body shops and small print shops are permitted, but CARB leaves them out of its facility totals by default and counts them in its county-wide estimates instead. The explorer does the same; turn on <em>Include minor sources</em> to add them.</p>
+
+<h2 id="years">Years and changes</h2>
+<p>The explorer covers 2010 onward. The number of facilities grows over those years partly because reporting coverage grew. A large change from one year to the next can reflect a new way of estimating a facility's emissions, not only a real change in what it emitted; facility pages point these out.</p>
+
+<h2 id="weighted-toxics">Toxicity-weighted emissions</h2>
+<p>CARB's inventory lists every toxic air contaminant a facility reports, in pounds. Pounds alone rank ammonia and solvents above diesel particulate and hexavalent chromium, so the explorer's default toxics view weights each pollutant by how toxic it is, the way CARB's own Pollution Mapping Tool does: <strong>cancer-weighted</strong> is pounds × the OEHHA inhalation unit risk × a molecular-weight adjustment factor × 7,700; <strong>hazard-weighted</strong> is pounds ÷ the chronic reference exposure level × 0.01712. The values come from the CARB/OEHHA <a href="https://ww2.arb.ca.gov/resources/documents/consolidated-table-oehha-arb-approved-risk-assessment-health-values">Consolidated Table of health values</a>{% if health_values %}, dated {{ health_values.version }}{% endif %}. A facility's or area's number is shown as its share of the Valley total that year, and every facility that reported a pollutant is included, whether or not the table has a value for it (those without one count as zero). PAHs reported as a total alongside their components aren't weighted, to avoid counting them twice.{% if toxics_import %} Toxics were last fetched from CARB for {{ toxics_import.version }}.{% endif %}</p>
+{% include 'emissions/includes/toxics-caveats.html' %}
+
+<h2 id="dairies">Dairies</h2>
+<p>The <a href="{% url 'emissions:dairy-list' %}">Dairies</a> tab covers what the facility inventory barely sees. CEIDARS lists a handful of permitted livestock facilities; CARB's <strong>California Dairy &amp; Livestock Database (CADD)</strong> locates every dairy CARB tracks, {{ dairy_count|intcomma }} of them in the eight Valley counties.</p>
+<p>Every county, city, community, ZIP area, census tract, school district and AB 617 community has its own dairy page, scoped to that area's dairies. Reach one from its area page, or from the Dairies tab's find box.</p>
+<ul>
+    <li><strong>Counted, not modelled.</strong> CADD gives each dairy's location, its herd by year ({{ dairy_span }}) and its anaerobic digesters. No public dataset reports emissions dairy by dairy, and the explorer doesn't estimate them.</li>
+    <li><strong>Herd size and EPA size classes.</strong> Herds are counted in head: <em>mature dairy cows</em> (milking and dry cows) and <em>other cattle</em> (heifers, calves and beef cattle). Each dairy gets the U.S. EPA's size class for animal feeding operations (<a href="https://www.ecfr.gov/current/title-40/chapter-I/subchapter-D/part-122/subpart-B/section-122.23">40 CFR 122.23</a>) from its counts that year, the larger of the two counts' classes:
+        <ul>
+            {% for size in dairy_size_classes %}<li><strong>{{ size.label }}</strong>: {{ size.threshold }}{% if forloop.last %} (at least one head of cattle){% endif %}.</li>
+            {% endfor %}</ul>
+        A Large one is a Large CAFO (concentrated animal feeding operation) by size alone. A count CADD leaves blank is unknown: it's left out, not counted as zero.</li>
+    <li><strong>Reported and estimated counts.</strong> Each count carries a CADD reference code. Code 1 means the count was reported; the other codes (2a–2f, 3a–3g) mark CARB's estimates and gap fills. Dairy popups star the estimated counts.</li>
+    <li><strong>Which dairies count in a year.</strong> A dairy counts in a year when CADD has a herd for it that year. A dairy with no cattle counted that year (closed, or not yet open) is left out of it.</li>
+    <li><strong>Where a dairy counts.</strong> A dairy counts toward a city or community by its mailing city or its point, whichever falls inside it; it counts toward an urban area, a ZIP area or a census tract by its point only.</li>
+    <li><strong>Coverage grew in 2019.</strong> CADD has herds for {{ dairies_before|intcomma }} Valley dairies in 2018 and {{ dairies_after|intcomma }} in 2019. The two years aren't a like-for-like comparison.</li>
+    <li><strong>Digesters.</strong> CADD lists the year each digester started and, for the few that closed, the year it shut down. A dairy has a digester in a year when one was operating that year.</li>
+    <li><strong>Digester grants.</strong> CDFA's Dairy Digester Research and Development Program lists each grant it has made, the developer, the biogas end use and CDFA's estimate of the annual reduction in tonnes of CO2-equivalent. Dairy popups show a dairy's grants; county dairy pages total them. The reductions are CDFA's estimates, not measurements.</li>
+    <li><strong>County dairy emissions.</strong> The Counties view and the county pages use CARB's county inventory (CEPAM) for dairy cattle waste. The explorer shows its ROG, TOG, total PM and PM10; CARB reports no NOx, SOx or CO from dairy cattle, and CEPAM has no ammonia, so the county dairy pages take dairy-cattle ammonia from EPA's NEI. That's the animals and their manure only. Feed and silage are left out: CARB reports them separately, without assigning them to an animal type, and for ROG they're the larger source, so these figures understate dairies' ROG. Like the rest of CEPAM, these are CARB's projections from its 2017 base year, converted from tons per day to tons per year.</li>
+</ul>
+
+<h2 id="schools">Schools and child care</h2>
+<p>A facility's page lists the public and private schools and licensed child-care centers within 1,000 ft and within ¼ mile of it, from the California Department of Education's school directories and the Department of Social Services' child-care licensing list, and draws them on the facility's map.</p>
+<p>Distances are straight lines from the school's map point to the facility's, not from property lines. 1,000 ft is the distance at which state law (Health &amp; Safety Code 42301.6) requires the air district to notify parents before permitting a source of hazardous air emissions; ¼ mile is the distance school districts must review before siting a school (Education Code 17213). Being nearby isn't a measure of exposure. Child care covers licensed centers only, not family child-care homes.</p>
+<p>The list is left off a facility whose map point can't be trusted to be the site: oil and gas or refinery permit groupings (their addresses are offices, not wells or terminals) and facilities whose address couldn't be matched to a street.</p>
+
+<h2 id="calenviroscreen">CalEnviroScreen</h2>
+<p>Region pages and facility pages show figures from <strong>CalEnviroScreen</strong>, the Office of Environmental Health Hazard Assessment's screening tool that ranks every California census tract by pollution burden and population vulnerability, and from the state's list of <strong>SB 535 disadvantaged communities</strong>, which CalEPA designates from those scores.</p>
+<p>CalEnviroScreen percentiles are OEHHA's, for census tracts, and rank tracts against the rest of California. Figures for a city, ZIP or county are SJVAir's summary of the tracts inside it, not an OEHHA score. The SB 535 disadvantaged-community list shown is CalEPA's 2026 draft until it is final.</p>
+<p>A tract counts toward an area when its centre is inside the area or the area covers at least a tenth of the tract; a place too small to do either is described by the tract it sits in. Tracts OEHHA leaves unscored (too few people, or missing data) count toward populations but not toward percentiles.</p>
+
+<h2 id="compliance">Compliance</h2>
+<p>Facility pages for the largest sources carry a <strong>Compliance (federal Clean Air Act reporting)</strong> card from EPA's ICIS-Air database, where the Valley Air District reports its inspections, notices of violation, settlements and high-priority violations for the sources federal law requires it to track. {% if compliance_stamp and compliance_stamp.data_through %}Reported through {{ compliance_stamp.data_through|date:"N j, Y" }}.{% else %}No compliance data has been imported yet.{% endif %}</p>
+<ul>
+    <li><strong>Only large sources are here.</strong> About 660 of the Valley's 11,000 permitted facilities are tracked in EPA's air compliance system. Smaller sources' inspections and violations aren't published anywhere. A facility with no compliance card isn't known to be in compliance.</li>
+    <li><strong>The record runs late.</strong> The district reports to EPA roughly a year or more behind. Recent quarters look quiet because they haven't been reported yet, not because violations stopped.</li>
+    <li><strong>A notice of violation is an allegation.</strong> Many are settled without any admission, and penalties are negotiated amounts.</li>
+    <li><strong>Names are as reported to EPA</strong> and may be a previous owner's.</li>
+    <li><strong>How facilities are matched.</strong> The district's facility id is embedded in EPA's id, so the match is exact for the Valley Air District's sources; Eastern Kern sources aren't matched yet. The five-year counts are measured back from the newest event EPA has, not from today.</li>
+</ul>
+
+<h2 id="ammonia">Ammonia</h2>
+<p>Ammonia isn't toxic at these levels, but it reacts with other pollution to form fine particles (PM2.5), the Valley's main winter air problem. Most Valley ammonia, about 90%, comes from livestock and fertilizer that aren't permitted facilities; only 7 dairies report ammonia to CARB. County figures are EPA and CARB model estimates for 2023, not measurements.</p>
+<p>Facility ammonia is what each permitted facility reports to CARB, shown in tons per year beside the criteria pollutants (CARB delivers it in its toxics feed, but the explorer never weights or lists it as a toxic). County and Valley totals by source come from EPA's National Emissions Inventory (NEI), whose California point sources are CARB's own inventory resubmitted: the county pages' ammonia bar and the county dairy pages' dairy-cattle tile are EPA's 2023 estimates by source. {% if nei_stamp %}NEI {{ nei_stamp.version }} loaded.{% else %}No NEI data has been loaded yet.{% endif %}</p>
+
+<h2 id="oil-gas">Oil and gas</h2>
+<p>CARB's inventory lists oil and gas production as district permit groupings ("HEAVY OIL WESTERN", "LIGHT OIL") that can cover a whole field, and half of Kern's have no map point at all; where one exists it's the operator's address. So the explorer also shows <strong>where the wells are</strong>: every active, idle and newly permitted well in CalGEM's WellSTAR database (about 66,000 in the eight counties, nearly all in Kern), as an <em>Oil &amp; gas wells</em> overlay on the map, as counts on region pages, and as the schools and child-care centers with a well within 3,200 ft, the distance state law (SB 1137) sets for a health protection zone around homes, schools and other sensitive receptors.</p>
+<p>Well counts are CalGEM's regulatory records, not emissions. Idle wells can still leak; plugged wells aren't shown. Health-protection-zone status is CalGEM's and is still being revised. Distances to schools are straight lines from the school's map point (the law measures from property lines). Oil &amp; gas "facilities" in CARB's inventory are permit groupings that can cover a whole field; their map points aren't well locations.</p>
+<p>Well data is a snapshot, refreshed weekly from CalGEM. It isn't broken down by year, so it can't show how many wells were active in a past year, and wells plugged since are gone from it. Spud (drilling start) dates are missing for about half of wells.</p>
+<p>{% if wells_stamp %}Wells last fetched from CalGEM {{ wells_stamp.imported_at|date:"N j, Y" }}; refreshed weekly.{% else %}No well data has been imported yet.{% endif %}</p>
+
+<h2 id="greenhouse-gases">Greenhouse gases</h2>
+<p>Facility pages for the largest emitters carry a <strong>Greenhouse gases</strong> card, and county pages a <strong>Largest greenhouse-gas reporters</strong> table, from two programs: EPA's <a href="https://ghgdata.epa.gov/flight">Greenhouse Gas Reporting Program</a> (GHGRP) and CARB's <a href="https://ww2.arb.ca.gov/mrr-data">Mandatory GHG Reporting</a> (MRR). {% if ghg_stamps.ghgrp or ghg_stamps.mrr %}{% if ghg_stamps.ghgrp %}EPA GHGRP reporting year {{ ghg_stamps.ghgrp.version }}{% if ghg_stamps.mrr %}; {% endif %}{% endif %}{% if ghg_stamps.mrr %}CARB MRR data year {{ ghg_stamps.mrr.version }}{% endif %}.{% else %}No greenhouse-gas data has been imported yet.{% endif %}</p>
+<ul>
+    <li><strong>Greenhouse gases warm the climate; they aren't a local health measure.</strong> Only large emitters (about 10,000 t CO2e a year and up) report, so most facilities have none. Oil and gas production reports for a whole basin, not one site. Fuel sold by suppliers isn't counted here. Dairies don't report to either program.</li>
+    <li><strong>Metric tons.</strong> CO2e is the emitter's own non-biogenic total. CH4 and N2O are tons of the gas, not CO2e; biogenic CO2 (from burning biomass) is shown apart.</li>
+    <li><strong>How reporters are matched.</strong> EPA's registry carries the Valley Air District's facility id for most of its reporters, so those matches are exact. CARB's file has only a name, a city and a ZIP; the largest CARB reporters are matched by hand, the rest only when the name clearly matches a facility in the same ZIP. A reporter we couldn't match still appears on its county's table, never on a facility page.</li>
+    <li><strong>Years differ.</strong> EPA's newest published year is 2023 (EPA has proposed ending the program); CARB publishes the previous year each November.</li>
+</ul>
+
+<h2 id="methane">Methane</h2>
+<p>The maps' <em>Methane sources</em> overlay and the oil &amp; gas pages' lists of methane sources show the methane point sources in <a href="https://carbonmapper.org">Carbon Mapper</a>'s public catalog: plumes seen from aircraft and satellite passes since 2016, clustered into the sites they come from, each with Carbon Mapper's sector, its estimate of the emission rate and how often it was seen.</p>
+<p><strong>We don't attribute a source to a dairy, facility or operator.</strong> A source near a dairy or facility isn't necessarily from it, and which operator a plume belongs to is for researchers and regulators to establish, not for us to infer from the map. Each source is shown by its own location and Carbon Mapper's sector only.</p>
+<div class="notification is-light">
+    <p>Plumes are snapshots from aircraft and satellite passes. Each rate is an instantaneous estimate with wide uncertainty, not an annual total. A site with no plume hasn't been shown to be clean: it may not have been overflown, or the plume was below detection. Methane is a climate pollutant, not a direct local toxic. Data by Carbon Mapper®, for non-commercial use.</p>
+</div>
+<p class="is-size-7 has-text-grey"><a href="https://carbonmapper.org">Data by Carbon Mapper®</a>, under Carbon Mapper's <a href="https://carbonmapper.org/terms">non-commercial terms</a>: the sources, plumes and plume images are also available through SJVAir's public API (<code>/api/2.0/emissions/methane/</code>), for non-commercial use with the same attribution and share-alike licence carried in every response. Every rate shown is a Carbon Mapper estimate, not SJVAir's.</p>
+
+<h2 id="sources">Sources</h2>
+<ul>
+    <li><a href="https://ww2.arb.ca.gov/criteria-pollutant-emission-inventory-data">CARB facility emissions inventory (CEIDARS)</a></li>
+    <li><a href="https://ww2.arb.ca.gov/resources/documents/consolidated-table-oehha-arb-approved-risk-assessment-health-values">CARB/OEHHA Consolidated Table of health values</a></li>
+    <li><a href="https://ww2.arb.ca.gov/applications/cepam2019v1-04-standard-emission-tool">CARB CEPAM 2019 emission projections</a></li>
+    <li><a href="https://ww2.arb.ca.gov/california-air-districts">CARB air district directory</a> and <a href="https://gis.data.ca.gov/datasets/CaliforniaARB::california-air-district-boundaries/about">district boundaries</a></li>
+    <li><a href="https://ww2.arb.ca.gov/california-dairy-livestock-database-cadd">CARB California Dairy &amp; Livestock Database (CADD)</a></li>
+    <li><a href="https://data.ca.gov/dataset/california-public-schools-2025-26">CDE public schools</a>, <a href="https://data.ca.gov/dataset/california-private-schools-2024-25">CDE private schools</a> and <a href="https://data.ca.gov/dataset/community-care-licensing-facilities1">CDSS licensed child-care facilities</a></li>
+    <li><a href="https://oehha.ca.gov/calenviroscreen">OEHHA CalEnviroScreen</a> and <a href="https://calepa.ca.gov/envjustice/ghginvest/">CalEPA SB 535 disadvantaged communities</a></li>
+    <li><a href="https://echo.epa.gov/tools/data-downloads">EPA ECHO / ICIS-Air data downloads</a></li>
+    <li><a href="https://www.epa.gov/air-emissions-inventories/2023-nei-supporting-data-and-summaries">EPA 2023 National Emissions Inventory data summaries</a></li>
+    <li><a href="https://data.ca.gov/dataset/wellstar-oil-and-gas-wells">CalGEM WellSTAR oil and gas wells</a></li>
+    <li><a href="https://carbonmapper.org/data">Carbon Mapper methane point sources</a> (Data by Carbon Mapper®, non-commercial terms)</li>
+    <li><a href="https://www.cdfa.ca.gov/oefi/DDRDP/docs/DDRDP_Project_Level_Data.pdf">CDFA Dairy Digester Research and Development Program project-level data</a></li>
+    <li><a href="https://ghgdata.epa.gov/flight">EPA Greenhouse Gas Reporting Program (FLIGHT)</a> via <a href="https://www.epa.gov/enviro/greenhouse-gas-customized-search">Envirofacts</a></li>
+    <li><a href="https://ww2.arb.ca.gov/mrr-data">CARB Mandatory GHG Reporting data</a></li>
+</ul>
+
+<p class="is-size-7 has-text-grey">Header photo: <a href="https://commons.wikimedia.org/wiki/File:Pumpjacks,_San_Joaquin_Valley,_California.jpg">Pumpjacks, San Joaquin Valley, California</a> by Downtowngal, <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>, resized, cropped and darkened.</p>
+</div>
+</div>
+</div>
+{% endblock %}

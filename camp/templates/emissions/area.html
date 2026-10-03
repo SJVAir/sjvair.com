@@ -1,0 +1,46 @@
+{% extends 'emissions/base.html' %}
+{% load humanize emissions_explorer %}
+
+{% block title %}{{ title }} | {{ block.super }}{% endblock %}
+{% block breadcrumb-list %}{% for crumb in area_crumbs|slice:":-1" %}<li><a href="{{ crumb.url }}">{{ crumb.label }}</a></li>{% endfor %}<li class="is-active"><a aria-current="page">{{ title }}</a></li>{% endblock %}
+
+{% block explorer-content %}
+{% include 'regions/includes/area-header.html' %}
+
+{% if tab == 'overview' %}
+<div class="level stat-row box" id="facilities">
+    <div class="level-item has-text-centered"><div><p class="heading">Facilities in {{ year }}</p><p class="title">{{ totals.facilities|intcomma }}</p><p class="stat-note"></p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">{% if pollutant.weighted %}Share of the Valley's {{ pollutant.label|lower }} toxics{% else %}{{ pollutant.name }}{% endif %}</p><p class="title">{{ total|amount:pollutant }}{% if not pollutant.weighted %} <span class="is-size-5">{{ pollutant.unit_label }}</span>{% endif %}</p><p class="stat-note">{{ by_year|year_change:year }}</p></div></div>
+    {% if not share_unit %}
+    <div class="level-item has-text-centered"><div><p class="heading">Per square mile</p><p class="title">{{ per_sq_mi|amount:pollutant }} <span class="is-size-5">{{ pollutant.unit }}/yr</span></p><p class="stat-note"></p></div></div>
+    {% endif %}
+    {% if county_share is not None and county_region != area.region %}
+    <div class="level-item has-text-centered"><div><p class="heading">Share of {{ county_region.name }}</p><p class="title">{{ county_share|percent }}</p><p class="stat-note"></p></div></div>
+    {% endif %}
+</div>
+
+{% include 'emissions/includes/facility-map.html' %}
+
+{# The context and the trend on the left, the top facilities and sectors stacked on the right. #}
+<div class="columns mt-5 overview-columns">
+    <div class="column is-7-desktop">
+        {% if context_bar %}{% include 'emissions/includes/context-bar.html' %}{% endif %}
+        {% if nei_context %}{% include 'emissions/includes/nei-context-bar.html' %}{% endif %}
+        {% if toxics_breakdown %}{% include 'emissions/includes/toxics-breakdown.html' %}{% endif %}
+        {% emissions_trend_chart by_year pollutant year heading="Over time" height=240 %}
+        {% sector_stack_chart sector_stack pollutant year height=240 %}
+        {% if context_trend %}{% context_share_chart context_trend pollutant year height=180 %}{% endif %}
+    </div>
+    <div class="column">
+        {% include 'emissions/includes/rank-card.html' with title='Top facilities' rows=facility_card view_all_url=facilities_tab_url %}
+        <div class="mt-5">{% include 'emissions/includes/rank-card.html' with title='Top sectors' rows=sector_card view_all_url='' %}</div>
+    </div>
+</div>
+
+{% elif tab == 'community' %}
+{% if tract_ces %}{% include 'emissions/includes/tract-ces-card.html' %}{% else %}{% include 'regions/includes/community-card.html' %}{% endif %}
+{% include 'regions/includes/within.html' with within_name=name %}
+{% endif %}
+
+{% if privacy_note %}<p class="is-size-7 has-text-grey mt-5">This page's location is only in its address; we don't store it.</p>{% endif %}
+{% endblock %}

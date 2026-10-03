@@ -1,0 +1,7 @@
+{% comment %}
+The facility map (assets/js/emissions/facility-map.js) in the shared map chrome
+(maps/includes/map.html): zoom, locate and home top-left; the sector filter on
+the full map only; Expand; the legend card the script fills. Its config is
+map_config.map, from views.facility_map_config.
+{% endcomment %}
+{% include 'maps/includes/map.html' with map=map_config.map %}

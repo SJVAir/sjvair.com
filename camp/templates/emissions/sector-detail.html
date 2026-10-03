@@ -1,0 +1,52 @@
+{% extends 'emissions/base.html' %}
+{# emissions_explorer last: its percent and signed_pct (whole percents) win over the pesticides ones of the same name. #}
+{% load humanize pesticides_explorer emissions_explorer %}
+
+{% block title %}{{ sector.label }} | {{ block.super }}{% endblock %}
+{% block breadcrumb-list %}
+<li><a href="{% url 'emissions:sector-list' %}{{ scope_qs }}">Sectors</a></li>
+<li class="is-active"><a aria-current="page">{{ sector.label }}</a></li>
+{% endblock %}
+
+{% block explorer-content %}
+<div class="content">
+    <h1 class="mb-1">{{ sector.label }}</h1>
+    <p>{% sector_description sector %}</p>
+</div>
+
+{% if summary %}
+<div class="level stat-row box">
+    <div class="level-item has-text-centered"><div><p class="heading">Facilities</p><p class="title">{{ summary.facilities|intcomma }}</p><p class="stat-note"></p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">{{ pollutant.name }}, {{ year }}</p><p class="title">{{ summary.value|amount:pollutant }}{% if not pollutant.weighted %} <span class="is-size-5">{{ pollutant.unit_label }}</span>{% endif %}</p><p class="stat-note">{{ trend|year_change:year }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Share of all facilities</p><p class="title">{{ summary.share|percent }}</p><p class="stat-note"></p></div></div>
+</div>
+{% else %}
+<p class="notification is-light">No facilities in this sector reported {{ pollutant.label }} in {{ year }}.</p>
+{% endif %}
+
+{% if kern_callout %}{% include 'emissions/includes/oil-gas-callout.html' with callout=kern_callout %}{% endif %}
+
+<div class="columns">
+    <div class="column">{% emissions_trend_chart trend pollutant year heading="Over time" %}</div>
+    <div class="column">
+        <h2 class="title is-4">By county</h2>
+        <table class="table is-fullwidth is-narrow">
+            <thead><tr><th>County</th><th class="has-text-right">Facilities</th><th class="has-text-right">{{ pollutant.unit_label|capfirst }}</th><th>Share</th></tr></thead>
+            <tbody>
+                {% for row in counties %}
+                <tr><td><a href="{% qs_replace county=row.county.slug %}">{{ row.county.name|cut:" County" }}</a></td><td class="has-text-right">{{ row.facilities|intcomma }}</td><td class="has-text-right">{{ row.value|amount:pollutant }}</td><td>{{ row.share|percent }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% include 'emissions/includes/facility-map.html' %}
+<h2 class="title is-4">Facilities</h2>
+{% include 'emissions/includes/facility-table.html' with sortable=False hide_city=columns.hide_city hide_county=columns.hide_county hide_sector=columns.hide_sector %}
+{% if facility_count > rows|length %}
+<p><a href="{% url 'emissions:facility-list' %}{{ scope_qs }}{% if scope_qs %}&amp;{% else %}?{% endif %}sector={{ sector.value }}">All {{ facility_count|intcomma }} facilities in this sector →</a></p>
+{% endif %}
+
+{% include 'emissions/includes/methane-oil-gas.html' %}
+{% endblock %}

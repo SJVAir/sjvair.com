@@ -1,0 +1,442 @@
+// Emissions explorer additions; the shared explorer chrome is in pesticides.sass (body.pesticides).
+body.emissions
+  // A stats row that stays two by two on a phone (the Dairies tab's four).
+  .stat-row.is-grid-mobile
+    +mobile
+      .level-item
+        flex-basis: 50%
+        margin-bottom: 0.75rem
+      // Half a phone is narrow: a smaller figure that never breaks mid-number.
+      .title
+        font-size: $size-4
+        white-space: nowrap
+  // A stats row of one or two tiles (a facility page's) spreads them to the
+  // box's edges, far apart; it reads better as a group in the middle.
+  .stat-row:not(:has(> .level-item:nth-child(3)))
+    +tablet
+      justify-content: center
+      gap: 4rem
+      .level-item
+        flex-grow: 0
+        margin-right: 0
+  .hook
+    // Photo: "Pumpjacks, San Joaquin Valley, California" by Downtowngal
+    // (east of Paso Robles, 2011), Wikimedia Commons, CC BY-SA 3.0; credited
+    // on the about page. Cropped to the hills and pumpjacks, and darkened
+    // for the white title over a bright sky.
+    background-image: linear-gradient(180deg, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0.6) 100%), url('/static/img/pumpjacks-san-joaquin-valley.jpg')
+    background-position: center 60%
+  // Duotone colours for the emissions explorer's own icons (the tabs and the
+  // map toolbar), alongside the shared palette in pesticides.sass.
+  .explorer-icon
+    &.is-schools
+      --fa-primary-color: #2f9e44
+      --fa-secondary-color: #b2f2bb
+    &.is-facilities
+      --fa-primary-color: #d35400
+      --fa-secondary-color: #ffc078
+    &.is-areas
+      --fa-primary-color: #{$primary}
+      --fa-secondary-color: #9ed0f5
+    &.is-sectors
+      --fa-primary-color: #7b4fb8
+      --fa-secondary-color: #c9a7ff
+    &.is-level
+      --fa-primary-color: #2e8b57
+      --fa-secondary-color: #9acd32
+    &.is-measure
+      --fa-primary-color: #5a6b7b
+      --fa-secondary-color: #c8d1da
+    // The Dairies tab's own filters: the size classes' amber-brown ramp, and
+    // the digester ring's green (dairy-map.js's DIGESTER_COLOR).
+    &.is-size
+      --fa-primary-color: #b45309
+      --fa-secondary-color: #fbbf24
+    &.is-digester
+      --fa-primary-color: #2e7d32
+      --fa-secondary-color: #a5d6a7
+    // The facility map's Areas-view year comparison, matching the
+    // pesticides map's own Compare control.
+    &.is-compare
+      --fa-primary-color: #6a3d9a
+      --fa-secondary-color: #cab2d6
+    // The About tab's circle-info: a slate circle with a white "i" on the
+    // white active tab (without its own colours both layers were one colour).
+    &.is-about
+      --fa-primary-color: #{$white}
+      --fa-secondary-color: #5a6b7b
+    // The Oil & gas wells section heading (wells-block.html); the pumpjack
+    // brown of the map overlay's Active well colour.
+    &.is-wells
+      --fa-primary-color: #7c2d12
+      --fa-secondary-color: #d9a679
+    // The cow (the Dairies tabs): the size classes' amber-brown. These sat
+    // nested under the About rule above, a selector nothing matched, so the
+    // cow took the text colour -- link blue when its tab was current.
+    &.is-dairies
+      --fa-primary-color: #b45309
+      --fa-secondary-color: #fcd34d
+  // On the dark hero (inactive tab) it inverts: a white circle, a slate "i".
+  .hook .explorer-nav li:not(.is-active) .explorer-icon.is-about
+    --fa-primary-color: #5a6b7b
+    --fa-secondary-color: rgba(255, 255, 255, 0.92)
+  // The scope bar's two toggles, while off (on, they go white on the orange
+  // fill): toxics in a warning red, minor sources in a fuel-pump gold.
+  .explorer-scope-toggle:not(.is-set) .explorer-icon
+    &.is-toxics
+      --fa-primary-color: #c0392b
+      --fa-secondary-color: #f4a3a0
+    &.is-minor
+      --fa-primary-color: #b7791f
+      --fa-secondary-color: #f6d58e
+  // On the selected (blue) half of the Facilities | Areas switch, go white.
+  .facility-map-view .button.is-link .explorer-icon
+    --fa-primary-color: #fff
+    --fa-secondary-color: rgba(255, 255, 255, 0.6)
+  // Scope options that don't apply on a page (the Dairies tab): shown, not links.
+  .explorer-scope-picker .dropdown-item.is-disabled
+    color: $grey-light
+    cursor: not-allowed
+    &:hover
+      background-color: transparent
+  .explorer-scope-group
+    font-size: 0.7rem
+    text-transform: uppercase
+    letter-spacing: 0.05em
+    color: $grey
+    pointer-events: none
+  // A region or near-me page's in-page links under its heading.
+  .section-nav
+    margin-top: -0.5rem
+    a
+      white-space: nowrap
+  // Clear of the pinned scope bar (pesticides.sass .breadcrumbs), which
+  // wraps to two rows on a phone.
+  #facilities, #dairies, #in-and-around
+    scroll-margin-top: 4.5rem
+    +mobile
+      scroll-margin-top: 6.5rem
+  // A chart's one-line caption (the dairy emissions chart's source note).
+  .explorer-chart .chart-note
+    margin-top: 0.35rem
+  // A region page's Dairies block outside CADD's years, and a county line
+  // for a pollutant CARB doesn't report for dairy cattle.
+  .dairy-block.is-greyed, .dairy-county-line.is-greyed
+    color: $grey
+    .title
+      color: $grey
+  .emissions-context-bar
+    display: flex
+    height: 1.25rem
+    border-radius: 4px
+    overflow: hidden
+    margin: 0.75rem 0 0.5rem
+  .segment, .swatch
+    &.is-stationary
+      background: #08519c
+    &.is-areawide
+      background: #6baed6
+    &.is-mobile
+      background: #9ecae1
+    &.is-natural
+      background: #deebf7
+    &.is-nei-dairy
+      background: #7b4a12
+    &.is-nei-livestock
+      background: #b8772a
+    &.is-nei-fertilizer
+      background: #4a7c59
+    &.is-nei-other
+      background: #9aa5b1
+  .toxics-breakdown
+    .segment, .swatch
+      &.is-toxic-1
+        background: #08306b
+      &.is-toxic-2
+        background: #08519c
+      &.is-toxic-3
+        background: #2171b5
+      &.is-toxic-4
+        background: #4292c6
+      &.is-toxic-5
+        background: #6baed6
+      &.is-toxic-6
+        background: #9ecae1
+      &.is-toxic-7
+        background: #c6dbef
+      &.is-toxic-8
+        background: #deebf7
+      &.is-toxic-9
+        background: #bdbdbd
+  .hazard-dot
+    display: inline-block
+    width: 0.6rem
+    height: 0.6rem
+    border-radius: 50%
+    background: #d35400
+  .hot-spots-values
+    dt
+      font-weight: 600
+      margin-top: 0.5rem
+    dd
+      margin-left: 0
+  .segment
+    height: 100%
+  .emissions-legend
+    display: flex
+    flex-wrap: wrap
+    gap: 0.25rem 1rem
+    font-size: 0.875rem
+  .swatch
+    display: inline-block
+    width: 0.75rem
+    height: 0.75rem
+    margin-right: 0.3rem
+    border-radius: 2px
+    vertical-align: middle
+  // The facility map legend's Oil & gas wells checkbox row and, while it's
+  // on, the status/HPZ key -- and the wells-block section on region and
+  // near-me pages.
+  .legend-overlay
+    margin-top: 0.5rem
+    padding-top: 0.5rem
+    border-top: 1px solid $grey-lighter
+  .legend-toggle
+    display: flex
+    align-items: center
+    gap: 0.4rem
+    font-weight: 600
+  .legend-wells
+    display: flex
+    flex-wrap: wrap
+    gap: 0.25rem 0.75rem
+    margin: 0.25rem 0
+  .legend-swatch.is-well
+    width: 0.7rem
+    height: 0.7rem
+    border-radius: 50%
+    display: inline-block
+    margin-right: 0.25rem
+    &.is-hpz
+      background: transparent
+      border: 2px solid #dc2626
+    // Methane sources (Carbon Mapper) legend row: same round swatch, dimmed
+    // to match the map layer's own circle-opacity.
+    &.is-methane
+      border-radius: 50%
+      opacity: 0.7
+  .wells-block
+    .wells-schools
+      margin-top: 0.5rem
+  .oil-gas-callout
+    margin: 0.5rem 0 1rem
+  // The About page's sections are h2s (the pesticides About's are h3s):
+  // clear of the sticky scope bar when a contents link jumps to one.
+  .about-layout .explainer h2
+    scroll-margin-top: 5rem
+  // Sixteen sections: on a phone the contents list is two tight columns,
+  // not a screen of links before the text starts.
+  +mobile
+    .about-toc .menu-list
+      columns: 2
+      column-gap: 1rem
+      font-size: $size-7
+      a
+        padding: 0.2rem 0
+  // A card's rows past its first five (rank-card.html), until its View all
+  // (explorer.js's [data-reveal-toggle]) reveals them.
+  [data-reveal-scope] .is-collapsed:not(.is-revealed)
+    display: none
+  .related-card button.view-all
+    height: auto
+    padding: 0.75rem 1rem
+    text-decoration: none
+    color: $link
+    font-size: 0.8rem
+    font-weight: 600
+  // The dairy headline's second, smaller tier (dairy-stats.html): estimates
+  // and funding, labelled, left-aligned, a step down from the herd's numbers.
+  .dairy-estimates
+    margin-top: -0.5rem
+    padding: 1rem 1.25rem
+    border: 1px solid $grey-lighter
+    border-radius: $radius-large
+    dl
+      display: grid
+      grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr))
+      gap: 0.75rem 1.5rem
+      margin-top: 0.4rem
+    dt
+      color: $grey-dark
+      font-size: $size-7
+    dd
+      margin: 0
+      strong
+        font-size: $size-4
+        font-variant-numeric: tabular-nums
+  // A region Overview's right column stacks its two cards: each its own
+  // height, not the column's (the pesticides card stretches to fill a row).
+  .overview-columns .related-card
+    height: auto
+  // ...and its trend takes the left column's full width (pesticides caps a
+  // trend at 32rem, sized for a narrow column of its own).
+  .overview-columns .trend-chart
+    max-width: none
+  .toxics-lead
+    font-size: $size-7
+    color: $grey-dark
+    margin: 0.75rem 0 0
+    + .data-notes
+      margin-top: 0.25rem
+  // A table's supporting links (city, county, sector) read as text until
+  // hovered, so the row's own link, the facility or dairy, is what stands out.
+  .facility-table, .dairy-table
+    td.cell-meta a
+      color: inherit
+      &:hover
+        color: $link
+        text-decoration: underline
+  .nowrap
+    white-space: nowrap
+  // The bar and its percent stay on one line; the sector name takes the wrap.
+  .share-cell
+    white-space: nowrap
+  .share-bar
+    background: #deebf7
+    height: 0.5rem
+    width: 6rem
+    border-radius: 2px
+    display: inline-block
+    margin-right: 0.5rem
+    vertical-align: middle
+    span
+      display: block
+      height: 100%
+      background: #3182bd
+  .sparkline polyline
+    fill: none
+    stroke: #3182bd
+    stroke-width: 1.5
+  .facility-table tr.is-minor td
+    color: #6b7280
+  // A bottom tooltip in a row's last column: anchored to its icon's right edge
+  // so it opens leftward and stays inside the table, instead of centring past
+  // the edge and making the table scroll sideways.
+  [data-tooltip].has-tooltip-bottom.has-tooltip-end::before
+    left: auto
+    right: -0.5rem
+    transform: translate(0, 100%)
+  // Every map on the explorer sits above page content (a heading, a table,
+  // the CARB context box); give it room.
+  .map-wrap
+    margin-bottom: 1.5rem
+  // The facility page's Where / Regulated by cards, in the related-card style.
+  .facility-cards
+    .card
+      height: 100%
+    .card-header
+      box-shadow: none
+      border-bottom: 2px solid $primary
+    .card-content p:last-child
+      margin-bottom: 0
+    // The Counted in tooltip sits inside a .heading (uppercase, spaced):
+    // its text shouldn't inherit that.
+    [data-tooltip]::before
+      text-transform: none
+      letter-spacing: normal
+      font-weight: normal
+  // A phone number never breaks across lines.
+  // "Regulated by ... · phone" and the complaint button on one centred row
+  // (the button is taller than the line, and hung below it on the baseline).
+  .facility-regulator
+    display: flex
+    flex-wrap: wrap
+    align-items: center
+    column-gap: 0.25em
+    row-gap: 0.5rem
+    .button
+      margin-left: 0.75rem !important
+  .facility-regulator a[href^="tel:"]
+    white-space: nowrap
+  // Home: "Find your area" and "Find a facility" side by side, the same height.
+  .find-row
+    .box
+      height: 100%
+    // Styled like the county links in "Find your area" beside it.
+    .find-facility-browse
+      margin-top: 0.75rem
+      font-size: $size-7
+      a
+        font-weight: 600
+      .find-area-sep
+        color: $grey-light
+        margin: 0 0.15rem
+      > span:first-child
+        margin-right: 0.25rem
+
+  // On a phone the wide tables become stacked rows, as the pesticides tables
+  // do: the name and its value on one line, everything else a small line
+  // under them, rather than columns scrolling off the right edge. Cells say
+  // their role (cell-rank, -name, -value, -meta), not their column number,
+  // since some columns come and go. The header keeps only its sort links.
+  +mobile
+    .table-container:has(> .is-stacked-mobile)
+      overflow: visible
+    table.is-stacked-mobile
+      &, thead, tbody
+        display: block
+      thead tr
+        display: flex
+        flex-wrap: wrap
+        gap: 0 1rem
+        th
+          border: none
+          padding: 0 0 0.5rem
+          &:not(:has(a))
+            display: none
+      tbody tr
+        display: flex
+        flex-wrap: wrap
+        align-items: baseline
+        gap: 0.1rem 0.5rem
+        padding: 0.6rem 0.25rem
+        border-bottom: 1px solid $grey-lighter
+        // A full-width, zero-height break between the first line (rank, name,
+        // value) and the small lines under it.
+        &::after
+          content: ""
+          order: 4
+          flex-basis: 100%
+          height: 0
+        td
+          display: block
+          border: none
+          padding: 0
+          white-space: normal
+          &[colspan]
+            flex-basis: 100%
+      td.cell-rank
+        order: 1
+        color: $grey
+      td.cell-name
+        order: 2
+        flex: 1 1 0
+        min-width: 0
+      td.cell-value
+        order: 3
+        font-weight: 600
+        white-space: nowrap
+      td.cell-meta
+        order: 5
+        font-size: $size-7
+        color: $grey-dark
+        // An empty or "—" cell is a column's placeholder; stacked, it's noise.
+        &:empty, &.is-none
+          display: none
+      td[data-unit]::after
+        content: " " attr(data-unit)
+        font-weight: normal
+        color: $grey
+      td[data-label]::before
+        content: attr(data-label) ": "
+        color: $grey

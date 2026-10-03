@@ -1,0 +1,38 @@
+{# emissions_explorer last: its percent and signed_pct (whole percents) win over the pesticides ones of the same name. #}
+{% load humanize pesticides_explorer emissions_explorer %}
+{% comment %}
+Facilities as a ranked table. `hide_city` / `hide_county` / `hide_sector` drop
+a column every row would repeat (views.uniform_columns; a sector page's Sector).
+{% endcomment %}
+<div class="table-container">
+<table class="table is-fullwidth is-hoverable is-narrow facility-table is-stacked-mobile">
+    <thead>
+        <tr>
+            <th class="has-text-right">{% if sortable %}{% sort_link 'rank' 'Rank' %}{% else %}Rank{% endif %}</th>
+            <th>{% if sortable %}{% sort_link 'name' 'Facility' %}{% else %}Facility{% endif %}</th>
+            {% if not hide_city %}<th>{% if sortable %}{% sort_link 'city' 'City' %}{% else %}City{% endif %}</th>{% endif %}
+            {% if not hide_county %}<th>{% if sortable %}{% sort_link 'county' 'County' %}{% else %}County{% endif %}</th>{% endif %}
+            {% if not hide_sector %}<th>Sector</th>{% endif %}
+            {% with heading=pollutant.label|add:" ("|add:pollutant.unit_label|add:")" %}
+            <th class="has-text-right">{% if sortable %}{% sort_link 'value' heading %}{% else %}{{ heading }}{% endif %}</th>
+            {% endwith %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for rank, record in rows %}
+        {% with facility=record.facility %}
+        <tr{% if facility.is_minor_source %} class="is-minor"{% endif %}>
+            <td class="has-text-right cell-rank">{{ rank|intcomma|default:"—" }}</td>
+            <td class="cell-name"><a href="{{ facility.get_absolute_url }}{{ scope_qs }}">{{ facility.name }}</a></td>
+            {% if not hide_city %}<td class="cell-meta">{% if facility.city %}<a href="{{ facility.city.get_emissions_url }}{{ region_qs }}">{{ facility.city.name }}</a>{% else %}{{ facility.address.city|title }}{% endif %}</td>{% endif %}
+            {% if not hide_county %}<td class="cell-meta">{% if facility.county %}<a href="{{ facility.county.get_emissions_url }}{{ region_qs }}">{{ facility.county.name|cut:" County" }}</a>{% endif %}</td>{% endif %}
+            {% if not hide_sector %}<td class="cell-meta"><a href="{% url 'emissions:sector-detail' facility.sector %}{{ scope_qs }}">{{ facility.get_sector_display }}</a></td>{% endif %}
+            <td class="has-text-right cell-value"{% if record.value is not None and not pollutant.weighted %} data-unit="{{ pollutant.unit_label }}"{% endif %}>{{ record.value|amount:pollutant }}</td>
+        </tr>
+        {% endwith %}
+        {% empty %}
+        <tr><td colspan="6">No facilities match.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
