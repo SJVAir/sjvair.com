@@ -388,3 +388,15 @@ class UniformColumnsTests(TestCase):
     def test_one_row_keeps_every_column(self):
         assert views.uniform_columns(self.rows((1, 10))) == {'hide_city': False, 'hide_county': False}
         assert views.uniform_columns([]) == {'hide_city': False, 'hide_county': False}
+
+
+class PageOfTests(TestCase):
+    """views.page_of: Paginator.get_page, except a zero or negative page is the first (as pesticides' lists)."""
+
+    def test_pages(self):
+        from camp.apps.emissions.views import PAGE_SIZE, page_of
+        rows = list(range(PAGE_SIZE * 3))
+        assert page_of(rows, '2').number == 2
+        assert page_of(rows, '0').number == 1 and page_of(rows, '-4').number == 1
+        assert page_of(rows, 'junk').number == 1 and page_of(rows, None).number == 1
+        assert page_of(rows, '99').number == 3

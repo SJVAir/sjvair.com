@@ -10,7 +10,6 @@ import csv
 from urllib.parse import urlencode
 
 from django.conf import settings
-from django.core.paginator import Paginator
 from django.http import HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -24,7 +23,6 @@ from camp.apps.emissions.views import AREA_PAGE_TYPES, ScopeMixin, radius_area, 
 from camp.apps.regions.models import Region
 from camp.utils import mapconfig
 
-PAGE_SIZE = 50
 VIEW_OPTIONS = (('dairies', 'Dairies'), ('counties', 'Counties'))
 MEASURE_OPTIONS = (
     ('mature_cows', 'Mature dairy cows'),
@@ -288,7 +286,7 @@ class DairyList(DairyScopeMixin, vanilla.TemplateView):
     def get_context_data(self, **kwargs):
         scope = self.get_scope()
         filters = search_filters(self.request.GET)
-        page = Paginator(dairies.table(scope.year, county=scope.county, **filters), PAGE_SIZE).get_page(self.request.GET.get('page'))
+        page = views.page_of(dairies.table(scope.year, county=scope.county, **filters), self.request.GET.get('page'))
         # The find box: every page type's dairy page, and the county jump
         # links; the links carry the scope less the county (the page is the
         # county), the same as the home page's.
@@ -363,7 +361,7 @@ class DairyAreaPage(DairyScopeMixin, vanilla.TemplateView):
         area = self.get_area()
         county = self.carb_county()
         filters = search_filters(self.request.GET)
-        page = Paginator(self.rows(), PAGE_SIZE).get_page(self.request.GET.get('page'))
+        page = views.page_of(self.rows(), self.request.GET.get('page'))
         summary = dairies.summary(scope.year, area=area)
         trend = dairies.trend(area=area)
         # [] off county pages and for a pollutant CARB doesn't report (the

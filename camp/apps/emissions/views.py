@@ -99,6 +99,21 @@ class ScopeMixin:
         return super().get_context_data(**context)
 
 
+def page_of(rows, raw):
+    """
+    A list's page for `?page=` (PAGE_SIZE rows): Paginator.get_page's, except
+    a zero or negative page goes to the first rather than the last, as the
+    pesticides explorer's lists do (NearestPageMixin). Junk is page 1, a page
+    past the end the last.
+    """
+    try:
+        if int(raw) < 1:
+            raw = 1
+    except (TypeError, ValueError):
+        pass
+    return Paginator(rows, PAGE_SIZE).get_page(raw)
+
+
 def sector_options():
     """Sectors A–Z for the pickers, the catch-all "Other" last."""
     return sorted(Facility.Sector.choices, key=lambda choice: (choice[0] == Facility.Sector.OTHER, choice[1]))
@@ -198,7 +213,7 @@ class FacilityList(ScopeMixin, vanilla.TemplateView):
     def get_context_data(self, **kwargs):
         scope = self.get_scope()
         filters = list_filters(self.request.GET)
-        page = Paginator(stats.facility_table(scope, **filters), PAGE_SIZE).get_page(self.request.GET.get('page'))
+        page = page_of(stats.facility_table(scope, **filters), self.request.GET.get('page'))
         return super().get_context_data(
             rows=stats.with_ranks(page.object_list, stats.ranks(scope)),
             page_obj=page,
@@ -948,7 +963,7 @@ class OilGasTabMixin:
 
     def oil_gas_context(self, area, scope, *, facilities_url):
         well_filters = wells.table_filters(self.request.GET)
-        well_page = Paginator(wells.table(area, **well_filters), PAGE_SIZE).get_page(self.request.GET.get('page'))
+        well_page = page_of(wells.table(area, **well_filters), self.request.GET.get('page'))
         return dict(
             page_obj=well_page, is_paginated=well_page.has_other_pages(), well_rows=well_page.object_list,
             sort=well_filters['sort'], filters=well_filters, well_options=wells.filter_options(area),
@@ -1046,7 +1061,7 @@ class AreaPage(OilGasTabMixin, ScopeMixin, vanilla.TemplateView):
             # The facility list's table, filters, sorts, pages and CSV, for the area.
             filters = self.area_filters()
             table = stats.facility_table(scope, **filters)
-            page = Paginator(table, PAGE_SIZE).get_page(self.request.GET.get('page'))
+            page = page_of(table, self.request.GET.get('page'))
             top_rows = stats.with_ranks(page.object_list, stats.ranks(scope))
             kwargs.update(
                 page_obj=page, is_paginated=page.has_other_pages(), sort=filters['sort'], filters=filters,
@@ -1066,7 +1081,7 @@ class AreaPage(OilGasTabMixin, ScopeMixin, vanilla.TemplateView):
             site_filters = schools.site_filters(self.request.GET)
             all_sites = schools.area_sites(area, scope)
             sites = schools.filter_sites(all_sites, **site_filters)
-            site_page = Paginator(sites, PAGE_SIZE).get_page(self.request.GET.get('page'))
+            site_page = page_of(sites, self.request.GET.get('page'))
             region = getattr(area, 'region', None)
             # The districts the area overlaps, beside the map; not on a district's own page.
             districts = [] if region is not None and region.type == Region.Type.SCHOOL_DISTRICT else region_schools.area_districts(
