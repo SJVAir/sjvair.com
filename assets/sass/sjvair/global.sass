@@ -1,9 +1,10 @@
+// Custom properties need interpolation, or Sass emits the variable's name.
 @at-root :root
-    --column-gap: $column-gap
-    --gap: $gap
-    --grey-light: $grey-light
-    --size-5: $size-5
-    --navbar-height: $navbar-height
+    --column-gap: #{$column-gap}
+    --gap: #{$gap}
+    --grey-light: #{$grey-light}
+    --size-5: #{$size-5}
+    --navbar-height: #{$navbar-height}
 
 img, .image > img
     &.is-responsive
@@ -165,3 +166,10 @@ footer.footer
 
         span[class*="fa-"]
             @extend .has-text-grey-light
+
+// bulma-tooltip underlines every span[data-tooltip] with a dashed border. On a
+// disabled item (a greyed-out dropdown option explaining why it's off) that
+// reads as a divider, so disabled items don't get it.
+span[data-tooltip].is-disabled,
+span[data-tooltip][aria-disabled="true"]
+    border-bottom: none

@@ -27,7 +27,7 @@
                     <span class="fa-duotone fa-light fa-fw fa-lg {{ section.icon.name }}"></span>
                     <span>{{ section.category }}</span>
                 </h2>
-                <p class="description">{{ section.description }}</p>
+                <p class="description">{{ section.description|safe }}</p>
             </div>
         </div>
         <div class="columns is-multiline is-centered">

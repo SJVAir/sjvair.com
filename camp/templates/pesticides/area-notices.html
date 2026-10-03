@@ -1,0 +1,63 @@
+{% extends 'regions/area-tab.html' %}
+{% load humanize pesticides_explorer %}
+{% comment %}
+A place page's Notices tab: the notice list narrowed to the place -- what
+SprayDays has scheduled there now, or its archive, with the stat row on
+whichever it's showing -- with the filters beside
+the map.
+{% endcomment %}
+{% block body-class %}{{ block.super }} place area-notices{% endblock %}
+
+{% block tab-stats %}
+<div class="level stat-row box">
+    <div class="level-item has-text-centered">
+        <div>
+            <p class="heading">{% if mode == 'active' %}Scheduled now{% else %}Past notices{% if filter_month_label %} in {{ filter_month_label }}{% endif %}{% endif %}</p>
+            <p class="title">{{ notice_stats.count|intcomma }}</p>
+            <p class="stat-note">notice{{ notice_stats.count|pluralize }}{% if mode == 'active' %} of intent{% endif %}</p>
+        </div>
+    </div>
+    <div class="level-item has-text-centered">
+        <div>
+            <p class="heading">Acres</p>
+            <p class="title">{% if notice_stats.acres is not None %}{{ notice_stats.acres|floatformat:'-1'|intcomma }}{% else %}&mdash;{% endif %}</p>
+            <p class="stat-note">{% if mode == 'active' %}to be treated{% else %}treated{% endif %}</p>
+        </div>
+    </div>
+    <div class="level-item has-text-centered">
+        <div>
+            <p class="heading">Chemicals</p>
+            <p class="title">{{ notice_stats.chemicals|length|intcomma }}</p>
+            <p class="stat-note">restricted materials</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block tab-filters %}{% include 'pesticides/includes/notice-filters.html' %}{% endblock %}
+{% block tab-aside %}
+{% include 'pesticides/includes/notice-archive-months.html' %}
+{% include 'pesticides/includes/spraydays-signup.html' %}
+{% endblock %}
+
+{% block tab-map %}{% include 'pesticides/includes/section-map.html' %}{% endblock %}
+
+{% block tab-table %}
+<p class="summary-sentence mb-3">
+    {{ count }} notice{{ count|pluralize }} {% if mode == 'active' %}currently scheduled{% else %}in the archive{% if filter_month_label %} in {{ filter_month_label }}{% endif %}{% endif %} here.
+</p>
+{% include 'pesticides/includes/notice-rows.html' %}
+{% include 'pesticides/includes/pagination.html' %}
+{% endblock %}
+
+{% block tab-notes %}
+<details class="data-notes">
+    <summary>What this is, and isn't</summary>
+    <ul>
+        <li><strong>A notice of intent is a plan, not a confirmed application.</strong> A grower files one before applying a California-restricted material; the application may happen up to four days after the scheduled date, or not at all.</li>
+        <li><strong>Only restricted materials need one</strong>, so most of the pesticide use on the Overview never appears here. <a href="{% url 'pesticides:about' %}#spraydays">More on notices</a></li>
+        <li><strong>A notice gives the square-mile section, not the field.</strong></li>
+    </ul>
+</details>
+{% if privacy_note %}<p class="is-size-7 has-text-grey mt-5">This page's location is only in its address; we don't store it.</p>{% endif %}
+{% endblock %}

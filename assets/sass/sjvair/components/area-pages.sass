@@ -1,0 +1,67 @@
+// The explorers' shared area pages (templates/regions/): the header and its
+// tab row, a data tab's blocks, and the "What this is, and isn't" panel.
+
+// The tab row sits under the header, before the tab's content, and scrolls
+// sideways on a phone rather than wrapping (Bulma's .tabs).
+.area-header
+  margin-bottom: 1rem !important
+.area-tabs
+  margin-bottom: 1.5rem
+  a
+    font-weight: 600
+  // The same place in another explorer, at the row's right end.
+  .is-cross-link
+    margin-left: auto
+
+// A gap between a data tab's stat row and its map.
+.tab-stats > :last-child
+  margin-bottom: 1.5rem !important
+
+// Nothing beside the map (a tab without filters): the side column goes and
+// the map takes the row.
+.tab-side:not(:has(*))
+  display: none
+
+// "What this is, and isn't": one folded panel at the foot of a section, the
+// same on every section that has caveats.
+.data-notes
+  margin: 0.75rem 0 1.5rem
+  font-size: $size-7
+  color: $grey-dark
+  summary
+    cursor: pointer
+    color: $grey
+    font-weight: 600
+    width: fit-content
+    &:hover
+      color: $link
+  ul
+    list-style: disc
+    margin: 0.4rem 0 0 1.25rem
+
+// "type · run-by" under a school's name in a Schools tab's table.
+.school-kind
+  display: block
+  font-size: $size-7
+  color: $grey
+
+// The school districts a place overlaps, under the schools filters: the
+// largest few, the rest revealed by "Show all".
+.school-districts-box
+  .label
+    @extend .is-size-7
+    @extend .has-text-grey
+    text-transform: uppercase
+    letter-spacing: 0.04em
+  .school-districts-list
+    list-style: none
+    margin: 0
+    li
+      padding: 0.15rem 0
+      &.is-collapsed
+        display: none
+        &.is-revealed
+          display: list-item
+  .school-districts-toggle
+    padding-left: 0
+    margin-top: 0.25rem

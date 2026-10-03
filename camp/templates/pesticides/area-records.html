@@ -1,0 +1,35 @@
+{% extends 'regions/area-tab.html' %}
+{% load humanize pesticides_explorer %}
+{% comment %}
+A place page's Records tab: the confirmed applications reported in the place
+(RecordsBrowser, narrowed to it). Laid out like the Records page: the filters beside the map, the nine-column table the page's full width under them.
+{% endcomment %}
+{% block body-class %}{{ block.super }} place area-records records-page{% endblock %}
+
+{% block tab-stats %}
+<div class="level stat-row box">
+    <div class="level-item has-text-centered">
+        <div><p class="heading">Applications{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ totals.records|intcomma }}</p><p class="stat-note"></p></div>
+    </div>
+    <div class="level-item has-text-centered">
+        <div><p class="heading">Lbs applied</p><p class="title">{{ totals.lbs|lbs }}</p><p class="stat-note"></p></div>
+    </div>
+    <div class="level-item has-text-centered">
+        <div><p class="heading">Acres treated</p><p class="title">{{ totals.acres|lbs }}</p><p class="stat-note">acre-treatments</p></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block tab-filters %}{% include 'pesticides/includes/records-filters.html' %}{% endblock %}
+
+{% block tab-map %}{% include 'pesticides/includes/section-map.html' %}{% endblock %}
+
+{% block tab-table %}
+<p class="summary-sentence mb-3">{{ summary_sentence }}</p>
+{% include 'pesticides/includes/records-table.html' %}
+{% include 'pesticides/includes/pagination.html' %}
+{% endblock %}
+
+{% block tab-notes %}
+{% if privacy_note %}<p class="is-size-7 has-text-grey mt-5">This page's location is only in its address; we don't store it.</p>{% endif %}
+{% endblock %}

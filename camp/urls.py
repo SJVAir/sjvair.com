@@ -34,6 +34,7 @@ urlpatterns = [
     path('account/', include(('camp.apps.accounts.urls', 'account'), namespace='account')),
     path('contact/', include(('camp.apps.contact.urls', 'contact'), namespace='contact')),
     path('support/', include(('camp.apps.helpdesk.urls', 'helpdesk'), namespace='helpdesk')),
+    path('tools/pesticides/', include(('camp.apps.pesticides.urls', 'pesticides'), namespace='pesticides')),
     path('app/', views.GetTheApp.as_view(), name='app'),
 
     # @sjvair/monitor-map specific routes

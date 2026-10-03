@@ -1,0 +1,17 @@
+{% extends 'regions/area-tab.html' %}
+{% comment %}
+A place page's Community tab: how the area sits in CalEnviroScreen, and the
+counties, communities, school districts and ZIP codes in and around it.
+{% endcomment %}
+{% block body-class %}{{ block.super }} place area-community{% endblock %}
+
+{% block tab-body %}
+<div class="columns mt-2">
+    <div class="column is-8-desktop">
+        {% include 'regions/includes/community-card.html' %}
+        {% if not community %}<p class="has-text-grey">CalEnviroScreen isn't loaded here.</p>{% endif %}
+    </div>
+</div>
+{% include 'regions/includes/within.html' with within_name=name %}
+{% if privacy_note %}<p class="is-size-7 has-text-grey mt-5">This page's location is only in its address; we don't store it.</p>{% endif %}
+{% endblock %}

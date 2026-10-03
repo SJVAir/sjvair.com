@@ -5,7 +5,7 @@ from django.utils.text import slugify
 from camp.apps.regions.management.base import CountyFilterMixin
 from camp.apps.regions.models import Region
 from camp.utils import geodata
-from camp.utils.gis import to_multipolygon
+from camp.utils.gis import close_gaps, to_multipolygon
 
 
 class Command(CountyFilterMixin, BaseCommand):
@@ -34,11 +34,17 @@ class Command(CountyFilterMixin, BaseCommand):
                     type=Region.Type.URBAN_AREA,
                     external_id=row.UACE20,
                     version='2020',
-                    geometry=to_multipolygon(row.geometry),
+                    # Caltrans' shapes have a few pieces a hairline off the
+                    # rest (Tulare, Bakersfield, Firebaugh); joined, their
+                    # outlines don't trace both edges side by side.
+                    geometry=close_gaps(to_multipolygon(row.geometry)),
                     metadata={
                         'uace10': row.UACE10,
                         'uace20': row.UACE20,
-                        'population': row.Population,
+                        # The CKAN source's Population column is a float
+                        # (geopandas reads it as float64); the region pages
+                        # want a whole head count, not "717589.0".
+                        'population': int(row.Population),
                         'area_sqm': row.Area_sqm,
                         'urban_area_type': 'urbanized' if row.UrbanAreas == 2 else 'small_urban',
                         'urban_area_code': row.UrbanAreas,

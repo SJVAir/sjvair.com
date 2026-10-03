@@ -5,8 +5,8 @@ from django.urls import reverse
 from django.utils.safestring import mark_safe
 
 from camp.apps.regions.models import Region
-from camp.utils import leaflet
-from camp.utils.admin import LeafletMapMixin, ReadOnlyAdminMixin
+from camp.utils import mapfigure
+from camp.utils.admin import MapFigureMixin, ReadOnlyAdminMixin
 
 from .models import EmissionsRecord, Facility
 
@@ -89,7 +89,7 @@ class EmissionsRecordInline(admin.TabularInline):
 
 
 @admin.register(Facility)
-class FacilityAdmin(LeafletMapMixin, ReadOnlyAdminMixin, admin.GISModelAdmin):
+class FacilityAdmin(MapFigureMixin, ReadOnlyAdminMixin, admin.GISModelAdmin):
     list_display = ['name', 'get_county', 'get_city', 'get_zipcode', 'sic_code', 'is_minor_source', 'has_point', 'latest_year']
     list_filter = [CountyFilter, EmissionsYearFilter, SourceTypeFilter]
     search_fields = ['name', 'address__street', 'address__city']
@@ -123,8 +123,8 @@ class FacilityAdmin(LeafletMapMixin, ReadOnlyAdminMixin, admin.GISModelAdmin):
             return None
         boundary = region.boundary
         width, height = {'landscape': (400, 300), 'portrait': (300, 400)}[boundary.orientation]
-        lmap = leaflet.LeafletMap(width=width, height=height)
-        lmap.add(leaflet.Area(
+        figure = mapfigure.MapFigure(width=width, height=height)
+        figure.add(mapfigure.Area(
             geometry=boundary.geometry,
             fill_color='DodgerBlue',
             border_color='MidnightBlue',
@@ -132,7 +132,7 @@ class FacilityAdmin(LeafletMapMixin, ReadOnlyAdminMixin, admin.GISModelAdmin):
             fill_opacity=0.2,
         ))
         if facility.point:
-            lmap.add(leaflet.Marker(
+            figure.add(mapfigure.Marker(
                 geometry=facility.point,
                 shape='star',
                 size=22,
@@ -140,7 +140,7 @@ class FacilityAdmin(LeafletMapMixin, ReadOnlyAdminMixin, admin.GISModelAdmin):
                 border_color='White',
                 border_width=1,
             ))
-        return lmap.render()
+        return figure.render()
 
     def _render_region_display(self, facility, region):
         if not region:

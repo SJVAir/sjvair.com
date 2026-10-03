@@ -1,0 +1,56 @@
+{% comment %}
+One interactive map and its chrome (assets/js/maps/*): the container, whose
+data-* attributes carry the map's config, then the toolbar row (the map's own
+filters, an Options dropdown, Expand), the status pill, and the Legend card.
+Everything sits inside the wrapper so it comes along in expanded mode. The
+script unhides what it binds, reading which chrome is here from the container's
+data-features (what's rendered wins over the map module's own spec).
+Context: `map`, a camp.utils.mapconfig.map_config().
+{% endcomment %}
+<div class="map-wrap{% if map.compact %} is-compact{% endif %}">
+    <div class="{{ map.container_class }} map-canvas"{% if map.container_id %} id="{{ map.container_id }}"{% endif %}{% for key, value in map.data.items %} data-{{ key }}="{{ value }}"{% endfor %}></div>
+    {% if map.features.toolbar %}
+    <div class="map-toolbar" hidden>
+        {% if map.toolbar_template %}{% include map.toolbar_template %}{% endif %}
+        <div class="map-toolbar-end">
+            {% if map.options_template %}
+            <div class="dropdown is-right map-toolbar-dropdown map-options">
+                <div class="dropdown-trigger">
+                    <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
+                        <span class="icon"><span class="fa-duotone fa-fw fa-gear map-panel-icon is-options" aria-hidden="true"></span></span>
+                        <span class="map-toolbar-label">Options</span>
+                        <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+                    </button>
+                </div>
+                <div class="dropdown-menu" role="menu">
+                    <div class="dropdown-content">{% include map.options_template %}</div>
+                </div>
+            </div>
+            {% endif %}
+            {% if map.features.expand %}
+            {# Icon only; both icons are rendered and CSS shows the one for the current state (the icon font swaps spans for SVGs). #}
+            <button type="button" class="button map-expand" aria-pressed="false" aria-label="Expand the map" title="Expand the map">
+                <span class="icon map-expand-icon is-expand"><span class="fa-regular fa-fw fa-expand" aria-hidden="true"></span></span>
+                <span class="icon map-expand-icon is-compress"><span class="fa-regular fa-fw fa-compress" aria-hidden="true"></span></span>
+            </button>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    {% if map.features.status %}
+    {# What the map is doing (a load, a locate), as a pill at the bottom centre; hidden while empty. #}
+    <span class="map-status" aria-live="polite"></span>
+    {% endif %}
+    {% if map.features.legend %}
+    <div class="map-panel map-legend-panel" data-panel="legend" hidden>
+        <div class="map-panel-head">
+            <button type="button" class="map-panel-toggle" aria-expanded="true"{% if map.container_id %} aria-controls="{{ map.container_id }}-legend"{% endif %}>
+                <span class="fa-duotone fa-fw fa-circle-info map-panel-icon is-legend" aria-hidden="true"></span>
+                <span class="map-panel-title">Legend</span>
+                <span class="fa-regular fa-fw fa-chevron-up map-panel-chevron" aria-hidden="true"></span>
+            </button>
+        </div>
+        <div class="map-panel-body"{% if map.container_id %} id="{{ map.container_id }}-legend"{% endif %}>{% if map.legend_template %}{% include map.legend_template %}{% endif %}</div>
+    </div>
+    {% endif %}
+</div>

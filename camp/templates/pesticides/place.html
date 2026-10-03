@@ -1,0 +1,134 @@
+{% extends 'pesticides/base.html' %}
+{% load humanize pesticides_explorer %}
+
+{% block title %}{{ area.page_title }} | {{ block.super }}{% endblock %}
+{% block body-class %}{{ block.super }} place{% endblock %}
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">{{ area.page_title }}</a></li>{% endblock %}
+
+{% block explorer-content %}
+{% include 'regions/includes/area-header.html' %}
+
+{# Every figure carries a line of context under it, so the row sits on one #}
+{# baseline and each number says what it is: what it was last year, what it #}
+{# is over the ground that reported use, what it covers, how far it #}
+{# reaches, how much of it is flagged. #}
+<div class="level stat-row box">
+    <div class="level-item has-text-centered">
+        <div>
+            <p class="heading">Lbs applied{% if year_label %} in {{ year_label }}{% endif %}</p>
+            <p class="title">{{ totals.lbs|lbs }}</p>
+            <p class="stat-note">{% if lbs_delta %}{{ lbs_delta|delta_phrase }}{% endif %}</p>
+        </div>
+    </div>
+    {% if totals.lbs_per_sqmi %}
+    {# The rate, so a small dense place isn't read as light next to a big one. #}
+    <div class="level-item has-text-centered">
+        <div>
+            <p class="heading">Lbs per sq mi</p>
+            <p class="title">{{ totals.lbs_per_sqmi|lbs }}</p>
+            <p class="stat-note">{% if totals.lbs_per_used_sqmi %}{{ totals.lbs_per_used_sqmi|lbs }} where used{% endif %}</p>
+        </div>
+    </div>
+    {% endif %}
+    <div class="level-item has-text-centered">
+        <div>
+            <p class="heading">Applications</p>
+            <p class="title">{{ totals.applications|default:0|intcomma }}</p>
+            <p class="stat-note">{% if totals.acres %}{{ totals.acres|lbs }} acre-treatments{% endif %}</p>
+        </div>
+    </div>
+    <div class="level-item has-text-centered">
+        <div>
+            <p class="heading">Sections with use</p>
+            <p class="title fraction">{{ totals.sections_used|intcomma }} / {{ totals.sections_total|intcomma }}</p>
+            <p class="stat-note">{% if totals.sections_total %}{% widthratio totals.sections_used totals.sections_total 100 %}% of this area{% endif %}</p>
+        </div>
+    </div>
+    <div class="level-item has-text-centered">
+        <div>
+            <p class="heading">Chemicals used</p>
+            <p class="title">{{ totals.chemicals|default:0|intcomma }}</p>
+            <p class="stat-note">{% if totals.chemicals_flagged %}{{ totals.chemicals_flagged|default:0|intcomma }} flagged{% endif %}</p>
+        </div>
+    </div>
+</div>
+
+{% include 'pesticides/includes/section-map.html' %}
+
+{# As the emissions explorer's area Overview: the wide column says what the #}
+{# scope is made of, then its history; what's applied here is stacked as #}
+{# cards beside it, the scheduled notices at the top of that stack. #}
+<div class="columns mt-5 overview-columns">
+    <div class="column is-7-desktop">
+        {% if by_method %}
+        {# The scope's year, as the stat row and the cards' "Lbs (2023)" read it: a snapshot, not a trend. #}
+        <section class="in-scope">
+            <h2 class="title is-4">{% if all_years %}Across {{ year_label }}{% else %}In {{ year_label }}{% endif %}</h2>
+            <div class="by-method">{% include 'pesticides/includes/method-breakdown.html' %}</div>
+        </section>
+        <hr>
+        {% endif %}
+        <section class="over-time">
+            <h2 class="title is-4">Over time</h2>
+            {% trend_chart by_year year compare=compare_by_year compare_label=compare_label height=240 %}
+            {% if by_method_year %}<div class="mt-5">{% method_stack_chart by_method_year year height=200 %}</div>{% endif %}
+            {% if by_month %}
+                <div class="mt-5">
+                {# The heatmap's top row is the same year the bars drew, so only #}
+                {# one of them runs. The bars are the fallback for a place with a #}
+                {# single year loaded, where a one-row grid would say less. #}
+                {% if by_year_month|length > 1 %}
+                    {% month_heatmap by_year_month year %}
+                {% else %}
+                    {% month_chart by_month year_label %}
+                {% endif %}
+                {% if peak_month %}<p class="mt-3">Spraying peaks in {{ peak_month }} here.</p>{% endif %}
+                </div>
+            {% else %}
+                <p class="has-text-grey">No confirmed applications on record{% if year_label %} for {{ year_label }}{% endif %}.</p>
+            {% endif %}
+        </section>
+    </div>
+    <div class="column top-lists">
+        <div class="box right-now">
+            <p>
+                {% if upcoming_count %}
+                    <strong>{{ upcoming_count }}</strong> notice{{ upcoming_count|pluralize }} scheduled in this area.{% include 'pesticides/includes/note-help.html' with key='noi_meaning' anchor='notices' %}
+                {% else %}
+                    No notices of intent are currently scheduled here.
+                {% endif %}
+            </p>
+            {% if upcoming_count %}<p class="mt-1"><a href="{{ notices_tab_url }}">See them day by day</a></p>{% endif %}
+            <p class="mt-2 mb-0"><a href="{{ spraydays_url }}" target="_blank" rel="noopener">Sign up for SprayDays notices</a> to be alerted before applications happen near you.</p>
+        </div>
+        {# Products before chemicals; under the concern scope the chemicals card's title says what it now is. #}
+        <div class="mt-5">{% include 'pesticides/includes/related-card.html' with card=products_card %}</div>
+        <div class="mt-5">{% include 'pesticides/includes/related-card.html' with card=chemicals_card %}</div>
+        <div class="mt-5">{% include 'pesticides/includes/related-card.html' with card=commodities_card %}</div>
+    </div>
+</div>
+
+{# Full width: two four-column tables don't fit a half. #}
+{% if movers %}
+<section class="movers-section mt-6">
+    {% include 'pesticides/includes/movers.html' with title='Biggest movers' kind='chemicals' %}
+</section>
+{% endif %}
+
+
+{% if privacy_note %}
+<p class="is-size-7 has-text-grey">Your location is only in this page's address bar; we don't store it.</p>
+{% endif %}
+
+<footer class="sources mt-6 has-text-grey is-size-7">
+    <p>
+        Confirmed applications: CDPR Pesticide Use Reporting{% if years %}, {{ years.0 }}–{{ years.1 }}{% endif %}.
+        <a href="{% url 'pesticides:about' %}#about">About this data</a>.
+    </p>
+    <p>
+        Developers: the full records are available through the
+        <a href="{{ api_docs_url }}" hx-boost="false">pesticides API</a> or the
+        <a href="{{ client_docs_url }}" target="_blank" rel="noopener">Python client</a>.
+    </p>
+</footer>
+{% endblock %}

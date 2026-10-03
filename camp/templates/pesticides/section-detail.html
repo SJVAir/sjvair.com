@@ -1,0 +1,32 @@
+{% extends 'pesticides/base.html' %}
+{% load pesticides_explorer %}
+
+{% block title %}Section {{ object.external_id }} | {{ block.super }}{% endblock %}
+{% block body-class %}{{ block.super }} section-detail{% endblock %}
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">Section {{ object.external_id }}</a></li>{% endblock %}
+
+{% block explorer-content %}
+<div class="content detail-header">
+    <h1 class="mb-1">Section {{ object.external_id }}</h1>
+    <p class="identifiers has-text-grey">{% if county_name %}{{ county_name }}{% endif %}</p>
+</div>
+
+{% include 'pesticides/includes/section-stats.html' %}
+
+{% include 'pesticides/includes/section-map.html' %}
+
+{% include 'pesticides/includes/section-summary.html' %}
+
+<footer class="sources mt-6 has-text-grey is-size-7">
+    <p>
+        Confirmed applications: CDPR Pesticide Use Reporting{% if years %}, {{ years.0 }}–{{ years.1 }}{% endif %}.
+        <a href="{% url 'pesticides:about' %}#about">About this data</a>.
+    </p>
+    <p>
+        Developers: the full records are available through the
+        <a href="{{ api_docs_url }}" hx-boost="false">pesticides API</a> or the
+        <a href="{{ client_docs_url }}" target="_blank" rel="noopener">Python client</a>,
+        filtered with <code>region_id={{ object.sqid }}</code>.
+    </p>
+</footer>
+{% endblock %}

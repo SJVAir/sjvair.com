@@ -26,6 +26,15 @@
                 <a class="navbar-item" href="/alerts/">Text Alerts</a>
                 <a class="navbar-item has-text-weight-medium" href="/app/">Get the App!</a>
                 <div class="navbar-item has-dropdown is-hoverable">
+                    <a class="navbar-link">Data Tools</a>
+                    <div class="navbar-dropdown">
+                        <a class="navbar-item" href="{% url 'pesticides:home' %}">
+                            <span class="icon"><span class="fa-regular fa-fw fa-spray-can-sparkles"></span></span>
+                            <span>Pesticides Explorer</span>
+                        </a>
+                    </div>
+                </div>
+                <div class="navbar-item has-dropdown is-hoverable">
                     <a class="navbar-link">Resources</a>
                     <div class="navbar-dropdown">
                         <a class="navbar-item" href="/guidelines/">
@@ -194,6 +203,12 @@
                             <span class="fa-regular fa-fw fa-fire"></span>
                         </span>
                         <a href="{% static 'docs/Wildfire-Smoke-Preparedness-2021.pdf' %}">Wildfire Smoke Preparedness</a>
+                    </li>
+                    <li>
+                        <span class="fa-li">
+                            <span class="fa-regular fa-fw fa-spray-can-sparkles"></span>
+                        </span>
+                        <a href="{% url 'pesticides:home' %}">Pesticides Explorer</a>
                     </li>
                 </ul>
             </div>

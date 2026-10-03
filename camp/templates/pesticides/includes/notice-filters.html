@@ -1,0 +1,36 @@
+{% load pesticides_explorer %}
+<form method="GET" class="notice-filters box" hx-trigger="submit, change delay:250ms">
+    {% if county %}<input type="hidden" name="county" value="{{ county.slug }}">{% endif %}
+    {% if concern %}<input type="hidden" name="narrow" value="{{ concern }}">{% endif %}
+    <div class="field notice-mode">
+        <label class="label">Notices</label>
+        <div class="control">
+            <div class="buttons has-addons are-small">
+                <label class="button{% if mode == 'active' %} is-selected is-primary{% endif %}"><input type="radio" name="past" value=""{% if mode == 'active' %} checked{% endif %} class="is-sr-only"> Scheduled</label>
+                <label class="button{% if mode == 'past' %} is-selected is-primary{% endif %}"><input type="radio" name="past" value="1"{% if mode == 'past' %} checked{% endif %} class="is-sr-only"> Past</label>
+            </div>
+        </div>
+    </div>
+    {{ form.chemical }}
+    {{ form.product }}
+    {{ form.region }}
+    {{ form.section }}
+    {{ form.lat }}
+    {{ form.lng }}
+    {{ form.radius }}
+    {# A near-me place's name, and the page's year for its nav links, ride along. #}
+    {% if request.GET.label %}<input type="hidden" name="label" value="{{ request.GET.label }}">{% endif %}
+    {% if request.GET.year %}<input type="hidden" name="year" value="{{ request.GET.year }}">{% endif %}
+    {# The archive's month rides along only while Past stays chosen; the view ignores it otherwise. #}
+    {# A month the page chose itself isn't carried: the next filter re-picks the newest one under it. #}
+    {% if mode == 'past' and not filter_month_defaulted %}
+    {% if filter_year %}<input type="hidden" name="archive_year" value="{{ filter_year }}">{% endif %}
+    {% if filter_month %}<input type="hidden" name="month" value="{{ filter_month }}">{% elif filter_all_months %}<input type="hidden" name="month" value="all">{% endif %}
+    {% endif %}
+    <div class="field">
+        <label class="label" for="{{ form.method.id_for_label }}">{{ form.method.label }}</label>
+        <div class="control"><div class="select is-fullwidth">{{ form.method }}</div></div>
+    </div>
+    {# The method applies itself as it changes; there's nothing to Apply. #}
+    <p class="filters-clear"><a href="{{ clear_filters_url }}">Clear filters</a></p>
+</form>

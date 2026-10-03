@@ -1,7 +1,42 @@
-from django.db.models import Prefetch, QuerySet
+from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
+from django.db.models import Exists, OuterRef, Prefetch, Q, QuerySet
 
 
-class ChemicalQuerySet(QuerySet):
+class SearchMixin:
+    """
+    Postgres full-text search following camp/apps/helpdesk/managers.py, plus an
+    icontains fallback so partial tokens ("chlor") still match. Subclasses set
+    `search_primary` (weight A) and `search_secondary` (weight B, an identifier
+    column matched with icontains as well).
+    """
+    search_primary = 'name'
+    search_secondary = None
+    # Further name columns matched like the primary (weight A + icontains).
+    search_aliases = ()
+
+    def search(self, query):
+        query = (query or '').strip()
+        if not query:
+            return self
+        search_query = SearchQuery(query)
+        search_vector = SearchVector(self.search_primary, weight='A')
+        substring = Q(**{f'{self.search_primary}__icontains': query})
+        for alias in self.search_aliases:
+            search_vector = search_vector + SearchVector(alias, weight='A')
+            substring = substring | Q(**{f'{alias}__icontains': query})
+        if self.search_secondary:
+            search_vector = search_vector + SearchVector(self.search_secondary, weight='B')
+            substring = substring | Q(**{f'{self.search_secondary}__icontains': query})
+        return (self
+            .annotate(search=search_vector, rank=SearchRank(search_vector, search_query))
+            .filter(Q(search=search_query) | substring)
+            .order_by('-rank', self.search_primary, 'pk')
+        )
+
+
+class ChemicalQuerySet(SearchMixin, QuerySet):
+    search_secondary = 'cas_number'
+    search_aliases = ('preferred_name',)
     def with_commodities(self, **filters):
         from camp.apps.pesticides.models import Commodity
         queryset = Commodity.objects.all()
@@ -12,7 +47,8 @@ class ChemicalQuerySet(QuerySet):
         )
 
 
-class CommodityQuerySet(QuerySet):
+class CommodityQuerySet(SearchMixin, QuerySet):
+    search_secondary = 'site_code'
     def with_chemicals(self, **filters):
         from camp.apps.pesticides.models import Chemical
         queryset = Chemical.objects.all()
@@ -24,7 +60,9 @@ class CommodityQuerySet(QuerySet):
 
     def with_products(self, **filters):
         from camp.apps.pesticides.models import Product
-        queryset = Product.objects.all()
+        # with_restricted() so a serialized product's `is_restricted` reads an
+        # annotation rather than walking its chemicals once per row.
+        queryset = Product.objects.with_restricted()
         if filters:
             queryset = queryset.filter(**filters)
         return self.prefetch_related(
@@ -32,7 +70,23 @@ class CommodityQuerySet(QuerySet):
         )
 
 
-class ProductQuerySet(QuerySet):
+class ProductQuerySet(SearchMixin, QuerySet):
+    search_secondary = 'reg_number'
+
+    def with_restricted(self):
+        """
+        Annotate whether each product carries a restricted active ingredient
+        (3 CCR 6400), so `Product.is_restricted` costs no query per row.
+        Serializing a list without this walks each product's chemicals.
+        """
+        from camp.apps.pesticides.models import Chemical, ProductChemical
+        return self.annotate(has_restricted_chemical=Exists(
+            ProductChemical.objects.filter(
+                product=OuterRef('pk'),
+                chemical__categories__contains=[Chemical.Category.CALIFORNIA_RESTRICTED],
+            )
+        ))
+
     def with_commodities(self, **filters):
         from camp.apps.pesticides.models import Commodity
         queryset = Commodity.objects.all()

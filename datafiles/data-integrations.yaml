@@ -25,6 +25,11 @@
       url: https://aqview.arb.ca.gov/
       description: AQview is the California Air Resources Board's (CARB) data platform for AB 617 communities, providing regulatory-grade PM2.5 measurements in areas most impacted by air pollution. Because AQview does not offer a public API, SJVAir is one of the only external platforms to integrate and display this data outside of CARB's own system.
 
+    - name: Valley Air District Forecasts
+      logo: img/logo/sjvapcd.svg
+      url: https://www.valleyair.org/
+      description: The San Joaquin Valley Air Pollution Control District is the regulatory agency for the Valley's air basin. Each day it issues an air quality forecast for every part of the basin, by county and by zone. SJVAir ingests these forecasts and shows each one for the area it covers, deriving the zones that do not follow county lines — the Valley portions of Kern and Tulare counties and the Sequoia National Park and Forest zone — from the District's own forecast map.
+
 - category: Satellite & Atmospheric Data
   icon:
     name: fa-satellite
@@ -54,12 +59,22 @@
       url: https://cimis.water.ca.gov/
       description: The California Irrigation Management Information System (CIMIS) is a network of automated weather stations operated by the California Department of Water Resources (DWR). Originally built to support agricultural irrigation scheduling, CIMIS stations also report hourly weather data — temperature, humidity, wind speed and direction, solar radiation, and precipitation — which SJVAir uses to add local weather context alongside air quality measurements across the San Joaquin Valley.
 
-- category: Environmental & Health Mapping
+    - name: National Weather Service
+      logo: img/logo/nws.svg
+      url: https://www.weather.gov/
+      description: The National Weather Service, part of NOAA, publishes forecasts, current conditions, and observations from its network of weather stations through a free public API at weather.gov. SJVAir's map uses it for the temperature shown alongside air quality readings, and we plan to bring its station observations into our own data pipeline alongside CIMIS.
+
+    - name: CalHeatScore
+      logo: img/logo/calepa.png
+      url: https://calheatscore.calepa.ca.gov/
+      description: CalHeatScore is California's heat-risk forecasting tool, developed by the Office of Environmental Health Hazard Assessment at CalEPA with the Department of Insurance and the Department of Public Health. It rates each ZIP code's heat risk for the coming week on a five-step scale, from low to severe, based on forecast temperatures and local health data. SJVAir imports the daily scores for every Valley ZIP code so heat risk can be shown alongside air quality.
+
+- category: Environmental & Health Data
   icon:
     name: fa-earth-americas
     primary: forestgreen
     secondary: deepskyblue
-  description: Datasets that combine environmental, health, and socioeconomic indicators to identify communities most impacted by pollution and support equity-focused decision making.
+  description: 'Datasets on where pollution comes from and who bears it: screening indices that combine environmental, health, and socioeconomic indicators to identify the communities most impacted, and the emissions inventory behind them, which records what each permitted facility releases.'
   integrations:
     - name: CalEnvironScreen
       logo: img/logo/calenviroscreen-logo.png
@@ -70,3 +85,82 @@
       logo: img/logo/healthy-places-index-logo.png
       url: https://www.healthyplacesindex.org/
       description: The Healthy Places Index (HPI), developed by the Public Health Alliance, maps social and environmental conditions that shape health outcomes across California. By combining indicators such as education, housing, job opportunities, and environmental quality, HPI highlights community factors strongly linked to life expectancy and supports efforts to advance health equity.
+
+    - name: CEIDARS
+      logo: img/logo/carb-vertical.png
+      url: https://ww2.arb.ca.gov/our-work/programs/criteria-and-toxics-emissions-inventory
+      description: The California Emission Inventory Development and Reporting System (CEIDARS) is CARB's inventory of emissions from permitted stationary sources — refineries, power plants, dairies, manufacturers, and thousands of smaller facilities — reported each year by the local air districts. SJVAir imports the facility-level records for the San Joaquin Valley, with each facility's criteria pollutant and toxic emissions by year, so that what is released nearby can be shown alongside what is measured in the air.
+
+- category: Pesticide Data
+  icon:
+    name: fa-spray-can
+    primary: darkolivegreen
+    secondary: yellowgreen
+  description: 'The state records behind the <a href="/tools/pesticides/">Pesticide Data Explorer</a>: every reported agricultural pesticide application in the San Joaquin Valley, the notices growers file before restricted applications, and the official lists that flag which chemicals are of concern to health.'
+  integrations:
+    - name: Pesticide Use Reporting
+      logo: img/logo/cdpr.png
+      url: https://www.cdpr.ca.gov/docs/pur/purmain.htm
+      description: California's Pesticide Use Reporting (PUR) program, run by the Department of Pesticide Regulation (DPR), has required growers to report every agricultural pesticide application since 1990, down to the product, the amount, the crop, and the square-mile section it was applied to. DPR releases each year's records one to two years after the fact. SJVAir imports the full record for the eight Valley counties and summarizes it by chemical, product, commodity, county, and section.
+
+    - name: SprayDays California
+      logo: img/logo/spraydays-logo.svg
+      url: https://spraydays.cdpr.ca.gov/
+      description: SprayDays is DPR's statewide notification system for restricted-material pesticide applications. Growers file a notice of intent before applying, and SprayDays publishes the planned applications by location up to four days ahead. SJVAir shows the active notices on its pesticide maps and links to SprayDays for sign-up; it does not send notifications of its own.
+
+    - name: CompTox Chemicals Dashboard
+      logo: img/logo/epa-vertical.svg
+      url: https://comptox.epa.gov/dashboard/
+      description: The U.S. Environmental Protection Agency's CompTox Chemicals Dashboard is a reference database covering more than a million chemicals, with identifiers, structures, and links to hazard data. SJVAir uses it to match the chemical names in DPR's records to standard identifiers and CAS numbers, so that a chemical can be looked up consistently across the health lists below.
+
+    - name: Proposition 65
+      logo: img/logo/oehha.png
+      url: https://oehha.ca.gov/proposition-65/proposition-65-list
+      description: California's Proposition 65 list, maintained by the Office of Environmental Health Hazard Assessment (OEHHA), names the chemicals the state has determined can cause cancer, birth defects, or other reproductive harm. SJVAir marks a chemical as a Prop 65 listing when it appears on the list, and includes those listings in its "chemicals of concern" view.
+
+    - name: Toxic Air Contaminants
+      logo: img/logo/carb-vertical.png
+      url: https://ww2.arb.ca.gov/resources/documents/carb-identified-toxic-air-contaminants
+      description: The California Air Resources Board (CARB) identifies toxic air contaminants (TACs) — airborne substances that may cause serious illness or death — and, with OEHHA, publishes health reference values for them. SJVAir flags pesticide chemicals on CARB's TAC list, since these are the ones whose drift into the air is a recognized concern.
+
+    - name: IARC Monographs
+      logo: img/logo/iarc.svg
+      url: https://monographs.iarc.who.int/
+      description: The International Agency for Research on Cancer (IARC), part of the World Health Organization, reviews the evidence on whether agents cause cancer in humans and classifies them into groups, from Group 1 (carcinogenic) through Group 2A and 2B (probably and possibly carcinogenic) to Group 3 (not classifiable). SJVAir shows a chemical's IARC group where one has been assigned and treats Groups 1, 2A, and 2B as chemicals of concern.
+
+- category: Geospatial Data
+  icon:
+    name: fa-map-location-dot
+    primary: steelblue
+    secondary: lightsteelblue
+  description: 'The boundaries and points every page is organized around: counties, cities and census-designated places, ZIP codes, urban areas, the square-mile sections pesticide use is reported by, school districts, and the schools and child care centers shown alongside pesticide data. Most of it comes through the <a href="https://data.ca.gov/">California Open Data Portal</a>, maintained there by the state department named on each dataset.'
+  integrations:
+    - name: U.S. Census Bureau
+      logo: img/logo/census.svg
+      url: https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.html
+      description: The Census Bureau's TIGER/Line files are the reference geography for the United States. SJVAir takes its ZIP codes (as ZIP Code Tabulation Areas), census tracts, and congressional districts directly from TIGER/Line, and the county and place boundaries below are the Bureau's as well, republished by the state.
+
+    - name: CA Geographic Boundaries
+      logo: img/logo/ca-open-data.png
+      url: https://data.ca.gov/dataset/ca-geographic-boundaries
+      description: The California Department of Technology publishes the state's county and place boundaries on the California Open Data Portal, drawn from the Census Bureau's TIGER/Line files. SJVAir's eight Valley counties and its cities and census-designated places come from this dataset.
+
+    - name: Caltrans
+      logo: img/logo/caltrans.png
+      url: https://data.ca.gov/dataset/2020-adjusted-urban-area
+      description: The California Department of Transportation maintains the 2020 Adjusted Urban Areas, the Census Bureau's urban areas as adjusted by Caltrans and the state's metropolitan planning organizations for transportation planning. SJVAir uses them to group cities and their surrounding communities into the places you can search for.
+
+    - name: Department of Conservation
+      logo: img/logo/conservation.svg
+      url: https://data.ca.gov/dataset/public-land-survey-system-plss-sections
+      description: The California Department of Conservation publishes the Public Land Survey System (PLSS) sections for the state — the square-mile grid of meridian, township, range, and section that pesticide use reports are located by. SJVAir's section maps and section pages use these official geometries unchanged.
+
+    - name: California Department of Education
+      logo: img/logo/cde.png
+      url: https://data.ca.gov/organization/california-department-of-education
+      description: The Department of Education publishes school district boundaries, with each district's enrollment and demographics, and the directory of public and private schools with their locations. SJVAir uses the district boundaries as regions and shows the schools alongside pesticide use in each district.
+
+    - name: Department of Social Services
+      logo: img/logo/cdss.png
+      url: https://data.ca.gov/dataset/community-care-licensing-facilities1
+      description: The California Department of Social Services licenses child care centers through its Community Care Licensing Division and publishes the facility list, with addresses and capacities. SJVAir shows the licensed child care centers in the Valley alongside schools on its pesticide maps and district pages.

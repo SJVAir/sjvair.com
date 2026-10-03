@@ -7,10 +7,10 @@ from django.utils.safestring import mark_safe
 
 from camp.apps.entries import models as entry_models
 from camp.apps.entries.levels import _blend_hex
-from camp.apps.regions.models import Region, Boundary
+from camp.apps.regions.models import Region, Boundary, Location
 from camp.apps.regions.panels import panels_for
-from camp.utils import leaflet
-from camp.utils.admin import LeafletMapMixin, ReadOnlyAdminMixin
+from camp.utils import mapfigure
+from camp.utils.admin import MapFigureMixin, ReadOnlyAdminMixin
 
 # Marker outline for SJVAir-owned monitors on the region map.
 SJVAIR_BORDER = '#0a84ff'
@@ -42,7 +42,7 @@ class CountyFilter(admin.SimpleListFilter):
         return queryset.filter(boundary__geometry__intersects=county.boundary.geometry)
 
 
-class BoundaryInline(LeafletMapMixin, admin.TabularInline):
+class BoundaryInline(MapFigureMixin, admin.TabularInline):
     model = Boundary
     readonly_fields = ['get_map', 'get_info']
     extra = 0
@@ -70,29 +70,46 @@ class BoundaryInline(LeafletMapMixin, admin.TabularInline):
             'portrait': (400, 600),
         }[instance.orientation]
 
-        lmap = leaflet.LeafletMap(width=width, height=height)
-        lmap.add(leaflet.Area(
+        figure = mapfigure.MapFigure(width=width, height=height)
+        figure.add(mapfigure.Area(
             geometry=instance.geometry,
             fill_color='dodgerblue',
             border_color='royalblue',
         ))
-        return lmap.render()
+        return figure.render()
     get_map.short_description = 'Map'
 
 @admin.register(Region)
-class RegionAdmin(LeafletMapMixin, ReadOnlyAdminMixin, GISModelAdmin):
+class RegionAdmin(MapFigureMixin, ReadOnlyAdminMixin, GISModelAdmin):
     inlines = [BoundaryInline]
-    list_display = ['name', 'type', 'external_id', 'current_version', 'monitor_count']
+    list_display = ['name', 'sqid', 'type', 'external_id', 'current_version', 'monitor_count']
     list_filter = ['type', CountyFilter, 'boundary__version']
     # The monitor map is rendered by the change form itself (beside the tiles);
     # see admin/regions/region/change_form.html.
     fieldsets = [
         ('Region', {
             'classes': ['collapse'],
-            'fields': ['name', 'slug', 'external_id', 'type', 'boundary', 'get_metadata', 'get_overview_map'],
+            'fields': ['name', 'sqid', 'slug', 'external_id', 'type', 'boundary', 'get_metadata', 'get_overview_map'],
         }),
     ]
     search_fields = ['name', 'external_id']
+
+    def get_search_results(self, request, queryset, search_term):
+        """
+        Also match a pasted sqid exactly.
+
+        Not a `search_fields` entry: Django's `=` prefix is an `iexact`
+        lookup and SqidsField supports only `exact`, so it's resolved to a pk
+        here. A sqid is a whole opaque identifier -- there is no partial match
+        worth offering.
+        """
+        results, may_have_duplicates = super().get_search_results(request, queryset, search_term)
+        term = (search_term or '').strip()
+        if term:
+            pk = self.model.objects.filter(sqid=term).values_list('pk', flat=True).first()
+            if pk is not None:
+                results = results | queryset.filter(pk=pk)
+        return results, may_have_duplicates
 
     def get_queryset(self, *args, **kwargs):
         queryset = (super()
@@ -168,24 +185,24 @@ class RegionAdmin(LeafletMapMixin, ReadOnlyAdminMixin, GISModelAdmin):
                 'portrait': (300, 400),
             }[county.orientation]
 
-            lmap = leaflet.LeafletMap(width=width, height=height)
+            figure = mapfigure.MapFigure(width=width, height=height)
 
             if county.region_id != instance.pk:
-                lmap.add(leaflet.Area(
+                figure.add(mapfigure.Area(
                     geometry=county.geometry,
                     fill_color='white',
                     border_color='dimgrey',
                     fill_opacity=.5,
                 ))
 
-            lmap.add(leaflet.Area(
+            figure.add(mapfigure.Area(
                 geometry=instance.boundary.geometry,
                 fill_color='dodgerblue',
                 border_width=0,
                 fill_opacity=1,
             ))
 
-            return lmap.render()
+            return figure.render()
         except Exception:
             import traceback
             traceback.print_exc()
@@ -201,8 +218,8 @@ class RegionAdmin(LeafletMapMixin, ReadOnlyAdminMixin, GISModelAdmin):
                 'portrait': (440, 520),
             }[instance.boundary.orientation]
 
-            lmap = leaflet.LeafletMap(width=width, height=height)
-            lmap.add(leaflet.Area(
+            figure = mapfigure.MapFigure(width=width, height=height)
+            figure.add(mapfigure.Area(
                 geometry=instance.boundary.geometry,
                 fill_color='dodgerblue',
                 border_color='royalblue',
@@ -233,7 +250,7 @@ class RegionAdmin(LeafletMapMixin, ReadOnlyAdminMixin, GISModelAdmin):
                 else:
                     border_color = 'dimgray'
 
-                lmap.add(leaflet.Marker(
+                figure.add(mapfigure.Marker(
                     geometry=monitor.position,
                     size=14 if monitor.is_active else 10,
                     fill_color=fill_color,
@@ -242,8 +259,25 @@ class RegionAdmin(LeafletMapMixin, ReadOnlyAdminMixin, GISModelAdmin):
                     border_width=2 if monitor.is_sjvair else 1,
                 ))
 
-            return mark_safe(lmap.render())
+            return mark_safe(figure.render())
         except Exception:
             import traceback
             traceback.print_exc()
     get_monitor_map.short_description = 'Monitors'
+
+
+@admin.register(Location)
+class LocationAdmin(GISModelAdmin):
+    list_display = ('name', 'type', 'get_city', 'get_county')
+    list_filter = ('type', 'source')
+    list_select_related = ('county', 'city', 'zipcode', 'school_district')
+    search_fields = ('name', 'external_id', 'city_name')
+    raw_id_fields = ('county', 'city', 'zipcode', 'school_district')
+
+    @admin.display(description='City', ordering='city__name')
+    def get_city(self, instance):
+        return instance.get_city()
+
+    @admin.display(description='County', ordering='county__name')
+    def get_county(self, instance):
+        return instance.get_county()

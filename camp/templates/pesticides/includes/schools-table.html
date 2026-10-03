@@ -1,0 +1,46 @@
+{% load humanize pesticides_explorer %}
+{% comment %}
+A place's schools and child care, as one sortable, filterable table (a
+district's own: its run-by filter and count only show there).
+`schools` is places.schools_panel(), its rows the current page (the view
+pages them). The City column is only
+drawn where the district's sites sit in more than one postal city. Every link
+carries the page's scope, so a section page opens on the same year and scope
+as the row.
+{% endcomment %}
+{% with schools_sort=schools.sort %}
+<p class="summary-sentence mb-3">
+    {{ schools.total|intcomma }} school{{ schools.total|pluralize }} and child care site{{ schools.total|pluralize }}
+    {% if schools.is_district %}· {{ schools.run_by_count|intcomma }} run by {{ schools.district_name }}{% endif %}{% if schools.is_filtered %}
+    · showing {{ schools.matched|intcomma }}{% endif %}
+</p>
+<div class="table-container">
+    <table class="table is-fullwidth is-striped is-hoverable data-table schools-table">
+        <thead>
+            <tr>
+                <th>{% sort_link 'name' 'School or child care' param='schools_sort' %}</th>
+                {% if schools.show_city %}<th>{% sort_link 'city' 'City' param='schools_sort' %}</th>{% endif %}
+                <th class="has-text-right">{% sort_link 'lbs' 'Lbs nearby' param='schools_sort' %}</th>
+                <th class="has-text-right">{% sort_link 'applications' 'Applications' param='schools_sort' %}</th>
+                <th>Section</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in schools.rows %}
+            <tr>
+                {# What it is, and the district that runs it, under its name rather than in two columns of their own. #}
+                <td>{% include 'regions/includes/school-name-cell.html' %}</td>
+                {% if schools.show_city %}<td>{{ row.display_city|default:"—" }}</td>{% endif %}
+                <td class="has-text-right">{{ row.lbs|lbs }}</td>
+                <td class="has-text-right">{{ row.applications|intcomma }}</td>
+                <td>{% if row.section_sqid %}<a href="{% url 'pesticides:section-detail' sqid=row.section_sqid %}{{ scope_qs }}" title="Square-mile section {{ row.section_mtrs }}">{{ row.section_mtrs }}</a>{% else %}&mdash;{% endif %}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="{% if schools.show_city %}5{% else %}4{% endif %}" class="has-text-centered has-text-grey">
+                No schools match. <a href="{% qs_replace schools_q=None schools_type=None schools_run_by=None schools_district=None page=None %}">Clear the filters</a>
+            </td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endwith %}
