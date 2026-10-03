@@ -107,6 +107,25 @@ class NoticeListTests(TestCase):
         # ...and it doesn't leak into Scheduled.
         assert 'value="all"' not in self.client.get(self.url, {'month': 'all'}).content.decode()
 
+    def test_defaulted_month_is_not_pinned_by_the_filter_form(self):
+        def form_inputs(params):
+            html = self.client.get(self.url, params).content.decode()
+            form = html[html.index('notice-filters'):html.index('</form>', html.index('notice-filters'))]
+            return form
+        defaulted = form_inputs({'past': 1})
+        assert 'name="archive_year"' not in defaulted and 'name="month"' not in defaulted
+        picked = form_inputs({'past': 1, 'archive_year': 2020, 'month': 1})
+        assert 'name="archive_year" value="2020"' in picked and 'name="month" value="1"' in picked
+        assert 'name="month" value="all"' in form_inputs({'past': 1, 'month': 'all'})
+
+    def test_month_without_a_year_is_no_month(self):
+        response = self.client.get(self.url, {'past': 1, 'month': 3})
+        assert (response.context['filter_year'], response.context['filter_month']) == (2020, 1)
+        assert [n.pk for n in response.context['object_list']] == [1]
+        html = response.content.decode()
+        assert 'name="month" value="3"' not in html
+        assert 'month=3' not in response.context['map_config']['section_notices_url']
+
     def test_bad_month_is_ignored(self):
         for month in ('13', '0', 'x'):
             response = self.client.get(self.url, {'past': 1, 'month': month})

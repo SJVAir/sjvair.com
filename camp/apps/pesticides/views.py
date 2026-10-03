@@ -1910,7 +1910,9 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
         month = data.get('month') if self.mode == 'past' else None
         # `month=all` is the explicit "every month" choice; a month is a number.
         self.archive_all = month == 'all'
-        self.archive_month = None if self.archive_all else month
+        # A month means nothing without its year; it counts as no month.
+        self.archive_month = None if self.archive_all or not self.archive_year else month
+        self.archive_defaulted = False
         self._archive_months = None
         self.year, self.all_years = stats.resolve_year_param(request.GET.get('year'))
         # Past with no month asked for lands on the newest month that has an
@@ -1919,6 +1921,7 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
             months = self.get_archive_months()
             if months:
                 self.archive_year, self.archive_month = months[0]['year'], months[0]['month']
+                self.archive_defaulted = True
         return super().dispatch(request, *args, **kwargs)
 
     def filtered_notices(self):
@@ -2087,6 +2090,7 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
             filter_year=self.archive_year,
             filter_month=self.archive_month,
             filter_all_months=self.archive_all,
+            filter_month_defaulted=self.archive_defaulted,
             filter_month_label=f'{calendar.month_name[self.archive_month]} {self.archive_year}' if self.archive_year and self.archive_month else '',
             **year_ctx,
             **kwargs,

@@ -22,7 +22,8 @@
     {% if request.GET.label %}<input type="hidden" name="label" value="{{ request.GET.label }}">{% endif %}
     {% if request.GET.year %}<input type="hidden" name="year" value="{{ request.GET.year }}">{% endif %}
     {# The archive's month rides along only while Past stays chosen; the view ignores it otherwise. #}
-    {% if mode == 'past' %}
+    {# A month the page chose itself isn't carried: the next filter re-picks the newest one under it. #}
+    {% if mode == 'past' and not filter_month_defaulted %}
     {% if filter_year %}<input type="hidden" name="archive_year" value="{{ filter_year }}">{% endif %}
     {% if filter_month %}<input type="hidden" name="month" value="{{ filter_month }}">{% elif filter_all_months %}<input type="hidden" name="month" value="all">{% endif %}
     {% endif %}
