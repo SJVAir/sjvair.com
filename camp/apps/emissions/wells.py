@@ -57,7 +57,9 @@ def stamp():
 
 
 def well_q(area):
-    """The wells in an area: a county by Well.county, any other region by point-in-boundary, a radius by distance."""
+    """The wells in an area: a county by Well.county, any other region by point-in-boundary, a radius by distance; all of them for the Valley."""
+    if isinstance(area, areas.ValleyArea):
+        return Q()
     if isinstance(area, areas.RadiusArea):
         return area._within('point')
     region = area.region
@@ -67,7 +69,9 @@ def well_q(area):
 
 
 def location_q(area):
-    """The schools and child-care centers (regions.Location) in an area, by point."""
+    """The schools and child-care centers (regions.Location) in an area, by point; all of them for the Valley."""
+    if isinstance(area, areas.ValleyArea):
+        return Q()
     if isinstance(area, areas.RadiusArea):
         return area._within('point')
     return Q(point__intersects=area.region.boundary.geometry)

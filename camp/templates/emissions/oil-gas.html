@@ -1,0 +1,15 @@
+{% extends 'emissions/area-oil-gas.html' %}
+{% comment %}
+The top-level Oil & gas tab (views.OilGasPage): an area's Oil & gas tab
+(area-oil-gas.html) for every covered county at once, with a find box into
+an area's own tab beside the map.
+{% endcomment %}
+
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">Oil &amp; gas</a></li>{% endblock %}
+
+{% block tab-aside %}{% include 'emissions/includes/find-area.html' with compact=True %}{% endblock %}
+
+{% block tab-related %}
+{{ block.super }}
+<p class="mt-5"><a href="{{ oil_gas_facilities_url }}">The oil &amp; gas permit groupings' emissions →</a> <span class="has-text-grey is-size-7">on the oil &amp; gas sector page</span></p>
+{% endblock %}

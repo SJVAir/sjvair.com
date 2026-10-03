@@ -98,7 +98,8 @@ class OverlayConfigTests(MethaneTestCase):
             region.get_emissions_tab_url('oil-gas'): '1',
             region.get_emissions_dairies_url(): '1',
             reverse('emissions:dairy-list'): '1',
-            reverse('emissions:sector-detail', args=['oil-gas']): '1',
+            reverse('emissions:sector-detail', args=['oil-gas']): '',
+            reverse('emissions:oil-gas'): '1',
             self.plant.get_absolute_url(): '',
         }
         for url, on in defaults.items():

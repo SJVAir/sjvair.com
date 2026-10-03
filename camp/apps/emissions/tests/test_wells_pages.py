@@ -58,7 +58,7 @@ class OverlayConfigTests(WellsPagesTestCase):
         content = self.get(reverse('emissions:map'), {'wells': '1'})
         assert map_data(content, 'wells') == '1' and map_data(content, 'wells-default') == ''
 
-    def test_on_by_default_on_the_oil_gas_tab_and_sector(self):
+    def test_on_by_default_on_the_oil_gas_tabs(self):
         self.add_wells()
         oil_gas = self.kern.get_emissions_tab_url('oil-gas')
         content = self.get(oil_gas)
@@ -67,9 +67,9 @@ class OverlayConfigTests(WellsPagesTestCase):
         # Off on Kern's Overview: 66,000 wells are too many to load there by default.
         content = self.get(self.kern.get_emissions_url())
         assert map_data(content, 'wells') == '' and map_data(content, 'wells-url')
-        content = self.get(reverse('emissions:sector-detail', args=['oil-gas']))
-        assert map_data(content, 'wells') == '1'
-        assert map_data(self.get(reverse('emissions:sector-detail', args=['glass'])), 'wells') == ''
+        # On for the Valley's Oil & gas tab; off on the oil & gas sector page, like the Facilities list.
+        assert map_data(self.get(reverse('emissions:oil-gas')), 'wells') == '1'
+        assert map_data(self.get(reverse('emissions:sector-detail', args=['oil-gas'])), 'wells') == ''
 
     def test_a_facilitys_own_map_has_no_overlay(self):
         content = self.get(self.plant.get_absolute_url())
@@ -120,12 +120,15 @@ class WellsBlockTests(WellsPagesTestCase):
         content = self.get(reverse('emissions:near-me-oil-gas'), {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'year': '2024'})
         assert 'id="wells"' in content and '2 active' in content
 
-    def test_sector_page_callout(self):
+    def test_the_callout_moved_from_the_sector_page_to_the_oil_gas_tab(self):
         self.add_kern_oil_gas()
-        content = self.get(reverse('emissions:sector-detail', args=['oil-gas']), {'year': '2024'})
-        assert "80% of Kern" in content and 'permit groupings that can span a whole oil field' in content
-        assert 'id="wells"' not in content
-        assert '80% of Kern' not in self.get(reverse('emissions:sector-detail', args=['glass']), {'year': '2024'})
+        self.add_wells()
+        content = self.get(reverse('emissions:oil-gas'), {'year': '2024'})
+        assert "80% of Kern" in content
+        sector = self.get(reverse('emissions:sector-detail', args=['oil-gas']), {'year': '2024'})
+        assert '80% of Kern' not in sector and 'id="wells"' not in sector
+        assert 'permit groupings placed at an operator' in sector and f'href="{reverse("emissions:oil-gas")}' in sector
+        assert 'Wells, drilling and methane' not in self.get(reverse('emissions:sector-detail', args=['glass']), {'year': '2024'})
 
 
 class OilGasTabTests(WellsPagesTestCase):
@@ -188,3 +191,29 @@ class AboutTests(WellsPagesTestCase):
         assert "Well counts are CalGEM's regulatory records, not emissions." in content or 'Well counts are CalGEM&#x27;s regulatory records' in content
         assert 'No well data has been imported yet.' in content
         assert 'WellSTAR' in self.get('/about/integrations/')
+
+
+class ValleyOilGasTabTests(WellsPagesTestCase):
+    """The top-level Oil & gas tab (views.OilGasPage): the area tab for the whole Valley."""
+
+    def test_the_valley_tab(self):
+        self.add_wells()
+        url = reverse('emissions:oil-gas')
+        content = self.get(url, {'year': '2024'})
+        # Every covered county's wells, the explorer tab marked current, and a find box into an area's own tab.
+        table = content[content.index('well-table'):content.index('</table>', content.index('well-table'))]
+        assert table.count('<tr>') == 5  # header + all four wells
+        assert 'class="is-active"><a href="/tools/emissions/oil-gas/' in content.replace("is-active\"", 'is-active"')
+        assert 'id="find"' in content and self.kern.get_emissions_tab_url('oil-gas') in content
+        assert 'Top operators' in content and 'Schools and child care near wells' in content
+        response = self.client.get(url, {'format': 'csv'})
+        assert response['Content-Type'] == 'text/csv' and len(response.content.decode().strip().splitlines()) == 5
+
+    def test_a_county_in_the_scope_bar_goes_to_its_own_tab(self):
+        response = self.client.get(reverse('emissions:oil-gas'), {'county': 'kern', 'year': '2024'})
+        assert response.status_code == 302 and response['Location'].startswith(self.kern.get_emissions_tab_url('oil-gas'))
+
+    def test_leader_links_stay_on_the_valley_tab(self):
+        self.add_wells()
+        content = self.get(reverse('emissions:oil-gas'))
+        assert 'href="/tools/emissions/oil-gas/?operator=TEST+OIL+LLC"' in content

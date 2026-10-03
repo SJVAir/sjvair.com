@@ -228,6 +228,15 @@ class RegionArea:
 
 
 @dataclass(frozen=True)
+class ValleyArea:
+    """Every covered county at once: the top-level Oil & gas tab, which runs the area tab's wells helpers on the whole Valley."""
+
+    @property
+    def key(self):
+        return 'valley'
+
+
+@dataclass(frozen=True)
 class RadiusArea:
     """A Scope narrowed to a circle around a point (near-me)."""
     lat: float

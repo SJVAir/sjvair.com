@@ -223,7 +223,9 @@ def area_geometry(area):
 
 
 def oil_gas_methane_in(area):
-    """methane.oil_gas_sources() inside the area (a few hundred Valley-wide, so tested in Python)."""
+    """methane.oil_gas_sources() inside the area (a few hundred Valley-wide, so tested in Python); all of them for the Valley."""
+    if isinstance(area, areas.ValleyArea):
+        return methane.oil_gas_sources()
     shape = area_geometry(area)
     return [row for row in methane.oil_gas_sources() if shape.contains(row['source'].point)]
 
@@ -414,13 +416,12 @@ class SectorDetail(ScopeMixin, vanilla.TemplateView):
             facility_count=table.count(),
             map_config=facility_map_config(
                 scope, mode='compact', sector=self.sector, fit=True,
-                wells=wells_overlay(self.request.GET, default=self.sector == Facility.Sector.OIL_GAS),
-                methane=methane_overlay(self.request.GET, default=self.sector == Facility.Sector.OIL_GAS),
+                # Off by default, like the Facilities list: the wells and
+                # methane sources have the Oil & gas tab (OilGasPage).
+                wells=wells_overlay(self.request.GET),
+                methane=methane_overlay(self.request.GET),
             ),
-            kern_callout=wells.kern_callout(scope.year) if self.sector == Facility.Sector.OIL_GAS else None,
-            wells_stamp=wells.stamp(),
-            methane_oil_gas=methane.oil_gas_sources() if self.sector == Facility.Sector.OIL_GAS and methane.enabled() else None,
-            methane_list_rows=METHANE_LIST_ROWS,
+            oil_gas_url=reverse('emissions:oil-gas') + scope.query(county=None) if self.sector == Facility.Sector.OIL_GAS else None,
             **kwargs,
         )
 
@@ -923,7 +924,49 @@ def area_tabs(view, area, current):
     ]
 
 
-class AreaPage(ScopeMixin, vanilla.TemplateView):
+class OilGasTabMixin:
+    """
+    An Oil & gas tab's context, an area's (AreaPage) or the whole Valley's
+    (OilGasPage): the wells table, filters, pages and CSV; drilling by year
+    and wells by type; the operators and fields with the most wells; the
+    area's oil & gas permit groupings; and the oil & gas methane sources.
+    The view provides area_tab_url(key, query) and tab_query(key), so the
+    leader rows and the table's links stay on the page they're on.
+    """
+
+    def well_leaders(self, area):
+        """wells.leaders() as rank-card rows, each linking this tab filtered to it."""
+        query = self.tab_query('oil-gas')
+        def rows(name, param):
+            return [
+                {'label': row['label'], 'value': row['count'],
+                 'url': self.area_tab_url('oil-gas', '&'.join(filter(None, [query, urlencode({param: row['label']})])))}
+                for row in leaders[name]
+            ]
+        leaders = wells.leaders(area)
+        return {'operators': rows('operators', 'operator'), 'fields': rows('fields', 'field')}
+
+    def oil_gas_context(self, area, scope, *, facilities_url):
+        well_filters = wells.table_filters(self.request.GET)
+        well_page = Paginator(wells.table(area, **well_filters), PAGE_SIZE).get_page(self.request.GET.get('page'))
+        return dict(
+            page_obj=well_page, is_paginated=well_page.has_other_pages(), well_rows=well_page.object_list,
+            sort=well_filters['sort'], filters=well_filters, well_options=wells.filter_options(area),
+            status_options=Well.Status.choices, spud=wells.spud_by_year(area), well_types=wells.by_type(area),
+            oil_gas_card=[
+                {'label': record.facility.name, 'url': record.facility.get_absolute_url(), 'value': record.value}
+                for record in stats.facility_table(scope, sector=Facility.Sector.OIL_GAS)[:5]
+            ],
+            well_leaders=self.well_leaders(area),
+            oil_gas_facilities_url=facilities_url,
+            methane_oil_gas=oil_gas_methane_in(area) if methane.enabled() else None,
+            methane_list_rows=METHANE_LIST_ROWS,
+            # An area's list drops the County column; the Valley's keeps it.
+            methane_list_here=not isinstance(area, areas.ValleyArea),
+        )
+
+
+class AreaPage(OilGasTabMixin, ScopeMixin, vanilla.TemplateView):
     """
     What a region page and near-me share: one area's page, one tab of it
     (`tab`, AREA_TABS) -- Overview's totals, map, sectors and trend, or the
@@ -987,18 +1030,6 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
             return dairy_page_query(base, base.year if base.year in known else (known[-1] if known else base.year))
         return base.query(county=None).lstrip('?')
 
-    def well_leaders(self, area):
-        """wells.leaders() as rank-card rows, each linking this tab filtered to it."""
-        query = self.tab_query('oil-gas')
-        def rows(name, param):
-            return [
-                {'label': row['label'], 'value': row['count'],
-                 'url': self.area_tab_url('oil-gas', '&'.join(filter(None, [query, urlencode({param: row['label']})])))}
-                for row in leaders[name]
-            ]
-        leaders = wells.leaders(area)
-        return {'operators': rows('operators', 'operator'), 'fields': rows('fields', 'field')}
-
     def get_context_data(self, **kwargs):
         base = self.get_scope()
         area = self.get_area()
@@ -1023,23 +1054,10 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
                 reporting=stats.facility_table(scope).filter(value__gt=0).count(),
             )
         elif tab == 'oil-gas':
-            # The wells table, filters and CSV; the drilling-by-year chart; and the
-            # area's oil & gas permit groupings and methane observed at oil & gas sites.
-            well_filters = wells.table_filters(self.request.GET)
-            well_page = Paginator(wells.table(area, **well_filters), PAGE_SIZE).get_page(self.request.GET.get('page'))
-            kwargs.update(
-                page_obj=well_page, is_paginated=well_page.has_other_pages(), well_rows=well_page.object_list,
-                sort=well_filters['sort'], filters=well_filters, well_options=wells.filter_options(area),
-                status_options=Well.Status.choices, spud=wells.spud_by_year(area), well_types=wells.by_type(area),
-                oil_gas_card=[
-                    {'label': record.facility.name, 'url': record.facility.get_absolute_url(), 'value': record.value}
-                    for record in stats.facility_table(scope, sector=Facility.Sector.OIL_GAS)[:5]
-                ],
-                well_leaders=self.well_leaders(area),
-                oil_gas_facilities_url=self.area_tab_url('facilities', '&'.join(filter(None, [self.tab_query('facilities'), 'sector=oil-gas']))),
-                methane_oil_gas=oil_gas_methane_in(area) if methane.enabled() else None,
-                methane_list_rows=METHANE_LIST_ROWS,
-            )
+            kwargs.update(self.oil_gas_context(
+                area, scope,
+                facilities_url=self.area_tab_url('facilities', '&'.join(filter(None, [self.tab_query('facilities'), 'sector=oil-gas']))),
+            ))
             top_rows = []
         elif tab == 'schools':
             # Every school and child-care center in the area with what's near it:
@@ -1448,3 +1466,59 @@ class NearMeSchools(NearMe):
 class NearMeCommunity(NearMe):
     tab = 'community'
 
+
+
+class OilGasPage(OilGasTabMixin, ScopeMixin, vanilla.TemplateView):
+    """
+    The top-level Oil & gas tab: an area's Oil & gas tab (area-oil-gas.html)
+    for every covered county at once (areas.ValleyArea), with the wells and
+    methane overlays on, Kern's callout, and a find box into an area's own
+    tab. The oil & gas sector page stays about the permit groupings' emissions.
+    """
+    template_name = 'emissions/oil-gas.html'
+    section = 'oil-gas'
+
+    def get(self, request, *args, **kwargs):
+        scope = self.get_scope()
+        if scope.county is not None:
+            # A county picked in the scope bar is that county's own tab.
+            return redirect(scope.county.get_emissions_tab_url('oil-gas') + scope.query(county=None))
+        if request.GET.get('format') == 'csv':
+            return wells_csv(wells.table(areas.ValleyArea(), **wells.table_filters(request.GET)), 'wells-valley.csv')
+        return super().get(request, *args, **kwargs)
+
+    def tab_query(self, key):
+        return self.get_scope().query(county=None).lstrip('?')
+
+    def area_tab_url(self, key, query):
+        url = reverse('emissions:oil-gas')
+        return f'{url}?{query}' if query else url
+
+    def get_context_data(self, **kwargs):
+        scope = self.get_scope()
+        area = areas.ValleyArea()
+        places = find_area_places('emissions:region-oil-gas')
+        with_wells = set(Well.objects.values_list('county__name', flat=True).distinct())
+        sector_url = reverse('emissions:sector-detail', args=[Facility.Sector.OIL_GAS]) + scope.query(county=None)
+        return super().get_context_data(
+            **self.oil_gas_context(area, scope, facilities_url=sector_url),
+            area=area,
+            # The shared area-tab skeleton and header (regions/area-tab.html).
+            explorer_base='emissions/base.html', area_crumbs=[], tab_label='Oil & gas',
+            name='San Joaquin Valley', kind='All covered counties',
+            header_links=[], tabs=[], tab_links=[],
+            wells_block=wells_block(area, scope, kern=True),
+            map_config=facility_map_config(
+                scope, mode='compact', params=scope.params(county=None),
+                wells=wells_overlay(self.request.GET, default=True), main_layer=False,
+                methane=methane_overlay(self.request.GET, default=True),
+            ),
+            point_params={}, clear_filters_url=self.area_tab_url('oil-gas', self.tab_query('oil-gas')),
+            scope_qs=scope.query(county=None), scope_params=scope.params(county=None), county_options=[],
+            find_area_places=places,
+            find_area_counties=[p for p in places if p['type'] == Region.Type.COUNTY and p['name'] in with_wells],
+            find_area_qs=scope.query(county=None),
+            find_near_url=reverse('emissions:near-me-oil-gas'),
+            maptiler_key=settings.MAPTILER_API_KEY,
+            **kwargs,
+        )

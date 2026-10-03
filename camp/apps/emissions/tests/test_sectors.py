@@ -81,13 +81,16 @@ class OilGasMethaneListTests(TestCase):
         Facility.objects.filter(name='TEST GAS STATION').update(point_source=Facility.PointSource.CARB, sector=Facility.Sector.OIL_GAS)
         carbonmapper.apply([row(name='og', lnglat=AT_GAS_STATION, sector='1B2', rate='500', unc='150')])
 
-    def test_the_oil_gas_page_lists_sources(self):
-        content = self.client.get(reverse('emissions:sector-detail', args=['oil-gas'])).content.decode()
+    def test_the_oil_gas_tab_lists_sources(self):
+        # The list moved from the sector page to the top-level Oil & gas tab.
+        from camp.apps.emissions.tests.test_wells import make_well
+        from camp.apps.regions.models import Region
+        make_well('0402900001', (-119.02, 35.37), Region.objects.get(type=Region.Type.COUNTY, slug='kern'))
+        content = self.client.get(reverse('emissions:oil-gas')).content.decode()
         assert 'Methane sources observed at oil &amp; gas sites' in content
         listing = content[content.index('id="methane"'):]
         listing = listing[:listing.index('</table>')]
         assert '500 ± 150 kg/h' in listing and 'Kern' in listing
         # Shown by its own location, not tied to the station beside it.
         assert '35.3730, -119.0180' in listing and 'TEST GAS STATION' not in listing
-        assert 'Data by Carbon Mapper' not in content  # credited on About, not every page
-        assert 'Methane sources observed' not in self.client.get(reverse('emissions:sector-detail', args=['glass'])).content.decode()
+        assert 'Methane sources observed' not in self.client.get(reverse('emissions:sector-detail', args=['oil-gas'])).content.decode()

@@ -24,7 +24,7 @@
 <p class="notification is-light">No facilities in this sector reported {{ pollutant.label }} in {{ year }}.</p>
 {% endif %}
 
-{% if kern_callout %}{% include 'emissions/includes/oil-gas-callout.html' with callout=kern_callout %}{% endif %}
+{% if oil_gas_url %}<p class="notification is-light">CARB's oil &amp; gas "facilities" are permit groupings placed at an operator's address, not wells. <a href="{{ oil_gas_url }}">Wells, drilling and methane at oil &amp; gas sites →</a></p>{% endif %}
 
 <div class="columns">
     <div class="column">{% emissions_trend_chart trend pollutant year heading="Over time" %}</div>
@@ -48,5 +48,4 @@
 <p><a href="{% url 'emissions:facility-list' %}{{ scope_qs }}{% if scope_qs %}&amp;{% else %}?{% endif %}sector={{ sector.value }}">All {{ facility_count|intcomma }} facilities in this sector →</a></p>
 {% endif %}
 
-{% include 'emissions/includes/methane-oil-gas.html' %}
 {% endblock %}
