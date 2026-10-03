@@ -1,6 +1,5 @@
 import calendar
 import math
-import re
 import uuid
 
 from django import template
@@ -11,6 +10,7 @@ from django.utils.safestring import mark_safe
 
 from camp.apps.pesticides import notes as notes_module
 from camp.apps.pesticides import stats
+from camp.apps.regions.schools import title_case_name
 
 register = template.Library()
 
@@ -145,47 +145,9 @@ def signed_pct(value):
     return f'{value:+.1f}%'.replace('-', '\u2212')
 
 
-# A word, with an apostrophe inside it kept ("CHILDREN'S" -> "Children's").
-# Letters rather than [A-Za-z] so an accented name ("CANADA" with a tilde)
-# doesn't come back out half-shouted.
-WORD_RE = re.compile(r"[^\W\d_]+(?:'[^\W\d_]+)*")
-
-
-# Tokens a source shouts that should stay shouted: district and agency
-# initialisms, and roman numerals ("SITE III").
-NAME_ACRONYMS = {
-    'USD', 'EOC', 'YMCA', 'YWCA', 'CDC', 'CDCC', 'CCC', 'LLC', 'INC', 'KCAO', 'CSU', 'CSUF', 'UC', 'UCSF',
-    'SJV', 'CA', 'PS', 'HS', 'JHS', 'MS', 'ES', 'MLK', 'JFK', 'ABC', 'HSA', 'ROP', 'STEM', 'STEAM', 'TK',
-}
-NAME_ACRONYM_RE = re.compile(r'^(?:[A-Z]{1,5}USD|[IVX]{2,4})$')
-
-
-def _case_word(word):
-    upper = word.upper()
-    if upper in NAME_ACRONYMS or NAME_ACRONYM_RE.match(upper):
-        return upper
-    return word[:1].upper() + word[1:].lower()
-
-
-@register.filter
-def title_case_name(value):
-    """
-    A shouted source name as a readable one: "SELMA  HIGH" -> "Selma High",
-    "FUSD-STOREY" -> "FUSD-Storey", "CAMPUS CENTER - SITE III" keeps its
-    numeral, "LEARNING EXPERIENCE THE" -> "The Learning Experience". Runs of
-    spaces collapse either way. A name that isn't entirely upper case was
-    cased deliberately (McKinley, de Anza) and is left alone. The source names
-    stay as imported; this is display only.
-    """
-    text = ' '.join(str(value or '').split())
-    if not text or text != text.upper():
-        return text
-    # A listing-style trailing article ("... THE", "... A") goes back to the front.
-    parts = text.split(' ')
-    if len(parts) > 1 and parts[-1] in ('THE', 'A', 'AN'):
-        parts = [parts[-1]] + parts[:-1]
-    text = ' '.join(parts)
-    return WORD_RE.sub(lambda match: _case_word(match.group(0)), text)
+# Registered here under the name templates use; the casing lives with the other
+# school helpers in regions.schools.
+register.filter('title_case_name', title_case_name)
 
 
 @register.filter

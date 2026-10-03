@@ -1,7 +1,10 @@
 {% comment %}
-The school districts a place overlaps (places.area_districts), under the
-schools filters: the largest few by enrollment, in name order, and the rest
-revealed in place by "Show all" (explorer.js's [data-reveal-toggle]).
+The school districts a place overlaps (regions.schools.area_districts), under
+the schools filters: the largest few by enrollment, in name order, and the rest
+revealed in place by "Show all" (explorer.js's [data-reveal-toggle]). Shared by
+the explorers' Schools tabs. Takes `school_districts` (that list), `districts_hidden`
+(how many are collapsed) and `scope_qs` (the explorer's scope query string, appended
+to each link).
 {% endcomment %}
 {% if school_districts %}
 <div class="box school-districts-box" data-reveal-scope>
