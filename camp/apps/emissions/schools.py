@@ -196,34 +196,38 @@ def site_index():
 
 
 def site_filters(get):
-    """The Schools tab's filters from a query string, validated: q, type ('school' or 'child-care'), near (a flag) and sort."""
+    """The Schools tab's filters from a query string, validated: q, type ('school' or 'child-care'), district (a sqid), near (a flag) and sort."""
     kind = get.get('type')
     sort = get.get('sort')
     return {
         'q': (get.get('q') or '').strip() or None,
         'type': kind if kind in SITE_TYPES else None,
+        'district': (get.get('district') or '').strip() or None,
         'near': get.get('near') == '1',
         'sort': sort if sort in SITE_SORTS else '-quarter',
     }
 
 
-def area_sites(area, scope, *, q=None, type=None, near=False, sort='-quarter'):
+def area_sites(area, scope, **filters):
     """
     The area's schools and child-care centers (wells.location_q), each a dict:
-    sqid, name, type, type_label, lat, lng, notice and quarter (facility
-    counts), value (the scope's pollutant from the facilities within 1/4
-    mile, None with none of them reporting), wells, dairies -- facilities
-    only those in the scope, as the rest of the page counts them -- filtered and
-    sorted for the Schools tab's table, map and CSV.
+    sqid, name, display_name, type, type_label, run_by_name, run_by_url,
+    district_sqid, district_name (regions.schools, linking emissions pages),
+    lat, lng, notice and quarter (facility counts), value (the scope's
+    pollutant from the facilities within 1/4 mile, None with none of them
+    reporting), wells, dairies -- facilities only those in the scope, as the
+    rest of the page counts them. `filters` (site_filters()) narrow and sort
+    them for the Schools tab's table, map and CSV (filter_sites()).
     """
     from camp.apps.emissions import stats, wells
+    from camp.apps.regions import schools as region_schools
 
     index = site_index()
-    places = Location.objects.filter(wells.location_q(area)).only('pk', 'sqid', 'name', 'type', 'point')
-    if q:
-        places = places.filter(name__icontains=q)
-    if type:
-        places = places.filter(type__in=SITE_TYPES[type])
+    places = (
+        Location.objects.filter(wells.location_q(area))
+        .select_related('school_district')
+        .only('pk', 'sqid', 'name', 'type', 'point', 'source', 'metadata', 'school_district__name', 'school_district__sqid', 'school_district__slug')
+    )
     empty = {'notice': [], 'quarter': [], 'dairies': 0, 'wells': 0}
     places = [(place, index.get(place.pk, empty)) for place in places]
     # Facilities count as the rest of the page does: those in the scope (its
@@ -232,29 +236,48 @@ def area_sites(area, scope, *, q=None, type=None, near=False, sort='-quarter'):
     values = dict(
         stats.facility_table(scope).filter(facility_id__in=nearby_ids).values_list('facility_id', 'value')
     ) if nearby_ids else {}
+    districts = region_schools.district_urls(url_method='get_emissions_url')
     rows = []
     for place, near_it in places:
         quarter = [facility for facility in near_it['quarter'] if facility in values]
         notice = [facility for facility in near_it['notice'] if facility in values]
         reported = [values[facility] for facility in quarter if values[facility]]
-        row = {
-            'sqid': place.sqid, 'name': place.name, 'type': place.type, 'type_label': str(Location.SHORT_TYPES[place.type]),
+        rows.append({
+            'sqid': place.sqid, 'name': place.name, 'display_name': region_schools.display_name(place, place.name),
+            'type': place.type, 'type_label': str(Location.SHORT_TYPES[place.type]),
+            'run_by_name': (place.metadata or {}).get('district_name') or '',
+            **region_schools.district_fields(place, districts, url_method='get_emissions_url'),
             'lat': place.point.y, 'lng': place.point.x,
             'notice': len(notice), 'quarter': len(quarter),
             'value': sum(reported) if reported else None,
             'wells': near_it['wells'], 'dairies': near_it['dairies'],
-        }
-        if near and not (row['quarter'] or row['wells'] or row['dairies']):
-            continue
-        rows.append(row)
+        })
+    return filter_sites(rows, **filters)
+
+
+def filter_sites(rows, *, q=None, type=None, district=None, near=False, sort='-quarter'):
+    """area_sites() rows narrowed (name, type, the district a site is filed under, anything near) and sorted."""
+    if q:
+        rows = [row for row in rows if q.lower() in row['name'].lower()]
+    if type:
+        rows = [row for row in rows if row['type'] in SITE_TYPES[type]]
+    if district:
+        rows = [row for row in rows if row['district_sqid'] == district]
+    if near:
+        rows = [row for row in rows if row['quarter'] or row['wells'] or row['dairies']]
     # By name within ties; a site with nothing to sort by (no reported value) goes last either way.
     field = sort.lstrip('-')
     descending = sort.startswith('-')
-    rows.sort(key=lambda row: row['name'], reverse=descending and field == 'name')
+    rows = sorted(rows, key=lambda row: row['display_name'].lower(), reverse=descending and field == 'name')
     if field != 'name':
         rows.sort(key=lambda row: row[field] or 0, reverse=descending)
         rows.sort(key=lambda row: row[field] is None)
     return rows
+
+
+def district_options(rows):
+    """The districts the area's sites are filed under, by name, for the district filter: [(sqid, name)]."""
+    return sorted({(row['district_sqid'], row['district_name']) for row in rows if row['district_sqid']}, key=lambda option: option[1].lower())
 
 
 def site_summary(rows):
@@ -283,6 +306,6 @@ def sites_geojson(rows):
         features.append({
             'type': 'Feature',
             'geometry': {'type': 'Point', 'coordinates': [round(row['lng'], 5), round(row['lat'], 5)]},
-            'properties': {'name': row['name'], 'type_label': row['type_label'], 'summary': ' · '.join(near_it) or 'Nothing we track nearby'},
+            'properties': {'name': row['display_name'], 'type_label': row['type_label'], 'summary': ' · '.join(near_it) or 'Nothing we track nearby'},
         })
     return {'type': 'FeatureCollection', 'features': features}

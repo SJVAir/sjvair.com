@@ -5,7 +5,8 @@
 An area's Schools tab (views.RegionSchools / NearMeSchools) in the shared tab
 skeleton (regions/area-tab.html): the area's schools and child-care centers
 and how many have a permitted facility, an oil or gas well or a dairy near
-them; the facility map with the sites on it; and the sites themselves,
+them; the facility map with the sites on it, the filters and the school
+districts the area overlaps beside it; and the sites themselves,
 filtered, sorted, paged and downloadable, each with what's near it
 (schools.area_sites).
 {% endcomment %}
@@ -46,17 +47,35 @@ filtered, sorted, paged and downloadable, each with what's near it
             {% for value, label in site_types %}<option value="{{ value }}"{% if filters.type == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
         </select></div></div>
     </div>
+    {% if site_districts|length > 1 %}
+    <div class="field">
+        <label class="label" for="site-district">School district</label>
+        <div class="control"><div class="select is-fullwidth"><select id="site-district" name="district">
+            <option value="">All districts</option>
+            {% for sqid, label in site_districts %}<option value="{{ sqid }}"{% if filters.district == sqid %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></div></div>
+        <p class="help">The district that runs a school, or that a site sits in.</p>
+    </div>
+    {% endif %}
     <div class="field">
         <label class="checkbox"><input type="checkbox" name="near" value="1"{% if filters.near %} checked{% endif %}> With a facility, well or dairy near</label>
     </div>
     {# Every field applies itself as it changes; there's nothing to Apply. #}
-    <p class="filters-clear"><a href="{{ clear_filters_url }}">Clear filters</a></p>
+    {% if sites_filtered %}<p class="filters-clear"><a href="{{ clear_filters_url }}">Clear filters</a></p>{% endif %}
 </form>
 {% endblock %}
 
+{% block tab-aside %}{% include 'regions/includes/school-districts-box.html' %}{% endblock %}
+
 {% block tab-table %}
+{% with total=site_summary.schools|add:site_summary.child_care %}
+<p class="summary-sentence mb-3">
+    {{ total|intcomma }} school{{ total|pluralize }} and child care site{{ total|pluralize }}{% if sites_filtered %}
+    · showing {{ site_count|intcomma }}{% endif %}
+</p>
+{% endwith %}
 <div class="table-container">
-<table class="table is-fullwidth is-hoverable is-narrow site-table is-stacked-mobile">
+<table class="table is-fullwidth is-hoverable is-narrow site-table schools-table is-stacked-mobile">
     <thead><tr>
         <th>{% sort_link 'name' 'School or child care' %}</th>
         <th class="has-text-right">{% sort_link 'notice' 'Facilities, 1,000 ft' %}</th>
@@ -68,7 +87,7 @@ filtered, sorted, paged and downloadable, each with what's near it
     <tbody>
     {% for row in site_rows %}
     <tr>
-        <td class="cell-name">{{ row.name }}<br><span class="has-text-grey is-size-7">{{ row.type_label }}</span></td>
+        <td class="cell-name">{% include 'regions/includes/school-name-cell.html' %}</td>
         <td class="has-text-right cell-meta{% if not row.notice %} is-none{% endif %}" data-label="Facilities within 1,000 ft">{{ row.notice|intcomma }}</td>
         <td class="has-text-right cell-meta{% if not row.quarter %} is-none{% endif %}" data-label="Facilities within ¼ mile">{{ row.quarter|intcomma }}</td>
         <td class="has-text-right cell-meta{% if row.value is None %} is-none{% endif %}" data-label="{% if pollutant.weighted %}Share{% else %}{{ pollutant.label }} ({{ pollutant.unit_label }}){% endif %}, ¼ mile">{% if row.value is None %}—{% else %}{{ row.value|amount:pollutant }}{% endif %}</td>

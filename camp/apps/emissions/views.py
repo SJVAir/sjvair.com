@@ -19,6 +19,7 @@ from camp.apps.emissions import areas, compliance, dairies, ghg, methane, nei, s
 from camp.apps.emissions.models import AirComplianceFacility, Facility, SourceImport, Well
 from camp.apps.emissions.pollutants import CRITERIA, PRECURSORS
 from camp.apps.regions import nearby
+from camp.apps.regions import schools as region_schools
 from camp.apps.regions.models import Location, Region
 from camp.utils import mapconfig
 
@@ -1049,12 +1050,21 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
             # and the sites on the map.
             site_filters = schools.site_filters(self.request.GET)
             all_sites = schools.area_sites(area, scope)
-            sites = schools.area_sites(area, scope, **site_filters)
+            sites = schools.filter_sites(all_sites, **site_filters)
             site_page = Paginator(sites, PAGE_SIZE).get_page(self.request.GET.get('page'))
+            region = getattr(area, 'region', None)
+            # The districts the area overlaps, beside the map; not on a district's own page.
+            districts = [] if region is not None and region.type == Region.Type.SCHOOL_DISTRICT else region_schools.area_districts(
+                area.geometry if region is None else region.boundary.geometry,
+                cache_key=f'emissions:area-districts:v1:{area.key}', url_method='get_emissions_url',
+            )
             kwargs.update(
                 page_obj=site_page, is_paginated=site_page.has_other_pages(), site_rows=site_page.object_list,
                 sort=site_filters['sort'], filters=site_filters, site_summary=schools.site_summary(all_sites),
                 site_count=len(sites), site_types=[('school', 'Schools'), ('child-care', 'Child care')],
+                sites_filtered=bool(site_filters['q'] or site_filters['type'] or site_filters['district'] or site_filters['near']),
+                site_districts=schools.district_options(all_sites),
+                school_districts=districts, districts_hidden=sum(1 for d in districts if d['is_collapsed']),
             )
             self.site_geojson = schools.sites_geojson(all_sites)
             top_rows = []

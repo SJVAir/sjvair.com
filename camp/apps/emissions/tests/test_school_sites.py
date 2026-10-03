@@ -85,3 +85,35 @@ class SchoolsTabTests(SchoolSitesTestCase):
         from django.urls import reverse
         content = self.client.get(reverse('emissions:near-me-schools'), {'lat': '36.737', 'lng': '-119.787', 'radius': '1'}).content.decode()
         assert 'CLOSE ELEMENTARY' in content and 'FAR HIGH' not in content
+
+
+class SchoolDistrictTests(SchoolSitesTestCase):
+    """The shared district pieces (regions.schools) on the emissions Schools tab, linking emissions pages."""
+
+    def setUp(self):
+        super().setUp()
+        from camp.apps.emissions.tests.test_areas import AROUND_PLANT, make
+        self.district = make(Region.Type.SCHOOL_DISTRICT, 'Plant Unified', AROUND_PLANT)
+        Region.objects.filter(pk=self.district.pk).update(external_id='1062166')
+        Location.objects.filter(pk=self.close.pk).update(
+            metadata={'district_code': '1062166', 'district_name': 'Plant Unified'}, school_district=self.district)
+        Location.objects.filter(pk=self.quarter.pk).update(source='cdss-ccl', school_district=self.district)
+
+    def test_rows_carry_the_run_by_district_and_a_display_name(self):
+        rows = self.rows()
+        close = rows['CLOSE ELEMENTARY']
+        assert close['run_by_name'] == 'Plant Unified' and close['run_by_url'] == self.district.get_emissions_url()
+        # Child care names none, so it's filed under the district it sits in; CDSS's capitals are tamed.
+        quarter = rows['QUARTER CARE']
+        assert quarter['district_sqid'] == self.district.sqid and quarter['display_name'] == 'Quarter Care'
+        assert set(self.rows(district=self.district.sqid)) == {'CLOSE ELEMENTARY', 'QUARTER CARE'}
+
+    def test_the_tab_has_the_districts_box_and_the_run_by_link(self):
+        content = self.client.get(self.fresno.get_emissions_tab_url('schools'), {'year': '2024'}).content.decode()
+        assert 'school-districts-box' in content and 'School districts here' in content
+        assert f'<a href="{self.district.get_emissions_url()}">Plant Unified</a></span>' in content
+        # Sites filed under two districts (the fixture's Fresno Unified too): the district filter shows.
+        assert 'All districts' in content and f'value="{self.district.sqid}"' in content
+        # Not on the district's own page.
+        content = self.client.get(self.district.get_emissions_tab_url('schools'), {'year': '2024'}).content.decode()
+        assert 'site-table' in content and 'school-districts-box' not in content
