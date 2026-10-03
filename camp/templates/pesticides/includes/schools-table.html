@@ -29,7 +29,7 @@ as the row.
             {% for row in schools.rows %}
             <tr>
                 {# What it is, and the district that runs it, under its name rather than in two columns of their own. #}
-                <td>{{ row.display_name }}<span class="school-kind">{{ row.type_label }}{% if row.run_by_name %} · {% if row.run_by_url %}<a href="{{ row.run_by_url }}{{ scope_qs }}">{{ row.run_by_name }}</a>{% else %}{{ row.run_by_name }}{% endif %}{% endif %}</span></td>
+                <td>{% include 'regions/includes/school-name-cell.html' %}</td>
                 {% if schools.show_city %}<td>{{ row.display_city|default:"—" }}</td>{% endif %}
                 <td class="has-text-right">{{ row.lbs|lbs }}</td>
                 <td class="has-text-right">{{ row.applications|intcomma }}</td>

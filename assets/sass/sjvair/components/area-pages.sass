@@ -38,3 +38,30 @@
   ul
     list-style: disc
     margin: 0.4rem 0 0 1.25rem
+
+// "type · run-by" under a school's name in a Schools tab's table.
+.school-kind
+  display: block
+  font-size: $size-7
+  color: $grey
+
+// The school districts a place overlaps, under the schools filters: the
+// largest few, the rest revealed by "Show all".
+.school-districts-box
+  .label
+    @extend .is-size-7
+    @extend .has-text-grey
+    text-transform: uppercase
+    letter-spacing: 0.04em
+  .school-districts-list
+    list-style: none
+    margin: 0
+    li
+      padding: 0.15rem 0
+      &.is-collapsed
+        display: none
+        &.is-revealed
+          display: list-item
+  .school-districts-toggle
+    padding-left: 0
+    margin-top: 0.25rem

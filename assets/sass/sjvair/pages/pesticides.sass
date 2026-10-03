@@ -1148,34 +1148,9 @@ body.pesticides
             margin-bottom: 0.25rem
 
     .schools-table
-        .school-kind
-            display: block
-            font-size: $size-7
-            color: $grey
         // "MDM-T17S-R23E-16" on one line.
         td:last-child
             white-space: nowrap
-
-    // The school districts a place overlaps, under the schools filters: the
-    // largest few, the rest revealed by "Show all".
-    .school-districts-box
-        .label
-            @extend .is-size-7
-            @extend .has-text-grey
-            text-transform: uppercase
-            letter-spacing: 0.04em
-        .school-districts-list
-            list-style: none
-            margin: 0
-            li
-                padding: 0.15rem 0
-                &.is-collapsed
-                    display: none
-                    &.is-revealed
-                        display: list-item
-        .school-districts-toggle
-            padding-left: 0
-            margin-top: 0.25rem
 
     // htmx swap feedback. `#explorer` sets hx-indicator="body", so htmx puts
     // `htmx-request` on <body> for the duration of every boosted request.

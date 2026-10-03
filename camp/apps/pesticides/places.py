@@ -24,7 +24,7 @@ from django.urls import reverse
 from camp.api.v2.pesticides.sections import radius_bbox
 from camp.apps.pesticides import stats
 from camp.apps.pesticides.models import PesticideNotice, PesticideUseRollup, PesticideUseTotal
-from camp.apps.regions import nearby
+from camp.apps.regions import nearby, schools
 from camp.apps.regions.models import Location, Region
 
 PLACE_REGION_TYPES = (
@@ -49,11 +49,6 @@ SCHOOLS_Q_PARAM = 'schools_q'
 SCHOOLS_TYPE_PARAM = 'schools_type'
 SCHOOLS_RUN_BY_PARAM = 'schools_run_by'
 SCHOOLS_DISTRICT_PARAM = 'schools_district'
-# The "School districts here" box: this many of the largest by enrollment,
-# the rest a click away.
-DISTRICTS_VISIBLE = 5
-# ...and a district counts as "here" once this share of it is inside.
-DISTRICT_MIN_OVERLAP = 0.05
 SCHOOLS_SORT_PARAM = 'schools_sort'
 SCHOOLS_SORT_DEFAULT = '-lbs'
 SCHOOLS_SORT_KEYS = ('name', 'type', 'city', 'lbs', 'applications')
@@ -322,7 +317,7 @@ def schools_nearby(region, year, all_years=False, concern=False):
         rows = PesticideUseRollup.objects.all()
         if concern:
             rows = stats.narrow_rows(rows, concern)
-        districts = district_urls()
+        districts = schools.district_urls(url_method='get_pesticides_url')
 
         # select_related: the table prints each location's city.
         run_by = list(Location.objects
@@ -379,7 +374,7 @@ def area_schools(area, year, all_years=False, concern=False):
         rows = PesticideUseRollup.objects.all()
         if concern:
             rows = stats.narrow_rows(rows, concern)
-        districts = district_urls()
+        districts = schools.district_urls(url_method='get_pesticides_url')
         others = [
             _school_entry(location, rows, year, all_years, is_run_by=False, districts=districts)
             for location in area.locations().select_related('city', 'school_district').order_by('name', 'pk')
@@ -391,59 +386,13 @@ def area_schools(area, year, all_years=False, concern=False):
     return stats.cached(key, build, ttl=SCHOOLS_NEARBY_TTL)
 
 
-def district_urls():
-    """
-    Each school district, by its seven-digit CDE code (the start of its CDS
-    code, which is how a public school names the district that runs it) and
-    by name as `name:<name>` (all a private school's record gives):
-    {key: {'url', 'sqid', 'name'}}.
-    """
-    districts = {}
-    for external_id, name, sqid, slug in (Region.objects
-            .filter(type=Region.Type.SCHOOL_DISTRICT, boundary__isnull=False)
-            .values_list('external_id', 'name', 'sqid', 'slug')):
-        entry = {'url': reverse('pesticides:region', kwargs={'sqid': sqid, 'slug': slug}), 'sqid': sqid, 'name': name}
-        if external_id:
-            districts[external_id[:7]] = entry
-        districts.setdefault(f'name:{name}', entry)
-    return districts
-
-
 def area_districts(area):
-    """
-    The school districts a place overlaps, for its Schools tab's "School
-    districts here" box: [{name, url, enrollment, is_collapsed}] in name order,
-    with all but the DISTRICTS_VISIBLE largest by enrollment collapsed (shown
-    on "Show all"). A district counts once a real part of it is inside
-    (DISTRICT_MIN_OVERLAP of its area): Kern High slivers into Tulare County
-    along the line, and by enrollment would be one of its five. Cached a day.
-    """
-    key = f'pesticides:area-districts:v2:{area.cache_key()}'
-
-    def build():
-        geometry = area.geometry()
-        candidates = (
-            Region.objects
-            .filter(type=Region.Type.SCHOOL_DISTRICT, boundary__geometry__intersects=geometry)
-            .exclude(boundary__geometry__touches=geometry)
-            .select_related('boundary')
-        )
-        rows = []
-        for region in candidates:
-            shape = region.boundary.geometry
-            if shape.area and shape.intersection(geometry).area / shape.area >= DISTRICT_MIN_OVERLAP:
-                rows.append((region.name, region.sqid, region.slug, region.metadata))
-        districts = [{
-            'name': name,
-            'url': reverse('pesticides:region', kwargs={'sqid': sqid, 'slug': slug}),
-            'enrollment': ((metadata or {}).get('enrollment') or {}).get('total') or 0,
-        } for name, sqid, slug, metadata in rows]
-        largest = {d['url'] for d in sorted(districts, key=lambda d: -d['enrollment'])[:DISTRICTS_VISIBLE]}
-        for d in districts:
-            d['is_collapsed'] = d['url'] not in largest
-        return sorted(districts, key=lambda d: d['name'].lower())
-
-    return stats.cached(key, build, ttl=SCHOOLS_NEARBY_TTL)
+    """The school districts a place overlaps, as pesticides pages (see regions.schools.area_districts)."""
+    return schools.area_districts(
+        area.geometry(),
+        cache_key=f'pesticides:area-districts:v2:{area.cache_key()}',
+        url_method='get_pesticides_url',
+    )
 
 
 def _school_entry(location, rows, year, all_years, is_run_by, districts=None):
@@ -452,57 +401,18 @@ def _school_entry(location, rows, year, all_years, is_run_by, districts=None):
     metadata = location.metadata or {}
     return {
         'location': location,
-        'display_name': _display_name(location, location.name),
-        'display_city': _display_name(location, location.get_city() or ''),
+        'display_name': schools.display_name(location, location.name),
+        'display_city': schools.display_name(location, location.get_city() or ''),
         'type': location.type,
         'type_label': str(location.short_type),
         'run_by_name': metadata.get('district_name') or '',
-        **_district_fields(location, metadata, districts or {}),
+        **schools.district_fields(location, districts or {}, url_method='get_pesticides_url'),
         'is_run_by': is_run_by,
         'lbs': totals['lbs'],
         'applications': totals['applications'],
         'section_sqid': section.sqid if section is not None else None,
         'section_mtrs': (section.external_id or section.name) if section is not None else None,
     }
-
-
-def _district_fields(location, metadata, districts):
-    """
-    `run_by_url`, the page of the district a site names -- by its CDE code (a
-    public school's), else the district it was resolved into when the names
-    agree (a private school carries its district's name but no code), else by
-    name (it may have resolved into an overlapping one); none for a county
-    office of education. And `district_sqid`/`district_name`, the district the
-    district filter files it under: the one it names, else -- child care
-    names none -- the one it sits in.
-    """
-    name = metadata.get('district_name')
-    named = districts.get(metadata.get('district_code') or '')
-    containing = location.school_district
-    if named is None and containing is not None and containing.name == name:
-        named = {'url': containing.get_pesticides_url(), 'sqid': containing.sqid, 'name': containing.name}
-    if named is None and name:
-        named = districts.get(f'name:{name}')
-    if named is not None:
-        return {'run_by_url': named['url'], 'district_sqid': named['sqid'], 'district_name': named['name']}
-    return {
-        'run_by_url': None,
-        'district_sqid': containing.sqid if containing is not None else None,
-        'district_name': containing.name if containing is not None else '',
-    }
-
-
-def _display_name(location, text):
-    """
-    A name or city as the table should print it. Only the CDSS child care
-    directory shouts its text -- drive it off the source rather than the
-    text's own case, so a school CDE deliberately wrote in capitals keeps it.
-    """
-    from camp.apps.pesticides.templatetags.pesticides_explorer import title_case_name
-
-    if location.source != 'cdss-ccl':
-        return text
-    return title_case_name(text)
 
 
 def schools_panel(groups, params=None, district=None):
