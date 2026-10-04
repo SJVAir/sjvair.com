@@ -647,6 +647,5 @@ class MapAreaTests(TestCase):
         exact = areas.map_shape(areas.RegionArea(self.fresno))
         wide = areas.map_shape(areas.RegionArea(self.fresno), 3)
         assert wide.area > exact.area and wide.contains(exact.point_on_surface)
-        shape = self.client.get(reverse('api:v2:emissions:area-shape'), {'region': self.fresno.sqid, 'buffer': '3'}).json()
-        assert shape['type'] == 'Feature' and shape['properties']['buffer'] == 3
-        assert self.client.get(reverse('api:v2:emissions:area-shape')).status_code == 404
+        # A bad ?buffer= is an error, as the shared regions API's is.
+        assert self.client.get(reverse('api:v2:emissions:wells-geojson'), {'region': self.fresno.sqid, 'buffer': '2'}).status_code == 400

@@ -757,11 +757,14 @@
     this.bufferBounds = null;
     if (this.data.bufferUrl) {
       getJson(this.data.bufferUrl)
-        .then(function (feature) {
+        .then(function (json) {
           if (request !== self.outlineRequest || !self.map) return;
-          self.shell.setSourceData('buffer-line', feature);
+          // The regions detail endpoint, its boundary widened by ?buffer=.
+          var boundary = json && json.data && json.data.boundary;
+          if (!boundary) return;
+          self.shell.setSourceData('buffer-line', { type: 'Feature', properties: {}, geometry: boundary.geometry });
           // Frame the widened area, not just the region inside it.
-          self.bufferBounds = M.geometryBounds(feature.geometry);
+          self.bufferBounds = M.geometryBounds(boundary.geometry);
           if (self.bufferBounds) self.map.fitBounds(self.bufferBounds, { padding: 24, duration: 0 });
         })
         .catch(function (err) { logError('failed to load the widened edge', err); });

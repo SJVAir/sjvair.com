@@ -2,15 +2,12 @@
 The area an explorer map is limited to, from the request: ?region=<sqid> (a
 region page's) or ?lat=&lng=&radius= (a near-me page's), widened by
 ?buffer=1|3|5 miles (areas.map_shape). Every map endpoint narrows its points to
-it, so an area page's map holds only that area's data.
+it, so an area page's map holds only that area's data. The widened edge the
+map draws comes from the shared regions detail endpoint (?buffer=).
 """
-import json
-
-from django.http import Http404
-from resticus import generics
-
 from camp.apps.emissions import areas
 from camp.apps.emissions.views import AREA_PAGE_TYPES, get_filter_region, radius_area
+from camp.apps.regions import shapes
 
 
 def get_area(request):
@@ -34,19 +31,8 @@ def get_shape(request):
     area, error = get_area(request)
     if error or area is None:
         return None, 'valley', error
-    buffer = areas.buffer_param(request.GET)
+    # Strict, as the shared regions API is: a bad ?buffer= is an error, not a quiet 0.
+    buffer, error = shapes.parse_buffer(request.GET)
+    if error:
+        return None, None, error
     return areas.map_shape(area, buffer), f'{area.key}:{buffer}', None
-
-
-class AreaShape(generics.Endpoint):
-    """
-    An area page's map edge as GeoJSON: the region's boundary or the near-me
-    circle, widened by ?buffer=1|3|5 miles, for the map to draw when it reaches
-    past the area. 404 without an area.
-    """
-
-    def get(self, request):
-        shape, _, error = get_shape(request)
-        if error or shape is None:
-            raise Http404(error or 'No area.')
-        return {'type': 'Feature', 'properties': {'buffer': areas.buffer_param(request.GET)}, 'geometry': json.loads(shape.json)}

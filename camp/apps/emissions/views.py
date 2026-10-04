@@ -686,7 +686,8 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         # builds facility and region links, which mustn't carry it).
         'area_query': urlencode(area_params or {}),
         # The widened edge to draw, when the map reaches past the area.
-        'buffer_url': with_query(reverse('api:v2:emissions:area-shape'), area_params) if (area_params or {}).get('buffer') else '',
+        # (the shared regions detail endpoint, ?buffer= widening its boundary)
+        'buffer_url': with_query(reverse('api:v2:regions:region-detail', args=[area_params['region']]), {'buffer': area_params['buffer']}) if (area_params or {}).get('buffer') else '',
         # The bare-sqid route redirects to the slugged page, so the JS needs no slug.
         'facility_url': reverse('emissions:facility-redirect', args=['__id__']).replace('__id__', '{id}'),
         'maptiler_key': settings.MAPTILER_API_KEY,
