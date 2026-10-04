@@ -94,6 +94,39 @@
   var WELL_COLORS = { Active: '#b45309', Idle: '#6b7280', New: '#2563eb' };
   var WELL_HPZ_COLOR = '#dc2626';
   var CLUSTER_COLOR = '#7c2d12';
+
+  // Locations mode (data-locations="1": the main map and area Overviews):
+  // every point the same size, a hue per dataset and shades of it for each
+  // dataset's own scale -- facilities blue (the pollutant's classes), wells
+  // purple (status), dairies orange (EPA size class), schools green (kind).
+  var LOCATION_RADIUS = 5;
+  var LOCATION_WELL_COLORS = { Active: '#5b21b6', Idle: '#8b5cf6', New: '#c4b5fd' };
+  var LOCATION_CLUSTER_COLOR = '#4c1d95';
+  var POINT_LAYERS = [
+    {
+      key: 'dairies', label: 'Dairies', urlAttr: 'dairiesUrl',
+      // CADD's GeoJSON as served (the dairy map's source).
+      parse: function (body) { return body; },
+      prop: 'size_class',
+      shades: [['large', 'Large', '#9a3412'], ['medium', 'Medium', '#ea580c'], ['small', 'Small', '#fdba74']],
+      note: 'CARB\'s dairy database, by EPA size class.',
+    },
+    {
+      key: 'schools', label: 'Schools & child care', urlAttr: 'schoolsUrl',
+      // The compact rows ([id, lng, lat, type, name]) as GeoJSON points.
+      parse: function (body) {
+        return {
+          type: 'FeatureCollection',
+          features: (body.sites || []).map(function (row) {
+            return { type: 'Feature', geometry: { type: 'Point', coordinates: [row[1], row[2]] }, properties: { id: row[0], kind: body.types[row[3]], label: body.labels[row[3]], name: row[4] } };
+          }),
+        };
+      },
+      prop: 'kind',
+      shades: [['public_school', 'Public school', '#166534'], ['private_school', 'Private school', '#22c55e'], ['child_care', 'Child care', '#86efac']],
+      note: 'CDE\'s schools and CDSS\'s licensed child care.',
+    },
+  ];
   var CLUSTER_MAX_ZOOM = 11;
   var CLUSTER_RADIUS = 40;
   var WELL_STATUSES = ['Active', 'Idle', 'New'];
@@ -206,7 +239,7 @@
   // circle's size by this year's value -- still a useful scale -- but
   // colours it by the percent change from that year instead, on the same
   // diverging ramp as the Areas view.
-  function prepare(collection, unit, compare) {
+  function prepare(collection, unit, compare, uniform) {
     var features = collection.features || [];
     var positive = features.map(function (f) { return f.properties.value; }).filter(function (v) { return v > 0; });
     var max = positive.length ? Math.max.apply(null, positive) : 0;
@@ -217,7 +250,7 @@
       var sized = p.value > 0 && max > 0;
       var change = compare ? changeFraction(p.value, p.value_prev) : null;
       var coloured = compare ? change !== null : sized;
-      p._radius = sized ? radiusFor(p.value, max) : MIN_RADIUS;
+      p._radius = uniform ? LOCATION_RADIUS : (sized ? radiusFor(p.value, max) : MIN_RADIUS);
       p._color = coloured ? ramp[classIndex(compare ? change : p.value, breaks)] : EMPTY_FILL;
       // Each circle's outline is a darker shade of its own fill, so two
       // overlapping circles read as two rather than one half-bordered one.
@@ -311,7 +344,9 @@
     this.wellsRequest = 0;
     this.map.on('click', 'wells-clusters', function (evt) { self.zoomToCluster(evt.features[0]); });
     this.map.on('click', 'wells', function (evt) { self.openWellPopup(evt.features[0], evt.lngLat); });
-    ['facilities', 'areas-fill', 'nearby', 'wells-clusters', 'wells'].forEach(function (layer) {
+    this.map.on('click', 'points-dairies', function (evt) { self.openDairyPopup(evt.features[0], evt.lngLat); });
+    this.map.on('click', 'points-schools', function (evt) { self.openSchoolPopup(evt.features[0], evt.lngLat); });
+    ['facilities', 'areas-fill', 'nearby', 'wells-clusters', 'wells', 'points-dairies', 'points-schools'].forEach(function (layer) {
       self.map.on('mouseenter', layer, function () { self.map.getCanvas().style.cursor = 'pointer'; });
       self.map.on('mouseleave', layer, function () { self.map.getCanvas().style.cursor = ''; });
     });
@@ -360,6 +395,26 @@
     this.wellsEnabled = !!this.data.wellsUrl;
     this.wellsDefault = this.data.wellsDefault === '1';
     this.wells = this.wellsEnabled && this.data.wells === '1';
+    this.points = {};
+    this.readLocations();
+  };
+
+  // Locations mode and its point layers (dairies, schools), from the
+  // container's data: read at creation and again on an adopt.
+  FacilityMap.prototype.readLocations = function () {
+    var self = this;
+    this.locations = this.data.locations === '1';
+    POINT_LAYERS.forEach(function (spec) {
+      var url = self.data[spec.urlAttr] || '';
+      var old = self.points[spec.key];
+      self.points[spec.key] = {
+        spec: spec, url: url, enabled: !!url,
+        on: !!url && self.data[spec.key] === '1',
+        // A layer's data is kept across adopts while its URL is the same.
+        collection: old && old.url === url ? old.collection : null,
+        request: old ? old.request : 0,
+      };
+    });
   };
 
   // Bottom to top: the shaded areas, the county and district lines, the
@@ -410,7 +465,7 @@
       id: 'wells-clusters', type: 'circle', source: 'wells', filter: ['has', 'point_count'],
       paint: {
         'circle-radius': ['step', ['get', 'point_count'], 10, 50, 14, 500, 19, 5000, 26],
-        'circle-color': CLUSTER_COLOR,
+        'circle-color': this.locations ? LOCATION_CLUSTER_COLOR : CLUSTER_COLOR,
         'circle-opacity': ['interpolate', ['linear'], ['/', ['get', 'active'], ['get', 'point_count']], 0, 0.35, 1, 0.8],
         'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5,
       },
@@ -419,7 +474,7 @@
       id: 'wells', type: 'circle', source: 'wells', filter: ['!', ['has', 'point_count']],
       paint: {
         'circle-radius': 4,
-        'circle-color': ['match', ['get', 's'], 'Active', WELL_COLORS.Active, 'Idle', WELL_COLORS.Idle, 'New', WELL_COLORS.New, WELL_COLORS.Idle],
+        'circle-color': ['match', ['get', 's'], 'Active', this.wellColors().Active, 'Idle', this.wellColors().Idle, 'New', this.wellColors().New, this.wellColors().Idle],
         'circle-opacity': 0.85,
         'circle-stroke-color': ['case', ['==', ['get', 'h'], 1], WELL_HPZ_COLOR, '#ffffff'],
         'circle-stroke-width': ['case', ['==', ['get', 'h'], 1], 2, 0.5],
@@ -431,6 +486,18 @@
       layout: { 'circle-sort-key': ['get', '_sort'] },
       paint: { 'circle-radius': ['get', '_radius'], 'circle-color': ['get', '_color'] },
     });
+    // Locations mode's point layers, over the facilities: dairies, then
+    // schools and child care on top.
+    POINT_LAYERS.forEach(function (spec) {
+      var match = ['match', ['get', spec.prop]];
+      spec.shades.forEach(function (shade) { match.push(shade[0], shade[2]); });
+      match.push(spec.shades[spec.shades.length - 1][2]);
+      this.shell.ensureSource('points-' + spec.key);
+      this.shell.ensureLayer({
+        id: 'points-' + spec.key, type: 'circle', source: 'points-' + spec.key,
+        paint: { 'circle-radius': LOCATION_RADIUS, 'circle-color': match, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1 },
+      });
+    }, this);
     // The facility page's schools and child care within 1/4 mile: the ring,
     // then the dots (data-nearby / data-ring-miles; camp.apps.emissions.schools).
     this.shell.ensureSource('nearby-ring');
@@ -467,6 +534,7 @@
     this.applyView();
     this.showNearby();
     this.applyWells();
+    this.applyPoints();
     if (this.methane) this.methane.addLayers();
   };
 
@@ -549,6 +617,7 @@
     this.loadOutline();
     this.showNearby();
     if (this.wells) this.loadWells();
+    this.loadPoints();
     if (this.methane) this.methane.load();
   };
 
@@ -575,7 +644,7 @@
     // confirms the fetch actually paired a compared year -- e.g. it's
     // absent if the request raced a Compare toggle-off.
     var compare = this.compare && (collection.properties || {}).compare;
-    var prepared = prepare(collection, this.data.unit, compare);
+    var prepared = prepare(collection, this.data.unit, compare, this.locations);
     this.legendData = prepared;
     this.shell.setSourceData('facilities', prepared.collection);
     this.applyHighlight();
@@ -712,6 +781,12 @@
   // The overlay's layers follow `this.wells`; the legend's checkbox too.
   FacilityMap.prototype.applyWells = function () {
     var on = this.wellsEnabled && this.wells;
+    if (this.map && this.map.getLayer('wells')) {
+      // A page swap can move between a locations map and an Oil & gas one: the colours follow.
+      var colors = this.wellColors();
+      this.map.setPaintProperty('wells', 'circle-color', ['match', ['get', 's'], 'Active', colors.Active, 'Idle', colors.Idle, 'New', colors.New, colors.Idle]);
+      this.map.setPaintProperty('wells-clusters', 'circle-color', this.locations ? LOCATION_CLUSTER_COLOR : CLUSTER_COLOR);
+    }
     if (this.map) {
       ['wells-clusters', 'wells'].forEach(function (id) {
         if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
@@ -825,8 +900,9 @@
     var html = '<div class="legend-overlay"><label class="legend-toggle"><input type="checkbox" data-wells' +
       (this.wells ? ' checked' : '') + '> Oil &amp; gas wells</label>';
     if (this.wells) {
+      var colors = this.wellColors();
       html += '<p class="legend-wells">' + WELL_STATUSES.map(function (status) {
-        return '<span class="legend-well"><span class="legend-swatch is-well" style="background: ' + WELL_COLORS[status] + '"></span>' + status + '</span>';
+        return '<span class="legend-well"><span class="legend-swatch is-well" style="background: ' + colors[status] + '"></span>' + status + '</span>';
       }).join('') + '<span class="legend-well"><span class="legend-swatch is-well is-hpz"></span>Verified health-protection zone</span></p>' +
         '<p class="legend-note">' + this.wellsAsOf('Today\'s wells') + ', not by year: CalGEM records, not emissions. Zoom in to split the clusters; click a well for its record.</p>';
     }
@@ -836,6 +912,112 @@
   // The Methane sources (Carbon Mapper) overlay's own legend row (methane-overlay.js).
   FacilityMap.prototype.methaneLegendHtml = function () {
     return this.methane ? this.methane.legendHtml() : '';
+  };
+
+  // The wells' status colours: purple shades on a locations map, else their own.
+  FacilityMap.prototype.wellColors = function () {
+    return this.locations ? LOCATION_WELL_COLORS : WELL_COLORS;
+  };
+
+  // Every overlay row of the legend, in map order: the point layers, the
+  // wells, the methane sources.
+  FacilityMap.prototype.overlaysLegendHtml = function () {
+    return this.pointsLegendHtml() + this.wellsLegendHtml() + this.methaneLegendHtml();
+  };
+
+  // Locations mode's point layers (POINT_LAYERS): each fetched once, when on.
+  FacilityMap.prototype.applyPoints = function () {
+    if (!this.map) return;
+    Object.keys(this.points).forEach(function (key) {
+      var layer = this.points[key];
+      var id = 'points-' + key;
+      if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', layer.enabled && layer.on ? 'visible' : 'none');
+    }, this);
+  };
+
+  FacilityMap.prototype.loadPoints = function () {
+    var self = this;
+    Object.keys(this.points).forEach(function (key) {
+      var layer = self.points[key];
+      if (!layer.enabled) {
+        self.shell.setSourceData('points-' + key, M.EMPTY);
+        return;
+      }
+      if (!layer.on) return;
+      if (layer.collection) {
+        self.shell.setSourceData('points-' + key, layer.collection);
+        return;
+      }
+      var request = ++layer.request;
+      getJson(layer.url)
+        .then(function (body) {
+          if (request !== layer.request || !self.map || self.points[key] !== layer) return;
+          layer.collection = layer.spec.parse(body);
+          self.shell.setSourceData('points-' + key, layer.collection);
+        })
+        .catch(function (err) {
+          if (request !== layer.request) return;
+          logError('failed to load ' + key, err);
+        });
+    });
+  };
+
+  FacilityMap.prototype.setPoints = function (key, on) {
+    var layer = this.points[key];
+    if (!layer || !layer.enabled) return;
+    layer.on = !!on;
+    this.applyPoints();
+    this.syncUrl();
+    this.shell.updateLegend();
+    if (layer.on) this.loadPoints();
+  };
+
+  // Each point layer's legend row: its checkbox, and while it's on its shades.
+  FacilityMap.prototype.pointsLegendHtml = function () {
+    var self = this;
+    return POINT_LAYERS.map(function (spec) {
+      var layer = self.points[spec.key];
+      if (!layer || !layer.enabled) return '';
+      var html = '<div class="legend-overlay"><label class="legend-toggle"><input type="checkbox" data-points="' + spec.key + '"' +
+        (layer.on ? ' checked' : '') + '> ' + escapeHtml(spec.label) + '</label>';
+      if (layer.on) {
+        html += '<p class="legend-wells">' + spec.shades.map(function (shade) {
+          return '<span class="legend-well"><span class="legend-swatch is-well" style="background: ' + shade[2] + '"></span>' + escapeHtml(shade[1]) + '</span>';
+        }).join('') + '</p><p class="legend-note">' + escapeHtml(spec.note) + '</p>';
+      }
+      return html + '</div>';
+    }).join('');
+  };
+
+  // A dairy's popup: the Dairies map's own (dairy-map.js), fetched on click.
+  FacilityMap.prototype.openDairyPopup = function (feature, lngLat) {
+    var self = this;
+    var popup = this.shell.placePopup('<div class="facility-popup dairy-popup"><p>Loading…</p></div>', lngLat);
+    getJson((this.data.dairyPopupUrl || '').replace('{id}', encodeURIComponent(feature.properties.id)))
+      .then(function (data) {
+        if (self.shell.popup !== popup) return;
+        popup.setHTML(window.EmissionsDairyMap.popupHtml(data, '', self.data));
+        if (self.shell.panPopupIntoView) self.shell.panPopupIntoView(popup);
+      })
+      .catch(function (err) {
+        if (self.shell.popup !== popup) return;
+        popup.setHTML('<div class="facility-popup dairy-popup"><p>Couldn\'t load this dairy.</p></div>');
+        logError('failed to load a dairy', err);
+      });
+  };
+
+  // A school's popup: what it is, and its own Schools tab (what's within a mile of it).
+  FacilityMap.prototype.openSchoolPopup = function (feature, lngLat) {
+    var p = feature.properties;
+    var point = feature.geometry.coordinates;
+    var near = this.data.schoolNearUrl ? this.data.schoolNearUrl + '?' + new URLSearchParams({
+      lat: point[1].toFixed(4), lng: point[0].toFixed(4), radius: '1', label: p.name,
+    }).toString() : '';
+    this.shell.placePopup('<div class="facility-popup school-popup">' +
+      '<p class="facility-popup-name">' + escapeHtml(p.name) + '</p>' +
+      '<p>' + escapeHtml(p.label) + '</p>' +
+      (near ? '<p><a href="' + escapeHtml(near) + '">What\'s within a mile →</a></p>' : '') +
+      '</div>', lngLat);
   };
 
   // The schools and child care listed on a facility page, from the
@@ -964,7 +1146,7 @@
     if (this.noFacilities) {
       // Only the overlays: their own checkboxes and keys, no facility key.
       if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = false;
-      legend.innerHTML = this.wellsLegendHtml() + this.methaneLegendHtml();
+      legend.innerHTML = this.overlaysLegendHtml();
       return;
     }
     this.renderLegend(body, legend);
@@ -986,11 +1168,11 @@
       // so the key stays; the colour classes swap to the change ramp instead.
       var changeTitle = escapeHtml(this.data.label) + ', change ' + escapeHtml(String(this.legendData.compare)) +
         ' to ' + escapeHtml(this.data.year || '');
-      legend.innerHTML = '<p class="legend-title">' + changeTitle + '</p>' + sizeKeyHtml(max, undefined, round) +
+      legend.innerHTML = '<p class="legend-title">' + changeTitle + '</p>' + (this.locations ? '' : sizeKeyHtml(max, undefined, round)) +
         changeBins() + '<p class="legend-empty"><span class="legend-ring"></span>' +
         'New, too small to compare, or none reported in ' + escapeHtml(String(this.legendData.compare)) + '</p>' +
         '<p class="legend-note">Facilities that closed before ' + escapeHtml(this.data.year || '') +
-        ' aren\'t shown.</p>' + this.wellsLegendHtml() + this.methaneLegendHtml();
+        ' aren\'t shown.</p>' + this.overlaysLegendHtml();
       return;
     }
     var breaks = this.legendData.breaks;
@@ -998,15 +1180,16 @@
       ? 'Share of Valley ' + escapeHtml(this.data.label).toLowerCase() + ' toxics, ' + escapeHtml(String(this.data.year || ''))
       : escapeHtml(this.data.label) + ' (' + escapeHtml(this.data.unit) + '/yr)';
     if (!max) {
-      legend.innerHTML = '<p>No facilities here reported ' + escapeHtml(this.data.label) + '.</p>' + this.wellsLegendHtml() + this.methaneLegendHtml();
+      legend.innerHTML = '<p>No facilities here reported ' + escapeHtml(this.data.label) + '.</p>' + this.overlaysLegendHtml();
       return;
     }
     legend.innerHTML = '<p class="legend-title">' + label + '</p>' +
-      valueKeyHtml(max, breaks, round) +
+      // A locations map's points are all one size: its key is the colour classes alone.
+      (this.locations ? facilityBins(breaks, undefined, round) : valueKeyHtml(max, breaks, round)) +
       '<p class="legend-empty"><span class="legend-ring"></span>None reported</p>' +
       (share ? '<p class="legend-note">Pounds × OEHHA toxicity, relative to the Valley total. Not a health risk: stack height, weather and distance are ignored.</p>' : '') +
       (this.data.nearby ? '<p class="legend-note">Green dots: schools and child care within ¼ mile (dashed ring).</p>' : '') +
-      this.wellsLegendHtml() + this.methaneLegendHtml();
+      this.overlaysLegendHtml();
   };
 
   // Before a view, level, measure, sector or page change swaps the data: no
@@ -1030,7 +1213,7 @@
         '<p class="legend-empty"><span class="legend-swatch is-area is-none"></span>New, too small to compare, or none reported in ' +
         escapeHtml(String(data.compareActive)) + (this.measure === 'per_resident' ? ', or no population' : '') + '</p>' +
         '<p class="legend-note">Areas whose only facilities closed before ' + escapeHtml(this.data.year || '') +
-        ' aren\'t shown.</p>' + this.wellsLegendHtml() + this.methaneLegendHtml();
+        ' aren\'t shown.</p>' + this.overlaysLegendHtml();
       return;
     }
     var plainTitle = share
@@ -1042,7 +1225,7 @@
       (this.measure === 'per_resident' ? ' or no population' : '') + '</p>' +
       (missing ? '<p class="legend-note">' + missing.toLocaleString('en-US') + ' facilit' + (missing === 1 ? 'y has' : 'ies have') +
         ' no location and ' + (missing === 1 ? 'isn\'t' : 'aren\'t') + ' counted here.</p>' : '') +
-      this.wellsLegendHtml() + this.methaneLegendHtml();
+      this.overlaysLegendHtml();
   };
 
   // The toolbar's controls: the view switch, level and measure (Areas), and
@@ -1065,6 +1248,7 @@
       legendBody.setAttribute('data-wells-bound', '1');
       legendBody.addEventListener('change', function (event) {
         if (event.target && event.target.hasAttribute('data-wells')) self.setWells(event.target.checked);
+        if (event.target && event.target.hasAttribute('data-points')) self.setPoints(event.target.getAttribute('data-points'), event.target.checked);
         if (event.target && event.target.hasAttribute('data-main-layer')) { self.mainLayer = event.target.checked; self.applyView(); }
       });
     }
@@ -1154,6 +1338,12 @@
     if (this.dRampName !== DEFAULT_DRAMP) params.set('dramp', this.dRampName); else params.delete('dramp');
     // The wells overlay: written only when it differs from the page's default.
     if (this.wellsEnabled && this.wells !== this.wellsDefault) params.set('wells', this.wells ? '1' : '0'); else params.delete('wells');
+    // The point layers start on: ?dairies=0 / ?schools=0 only when turned off.
+    // (Guarded: setup can write the URL before the point layers are read.)
+    Object.keys(this.points || {}).forEach(function (key) {
+      var layer = this.points[key];
+      if (layer.enabled && !layer.on) params.set(key, '0'); else params.delete(key);
+    }, this);
     if (this.methane) this.methane.writeState(params);
   };
 
@@ -1247,7 +1437,7 @@
   // change too, see `compare` there).
   FacilityMap.prototype.recolor = function () {
     if (this.legendData) {
-      this.legendData = prepare(this.legendData.collection, this.data.unit, this.legendData.compare);
+      this.legendData = prepare(this.legendData.collection, this.data.unit, this.legendData.compare, this.locations);
       this.shell.setSourceData('facilities', this.legendData.collection);
       this.applyHighlight();
     }
@@ -1336,8 +1526,10 @@
     this.readViewState();
     this.noFacilities = this.data.mainLayer === 'none';
     this.mainLayer = !this.noFacilities && this.data.mainLayer !== '0';
+    this.readLocations();
     this.applyView();
     this.applyWells();
+    this.applyPoints();
     if (this.wells) this.loadWells();
     if (this.methane) this.methane.onAdopt();
     this.fitted = false;

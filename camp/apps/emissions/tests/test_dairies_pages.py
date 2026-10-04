@@ -433,23 +433,25 @@ class DairyChartPageTests(DairyPageTestCase):
 
 class CombinedMapTests(DairyPageTestCase):
     """
-    Dairies were removed from the facility map (region/near-me pages included);
-    the Dairies tab (dairy-map.js) is the only place they're mapped. Facility
-    maps never carry a dairies URL, in a CADD year or otherwise.
+    Dairies are on the locations maps -- the main map and an area's Overview,
+    as same-size points shaded by EPA size class, never sized on the facility
+    scale -- and on the Dairies tab's own map; the facility-only dataset maps
+    carry no dairies.
     """
 
-    def test_region_and_near_me_maps_have_no_dairies_url(self):
+    def test_the_locations_maps_carry_dairies(self):
         content = self.client.get(self.fresno.get_emissions_url(), {'year': '2023'}).content.decode()
-        assert map_data(content, 'dairies-url') is None
-        assert map_data(content, 'dairy-popup-url') is None
+        assert map_data(content, 'dairies-url').replace('&amp;', '&') == f"{reverse('api:v2:emissions:dairy-geojson')}?year=2023&region={self.fresno.sqid}"
+        assert map_data(content, 'dairy-popup-url').startswith(reverse('api:v2:emissions:dairy-detail', args=['x'])[:-2])
         near = self.client.get(reverse('emissions:near-me'), {'lat': '36.737', 'lng': '-119.787', 'year': '2023'}).content.decode()
-        assert map_data(near, 'dairies-url') is None
+        assert 'lat=36.7370' in map_data(near, 'dairies-url')
+        assert map_data(self.client.get(reverse('emissions:map'), {'year': '2023'}).content.decode(), 'dairies-url')
 
-    def test_the_other_maps_have_no_dairies_url_either(self):
+    def test_the_dataset_maps_have_no_dairies(self):
         plant = Facility.objects.get(name='TEST PLANT')
-        for url in (reverse('emissions:map'), plant.get_absolute_url(), reverse('emissions:sector-detail', args=['glass'])):
+        for url in (plant.get_absolute_url(), reverse('emissions:sector-detail', args=['glass']), self.fresno.get_emissions_tab_url('facilities')):
             content = self.client.get(url, {'year': '2023'}).content.decode()
-            assert map_data(content, 'dairies-url') is None, url
+            assert map_data(content, 'dairies-url') == '', url
 
 
 class DairyAboutTests(DairyPageTestCase):

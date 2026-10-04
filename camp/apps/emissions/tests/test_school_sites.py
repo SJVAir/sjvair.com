@@ -117,3 +117,27 @@ class SchoolDistrictTests(SchoolSitesTestCase):
         # Not on the district's own page.
         content = self.client.get(self.district.get_emissions_tab_url('schools'), {'year': '2024'}).content.decode()
         assert 'site-table' in content and 'school-districts-box' not in content
+
+
+class LocationsMapTests(SchoolSitesTestCase):
+    """The main map and an area's Overview are locations maps (views.locations_layers); dataset pages aren't."""
+
+    def test_schools_endpoint(self):
+        from django.urls import reverse
+        body = self.client.get(reverse('api:v2:emissions:schools-geojson')).json()
+        assert body['types'] == ['public_school', 'private_school', 'child_care']
+        sites = {row[4]: row for row in body['sites']}
+        assert body['types'][sites['QUARTER CARE'][3]] == 'child_care' and len(sites['CLOSE ELEMENTARY']) == 5
+
+    def test_which_maps_are_locations_maps(self):
+        from django.urls import reverse
+        from camp.apps.emissions.tests.test_views import map_data
+        main = self.client.get(reverse('emissions:map')).content.decode()
+        assert map_data(main, 'locations') == '1' and map_data(main, 'schools') == '1' and map_data(main, 'dairies') == '1'
+        assert map_data(main, 'wells') == ''  # the 66,000 wells a checkbox away
+        overview = self.client.get(self.fresno.get_emissions_url()).content.decode()
+        assert map_data(overview, 'locations') == '1' and f'region={self.fresno.sqid}' in map_data(overview, 'dairies-url')
+        facilities = self.client.get(self.fresno.get_emissions_tab_url('facilities')).content.decode()
+        assert map_data(facilities, 'locations') == '' and map_data(facilities, 'schools-url') == ''
+        off = self.client.get(reverse('emissions:map'), {'schools': '0'}).content.decode()
+        assert map_data(off, 'schools') == ''

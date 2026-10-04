@@ -839,9 +839,12 @@ def main():
         drawn = settled_count(driver, feature_count)
         check(results, 'a county page maps its facilities (2023)', drawn > 0, f'{drawn} facilities')
         legend = driver.execute_script("return document.querySelector('.facility-map-legend').textContent;")
-        check(results, 'its legend is the plain sized-facilities legend (one size-and-colour key, no dairies ramp)',
-              'legend-key-row' in driver.execute_script("return document.querySelector('.facility-map-legend').innerHTML;")
-              and 'Dairies' not in legend, legend[:160])
+        # A county's Overview is a locations map: same-size points, so the
+        # facility key is colour classes alone, with dairies and schools as their own rows.
+        legend_html = driver.execute_script("return document.querySelector('.facility-map-legend').innerHTML;")
+        check(results, 'its legend is the locations legend (colour classes, no size key; dairies and schools rows)',
+              'legend-key-row' not in legend_html and 'legend-bins' in legend_html
+              and 'data-points="dairies"' in legend_html and 'data-points="schools"' in legend_html, legend[:160])
 
         # The dairy charts: the Dairies tab's herd, CARB estimate and
         # digesters; a county page's Dairies block the same, with the section

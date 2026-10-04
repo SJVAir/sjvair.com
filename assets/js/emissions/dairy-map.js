@@ -899,5 +899,7 @@
 
   window.EmissionsDairyMap = {
     instances: function () { return M.instances('dairy'); },
+    // A dairy's popup, for the facility map's locations layer too (facility-map.js).
+    popupHtml: popupHtml,
   };
 })();

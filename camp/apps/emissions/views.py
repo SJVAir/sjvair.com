@@ -523,14 +523,15 @@ def wells_block(area, scope, *, kern=False):
 AREAS_VIEW_TABS = ('overview', 'facilities')
 
 
-def area_tab_layers(get, tab, *, nearby=None):
+def area_tab_layers(get, tab, scope, *, area_params, nearby=None):
     """
     An area tab's map layers (facility_map_config kwargs): each dataset page
     maps only its dataset and what goes with it. The Overview has them all,
-    the overlays starting off (Kern's 66,000 wells are too many to load by
-    default); Facilities, only facilities; Oil & gas, only the wells and
-    methane, both on; Schools, the sites with the facilities, and the wells
-    one checkbox away (both are what it counts near a site).
+    as the main map does (locations_layers), the wells a checkbox away (Kern's
+    66,000 are too many to load by default); Facilities, only facilities; Oil
+    & gas, only the wells and methane, both on; Schools, the sites with the
+    facilities, and the wells one checkbox away (both are what it counts near
+    a site).
     """
     if tab == 'oil-gas':
         return {'main_layer': None, 'wells': wells_overlay(get, default=True), 'methane': methane_overlay(get, default=True)}
@@ -538,7 +539,10 @@ def area_tab_layers(get, tab, *, nearby=None):
         return {}
     if tab == 'schools':
         return {'wells': wells_overlay(get), 'nearby': nearby}
-    return {'wells': wells_overlay(get), 'methane': methane_overlay(get)}
+    return {
+        'wells': wells_overlay(get), 'methane': methane_overlay(get, default=True),
+        'locations': locations_layers(get, scope, area_params=area_params),
+    }
 
 
 def methane_overlay(get, *, default=False):
@@ -552,6 +556,28 @@ def methane_overlay(get, *, default=False):
     raw = get.get('methane')
     on = raw == '1' if raw in ('0', '1') else default
     return {'on': on, 'default': default}
+
+
+def locations_layers(get, scope, *, area_params=None):
+    """
+    The main map's and an area Overview's locations layers (facility-map.js's
+    locations mode): every point the same size, a hue per dataset and shades
+    for each one's own scale. Dairies (CADD's year nearest the scope's;
+    `area_params`, a region's sqid or a point, narrows them to the area) and
+    schools and child care, both on unless ?dairies=0 / ?schools=0.
+    """
+    known = dairies.years()
+    year = scope.year if scope.year in known else (known[-1] if known else None)
+    return {
+        'locations': '1',
+        'dairies_url': f"{reverse('api:v2:emissions:dairy-geojson')}?{urlencode({'year': year, **(area_params or {})})}" if year else '',
+        'dairy_popup_url': reverse('api:v2:emissions:dairy-detail', args=['__id__']).replace('__id__', '{id}') + f'?{urlencode({"year": year})}' if year else '',
+        'dairies': '' if get.get('dairies') == '0' else '1',
+        'schools_url': reverse('api:v2:emissions:schools-geojson'),
+        'schools': '' if get.get('schools') == '0' else '1',
+        # A school's popup links its own Schools tab: a mile around it.
+        'school_near_url': reverse('emissions:near-me-schools'),
+    }
 
 
 def methane_map_data(overlay):
@@ -616,7 +642,7 @@ def reporting_sectors(scope):
 
 def facility_map_config(scope, *, mode='full', highlight=None, sector=None, params=None, areas_view=None,
                         outline_url='', center='', zoom='', radius='', nearby=None, wells=None, methane=None, fit=False,
-                        main_layer=True):
+                        main_layer=True, locations=None):
     """
     The data-* attributes of a `.facility-map` container (see
     assets/js/emissions/facility-map.js). `nearby` is a FeatureCollection
@@ -668,6 +694,8 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         # where `methane` is set, including a facility's own map -- unlike
         # wells, a nearby plume is relevant there.
         **methane_map_data(methane),
+        # The main map's and Overviews' locations layers (locations_layers), or none.
+        **(locations or {'locations': '', 'dairies_url': '', 'schools_url': ''}),
         # The facility page's schools and child care within 1/4 mile (a
         # FeatureCollection, JSON in the attribute) and the ring to draw.
         'nearby': json.dumps(nearby) if nearby else '',
@@ -728,8 +756,10 @@ class MapPage(ScopeMixin, vanilla.TemplateView):
             map_config=facility_map_config(
                 scope, sector=sector,
                 areas_view=map_view(self.request.GET, year=scope.year, share=scope.pollutant.unit == 'share'),
+                # Every location, the 66,000 wells a checkbox away.
                 wells=wells_overlay(self.request.GET),
-                methane=methane_overlay(self.request.GET),
+                methane=methane_overlay(self.request.GET, default=True),
+                locations=locations_layers(self.request.GET, scope),
             ),
             sector_options=sector_options(),
             **kwargs,
@@ -1254,7 +1284,7 @@ class RegionPage(RegionLookupMixin, AreaPage):
             scope, mode='compact', params=scope.params(county=None),
             areas_view=map_view(self.request.GET, level, year=scope.year, share=scope.pollutant.unit == 'share') if level and self.tab in AREAS_VIEW_TABS else None,
             outline_url=reverse('api:v2:regions:region-detail', args=[self.region.sqid]),
-            **area_tab_layers(self.request.GET, self.tab, nearby=getattr(self, 'site_geojson', None)),
+            **area_tab_layers(self.request.GET, self.tab, scope, area_params={'region': self.region.sqid}, nearby=getattr(self, 'site_geojson', None)),
         )
 
     def get_context_data(self, **kwargs):
@@ -1424,7 +1454,10 @@ class NearMe(NearLookupMixin, AreaPage):
             areas_view=map_view(self.request.GET, Region.Type.TRACT, year=scope.year, share=scope.pollutant.unit == 'share') if self.tab in AREAS_VIEW_TABS else None,
             center=f'{self.near.lat:.4f},{self.near.lng:.4f}', zoom=RADIUS_ZOOMS[self.near.radius],
             radius=self.near.radius,
-            **area_tab_layers(self.request.GET, self.tab, nearby=getattr(self, 'site_geojson', None)),
+            **area_tab_layers(
+                self.request.GET, self.tab, scope, nearby=getattr(self, 'site_geojson', None),
+                area_params={'lat': f'{self.near.lat:.4f}', 'lng': f'{self.near.lng:.4f}', 'radius': self.near.radius},
+            ),
         )
 
     def get_context_data(self, **kwargs):
