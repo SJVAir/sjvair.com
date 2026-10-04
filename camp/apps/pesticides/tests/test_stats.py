@@ -162,6 +162,17 @@ class StatsTests(RollupTestMixin, TestCase):
         assert window['first'].year == 2020
         assert window['last'].year == 2099
 
+    def test_top_chemicals_of_concern_falls_back_past_the_prefetch(self):
+        # The flagged chemicals sit below the prefetched top-N (here, one
+        # row: SULFUR, not flagged), so the board is built from a query of its
+        # own -- by the same measure, heaviest first.
+        uses = PesticideUseRollup.objects.all()
+        prefetched = stats.top_related(uses, 2023, 'chemical', limit=1)
+        assert [r.obj.name for r in prefetched] == ['SULFUR']
+        rows = stats.top_chemicals_of_concern(prefetched, uses, 2023, limit=2)
+        assert [r.obj.name for r in rows] == ['GLYPHOSATE', 'CHLORPYRIFOS']
+        assert rows[0].lbs >= rows[1].lbs
+
     def test_landing_stats(self):
         data = stats.landing_stats()
         assert data['latest_year'] == 2023
@@ -172,9 +183,9 @@ class StatsTests(RollupTestMixin, TestCase):
         assert data['total_lbs'] == 740.0
         assert data['active_notices'] == 2   # the two 2099 notices; the 2020 one is long past
         assert [r.obj.name for r in data['top_chemicals']] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
-        # Only what the chemicals board doesn't already list, and here it
-        # lists all three, so there is nothing left for this one.
-        assert [r.obj.name for r in data['top_chemicals_of_concern']] == []
+        # A ranking of its own: both flagged chemicals, though the chemicals
+        # board lists them too.
+        assert [r.obj.name for r in data['top_chemicals_of_concern']] == ['GLYPHOSATE', 'CHLORPYRIFOS']
         assert [r.obj.name for r in data['top_commodities']] == ['GRAPE', 'ALMOND', 'COTTON']
         assert [r.obj.name for r in data['top_products']] and all(r.lbs >= 0 for r in data['top_products'])
         assert [(r['county_name'], r['lbs']) for r in data['by_county']] == [('Fresno County', 670.0), ('Kern County', 70.0)]

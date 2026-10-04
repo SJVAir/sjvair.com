@@ -29,7 +29,6 @@
   var EMPTY = M.EMPTY;
   var logError = M.logger('section-map');
   var debounce = M.debounce;
-  var extendBounds = M.extendBounds;
   var geometryBounds = M.geometryBounds;
   var unionBounds = M.unionBounds;
 
@@ -1404,15 +1403,9 @@
       .then(function (geojson) {
         if (self.countiesAbort !== abort) return;
         self.counties = geojson;
-        self.countyBounds = {};
-        self.valleyBounds = null;
-        (geojson.features || []).forEach(function (feature) {
-          var bounds = geometryBounds(feature);
-          if (!bounds) return;
-          var slug = feature.properties && feature.properties.slug;
-          if (slug) self.countyBounds[slug] = bounds;
-          self.valleyBounds = unionBounds(self.valleyBounds, bounds);
-        });
+        var bounds = M.counties.bounds(geojson);
+        self.countyBounds = bounds.bySlug;
+        self.valleyBounds = bounds.all;
         self.setSourceData('counties', geojson);
         self.fitCounty();
       })

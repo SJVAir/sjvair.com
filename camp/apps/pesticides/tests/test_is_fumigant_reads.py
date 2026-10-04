@@ -50,7 +50,7 @@ class IsFumigantReadTests(RollupTestMixin, TestCase):
         assert data['products_fumigant'] == expected
 
     def test_landing_cache_key_was_bumped(self):
-        assert stats.LANDING_KEY.endswith(':v4')
+        assert stats.LANDING_KEY.endswith(':v5')
 
     def test_keys_for_product_uses_is_fumigant(self):
         assert 'fumigant' in notes.keys_for_product(Product.objects.get(pk=1))

@@ -625,6 +625,7 @@ class Home(vanilla.TemplateView):
             maptiler_key=settings.MAPTILER_API_KEY,
             focus_find=self.request.GET.get('find') == '1',
             movers=movers,
+            chemicals_board_title=stats.chemicals_title(concern, 'Most applied'),
             **{**data, 'by_county': by_county, **year_context(year, all_years, county, concern=concern)},
             county_rank=county_rank,
             county_metric_options=maps.county_metric_options(county_rank),
@@ -1418,6 +1419,10 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
     }
 
     def dispatch(self, request, *args, **kwargs):
+        self._resolve_filters(request)
+        return super().dispatch(request, *args, **kwargs)
+
+    def _resolve_filters(self, request):
         self.year, self.all_years = stats.resolve_year_param(request.GET.get('year'))
         self.form = RecordsFilterForm(self._build_form_data(request.GET))
         self.form.is_valid()
@@ -1429,7 +1434,6 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
         self.county = self._get_county()
         self.concern = scope_concern(request)
         self.point, self.radius = self._get_point_and_radius()
-        return super().dispatch(request, *args, **kwargs)
 
     def _default_range(self):
         """
@@ -1586,7 +1590,9 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
         params = {
             'start': start,
             'end': end,
-            'county': data.get('county'),
+            # Not a form field, so data.get('county') was always None and every
+            # county shared the valley's cached totals.
+            'county': self.county.slug if self.county else '',
             'method': data.get('method'),
             'fume_method': data.get('fume_method'),
             'region': self.request.GET.get('region', ''),
@@ -1601,42 +1607,112 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
         }
         normalized = sorted((key, str(value)) for key, value in params.items())
         digest = hashlib.sha1(repr(normalized).encode()).hexdigest()
-        return f'pesticides:records-totals:v2:{digest}'
+        return f'pesticides:records-totals:v3:{digest}'
 
     def get_totals(self):
         key = self._totals_cache_key()
         totals = cache.get(key)
         if totals is None:
-            aggregate = self.get_filtered_queryset().order_by().aggregate(
-                applications=Count('id'), lbs=Sum('lbs_chemical'), acres=Sum('acres_treated'),
-                # A record with several active ingredients is several rows
-                # sharing (year, county, use_no); `applications` counts rows
-                # (what the paginator pages through), `records` counts each
-                # use report once.
-                records=Count(
-                    Concat('year', Value('-'), 'county_id', Value('-'), 'use_no', output_field=CharField()),
-                    distinct=True,
-                ),
-            )
-            chemical = self.related.get('chemical')
-            scoped = bool(chemical and chemical is not MISSING)
-            queryset = self.get_filtered_queryset().order_by()
-            if scoped:
-                acres = aggregate['acres']
-            else:
-                # Acres repeat on every ingredient row of a record: sum one
-                # (the lowest pk) row per record.
-                first_rows = queryset.values('year', 'county_id', 'use_no').annotate(first=Min('pk')).values('first')
-                acres = PesticideUse.objects.filter(pk__in=first_rows).aggregate(a=Sum('acres_treated'))['a']
-            totals = {
-                'applications': aggregate['applications'] or 0,
-                # Rows are one chemical's, one per record, when filtered to a chemical.
-                'records': (aggregate['applications'] if scoped else aggregate['records']) or 0,
-                'lbs': aggregate['lbs'] or 0,
-                'acres': acres or 0,
-            }
+            totals = self._rollup_totals() if self._totals_from_rollup() else self._raw_totals()
             cache.set(key, totals, RECORDS_TOTALS_TTL)
         return totals
+
+    def _totals_from_rollup(self):
+        """
+        Whether the rollup can give these totals exactly. It can when every
+        active filter is a column of its grain (year, county, section, the
+        places that resolve to sections, chemical, product, commodity, method,
+        narrowing) and the date range is the whole scope. It can't for:
+
+        - a date range that isn't the scope's whole span: the rollup's finest
+          date is the month, and the range here is to the day;
+        - a fumigation technique, which isn't in the grain;
+        - a point and radius, which is a spatial test on section geometry
+          rather than a set of section ids.
+
+        An unresolved sqid stays raw too: the queryset is empty and costs nothing.
+        """
+        if any(value is MISSING for value in self.related.values()):
+            return False
+        if self.form.cleaned_data.get('fume_method'):
+            return False
+        # area_filter ignores the point when a section or region is given.
+        if self.point is not None and not (self.related.get('section') or self.related.get('region')):
+            return False
+        scope = self._default_range()
+        return scope != (None, None) and self.get_date_range() == scope
+
+    def _rollup_filtered(self):
+        """The rollup rows for the same filters get_filtered_queryset() applies to the records."""
+        data = self.form.cleaned_data
+        # Month 0 is a record with no application date. The records filter
+        # compares dates, which never match a missing one, so the rollup must
+        # leave those out as well or the counts drift.
+        rows = stats.in_year(PesticideUseRollup.objects.filter(month__gte=1), self.year, self.all_years)
+        rows = area_filter(
+            rows, county=self.county, region=self.related.get('region'), section=self.related.get('section'),
+        )
+        if data.get('method'):
+            rows = rows.filter(method='' if data['method'] == NO_METHOD else data['method'])
+        for param in ('chemical', 'product', 'commodity'):
+            obj = self.related.get(param)
+            if obj:
+                rows = rows.filter(**{param: obj})
+        if self.concern:
+            rows = stats.narrow_rows(rows, self.concern)
+        return rows
+
+    def _rollup_totals(self):
+        """
+        The totals from the pre-summed rollup instead of ~6.5M records.
+        `applications` is the rollup's row count (it counts every record row,
+        chemical or not), `records` and `acres` come off each report's one
+        designated row, and within one chemical the per-row columns are
+        already one row per report. Must equal _raw_totals().
+        """
+        chemical = self.related.get('chemical')
+        scoped = bool(chemical and chemical is not MISSING)
+        aggregate = self._rollup_filtered().aggregate(
+            applications=Sum('applications'), records=Sum('records'), lbs=Sum('lbs_chemical'),
+            acres=Sum(stats.acres_field_for(scoped)),
+        )
+        return {
+            'applications': aggregate['applications'] or 0,
+            'records': (aggregate['applications'] if scoped else aggregate['records']) or 0,
+            'lbs': aggregate['lbs'] or 0,
+            'acres': aggregate['acres'] or 0,
+        }
+
+    def _raw_totals(self):
+        """The totals counted straight off the records: the slow path, and the definition the rollup must match."""
+        aggregate = self.get_filtered_queryset().order_by().aggregate(
+            applications=Count('id'), lbs=Sum('lbs_chemical'), acres=Sum('acres_treated'),
+            # A record with several active ingredients is several rows
+            # sharing (year, county, use_no); `applications` counts rows
+            # (what the paginator pages through), `records` counts each
+            # use report once.
+            records=Count(
+                Concat('year', Value('-'), 'county_id', Value('-'), 'use_no', output_field=CharField()),
+                distinct=True,
+            ),
+        )
+        chemical = self.related.get('chemical')
+        scoped = bool(chemical and chemical is not MISSING)
+        queryset = self.get_filtered_queryset().order_by()
+        if scoped:
+            acres = aggregate['acres']
+        else:
+            # Acres repeat on every ingredient row of a record: sum one
+            # (the lowest pk) row per record.
+            first_rows = queryset.values('year', 'county_id', 'use_no').annotate(first=Min('pk')).values('first')
+            acres = PesticideUse.objects.filter(pk__in=first_rows).aggregate(a=Sum('acres_treated'))['a']
+        return {
+            'applications': aggregate['applications'] or 0,
+            # Rows are one chemical's, one per record, when filtered to a chemical.
+            'records': (aggregate['applications'] if scoped else aggregate['records']) or 0,
+            'lbs': aggregate['lbs'] or 0,
+            'acres': acres or 0,
+        }
 
     def _clear_url(self, *params):
         return clear_url(self.request, *params)
@@ -1812,7 +1888,7 @@ def _section_card(title, kind, rows, show_all_url, limit=stats.RELATED_LIMIT):
     }
 
 
-def _place_cards(context):
+def _place_cards(context, concern=False):
     """
     The place page's top lists -- one card per kind, all pointing "Show all"
     at the area's records browser, since there's no single entity to filter
@@ -1821,14 +1897,13 @@ def _place_cards(context):
     There is no separate chemicals-of-concern card: it repeated the chemicals
     card row for row, and those rows already carry their Prop 65 / IARC
     badges there. Under the concern scope every card is of concern anyway,
-    and the chemicals card's title says so.
+    and the chemicals card's title names the narrowing.
     """
     records_url = context['records_url']
-    of_concern = context.get('top_chemicals_of_concern')
     return {
         'products_card': _section_card('Top products', 'products', context['top_products'], records_url),
         'chemicals_card': _section_card(
-            'Top chemicals' if of_concern is not None else 'Top flagged chemicals',
+            stats.chemicals_title(concern),
             'chemicals', context['top_chemicals'], records_url),
         'commodities_card': _section_card('Top commodities', 'commodities', context['top_commodities'], records_url),
     }
@@ -2355,7 +2430,6 @@ class NearMeAreaMixin(AreaPageMixin):
             {'miles': miles, 'url': f'{path}?{self.point_query(radius=miles)}', 'current': miles == self.radius}
             for miles in places.RADIUS_CHOICES
         ]
-        context['privacy_note'] = True
         return context
 
 
@@ -2379,7 +2453,7 @@ class AreaOverviewMixin:
             section=None,
             years=stats.years_loaded(),
             **context,
-            **_place_cards(context),
+            **_place_cards(context, concern),
             **extra,
             **self.header_context(),
             **self.tab_scope_context(),

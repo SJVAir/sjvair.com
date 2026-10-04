@@ -162,6 +162,8 @@ class MethodBreakdownPageTests(RollupTestMixin, TestCase):
 
     def test_records_not_reported_filter(self):
         PesticideUse.objects.filter(pk=1).update(aerial_ground='')
+        # The records totals (and so the paginator) read the rollup.
+        rollup.rebuild_year(2023)
         ctx = self.client.get(reverse('pesticides:records'), {'year': 2023, 'method': 'none'}).context
         assert [u.pk for u in ctx['object_list']] == [1]
 
