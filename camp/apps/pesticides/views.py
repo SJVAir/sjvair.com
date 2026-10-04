@@ -1237,7 +1237,9 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         'chemical': str(chemical.chem_code) if chemical else '',
         'product': str(product.prodno) if product else '',
         'commodity': commodity.site_code if commodity else '',
-        'county': county or '',
+        # A clipped map is bounded by its region's shape, not a county: the
+        # county filter would cut the widened shape off at the county line.
+        'county': '' if clip_region else (county or ''),
         # The narrowing's value, passed straight through to the grid
         # endpoints as `narrow=<value>`.
         'narrow': concern or '',

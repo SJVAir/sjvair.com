@@ -7,12 +7,13 @@ comes along in expanded mode.
 Context: buffer, buffer_options (regions.shapes.buffer_options).
 {% endcomment %}
 {% if buffer_options %}
-<div class="map-toolbar-filters buffer-toolbar">
+<div class="map-buffer">
     <div class="field is-grouped">
         <div class="control">
             <div class="dropdown map-toolbar-dropdown{% if buffer %} is-set{% endif %}">
                 <div class="dropdown-trigger">
-                    <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
+                    <button type="button" class="button" aria-haspopup="true" aria-expanded="false"
+                            aria-label="Map area: {% for option in buffer_options %}{% if option.current %}{{ option.label }}{% endif %}{% endfor %}">
                         <span class="icon"><span class="fa-duotone fa-fw fa-draw-polygon explorer-icon is-scope" aria-hidden="true"></span></span>
                         <span class="map-toolbar-label">{% for option in buffer_options %}{% if option.current %}{{ option.label }}{% endif %}{% endfor %}</span>
                         <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>

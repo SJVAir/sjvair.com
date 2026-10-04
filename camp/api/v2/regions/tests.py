@@ -136,7 +136,8 @@ class RegionDetailTests(TestCase):
             return GEOSGeometry(json.dumps(geometry)).area
         assert area(buffer=3) > area()
         assert area(buffer=5) > area(buffer=3)
-        assert area(buffer=7) == area()
+        response = region_detail(self.factory.get('/', {'buffer': 7}), region_id=self.region.sqid)
+        assert response.status_code == 400
 
     def test_detail_has_bbox(self):
         request = self.factory.get('/')

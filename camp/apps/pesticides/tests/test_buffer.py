@@ -37,9 +37,19 @@ class RegionTabBufferTests(RollupTestMixin, TestCase):
                 assert config['clip_url'] == f'/api/2.0/regions/{region.sqid}/?buffer=3', (region.slug, tab)
                 assert f'data-clip-region="{region.sqid}"' in response.content.decode()
 
-    def test_county_tabs_keep_their_county_for_the_numbers(self):
-        for tab in ('overview', 'notices', 'schools'):
-            assert self.get(self.county, tab, buffer=3).context['map_config']['county'] == 'fresno', tab
+    def test_a_clipped_map_drops_the_county_filter_but_the_stats_keep_it(self):
+        for tab in TABS:
+            response = self.get(self.county, tab, buffer=3)
+            config = response.context['map_config']
+            assert config['clip_region'] == self.county.sqid and config['county'] == '', tab
+            assert 'data-county=""' in response.content.decode(), tab
+        assert self.get(self.county, 'overview', buffer=3).context['totals']['lbs'] == 670.0
+
+    def test_the_records_tab_map_drops_the_county_and_keeps_the_narrowing(self):
+        response = self.get(self.county, 'records', buffer=3)
+        assert response.context['map_config']['county'] == ''
+        assert response.context['map_config']['clip_region'] == self.county.sqid
+        assert response.context['totals']['lbs'] == 670.0
 
     def test_the_toolbar_offers_the_four_buffers(self):
         for tab in TABS:
@@ -48,7 +58,7 @@ class RegionTabBufferTests(RollupTestMixin, TestCase):
             assert [o['label'] for o in options] == OPTION_LABELS, tab
             assert [o['label'] for o in options if o['current']] == ['+3 miles'], tab
             html = response.content.decode()
-            assert 'buffer-toolbar' in html and '+5 miles' in html, tab
+            assert 'map-buffer' in html and '+5 miles' in html, tab
 
     def test_tab_links_and_the_crumb_carry_the_buffer(self):
         response = self.get(self.city, 'notices', buffer=3)
@@ -88,7 +98,7 @@ class RegionTabBufferTests(RollupTestMixin, TestCase):
             assert not config['clip_region'] and not config['clip_url'], name
             assert 'buffer_options' not in response.context, name
             assert all('buffer' not in tab['url'] for tab in response.context['tabs']), name
-            assert 'buffer-toolbar' not in response.content.decode(), name
+            assert 'map-buffer' not in response.content.decode(), name
 
     def test_the_main_map_and_section_pages_are_not_clipped(self):
         config = self.client.get(reverse('pesticides:map'), {'buffer': 3}).context['map_config']
