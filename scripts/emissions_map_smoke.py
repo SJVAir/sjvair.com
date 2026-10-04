@@ -19,7 +19,7 @@ shaded), an Options menu with Tiles only (a size filter surviving the style
 swap, tiles= in the URL), a measure change redrawing the legend, a sort (a
 boosted swap) keeping Counties and its measure, a table row's name zooming to its dairy
 with its popup, a county narrowing the dairies, and the NOx / 2024 fallback
-notes, and the Methane sources overlay: off until ticked,
+notes, and the Methane plumes overlay: off until ticked,
 loads the layer and writes ?methane=1, draws the plume images, a legend and
 map without a repeated Carbon Mapper credit (it's on the About and data
 provider pages), and a plume's popup with its rate, passes and dated

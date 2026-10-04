@@ -24,7 +24,7 @@ About page's Methane section).
     </tbody>
 </table>
 </div>
-{% if methane_oil_gas|length > methane_list_rows %}<p class="is-size-7 has-text-grey">The {{ methane_list_rows }} largest of {{ methane_oil_gas|length|intcomma }}; turn on the map's <em>Methane sources</em> overlay for all of them.</p>{% endif %}
+{% if methane_oil_gas|length > methane_list_rows %}<p class="is-size-7 has-text-grey">The {{ methane_list_rows }} largest of {{ methane_oil_gas|length|intcomma }}; turn on the map's <em>Methane plumes</em> overlay for all of them.</p>{% endif %}
 {% else %}
 <p class="has-text-grey">No oil &amp; gas methane sources observed {% if here %}here{% else %}in the covered counties{% endif %}.</p>
 {% endif %}

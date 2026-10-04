@@ -1,5 +1,5 @@
 /*
- * The "Methane sources (Carbon Mapper)" overlay, shared by facility-map.js
+ * The "Methane plumes" overlay (Carbon Mapper's sources), shared by facility-map.js
  * and dairy-map.js: each Carbon Mapper CH4 source from data-methane-url
  * (/api/2.0/emissions/methane/geojson/) drawn as its newest plume image, all
  * of them painted onto one canvas that spans the view (a single MapLibre
@@ -224,7 +224,7 @@
 
   Overlay.prototype.legendHtml = function () {
     if (!this.enabled) return '';
-    var html = '<div class="legend-overlay"><label class="legend-toggle"><input type="checkbox" data-methane' + (this.on ? ' checked' : '') + '> Methane sources</label>';
+    var html = '<div class="legend-overlay"><label class="legend-toggle"><input type="checkbox" data-methane' + (this.on ? ' checked' : '') + '> Methane plumes</label>';
     if (this.on) {
       html += '<p class="legend-note">Each source\'s newest observed plume, shaded by methane concentration and drawn larger than life when zoomed out. Snapshots from overflights, not annual totals. Click one for its rate and other passes.</p>';
     }
