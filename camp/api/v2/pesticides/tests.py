@@ -1622,3 +1622,155 @@ class SectionTotalsTableTests(TestCase):
         props = self.props(year=2023, compare=2022)['MDM-T14S-R20E-01']
         assert props['lbs_chemical'] == 670.0
         assert props['lbs_chemical_prev'] == 480.0
+
+
+# ---------------------------------------------------------------------------
+# Region + buffer clip on the map layers
+# ---------------------------------------------------------------------------
+
+class RegionClipTests(TestCase):
+    """
+    `region=<sqid>` (with `buffer=<miles>`) clips the map layers. The clip
+    region is a box around fixture section 9101 (inside); a second section,
+    two notices' worth of points and a school sit ~0.5 mile east of the box
+    (inside the +1 mile buffer only); Kern's section 9102 is far outside.
+    """
+    fixtures = ['pesticides-explorer']
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        rollup.rebuild_all()
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.region = self.make_region(
+            'Clip Area', 'clip-area', Region.Type.CITY, 'clip',
+            'MULTIPOLYGON (((-119.82 36.68, -119.76 36.68, -119.76 36.74, -119.82 36.74, -119.82 36.68)))',
+        )
+        self.near = self.make_region(
+            'MDM-T14S-R21E-01', 'near-section', Region.Type.MTRS, 'MDM-T14S-R21E-01',
+            'MULTIPOLYGON (((-119.752 36.70, -119.750 36.70, -119.750 36.72, -119.752 36.72, -119.752 36.70)))',
+        )
+        self.inside_section = Region.objects.get(pk=9101)
+        self.outside_section = Region.objects.get(pk=9102)
+        self.buffer_only_point = Point(-119.751, 36.71, srid=4326)
+
+    @staticmethod
+    def make_region(name, slug, type, external_id, wkt):
+        region = Region.objects.create(name=name, slug=slug, type=type, external_id=external_id)
+        region.boundary = Boundary.objects.create(region=region, version='test', geometry=GEOSGeometry(wkt, srid=4326))
+        region.save()
+        return region
+
+    def get(self, name, **params):
+        return self.client.get(reverse(f'api:v2:pesticides:{name}'), params)
+
+    def section_ids(self, **params):
+        response = self.get('section-list', year=2023, **params)
+        assert response.status_code == 200, response.content
+        return {f['id'] for f in response.json()['features']}
+
+    def test_sections_clip_to_the_region(self):
+        assert self.section_ids(region=self.region.sqid) == {self.inside_section.sqid}
+
+    def test_sections_buffer_adds_the_neighbours(self):
+        ids = self.section_ids(region=self.region.sqid, buffer=1)
+        assert ids == {self.inside_section.sqid, self.near.sqid}
+
+    def test_sections_buffer_zero_is_the_boundary(self):
+        assert self.section_ids(region=self.region.sqid, buffer=0) == {self.inside_section.sqid}
+
+    def test_sections_clip_intersects_the_bbox(self):
+        # A bbox over the buffer-only section alone removes the inside one.
+        ids = self.section_ids(region=self.region.sqid, buffer=1, bbox='-119.76,36.6,-119.7,36.8')
+        assert ids == {self.near.sqid}
+
+    def test_sections_without_a_clip_are_unchanged(self):
+        ids = self.section_ids(bbox='-121,35,-118,37.5')
+        assert {self.inside_section.sqid, self.outside_section.sqid, self.near.sqid} <= ids
+
+    def test_sections_bad_clip_is_a_400(self):
+        assert self.get('section-list', region='nope').status_code == 400
+        response = self.get('section-list', region=self.region.sqid, buffer=2)
+        assert response.status_code == 400
+        assert response.json()['error'] == 'buffer must be one of 0, 1, 3, 5'
+        assert self.get('section-list', region=self.region.sqid, buffer='x').status_code == 400
+
+    def test_sections_without_any_area_still_ask_for_one(self):
+        assert self.get('section-list', year=2023).status_code == 400
+
+    def township_ids(self, **params):
+        response = self.get('township-list', year=2023, **params)
+        assert response.status_code == 200, response.content
+        return {f['id'] for f in response.json()['features']}
+
+    def test_townships_clip_to_the_region(self):
+        assert self.township_ids(region=self.region.sqid) == {'MDM-T14S-R20E'}
+
+    def test_townships_buffer_adds_the_neighbours(self):
+        assert self.township_ids(region=self.region.sqid, buffer=1) == {'MDM-T14S-R20E', 'MDM-T14S-R21E'}
+
+    def test_townships_clip_intersects_the_bbox(self):
+        ids = self.township_ids(region=self.region.sqid, buffer=1, bbox='-119.76,36.6,-119.7,36.8')
+        assert ids == {'MDM-T14S-R21E'}
+
+    def test_townships_without_a_clip_are_unchanged(self):
+        assert {'MDM-T14S-R20E', 'MDM-T30S-R28E', 'MDM-T14S-R21E'} <= self.township_ids()
+
+    def test_townships_bad_clip_is_a_400(self):
+        assert self.get('township-list', region='nope').status_code == 400
+        assert self.get('township-list', region=self.region.sqid, buffer=2).status_code == 400
+
+    def notice_ids(self, name='notice-active', **params):
+        response = self.get(name, **params)
+        assert response.status_code == 200, response.content
+        return {f['id'] for f in response.json()['features']}
+
+    def test_notices_clip_to_the_region(self):
+        from django.core.cache import cache
+        two, three = PesticideNotice.objects.get(pk=2), PesticideNotice.objects.get(pk=3)
+        PesticideNotice.objects.filter(pk=2).update(point=Point(-119.79, 36.71, srid=4326))
+        PesticideNotice.objects.filter(pk=3).update(point=self.buffer_only_point)
+        cache.clear()
+        assert self.notice_ids() == {two.sqid, three.sqid}
+        assert self.notice_ids(region=self.region.sqid) == {two.sqid}
+        assert self.notice_ids(region=self.region.sqid, buffer=1) == {two.sqid, three.sqid}
+        assert self.notice_ids(region=self.region.sqid, buffer=1, bbox='-119.76,36.6,-119.7,36.8') == {three.sqid}
+
+    def test_notices_without_a_point_drop_out_when_clipped(self):
+        PesticideNotice.objects.filter(pk=2).update(point=None)
+        assert PesticideNotice.objects.get(pk=2).sqid not in self.notice_ids(region=self.region.sqid, buffer=5)
+
+    def test_archived_notices_clip_too(self):
+        past = PesticideNotice.objects.get(pk=1)
+        PesticideNotice.objects.filter(pk=1).update(point=Point(-119.79, 36.71, srid=4326))
+        assert self.notice_ids('notice-archive', region=self.region.sqid) == {past.sqid}
+        PesticideNotice.objects.filter(pk=1).update(point=self.buffer_only_point)
+        from django.core.cache import cache
+        cache.clear()
+        assert self.notice_ids('notice-archive', region=self.region.sqid) == set()
+        assert self.notice_ids('notice-archive', region=self.region.sqid, buffer=1) == {past.sqid}
+
+    def test_notices_bad_clip_is_a_400(self):
+        for name in ('notice-active', 'notice-archive'):
+            assert self.get(name, region='nope').status_code == 400
+            assert self.get(name, region=self.region.sqid, buffer=2).status_code == 400
+
+    def test_locations_buffer(self):
+        from camp.apps.regions.models import Location
+        for name, point in (('Inside', Point(-119.79, 36.71, srid=4326)), ('Near', self.buffer_only_point)):
+            Location.objects.create(
+                type=Location.Type.PUBLIC_SCHOOL, name=name, external_id=name, source='t',
+                point=point, county=Region.objects.get(pk=9001), imported_at=timezone.now(),
+            )
+
+        def names(**params):
+            response = self.get('location-list', **params)
+            assert response.status_code == 200, response.content
+            return [f['properties']['name'] for f in response.json()['features']]
+
+        assert names(region=self.region.sqid) == ['Inside']
+        assert names(region=self.region.sqid, buffer=1) == ['Inside', 'Near']
+        assert self.get('location-list', region=self.region.sqid, buffer=2).status_code == 400
