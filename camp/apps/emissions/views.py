@@ -20,6 +20,7 @@ from camp.apps.emissions.models import AirComplianceFacility, Facility, SourceIm
 from camp.apps.emissions.pollutants import CRITERIA, PRECURSORS
 from camp.apps.regions import nearby
 from camp.apps.regions import schools as region_schools
+from camp.apps.regions import shapes
 from camp.apps.regions.models import Location, Region
 from camp.utils import mapconfig
 
@@ -591,21 +592,6 @@ def area_map_params(area, buffer=0):
     if isinstance(area, areas.RadiusArea):
         return {'lat': f'{area.lat:.4f}', 'lng': f'{area.lng:.4f}', 'radius': area.radius}
     return {'region': area.region.sqid, **({'buffer': buffer} if buffer else {})}
-
-
-def buffer_options(request, buffer):
-    """A region page map's "how far past the boundary" choices: [(label, url, current)], each this page with ?buffer=."""
-    options = []
-    for miles, label in ((0, 'Exact boundary'), (1, '+1 mile'), (3, '+3 miles'), (5, '+5 miles')):
-        query = request.GET.copy()
-        query.pop('page', None)
-        if miles:
-            query['buffer'] = miles
-        else:
-            query.pop('buffer', None)
-        encoded = query.urlencode()
-        options.append((label, f'{request.path}?{encoded}' if encoded else request.path, miles == buffer))
-    return options
 
 
 def methane_map_data(overlay, area_params=None):
@@ -1325,7 +1311,7 @@ class RegionPage(RegionLookupMixin, AreaPage):
             areas_view=map_view(self.request.GET, level, year=scope.year, share=scope.pollutant.unit == 'share') if level and self.tab in AREAS_VIEW_TABS else None,
             outline_url=reverse('api:v2:regions:region-detail', args=[self.region.sqid]),
             # Every layer limited to the region, or a mile or three past it.
-            area_params=area_params, buffer_options=buffer_options(self.request, buffer),
+            area_params=area_params, buffer_options=shapes.buffer_options(self.request, buffer),
             **area_tab_layers(self.request.GET, self.tab, scope, area_params=area_params, nearby=getattr(self, 'site_geojson', None)),
         )
 

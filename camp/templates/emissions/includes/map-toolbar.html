@@ -88,12 +88,12 @@ which applies to both views.
         <div class="dropdown-trigger">
             <button type="button" class="button" aria-haspopup="true" aria-expanded="false" title="How far past the boundary the map reaches">
                 <span class="icon"><span class="fa-duotone fa-fw fa-draw-circle explorer-icon is-areas" aria-hidden="true"></span></span>
-                <span class="map-toolbar-label">{% for label, url, current in map_config.buffer_options %}{% if current %}{{ label }}{% endif %}{% endfor %}</span>
+                <span class="map-toolbar-label">{% for option in map_config.buffer_options %}{% if option.current %}{{ option.label }}{% endif %}{% endfor %}</span>
                 <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
             </button>
         </div>
         <div class="dropdown-menu" role="menu"><div class="dropdown-content">
-            {% for label, url, current in map_config.buffer_options %}<a href="{{ url }}" class="dropdown-item{% if current %} is-active{% endif %}"{% if current %} aria-current="true"{% endif %}>{{ label }}</a>{% endfor %}
+            {% for option in map_config.buffer_options %}<a href="{{ option.url }}" class="dropdown-item{% if option.current %} is-active{% endif %}"{% if option.current %} aria-current="true"{% endif %}>{{ option.label }}</a>{% endfor %}
         </div></div>
     </div>
     {% endif %}

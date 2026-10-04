@@ -20,6 +20,7 @@ from django.db.models import OuterRef, Q, Subquery
 
 from camp.apps.emissions import cities, stats
 from camp.apps.emissions.models import Facility
+from camp.apps.regions import shapes
 from camp.apps.regions.models import Region
 from camp.utils.gis import EPSG_CALIFORNIA_ALBERS, EPSG_LATLON
 
@@ -310,35 +311,28 @@ def facility_ab617_region(facility):
 
 
 # An area page's maps can reach past its boundary: exactly the area, or 1,
-# 3 or 5 miles beyond it (?buffer=), so what sits just over the line shows.
-BUFFERS = (0, 1, 3, 5)
-# Simplifying a widened shape keeps the point-in-shape tests quick; 30 m is
-# far below anything the map can show.
-BUFFER_SIMPLIFY_METERS = 30
-
-
-def buffer_param(get):
-    """?buffer= as one of BUFFERS (miles), 0 when missing or anything else."""
-    try:
-        value = int(get.get('buffer') or 0)
-    except (TypeError, ValueError):
-        return 0
-    return value if value in BUFFERS else 0
+# 3 or 5 miles beyond it (?buffer=). A region's widened shape is the shared
+# regions.shapes.region_shape (pesticides' region maps use it too); a
+# near-me circle is widened here, the same way.
+BUFFERS = shapes.BUFFERS
+buffer_param = shapes.buffer_param
 
 
 def map_shape(area, buffer=0):
     """
     An area's shape for its maps (EPSG:4326): a region's boundary or a radius's
     circle, widened by `buffer` miles in California Albers (so a mile is a
-    mile). Cached a day per area and buffer.
+    mile). A circle's widened shape is cached a day here; a region's, by
+    regions.shapes.
     """
+    if isinstance(area, RegionArea):
+        return shapes.region_shape(area.region, buffer)
     if not buffer:
-        return area.region.boundary.geometry if isinstance(area, RegionArea) else area.geometry
+        return area.geometry
 
     def compute():
-        base = area.region.boundary.geometry if isinstance(area, RegionArea) else area.geometry
-        shape = base.transform(EPSG_CALIFORNIA_ALBERS, clone=True)
-        shape = shape.buffer(buffer * METERS_PER_MILE).simplify(BUFFER_SIMPLIFY_METERS, preserve_topology=True)
+        shape = area.geometry.transform(EPSG_CALIFORNIA_ALBERS, clone=True)
+        shape = shape.buffer(buffer * METERS_PER_MILE).simplify(shapes.BUFFER_SIMPLIFY, preserve_topology=True)
         shape.transform(EPSG_LATLON)
         return shape.hexewkb.decode() if isinstance(shape.hexewkb, bytes) else shape.hexewkb
 
