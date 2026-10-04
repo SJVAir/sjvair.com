@@ -596,7 +596,7 @@ def area_map_params(area, buffer=0):
 def buffer_options(request, buffer):
     """A region page map's "how far past the boundary" choices: [(label, url, current)], each this page with ?buffer=."""
     options = []
-    for miles, label in ((0, 'Exact boundary'), (1, '+1 mile'), (3, '+3 miles')):
+    for miles, label in ((0, 'Exact boundary'), (1, '+1 mile'), (3, '+3 miles'), (5, '+5 miles')):
         query = request.GET.copy()
         query.pop('page', None)
         if miles:
@@ -690,7 +690,9 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
     config = {
         'mode': mode,
         'geojson_url': reverse('api:v2:emissions:geojson'),
-        'districts_url': reverse('api:v2:emissions:districts'),
+        # The air district lines: on the Valley-wide maps only, not an area
+        # page's or a facility's own (they're about one place).
+        'districts_url': reverse('api:v2:emissions:districts') if area_params is None and highlight is None else '',
         # The covered counties' outlines, from the regions API.
         'counties_url': f"{reverse('api:v2:regions:region-geojson')}?type=county",
         'query': urlencode(params),

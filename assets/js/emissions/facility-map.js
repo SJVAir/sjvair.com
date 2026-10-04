@@ -1555,6 +1555,8 @@
     this.noFacilities = this.data.mainLayer === 'none';
     this.mainLayer = !this.noFacilities && this.data.mainLayer !== '0';
     this.readLocations();
+    // A swap between a Valley-wide map and an area's: the district lines follow.
+    this.shell.setSourceData('districts', this.data.districtsUrl || M.EMPTY);
     this.applyView();
     this.applyWells();
     this.applyPoints();

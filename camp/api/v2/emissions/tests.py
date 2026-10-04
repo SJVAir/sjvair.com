@@ -623,7 +623,7 @@ class MethaneEndpointTests(TestCase):
 
 
 class MapAreaTests(TestCase):
-    """Every map endpoint narrows to an area page's area (mapareas.get_shape), perhaps widened by ?buffer=1|3 miles."""
+    """Every map endpoint narrows to an area page's area (mapareas.get_shape), perhaps widened by ?buffer=1|3|5 miles."""
     fixtures = ['regions.yaml', 'emissions.yaml']
 
     def setUp(self):

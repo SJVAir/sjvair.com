@@ -233,3 +233,12 @@ class TabLayerTests(WellsPagesTestCase):
         assert map_data(overview, 'wells-url') and map_data(overview, 'wells') == '' and map_data(overview, 'areas') == '1'
         valley = self.get(reverse('emissions:oil-gas'))
         assert map_data(valley, 'main-layer') == 'none'
+
+
+class DistrictLineTests(WellsPagesTestCase):
+    def test_district_lines_only_on_valley_wide_maps(self):
+        assert map_data(self.get(reverse('emissions:map')), 'districts-url') == reverse('api:v2:emissions:districts')
+        assert map_data(self.get(reverse('emissions:sector-detail', args=['glass'])), 'districts-url')
+        for url in (self.kern.get_emissions_url(), self.kern.get_emissions_tab_url('facilities'), self.plant.get_absolute_url(),
+                    reverse('emissions:near-me') + '?lat=36.737&lng=-119.787'):
+            assert map_data(self.get(url), 'districts-url') == '', url

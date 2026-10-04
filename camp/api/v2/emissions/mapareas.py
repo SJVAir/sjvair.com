@@ -1,7 +1,7 @@
 """
 The area an explorer map is limited to, from the request: ?region=<sqid> (a
 region page's) or ?lat=&lng=&radius= (a near-me page's), widened by
-?buffer=1|3 miles (areas.map_shape). Every map endpoint narrows its points to
+?buffer=1|3|5 miles (areas.map_shape). Every map endpoint narrows its points to
 it, so an area page's map holds only that area's data.
 """
 import json
@@ -41,7 +41,7 @@ def get_shape(request):
 class AreaShape(generics.Endpoint):
     """
     An area page's map edge as GeoJSON: the region's boundary or the near-me
-    circle, widened by ?buffer=1|3 miles, for the map to draw when it reaches
+    circle, widened by ?buffer=1|3|5 miles, for the map to draw when it reaches
     past the area. 404 without an area.
     """
 

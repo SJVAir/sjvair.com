@@ -309,9 +309,9 @@ def facility_ab617_region(facility):
     )
 
 
-# An area page's maps can reach past its boundary: exactly the area, or a
-# mile or three beyond it (?buffer=), so what sits just over the line shows.
-BUFFERS = (0, 1, 3)
+# An area page's maps can reach past its boundary: exactly the area, or 1,
+# 3 or 5 miles beyond it (?buffer=), so what sits just over the line shows.
+BUFFERS = (0, 1, 3, 5)
 # Simplifying a widened shape keeps the point-in-shape tests quick; 30 m is
 # far below anything the map can show.
 BUFFER_SIMPLIFY_METERS = 30

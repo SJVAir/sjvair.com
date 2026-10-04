@@ -50,7 +50,7 @@ class DairyGeoJSONBase(generics.Endpoint):
         if error:
             return http.Http400({'error': error})
         # Exactly the area: its dairies by the region pages' membership rule.
-        # Past it (?buffer=1|3 miles): the dairies whose point is in the widened shape.
+        # Past it (?buffer=1|3|5 miles): the dairies whose point is in the widened shape.
         widened = get_shape(request)[0] if areas.buffer_param(request.GET) else None
         widened = widened.prepared if widened is not None else None
         features = []
