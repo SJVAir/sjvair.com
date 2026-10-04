@@ -436,7 +436,7 @@ def check_layers(page):
         var mine = ['radius-fill', 'radius-line', 'grid-fill', 'grid-line',
                     'all-sections-fill', 'all-sections-line', 'lens-fill', 'lens-line', 'lens-outline', 'outline-mask',
                     'selected-line', 'highlight-casing', 'highlight-line', 'counties-line',
-                    'outline-fill', 'outline-casing', 'outline-line',
+                    'outline-fill', 'outline-casing', 'outline-line', 'buffer-line',
                     'locations-hit', 'locations-circle', 'notices-hit', 'notices-circle', 'notices-count', 'locate-circle'];
         var missing = mine.filter(function (id) { return layers.indexOf(id) === -1; });
         mine.forEach(function (id) { mineSet[id] = true; });
@@ -660,15 +660,71 @@ def check_fit(page):
     return True, 'zoom %.2f, county=%s valley=%s' % (result['zoom'], result['countyFitted'], result['valleyFitted'])
 
 
+def check_buffer(page):
+    """A page with a clip region (a region's area tab) draws nothing outside
+    the clip shape's bounds, shows the dashed buffer edge iff there is a
+    buffer, and fits the shape. Skipped on pages with no clip."""
+    result = page.instance_js("""
+        if (!inst.data.clipRegion) return { skip: true };
+        var cb = inst.clipBounds;
+        var tol = inst.level === 'township' ? 0.15 : 0.03;  // cells straddling the edge are whole
+        function outside(coords) {
+          if (typeof coords[0] === 'number') {
+            return coords[0] < cb[0][0] - tol || coords[0] > cb[1][0] + tol ||
+                   coords[1] < cb[0][1] - tol || coords[1] > cb[1][1] + tol;
+          }
+          return coords.some(outside);
+        }
+        var stray = {};
+        ['grid', 'all-sections', 'notices', 'locations'].forEach(function (name) {
+          var data = inst.sourceData[name];
+          var n = 0;
+          if (cb && data && data.features) {
+            data.features.forEach(function (f) { if (f.geometry && outside(f.geometry.coordinates)) n++; });
+          }
+          stray[name] = n;
+        });
+        var b = inst.map.getBounds();
+        var line = inst.map.getLayer('buffer-line');
+        var edge = inst.sourceData['buffer-outline'];
+        return {
+          level: inst.level, buffer: inst.data.buffer, hasBounds: !!cb, stray: stray,
+          hasLayer: !!line, edge: !!(edge && edge.geometry),
+          counts: { grid: (inst.sourceData.grid || {features: []}).features.length,
+                    notices: (inst.sourceData.notices || {features: []}).features.length,
+                    locations: (inst.sourceData.locations || {features: []}).features.length },
+          contains: !!cb && b.getWest() <= cb[0][0] + tol && b.getSouth() <= cb[0][1] + tol &&
+                    b.getEast() >= cb[1][0] - tol && b.getNorth() >= cb[1][1] - tol,
+        };
+    """)
+    if result is None:
+        return False, 'no instance'
+    if result.get('skip'):
+        return True, 'skipped (no clip region)'
+    if not result['hasBounds']:
+        return False, 'clip shape never loaded'
+    strays = {k: v for k, v in result['stray'].items() if v}
+    if strays:
+        return False, 'features outside the clip: %s' % strays
+    buffered = result['buffer'] not in ('', '0', None)
+    if not result['hasLayer']:
+        return False, 'no buffer-line layer'
+    if result['edge'] != buffered:
+        return False, 'buffer edge drawn=%s but buffer=%s' % (result['edge'], result['buffer'])
+    if not result['contains']:
+        return False, 'the view does not contain the clip shape'
+    return True, 'buffer=%s, edge=%s, counts=%s' % (result['buffer'], result['edge'], result['counts'])
+
+
 def check_home(page):
     """Home returns to what the page is about: its own region when it has an
     outline, otherwise its county or the valley. Zoom away first, so a pass
     means the button moved the map rather than that it never left."""
     before = page.instance_js("""
-        if (!inst.outlineBounds) return null;
+        var ob = inst.clipBounds || inst.outlineBounds;
+        if (!ob) return null;
         inst.map.jumpTo({ center: [-121.5, 38.5], zoom: 6 });
-        return { west: inst.outlineBounds[0][0], south: inst.outlineBounds[0][1],
-                 east: inst.outlineBounds[1][0], north: inst.outlineBounds[1][1] };
+        return { west: ob[0][0], south: ob[0][1], east: ob[1][0], north: ob[1][1] };
     """)
     if before is None:
         return None, 'no region outline on this page'
@@ -1912,6 +1968,7 @@ CHECKS = [
     ('wheel zoom', check_wheel_zoom),
     ('compare mode', check_compare_mode),
     ('fit', check_fit),
+    ('buffer', check_buffer),
     ('home', check_home),
     ('grid', check_grid),
     ('legend options', check_legend_options),

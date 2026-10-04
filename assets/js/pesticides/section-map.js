@@ -533,6 +533,15 @@
     };
   }
 
+  // A region area tab is clipped to the region's buffer: the layer endpoints
+  // take the region and the buffer, and clip server-side (see clipParams).
+  function clipParams(data) {
+    if (!data.clipRegion) return {};
+    var params = { region: data.clipRegion };
+    if (data.buffer && data.buffer !== '0') params.buffer = data.buffer;
+    return params;
+  }
+
   function milesToMeters(miles) {
     return miles * METERS_PER_MILE;
   }
@@ -1028,9 +1037,13 @@
     // county filter) would otherwise load its grid at the placeholder view
     // and again where the fit lands: the loaders wait for the fit instead
     // (see settleFit).
-    this.pendingFit = !!this.data.countiesUrl && (this.data.fit === 'valley' || !!this.data.county);
+    // A clipped page waits for its clip shape instead: that is its frame.
+    this.clipPending = !!this.data.clipUrl;
+    this.pendingFit = this.clipPending ||
+      (!!this.data.countiesUrl && (this.data.fit === 'valley' || !!this.data.county));
     this.loadCounties();
     this.loadOutline();
+    this.loadClip();
     this.loadGrid();
     this.loadNotices();
     this.loadLocations();
@@ -1074,6 +1087,7 @@
     this.ensureSource('counties');
     this.ensureSource('outline');
     this.ensureSource('outline-mask');
+    this.ensureSource('buffer-outline');
     this.ensureSource('locations');
     this.ensureSource('notices', {
       cluster: true,
@@ -1163,6 +1177,13 @@
       id: 'outline-line', type: 'line', source: 'outline',
       layout: { 'line-join': 'round' },
       paint: { 'line-color': OUTLINE_COLOR, 'line-width': 2.5, 'line-opacity': 0.9 },
+    });
+    // The edge of the buffer a clipped page reaches (dashed, in the
+    // region outline's colour); nothing at buffer 0.
+    this.ensureLayer({
+      id: 'buffer-line', type: 'line', source: 'buffer-outline',
+      layout: { 'line-join': 'round' },
+      paint: { 'line-color': OUTLINE_COLOR, 'line-width': 1.5, 'line-opacity': 0.9, 'line-dasharray': [3, 3] },
     });
     // The markers: schools and child care (coloured by type), and over
     // them the notices of intent. Both sit over the grid and outlines and
@@ -1257,8 +1278,8 @@
   // county, then the whole valley; before the counties load, the shell's
   // fallback (the page's centre and zoom).
   SectionMap.prototype.home = function () {
-    var bounds = this.outlineBounds || this.countyBounds[this.data.county] || this.valleyBounds;
-    return bounds ? { bounds: bounds, padding: this.outlineBounds ? 24 : 20 } : null;
+    var bounds = this.clipBounds || this.outlineBounds || this.countyBounds[this.data.county] || this.valleyBounds;
+    return bounds ? { bounds: bounds, padding: (this.clipBounds || this.outlineBounds) ? 24 : 20 } : null;
   };
 
   // The shell has found the reader and dropped the dot; zoom to their
@@ -1326,15 +1347,29 @@
 
     this.syncControls();
 
-    var dataChanged = DATA_KEYS.some(has);
+    var dataChanged = DATA_KEYS.some(has) || clipChanged;
     var countyChanged = has('county');
     var viewChanged = has('center') || has('zoom');
     var radiusChanged = has('radius');
     var outlineChanged = has('outlineUrl');
+    var clipChanged = has('clipRegion') || has('buffer') || has('clipUrl');
 
     if (outlineChanged) {
       this.clearOutline();
       this.loadOutline();
+    }
+
+    if (clipChanged) {
+      // The clip is a different shape: what was loaded under the old one is
+      // void (the loaders below run again), and the map reframes on the new.
+      this.loadedBounds = null;
+      this.loadedNoticeBounds = null;
+      this.loadedLocationBounds = null;
+      this.clearClip();
+      this.clipPending = !!this.data.clipUrl;
+      // The loaders below wait for the new shape (see settleFit).
+      if (this.clipPending) this.pendingFit = true;
+      this.loadClip();
     }
 
     var center = this.parseCenter(this.data.center) || [36.75, -119.80];
@@ -1344,7 +1379,7 @@
       this.map.easeTo({ center: lngLatOf(center), zoom: parseInt(this.data.zoom, 10) || 8, animate: !this.reducedMotion });
     }
 
-    if (countyChanged) this.fitCounty();
+    if (countyChanged && !this.data.clipUrl) this.fitCounty();
     if (dataChanged) {
       this.loadedBounds = null;
       this.loadedNoticeBounds = null;
@@ -1422,7 +1457,7 @@
   // moving here, so they defer to its moveend (see loadGrid); a snap has
   // already fired its moveend, whose debounced loads find these in flight.
   SectionMap.prototype.settleFit = function () {
-    if (!this.pendingFit) return;
+    if (!this.pendingFit || this.clipPending) return;
     this.pendingFit = false;
     this.loadGrid();
     this.loadNotices();
@@ -1434,6 +1469,8 @@
   // county's outline, or back out to the whole valley when the filter goes.
   SectionMap.prototype.fitCounty = function () {
     if (!this.map || !this.counties) return;
+    // A clipped page frames its clip shape (see loadClip), not a county.
+    if (this.data.clipUrl) { this.settleFit(); return; }
     var target = this.countyBounds[this.data.county] || null;
     if (target) {
       this.map.fitBounds(target, { padding: 20, animate: !this.reducedMotion });
@@ -1465,9 +1502,11 @@
         if (!geometry) return;
         var feature = { type: 'Feature', properties: { id: 'outline' }, geometry: geometry };
         self.setSourceData('outline', feature);
-        self.setSourceData('outline-mask', maskFeature(geometry));
+        self.outlineGeometry = geometry;
+        self.drawMask();
         self.outlineBounds = geometryBounds(feature);
-        self.map.fitBounds(self.outlineBounds, { padding: 24, animate: !self.reducedMotion });
+        // A clipped page frames the clip shape instead (see loadClip).
+        if (!self.data.clipUrl) self.map.fitBounds(self.outlineBounds, { padding: 24, animate: !self.reducedMotion });
       })
       .catch(function (err) {
         if (isAbort(err) || self.outlineAbort !== abort) return;
@@ -1480,6 +1519,58 @@
     this.setSourceData('outline', EMPTY);
     this.setSourceData('outline-mask', EMPTY);
     this.outlineBounds = null;
+    this.outlineGeometry = null;
+  };
+
+  // The wash covers everything outside the buffer's shape when the page has
+  // a buffer, so the ring the clip brings in isn't dimmed; else outside the
+  // region.
+  SectionMap.prototype.drawMask = function () {
+    var geometry = (this.bufferActive() && this.clipGeometry) || this.outlineGeometry;
+    this.setSourceData('outline-mask', geometry ? maskFeature(geometry) : EMPTY);
+  };
+
+  SectionMap.prototype.bufferActive = function () {
+    return !!this.data.clipUrl && !!this.data.buffer && this.data.buffer !== '0';
+  };
+
+  // A clipped page's shape (the region at buffer 0, else the region grown
+  // by the buffer): the frame the map fits to, and with a buffer the dashed
+  // edge. The loaders wait for it (clipPending), and run even if it fails.
+  SectionMap.prototype.loadClip = function () {
+    if (!this.data.clipUrl) return;
+    var self = this;
+    var abort = this.startRequest('clip');
+    fetchJson(this.data.clipUrl, null, abort)
+      .then(function (payload) {
+        if (self.clipAbort !== abort) return;
+        var region = payload && payload.data;
+        var geometry = region && region.boundary && region.boundary.geometry;
+        self.clipPending = false;
+        if (geometry) {
+          var feature = { type: 'Feature', properties: { id: 'buffer' }, geometry: geometry };
+          self.clipGeometry = geometry;
+          self.clipBounds = geometryBounds(feature);
+          if (self.bufferActive()) self.setSourceData('buffer-outline', feature);
+          self.drawMask();
+          self.map.fitBounds(self.clipBounds, { padding: 24, animate: !self.reducedMotion });
+        }
+        self.settleFit();
+      })
+      .catch(function (err) {
+        if (isAbort(err) || self.clipAbort !== abort) return;
+        logError('failed to load the clip shape', err);
+        self.clipPending = false;
+        self.settleFit();
+      });
+  };
+
+  SectionMap.prototype.clearClip = function () {
+    if (this.clipAbort) this.clipAbort.abort();
+    this.setSourceData('buffer-outline', EMPTY);
+    this.clipBounds = null;
+    this.clipGeometry = null;
+    this.drawMask();
   };
 
   SectionMap.prototype.parseCenter = function (value) {
@@ -1594,7 +1685,7 @@
   };
 
   SectionMap.prototype.commonParams = function () {
-    return {
+    return Object.assign({
       year: this.data.year,
       compare: this.compare,
       chemical: this.data.chemical,
@@ -1602,7 +1693,7 @@
       commodity: this.data.commodity,
       county: this.data.county,
       narrow: this.data.narrow,
-    };
+    }, clipParams(this.data));
   };
 
   // Aborts the request in flight under `name` (if any) and starts the
@@ -3170,6 +3261,7 @@
       county: this.data.county,
       narrow: this.data.narrow,
     };
+    Object.assign(params, clipParams(this.data));
 
     var self = this;
     fetchJson(this.data.noticesUrl, params, abort)
@@ -3524,6 +3616,7 @@
       var areaRequest = this.locationsRequest = { area: true };
       var areaParams = {};
       new URLSearchParams(this.data.locationsArea).forEach(function (value, key) { areaParams[key] = value; });
+      Object.assign(areaParams, clipParams(this.data));
       var me = this;
       fetchJson(this.data.locationsUrl, areaParams, areaAbort)
         .then(function (geojson) {
@@ -3564,6 +3657,7 @@
       bbox: bboxParam(bounds),
       county: this.data.county,
     };
+    Object.assign(params, clipParams(this.data));
 
     var self = this;
     fetchJson(this.data.locationsUrl, params, abort)
