@@ -15,10 +15,11 @@ import zlib
 import shapely
 from shapely import wkb
 
+from django.contrib.gis.geos import GEOSGeometry
 from django.core.cache import cache
 
 from camp.apps.regions.models import Region
-from camp.utils.gis import EPSG_LATLON, round_coords
+from camp.utils.gis import EPSG_CALIFORNIA_ALBERS, EPSG_LATLON, round_coords
 
 logger = logging.getLogger(__name__)
 
@@ -147,3 +148,64 @@ def simplified_features(region_type):
     except Exception:
         pass  # Too big to cache: computed again next time, never an error.
     return features
+
+
+# Region shapes widened by a distance, for maps that count what sits just
+# outside a boundary. 0 is the boundary itself.
+BUFFERS = (0, 1, 3, 5)
+BUFFER_LABELS = {0: 'Exact boundary', 1: '+1 mile', 3: '+3 miles', 5: '+5 miles'}
+BUFFER_KEY = 'regions:shape:v1:{sqid}:{miles}'
+METERS_PER_MILE = 1609.344
+BUFFER_SIMPLIFY = 30  # meters, in EPSG 3310
+
+
+def buffer_param(params):
+    """The ?buffer= value as one of BUFFERS; anything else is 0."""
+    try:
+        miles = int(params.get('buffer'))
+    except (TypeError, ValueError):
+        return 0
+    return miles if miles in BUFFERS else 0
+
+
+def region_shape(region, miles=0):
+    """
+    The region's boundary widened by `miles`, as a 4326 geometry (None without
+    a boundary). Widened in California Albers so the distance is in meters,
+    simplified so the result stays light, and cached a day as hex EWKB.
+    """
+    boundary = getattr(region, 'boundary', None)
+    if boundary is None:
+        return None
+    if not miles:
+        return _latlon(boundary.geometry)
+    key = BUFFER_KEY.format(sqid=region.sqid, miles=miles)
+    cached = cache.get(key)
+    if cached is not None:
+        return GEOSGeometry(cached)
+    projected = _latlon(boundary.geometry).transform(EPSG_CALIFORNIA_ALBERS, clone=True)
+    widened = projected.buffer(miles * METERS_PER_MILE).simplify(BUFFER_SIMPLIFY, preserve_topology=True)
+    shape = widened.transform(EPSG_LATLON, clone=True)
+    try:
+        cache.set(key, shape.hexewkb.decode(), SHAPES_TTL)
+    except Exception:
+        pass  # Not cacheable: computed again next time, never an error.
+    return shape
+
+
+def buffer_options(request, current):
+    """One link per buffer for the current page, keeping the other filters and dropping paging."""
+    options = []
+    for miles in BUFFERS:
+        params = request.GET.copy()
+        params.pop('page', None)
+        params.pop('buffer', None)
+        if miles:
+            params['buffer'] = miles
+        query = params.urlencode()
+        options.append({
+            'label': BUFFER_LABELS[miles],
+            'url': f'{request.path}?{query}' if query else request.path,
+            'current': miles == current,
+        })
+    return options
