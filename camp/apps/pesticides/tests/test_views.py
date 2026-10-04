@@ -1135,8 +1135,8 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
     def test_landing_chemicals_board_is_titled_for_each_narrowing(self):
         titles = {
             'concern': 'Most applied flagged chemicals',
-            'restricted': 'Most applied restricted chemicals',
-            'fumigant': 'Most applied fumigant chemicals',
+            'restricted': 'Most applied restricted materials',
+            'fumigant': 'Most applied fumigants',
             'aerial': 'Top chemicals applied by air',
         }
         assert set(titles) == stats.NARROW_VALUES
