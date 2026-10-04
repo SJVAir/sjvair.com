@@ -1,3 +1,5 @@
+import json
+
 from django import forms
 
 from resticus import generics, http
@@ -93,8 +95,19 @@ class RegionGeoJSON(CachedEndpointMixin, RegionGeoJSONBase):
 
 
 class RegionDetail(RegionMixin, generics.DetailEndpoint):
+    """One region with its boundary. ?buffer=1|3|5 widens the boundary by that many miles."""
     lookup_field = 'sqid'
     lookup_url_kwarg = 'region_id'
+
+    def get(self, request, *args, **kwargs):
+        response = super().get(request, *args, **kwargs)
+        miles = shapes.buffer_param(request.GET)
+        boundary = response['data'].get('boundary')
+        if miles and boundary:
+            shape = shapes.region_shape(self.object, miles)
+            boundary['geometry'] = json.loads(shape.geojson)
+            boundary['bbox'] = list(shape.extent)
+        return response
 
 
 class RegionMetaEndpoint(generics.Endpoint):

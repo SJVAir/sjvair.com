@@ -160,6 +160,7 @@ class LocationList(CachedEndpointMixin, LocationListBase):
     `county` (a county slug) keeps only the locations in that county.
     Instead of a bbox, `region` (a region's sqid) or `lat`, `lng` and
     `radius` (miles, up to 10) return every location inside that area.
+    `region` also takes `buffer=0|1|3|5` to widen the region by that many miles.
     """
     cache_timeout = 60 * 60 * 24
     # v2: the GeoJSON property names changed. A day-long cache would keep

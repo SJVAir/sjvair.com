@@ -65,7 +65,13 @@ def bad_request(message):
 
 
 def parse_buffer(params):
-    """The ?buffer= miles as one of BUFFERS (absent is 0), and an error message for any other value. Returns (miles, error)."""
+    """
+    The ?buffer= miles as one of BUFFERS (absent is 0), and an error message for any other value. Returns (miles, error).
+
+    Strict on purpose: an API client that sends a bad buffer gets a 400 rather
+    than a silently different answer. The pages' regions.shapes.buffer_param
+    is lenient instead (a bad ?buffer= in a shared URL falls back to 0).
+    """
     raw = params.get('buffer')
     if raw in (None, ''):
         return 0, None
@@ -393,7 +399,7 @@ class SectionList(CachedEndpointMixin, SectionListBase):
     """
     MTRS sections with pesticide-use totals, as GeoJSON.
 
-    Give either `bbox=west,south,east,north` or `lat`, `lng`, `radius` (miles: 1, 3, or 5).
+    Give either `bbox=west,south,east,north`, `lat`, `lng`, `radius` (miles: 1, 3, or 5), or `region=<sqid>` with an optional `buffer=0|1|3|5` to clip to that region widened by that many miles.
     Filters: `year` (default latest), `month`, `chemical` (chem code), `product`
     (prodno), `commodity` (site code), `county` (slug), and `narrow=concern|restricted|fumigant|aerial` (or the legacy `concern=1`) to
     count only what that narrowing keeps, e.g. the chemicals of concern (Prop 65, CARB TAC, IARC 1/2A/2B,
@@ -573,11 +579,12 @@ class TownshipListBase(generics.Endpoint):
         # No cap: there are only a few hundred townships in the valley, so
         # the whole grid is a small response even unfiltered.
         features = []
+        shape_extent = shape.extent if shape is not None else None
         for township, geometry in sorted(township_geometries().items()):
             if bbox and not bbox_overlaps(bbox, geometry['bbox']):
                 continue
             if shape is not None and not (
-                bbox_overlaps(shape.extent, geometry['bbox'])
+                bbox_overlaps(shape_extent, geometry['bbox'])
                 and shape.intersects(GEOSGeometry(json.dumps(geometry['geometry'])))
             ):
                 continue
@@ -608,7 +615,9 @@ class TownshipList(CachedEndpointMixin, TownshipListBase):
     Each township is the union of its sections. Optional
     `bbox=west,south,east,north` limits the grid to what's on screen, and
     `geometry=0` returns the features with `null` geometry (values only) for
-    a client that already holds the outlines.
+    a client that already holds the outlines. `region=<sqid>` with an optional
+    `buffer=0|1|3|5` keeps the townships touching that region widened by that
+    many miles.
     Filters: `year` (default latest), `month`, `chemical` (chem code),
     `product` (prodno), `commodity` (site code), `county` (slug), and
     `narrow=concern|restricted|fumigant|aerial` (or legacy `concern=1`) to count only what that narrowing keeps.
@@ -617,7 +626,7 @@ class TownshipList(CachedEndpointMixin, TownshipListBase):
 
 
 class ActiveNoticeList(CachedEndpointMixin, ActiveNoticeListBase):
-    """Active SprayDays notices of intent (scheduled from four days ago onward) as GeoJSON points. Optional `bbox=west,south,east,north`, `chemical` (chem code), `product` (prodno), `county` (slug), `narrow=concern|restricted|fumigant|aerial`. A request matching more than 2000 notices returns 400; narrow it with a bbox or a filter."""
+    """Active SprayDays notices of intent (scheduled from four days ago onward) as GeoJSON points. Optional `bbox=west,south,east,north`, `chemical` (chem code), `product` (prodno), `county` (slug), `narrow=concern|restricted|fumigant|aerial`. `region=<sqid>` with an optional `buffer=0|1|3|5` keeps the notices inside that region widened by that many miles. A request matching more than 2000 notices returns 400; narrow it with a bbox or a filter."""
     cache_timeout = NOTICE_CACHE_TTL
 
 

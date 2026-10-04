@@ -31,6 +31,7 @@ from camp.apps.pesticides.models import (
     Product, ProductChemical,
 )
 from camp.apps.regions.models import Location, Region
+from camp.apps.regions import shapes
 from camp.utils import mapconfig
 from camp.utils import mapfigure
 
@@ -1169,7 +1170,13 @@ def page_url_pattern(name):
 MAP_STYLE = mapfigure.MAP_STYLE
 
 
-def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None, show_all_sections=False, locations_area=None, notices_url=None, section_notices_extra=None):
+def clip_url(sqid, buffer=0):
+    """The regions API's GeoJSON for a region widened by `buffer` miles."""
+    url = f'/api/2.0/regions/{sqid}/'
+    return f'{url}?buffer={buffer}' if buffer else url
+
+
+def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None, show_all_sections=False, locations_area=None, notices_url=None, section_notices_extra=None, clip_region=None, buffer=0):
     year = year or stats.latest_year()
     scope = stats.scope_param(year, all_years, county, concern)
     scope_suffix = f'&{scope}' if scope else ''
@@ -1241,6 +1248,12 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         'highlight': highlight or '',
         # A regions-API URL whose boundary the map draws and fits to (place pages).
         'outline_url': outline_url or '',
+        # A region's area tabs clip every layer to the region widened by
+        # `buffer` miles (region=&buffer= on the layer endpoints); clip_url
+        # is that widened shape for the map to draw. Empty everywhere else.
+        'clip_region': clip_region or '',
+        'buffer': buffer if clip_region else 0,
+        'clip_url': clip_url(clip_region, buffer) if clip_region else '',
     }
     config['map'] = mapconfig.map_config(
         'section-map',
@@ -1251,7 +1264,11 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         data={**{key.replace('_', '-'): value for key, value in config.items()}, 'bounds': ''},
         features={'toolbar': True, 'expand': True, 'legend': True, 'status': True},
         # The filter pickers only on the map page; Options and Expand everywhere.
-        toolbar_template='pesticides/includes/map-toolbar.html' if toolbar else None,
+        # On a region's area tabs, only the buffer picker.
+        toolbar_template=(
+            'pesticides/includes/map-toolbar.html' if toolbar
+            else 'pesticides/includes/buffer-toolbar.html' if clip_region else None
+        ),
         options_template='pesticides/includes/map-options.html',
         legend_template='pesticides/includes/map-legend.html',
     )
@@ -1778,7 +1795,12 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
             all_years=self.all_years,
             show_notices=False,
             concern=self.concern,
+            **self.get_map_clip(),
         )
+
+    def get_map_clip(self):
+        """Extra section_map_config arguments; a region's Records tab clips its map."""
+        return {}
 
     def get_context_data(self, **kwargs):
         totals = self.get_totals()
@@ -2265,9 +2287,15 @@ class AreaPageMixin:
     and a tab's URL. The region and near-me mixins below say which area.
     """
     tab = 'overview'
+    # Miles the region's shape is widened by; only a region's page has one.
+    buffer = 0
 
     def get_area(self):
         raise NotImplementedError
+
+    def map_clip(self):
+        """section_map_config's clip arguments: a region's tabs clip their map, near-me never does."""
+        return {}
 
     def area_tab_url(self, key):
         raise NotImplementedError
@@ -2284,7 +2312,10 @@ class AreaPageMixin:
     def scope_query(self):
         """The page's scope for a link to another of its tabs ('year=2023&narrow=...')."""
         year, all_years, concern = self.scope
-        return stats.scope_query(year, all_years, None, concern).lstrip('?')
+        query = stats.scope_query(year, all_years, None, concern).lstrip('?')
+        if self.buffer:
+            query = f'{query}&buffer={self.buffer}' if query else f'buffer={self.buffer}'
+        return query
 
     def available_tabs(self):
         """Which tabs this area has something for; Overview, Notices and Records always do."""
@@ -2325,7 +2356,11 @@ class AreaPageMixin:
             'tabs': self.tabs(),
             'explorer_base': 'pesticides/base.html',
             'area_crumbs': [{'label': area.page_title, 'url': self.area_tab_url('overview')}],
+            **self.buffer_context(),
         }
+
+    def buffer_context(self):
+        return {}
 
     def tab_scope_context(self):
         year, all_years, concern = self.scope
@@ -2357,8 +2392,18 @@ class RegionAreaMixin(AreaPageMixin):
         self.region = region
         return super().dispatch(request, *args, **kwargs)
 
+    @cached_property
+    def buffer(self):
+        return shapes.buffer_param(self.request.GET)
+
     def get_area(self):
         return places.region_area(self.region)
+
+    def map_clip(self):
+        return {'clip_region': self.region.sqid, 'buffer': self.buffer}
+
+    def buffer_context(self):
+        return {'buffer': self.buffer, 'buffer_options': shapes.buffer_options(self.request, self.buffer)}
 
     def area_tab_url(self, key):
         url = self.region.get_pesticides_tab_url(key)
@@ -2440,7 +2485,7 @@ class AreaOverviewMixin:
     def get_context_data(self, **kwargs):
         year, all_years, concern = self.scope
         area = self.area
-        context = places.place_context(area, year, all_years, concern, params=self.request.GET)
+        context = places.place_context(area, year, all_years, concern, params=self.request.GET, clip=self.map_clip())
         extra = {}
         if area.kind == 'region':
             # Not part of place_context: that block is cached per area and
@@ -2533,6 +2578,7 @@ class AreaNoticesMixin(AreaNarrowedListMixin):
             product=product if product and product is not MISSING else None,
             notices_url=self.get_notices_url(),
             section_notices_extra=self.get_list_mode_params(),
+            **self.map_clip(),
             **self.area.map_kwargs(),
         )
 
@@ -2558,6 +2604,9 @@ class AreaRecordsMixin(AreaNarrowedListMixin):
     and radius) comes from AreaNarrowedListMixin.
     """
     template_name = 'pesticides/area-records.html'
+
+    def get_map_clip(self):
+        return self.map_clip()
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -2614,7 +2663,7 @@ class AreaSchoolsMixin:
             point_hidden=point_hidden,
             map_config=section_map_config(
                 year, all_years=all_years, show_locations=True, concern=concern,
-                show_all_sections=True, locations_area=area.locations_area(), **area.map_kwargs(),
+                show_all_sections=True, locations_area=area.locations_area(), **self.map_clip(), **area.map_kwargs(),
             ),
             **self.header_context(),
             **self.tab_scope_context(),
