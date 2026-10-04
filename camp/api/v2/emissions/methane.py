@@ -6,12 +6,15 @@ image stepper. Carbon Mapper's terms are non-commercial with share-alike
 redistribution, so every response here carries MethaneSource.ATTRIBUTION and
 LICENSE -- the terms require it on every rendering, this one included.
 """
+from django.contrib.gis.geos import Point
 from django.http import Http404
-from resticus import generics
+from resticus import generics, http
 
 from camp.apps.emissions import methane
 from camp.apps.emissions.models import MethaneSource
 from camp.utils.views import CachedEndpointMixin
+
+from .mapareas import get_shape
 
 
 class MethaneCachedEndpointMixin(CachedEndpointMixin):
@@ -27,15 +30,25 @@ class MethaneGeoJSONBase(generics.Endpoint):
     def get(self, request):
         if not methane.enabled():
             raise Http404('No methane sources imported.')
-        return methane.collection()
+        collection = methane.collection()
+        # An area page's map: only the sources inside its (perhaps widened) area.
+        shape, _, error = get_shape(request)
+        if error:
+            return http.Http400({'error': error})
+        if shape is not None:
+            inside = shape.prepared
+            collection = dict(collection, features=[
+                feature for feature in collection['features'] if inside.contains(Point(*feature['geometry']['coordinates'], srid=4326))
+            ])
+        return collection
 
 
 class MethaneGeoJSON(MethaneCachedEndpointMixin, MethaneGeoJSONBase):
     """
     Every CH4 source Carbon Mapper has published for the covered counties,
     as GeoJSON points for the map overlay: sector group, Carbon Mapper's
-    rate estimate and uncertainty, detection counts, and the nearest
-    dairy/facility match where the import found one within 1 km. The
+    rate estimate and uncertainty, and detection counts; ?region= or
+    ?lat=&lng=&radius= (with ?buffer=) narrows them to an area page's. The
     collection's properties carry MethaneSource.ATTRIBUTION and LICENSE.
     404 until an import has run. Cached a day; a re-import
     (methane.clear_caches) invalidates it.

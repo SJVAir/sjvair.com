@@ -573,22 +573,50 @@ def locations_layers(get, scope, *, area_params=None):
         'dairies_url': f"{reverse('api:v2:emissions:dairy-geojson')}?{urlencode({'year': year, **(area_params or {})})}" if year else '',
         'dairy_popup_url': reverse('api:v2:emissions:dairy-detail', args=['__id__']).replace('__id__', '{id}') + f'?{urlencode({"year": year})}' if year else '',
         'dairies': '' if get.get('dairies') == '0' else '1',
-        'schools_url': reverse('api:v2:emissions:schools-geojson'),
+        'schools_url': with_query(reverse('api:v2:emissions:schools-geojson'), area_params),
         'schools': '' if get.get('schools') == '0' else '1',
         # A school's popup links its own Schools tab: a mile around it.
         'school_near_url': reverse('emissions:near-me-schools'),
     }
 
 
-def methane_map_data(overlay):
-    """The data-* values both map configs carry for the overlay; empty strings when it isn't offered."""
+def with_query(url, params):
+    """`url` with `params` as its query string, or bare without any."""
+    query = urlencode(params or {})
+    return f'{url}?{query}' if query else url
+
+
+def area_map_params(area, buffer=0):
+    """An area page's map data URLs' area: a region's sqid (and ?buffer= past it), or a near-me point and radius."""
+    if isinstance(area, areas.RadiusArea):
+        return {'lat': f'{area.lat:.4f}', 'lng': f'{area.lng:.4f}', 'radius': area.radius}
+    return {'region': area.region.sqid, **({'buffer': buffer} if buffer else {})}
+
+
+def buffer_options(request, buffer):
+    """A region page map's "how far past the boundary" choices: [(label, url, current)], each this page with ?buffer=."""
+    options = []
+    for miles, label in ((0, 'Exact boundary'), (1, '+1 mile'), (3, '+3 miles')):
+        query = request.GET.copy()
+        query.pop('page', None)
+        if miles:
+            query['buffer'] = miles
+        else:
+            query.pop('buffer', None)
+        encoded = query.urlencode()
+        options.append((label, f'{request.path}?{encoded}' if encoded else request.path, miles == buffer))
+    return options
+
+
+def methane_map_data(overlay, area_params=None):
+    """The data-* values both map configs carry for the overlay; empty strings when it isn't offered. `area_params` limits it to an area page's area."""
     if not overlay:
         return {
             'methane_url': '', 'methane_plumes_url': '', 'methane': '',
             'methane_default': '',
         }
     return {
-        'methane_url': reverse('api:v2:emissions:methane-geojson'),
+        'methane_url': with_query(reverse('api:v2:emissions:methane-geojson'), area_params),
         'methane_plumes_url': reverse('api:v2:emissions:methane-plumes', args=['__id__']).replace('__id__', '{id}'),
         'methane': '1' if overlay['on'] else '',
         'methane_default': '1' if overlay['default'] else '',
@@ -642,7 +670,7 @@ def reporting_sectors(scope):
 
 def facility_map_config(scope, *, mode='full', highlight=None, sector=None, params=None, areas_view=None,
                         outline_url='', center='', zoom='', radius='', nearby=None, wells=None, methane=None, fit=False,
-                        main_layer=True, locations=None):
+                        main_layer=True, locations=None, area_params=None, buffer_options=None):
     """
     The data-* attributes of a `.facility-map` container (see
     assets/js/emissions/facility-map.js). `nearby` is a FeatureCollection
@@ -651,7 +679,9 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
     gas wells overlay and its initial state; None (a facility's own map)
     leaves it off with no URL at all. `methane` (views.methane_overlay's
     return, or None) offers the Methane sources (Carbon Mapper) overlay the
-    same way, including on a facility's own map.
+    same way. `area_params` (area_map_params) limits every layer's points to
+    an area page's area, perhaps widened (?buffer=); `buffer_options` are
+    the region page toolbar's choices for how far past the boundary.
     """
     params = dict(params) if params is not None else scope.params()
     if sector:
@@ -664,6 +694,11 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         # The covered counties' outlines, from the regions API.
         'counties_url': f"{reverse('api:v2:regions:region-geojson')}?type=county",
         'query': urlencode(params),
+        # An area page's area, for the data URLs only (the query above also
+        # builds facility and region links, which mustn't carry it).
+        'area_query': urlencode(area_params or {}),
+        # The widened edge to draw, when the map reaches past the area.
+        'buffer_url': with_query(reverse('api:v2:emissions:area-shape'), area_params) if (area_params or {}).get('buffer') else '',
         # The bare-sqid route redirects to the slugged page, so the JS needs no slug.
         'facility_url': reverse('emissions:facility-redirect', args=['__id__']).replace('__id__', '{id}'),
         'maptiler_key': settings.MAPTILER_API_KEY,
@@ -686,14 +721,14 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         # `wells` is set (the map page, region, near-me and sector pages) and
         # never on a facility's own map. `wells` is its initial state, `wells_default`
         # the page's default (the JS writes ?wells= only when they differ).
-        'wells_url': reverse('api:v2:emissions:wells-geojson') if wells else '',
+        'wells_url': with_query(reverse('api:v2:emissions:wells-geojson'), area_params) if wells else '',
         'well_url': reverse('api:v2:emissions:well-detail', args=['__id__']).replace('__id__', '{id}') if wells else '',
         'wells': '1' if wells and wells['on'] else '',
         'wells_default': '1' if wells and wells['default'] else '',
         # The Methane sources (Carbon Mapper) overlay (methane.py): offered
         # where `methane` is set, including a facility's own map -- unlike
         # wells, a nearby plume is relevant there.
-        **methane_map_data(methane),
+        **methane_map_data(methane, area_params),
         # The main map's and Overviews' locations layers (locations_layers), or none.
         **(locations or {'locations': '', 'dairies_url': '', 'schools_url': ''}),
         # The facility page's schools and child care within 1/4 mile (a
@@ -731,12 +766,13 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
     # The container's data attributes; the sector, its label and the level,
     # measure and compare options are for the toolbar template, which reads
     # them off map_config.
-    template_only = {'sector', 'sector_label', 'level_options', 'measure_options', 'compare_options', 'disabled_measures'}
+    config['buffer_options'] = buffer_options or []
+    template_only = {'sector', 'sector_label', 'level_options', 'measure_options', 'compare_options', 'disabled_measures', 'buffer_options'}
     config['map'] = mapconfig.map_config(
         'facility-map',
         data={key.replace('_', '-'): value for key, value in config.items() if key not in template_only},
         features={'toolbar': True, 'expand': True, 'legend': True},
-        toolbar_template='emissions/includes/map-toolbar.html' if mode == 'full' or areas_view else None,
+        toolbar_template='emissions/includes/map-toolbar.html' if mode == 'full' or areas_view or buffer_options else None,
         options_template='emissions/includes/map-options.html',
         legend_template='emissions/includes/facility-map-legend.html',
         compact=mode == 'compact',
@@ -1279,12 +1315,16 @@ class RegionPage(RegionLookupMixin, AreaPage):
         return Region.objects.get_county_region(self.region)
 
     def get_map_config(self, scope):
+        buffer = areas.buffer_param(self.request.GET)
+        area_params = area_map_params(areas.RegionArea(self.region), buffer)
         level = areas.NEXT_LEVEL.get(self.region.type)
         return facility_map_config(
             scope, mode='compact', params=scope.params(county=None),
             areas_view=map_view(self.request.GET, level, year=scope.year, share=scope.pollutant.unit == 'share') if level and self.tab in AREAS_VIEW_TABS else None,
             outline_url=reverse('api:v2:regions:region-detail', args=[self.region.sqid]),
-            **area_tab_layers(self.request.GET, self.tab, scope, area_params={'region': self.region.sqid}, nearby=getattr(self, 'site_geojson', None)),
+            # Every layer limited to the region, or a mile or three past it.
+            area_params=area_params, buffer_options=buffer_options(self.request, buffer),
+            **area_tab_layers(self.request.GET, self.tab, scope, area_params=area_params, nearby=getattr(self, 'site_geojson', None)),
         )
 
     def get_context_data(self, **kwargs):
@@ -1454,10 +1494,8 @@ class NearMe(NearLookupMixin, AreaPage):
             areas_view=map_view(self.request.GET, Region.Type.TRACT, year=scope.year, share=scope.pollutant.unit == 'share') if self.tab in AREAS_VIEW_TABS else None,
             center=f'{self.near.lat:.4f},{self.near.lng:.4f}', zoom=RADIUS_ZOOMS[self.near.radius],
             radius=self.near.radius,
-            **area_tab_layers(
-                self.request.GET, self.tab, scope, nearby=getattr(self, 'site_geojson', None),
-                area_params={'lat': f'{self.near.lat:.4f}', 'lng': f'{self.near.lng:.4f}', 'radius': self.near.radius},
-            ),
+            area_params=area_map_params(self.near),
+            **area_tab_layers(self.request.GET, self.tab, scope, area_params=area_map_params(self.near), nearby=getattr(self, 'site_geojson', None)),
         )
 
     def get_context_data(self, **kwargs):

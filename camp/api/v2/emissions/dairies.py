@@ -3,8 +3,10 @@ from resticus import generics, http
 from camp.apps.emissions import areas, dairies
 from camp.apps.emissions.models import Dairy
 from camp.apps.emissions.pollutants import POLLUTANTS
-from camp.apps.emissions.views import AREA_PAGE_TYPES, area_links, get_filter_region, radius_area
+from camp.apps.emissions.views import area_links
 from camp.utils.views import CachedEndpointMixin
+
+from .mapareas import get_area, get_shape
 
 
 def get_year(request):
@@ -37,27 +39,6 @@ class DairyCachedEndpointMixin(CachedEndpointMixin):
         return f'{super().get_view_cache_key()}|g:{dairies.generation()}'
 
 
-def get_area(request):
-    """
-    (area, error): a RegionArea for ?region= (any region page type with a
-    boundary: the dairy region pages' map), a RadiusArea for
-    ?lat=&lng=&radius= (the near-me dairy page's), (None, None) with neither;
-    an unknown region or a bad point is an error message.
-    """
-    sqid = (request.GET.get('region') or '').strip()
-    if sqid:
-        region = get_filter_region(sqid, types=AREA_PAGE_TYPES)
-        if region is None:
-            return None, 'region must be the id of a county, community, ZIP code, school district or census tract with a page.'
-        return areas.RegionArea(region), None
-    if 'lat' in request.GET or 'lng' in request.GET:
-        near = radius_area(request.GET)
-        if near is None:
-            return None, 'lat and lng must be a point, and radius 1, 3 or 5 (miles).'
-        return near, None
-    return None, None
-
-
 class DairyGeoJSONBase(generics.Endpoint):
     # get() lives on this un-cached base so the mixin's get() on the subclass
     # is the one dispatched to (the explorer endpoints' pattern).
@@ -68,9 +49,15 @@ class DairyGeoJSONBase(generics.Endpoint):
         area, error = get_area(request)
         if error:
             return http.Http400({'error': error})
+        # Exactly the area: its dairies by the region pages' membership rule.
+        # Past it (?buffer=1|3 miles): the dairies whose point is in the widened shape.
+        widened = get_shape(request)[0] if areas.buffer_param(request.GET) else None
+        widened = widened.prepared if widened is not None else None
         features = []
-        for herd in dairies.table(year, area=area):
+        for herd in dairies.table(year, area=None if widened is not None else area):
             dairy = herd.dairy
+            if widened is not None and not widened.contains(dairy.point):
+                continue
             features.append({
                 'type': 'Feature',
                 'id': dairy.sqid,

@@ -1,12 +1,14 @@
 import json
 from dataclasses import replace
 
-from resticus import generics
+from resticus import generics, http
 
 from camp.apps.emissions import stats
 from camp.apps.emissions.models import Facility
 from camp.apps.regions.models import Region
 from camp.utils.views import CachedEndpointMixin
+
+from .mapareas import get_shape
 
 
 class FacilityGeoJSONBase(generics.Endpoint):
@@ -29,7 +31,14 @@ class FacilityGeoJSONBase(generics.Endpoint):
                 prev_rows = prev_rows.filter(facility__sector=sector)
             prev_by_facility = dict(prev_rows.values_list('facility_id', 'value'))
         features = []
-        for record in stats.facility_table(scope, sector=sector).filter(facility__point__isnull=False):
+        records = stats.facility_table(scope, sector=sector).filter(facility__point__isnull=False)
+        # An area page's map: only the facilities inside its (perhaps widened) area.
+        shape, _, error = get_shape(request)
+        if error:
+            return http.Http400({'error': error})
+        if shape is not None:
+            records = records.filter(facility__point__intersects=shape)
+        for record in records:
             facility = record.facility
             properties = {
                 'id': facility.sqid,

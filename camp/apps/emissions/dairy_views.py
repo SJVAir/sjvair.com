@@ -161,7 +161,7 @@ def dairy_map_config(scope, view, *, area_params=None, outline_url='', center=''
     config['digester_label'] = dict(DIGESTER_OPTIONS)[config['digester']]
     # The Methane sources (Carbon Mapper) overlay (views.methane.py): offered
     # where `methane` is set.
-    config.update(views.methane_map_data(methane))
+    config.update(views.methane_map_data(methane, area_params))
     # The options (and the labels built from them) are for the toolbar
     # template, which reads them off map_config; `sizes` goes to the
     # container as a comma-joined string, same as every other data-* value.

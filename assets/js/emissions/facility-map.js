@@ -98,10 +98,12 @@
   // Locations mode (data-locations="1": the main map and area Overviews):
   // every point the same size, a hue per dataset and shades of it for each
   // dataset's own scale -- facilities blue (the pollutant's classes), wells
-  // purple (status), dairies orange (EPA size class), schools green (kind).
+  // slate (status), dairies orange (EPA size class), schools green (kind).
+  // Wells are slate, not purple: Carbon Mapper's plume images run blue to
+  // purple, and the two blurred together.
   var LOCATION_RADIUS = 5;
-  var LOCATION_WELL_COLORS = { Active: '#5b21b6', Idle: '#8b5cf6', New: '#c4b5fd' };
-  var LOCATION_CLUSTER_COLOR = '#4c1d95';
+  var LOCATION_WELL_COLORS = { Active: '#1e293b', Idle: '#64748b', New: '#cbd5e1' };
+  var LOCATION_CLUSTER_COLOR = '#334155';
   var POINT_LAYERS = [
     {
       key: 'dairies', label: 'Dairies', urlAttr: 'dairiesUrl',
@@ -423,6 +425,7 @@
   FacilityMap.prototype.addLayers = function () {
     this.shell.ensureSource('areas');
     this.shell.ensureSource('outline');
+    this.shell.ensureSource('buffer-line');
     this.shell.ensureSource('outline-mask');
     this.shell.ensureSource('counties', { data: this.data.countiesUrl || M.EMPTY });
     this.shell.ensureSource('districts', { data: this.data.districtsUrl || M.EMPTY });
@@ -515,6 +518,10 @@
       paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.55 },
     });
     this.shell.ensureLayer({
+      id: 'buffer-line', type: 'line', source: 'buffer-line',
+      paint: { 'line-color': HIGHLIGHT_COLOR, 'line-width': 1.5, 'line-dasharray': [3, 3], 'line-opacity': 0.8 },
+    });
+    this.shell.ensureLayer({
       id: 'outline-line', type: 'line', source: 'outline',
       layout: { 'line-join': 'round' },
       paint: { 'line-color': HIGHLIGHT_COLOR, 'line-width': 2.5, 'line-opacity': 0.9 },
@@ -600,6 +607,8 @@
   FacilityMap.prototype.url = function () {
     var params = new URLSearchParams(this.data.query || '');
     if (this.compare) params.set('compare', this.compare); else params.delete('compare');
+    // An area page's area (data-area-query): only the facilities inside it.
+    new URLSearchParams(this.data.areaQuery || '').forEach(function (value, key) { params.set(key, value); });
     var query = params.toString();
     return this.data.geojsonUrl + (query ? '?' + query : '');
   };
@@ -743,6 +752,20 @@
   FacilityMap.prototype.loadOutline = function () {
     var self = this;
     var request = ++this.outlineRequest;
+    // How far past the area the map reaches (?buffer=): its widened edge, dashed.
+    this.shell.setSourceData('buffer-line', M.EMPTY);
+    this.bufferBounds = null;
+    if (this.data.bufferUrl) {
+      getJson(this.data.bufferUrl)
+        .then(function (feature) {
+          if (request !== self.outlineRequest || !self.map) return;
+          self.shell.setSourceData('buffer-line', feature);
+          // Frame the widened area, not just the region inside it.
+          self.bufferBounds = M.geometryBounds(feature.geometry);
+          if (self.bufferBounds) self.map.fitBounds(self.bufferBounds, { padding: 24, duration: 0 });
+        })
+        .catch(function (err) { logError('failed to load the widened edge', err); });
+    }
     var center = M.parseCenter(this.data.center);
     var radius = parseFloat(this.data.radius);
     if (center && radius > 0) {
@@ -775,7 +798,8 @@
     this.shell.setSourceData('outline', { type: 'Feature', properties: {}, geometry: geometry });
     this.shell.setSourceData('outline-mask', maskFor(geometry));
     this.outlineBounds = M.geometryBounds(geometry);
-    if (this.outlineBounds) this.map.fitBounds(this.outlineBounds, { padding: 24, duration: 0 });
+    var frame = this.bufferBounds || this.outlineBounds;
+    if (frame) this.map.fitBounds(frame, { padding: 24, duration: 0 });
   };
 
   // The overlay's layers follow `this.wells`; the legend's checkbox too.
@@ -799,6 +823,8 @@
   FacilityMap.prototype.loadWells = function () {
     var self = this;
     if (!this.wellsEnabled) return;
+    // Kept across page swaps only while it's the same area's wells.
+    if (this.wellsData && this.wellsDataUrl !== this.data.wellsUrl) this.wellsData = null;
     if (this.wellsData) {
       this.shell.setSourceData('wells', this.wellsData);
       this.el.dataset.wellsLoaded = '1';
@@ -811,6 +837,7 @@
         if (request !== self.wellsRequest || !self.map) return;
         var collection = wellsCollection(packed);
         self.wellsData = collection;
+        self.wellsDataUrl = self.data.wellsUrl;
         self.shell.setSourceData('wells', collection);
         self.shell.updateLegend();
         self.el.dataset.wellsLoaded = '1';
@@ -1047,7 +1074,8 @@
 
   // Home goes back to the page's area when it has one.
   FacilityMap.prototype.home = function () {
-    return this.outlineBounds ? { bounds: this.outlineBounds, padding: 24 } : null;
+    var bounds = this.bufferBounds || this.outlineBounds;
+    return bounds ? { bounds: bounds, padding: 24 } : null;
   };
 
   // Frame the facilities, unless the page framed the map itself (a facility

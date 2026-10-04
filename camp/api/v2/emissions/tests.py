@@ -500,7 +500,7 @@ class WellEndpointTests(TestCase):
 
     def test_geojson_cache_follows_the_wells_generation_and_holds_compressed_bytes(self):
         assert len(self.client.get(reverse('api:v2:emissions:wells-geojson')).json()['wells']) == 2
-        assert isinstance(cache.get(wells.key('geojson')), bytes)  # zlib: small enough for memcached
+        assert isinstance(cache.get(wells.key('geojson', 'valley')), bytes)  # zlib: small enough for memcached
         Well.objects.filter(pk=self.idle.pk).delete()
         assert len(self.client.get(reverse('api:v2:emissions:wells-geojson')).json()['wells']) == 2
         wells.clear_caches()
@@ -619,3 +619,34 @@ class MethaneEndpointTests(TestCase):
             carbonmapper.apply_plumes([plume_item(plume_id='fresh', lnglat=NEAR_BOTH)])
         response = self.client.get(url)
         assert response['X-Cache-Status'] == 'MISS' and len(response.json()['plumes']) == 1
+
+
+
+class MapAreaTests(TestCase):
+    """Every map endpoint narrows to an area page's area (mapareas.get_shape), perhaps widened by ?buffer=1|3 miles."""
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def setUp(self):
+        cache.clear()
+        from camp.apps.emissions.tests.test_wells import make_well
+        from camp.apps.emissions.tests.test_dairies import IN_KERN, NEAR_PLANT
+        self.fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        self.kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
+        make_well('0401900004', NEAR_PLANT, self.fresno)
+        make_well('0402900001', IN_KERN, self.kern)
+
+    def test_wells_and_facilities_narrow_to_the_region(self):
+        assert len(self.client.get(reverse('api:v2:emissions:wells-geojson')).json()['wells']) == 2
+        assert len(self.client.get(reverse('api:v2:emissions:wells-geojson'), {'region': self.fresno.sqid}).json()['wells']) == 1
+        names = {f['properties']['name'] for f in self.client.get(reverse('api:v2:emissions:geojson'), {'year': 2024, 'region': self.kern.sqid}).json()['features']}
+        assert 'TEST PLANT' not in names
+        assert self.client.get(reverse('api:v2:emissions:wells-geojson'), {'region': 'nope'}).status_code == 400
+
+    def test_a_buffer_widens_the_shape(self):
+        from camp.apps.emissions import areas
+        exact = areas.map_shape(areas.RegionArea(self.fresno))
+        wide = areas.map_shape(areas.RegionArea(self.fresno), 3)
+        assert wide.area > exact.area and wide.contains(exact.point_on_surface)
+        shape = self.client.get(reverse('api:v2:emissions:area-shape'), {'region': self.fresno.sqid, 'buffer': '3'}).json()
+        assert shape['type'] == 'Feature' and shape['properties']['buffer'] == 3
+        assert self.client.get(reverse('api:v2:emissions:area-shape')).status_code == 404

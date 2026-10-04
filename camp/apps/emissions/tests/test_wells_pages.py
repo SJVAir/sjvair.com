@@ -53,7 +53,7 @@ class OverlayConfigTests(WellsPagesTestCase):
         for url in (reverse('emissions:map'), self.fresno.get_emissions_url(), reverse('emissions:near-me') + '?lat=36.737&lng=-119.787'):
             content = self.get(url)
             assert map_data(content, 'wells') == '' and map_data(content, 'wells-default') == '', url
-            assert map_data(content, 'wells-url') == reverse('api:v2:emissions:wells-geojson'), url
+            assert map_data(content, 'wells-url').split('?')[0] == reverse('api:v2:emissions:wells-geojson'), url
             assert '{id}' in map_data(content, 'well-url')
         content = self.get(reverse('emissions:map'), {'wells': '1'})
         assert map_data(content, 'wells') == '1' and map_data(content, 'wells-default') == ''

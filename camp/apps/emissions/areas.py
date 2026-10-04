@@ -13,7 +13,7 @@ import math
 from dataclasses import dataclass, replace
 
 from django.contrib.gis.db.models.functions import Area as AreaOf, Transform
-from django.contrib.gis.geos import Point, Polygon
+from django.contrib.gis.geos import GEOSGeometry, Point, Polygon
 from django.contrib.gis.measure import D
 from django.core.cache import cache
 from django.db.models import OuterRef, Q, Subquery
@@ -307,3 +307,39 @@ def facility_ab617_region(facility):
         .filter(boundary__geometry__intersects=facility.point)
         .select_related('boundary').first()
     )
+
+
+# An area page's maps can reach past its boundary: exactly the area, or a
+# mile or three beyond it (?buffer=), so what sits just over the line shows.
+BUFFERS = (0, 1, 3)
+# Simplifying a widened shape keeps the point-in-shape tests quick; 30 m is
+# far below anything the map can show.
+BUFFER_SIMPLIFY_METERS = 30
+
+
+def buffer_param(get):
+    """?buffer= as one of BUFFERS (miles), 0 when missing or anything else."""
+    try:
+        value = int(get.get('buffer') or 0)
+    except (TypeError, ValueError):
+        return 0
+    return value if value in BUFFERS else 0
+
+
+def map_shape(area, buffer=0):
+    """
+    An area's shape for its maps (EPSG:4326): a region's boundary or a radius's
+    circle, widened by `buffer` miles in California Albers (so a mile is a
+    mile). Cached a day per area and buffer.
+    """
+    if not buffer:
+        return area.region.boundary.geometry if isinstance(area, RegionArea) else area.geometry
+
+    def compute():
+        base = area.region.boundary.geometry if isinstance(area, RegionArea) else area.geometry
+        shape = base.transform(EPSG_CALIFORNIA_ALBERS, clone=True)
+        shape = shape.buffer(buffer * METERS_PER_MILE).simplify(BUFFER_SIMPLIFY_METERS, preserve_topology=True)
+        shape.transform(EPSG_LATLON)
+        return shape.hexewkb.decode() if isinstance(shape.hexewkb, bytes) else shape.hexewkb
+
+    return GEOSGeometry(cache.get_or_set(_key('map-shape', area.key, buffer), compute, stats.CACHE_TIMEOUT))

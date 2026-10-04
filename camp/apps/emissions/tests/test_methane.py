@@ -102,7 +102,8 @@ class OverlayConfigTests(MethaneTestCase):
         }
         for url, on in defaults.items():
             content = self.client.get(url, {'year': 2023}).content.decode()
-            assert map_data(content, 'methane-url') == reverse('api:v2:emissions:methane-geojson'), url
+            # An area page's limited to its area (?region= / ?lat=&lng=&radius=).
+            assert map_data(content, 'methane-url').split('?')[0] == reverse('api:v2:emissions:methane-geojson'), url
             assert map_data(content, 'methane-plumes-url') == reverse('api:v2:emissions:methane-plumes', args=['__id__']).replace('__id__', '{id}'), url
             assert map_data(content, 'methane') == on, url
             assert map_data(content, 'methane-default') == on, url

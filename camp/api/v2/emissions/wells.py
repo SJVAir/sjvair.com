@@ -9,6 +9,8 @@ from resticus import generics
 from camp.apps.emissions import wells
 from camp.apps.emissions.models import Well
 
+from .mapareas import get_shape
+
 logger = logging.getLogger(__name__)
 STATUSES = [Well.Status.ACTIVE.value, Well.Status.IDLE.value, Well.Status.NEW.value]
 
@@ -29,10 +31,14 @@ class WellGeoJSON(generics.Endpoint):
     cache_timeout = 60 * 60 * 24
 
     def get(self, request):
-        key = wells.key('geojson')
+        # An area page's map: only the wells inside its (perhaps widened) area, cached per area.
+        shape, area_key, error = get_shape(request)
+        if error:
+            return HttpResponse(json.dumps({'error': error}), status=400, content_type='application/json')
+        key = wells.key('geojson', area_key)
         packed = cache.get(key)
         if packed is None:
-            packed = zlib.compress(self.payload().encode(), 6)
+            packed = zlib.compress(self.payload(shape).encode(), 6)
             try:
                 cache.set(key, packed, self.cache_timeout)
             except Exception as err:
@@ -40,11 +46,14 @@ class WellGeoJSON(generics.Endpoint):
         return HttpResponse(zlib.decompress(packed), content_type='application/json')
 
     @staticmethod
-    def payload():
+    def payload(shape=None):
         index = {status: i for i, status in enumerate(STATUSES)}
+        queryset = Well.objects.only('id', 'status', 'in_hpz', 'point').order_by('pk')
+        if shape is not None:
+            queryset = queryset.filter(point__intersects=shape)
         rows = [
             [well.sqid, round(well.point.x, 5), round(well.point.y, 5), index.get(well.status, 0), 1 if well.in_hpz == Well.HPZ.VERIFIED else 0]
-            for well in Well.objects.only('id', 'status', 'in_hpz', 'point').order_by('pk').iterator(chunk_size=5000)
+            for well in queryset.iterator(chunk_size=5000)
         ]
         stamp = wells.stamp()
         return json.dumps({

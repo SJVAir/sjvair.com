@@ -1,6 +1,7 @@
 {% load emissions_explorer %}
 {% comment %}
-The facility map's own toolbar controls (facility-map.js binds them):
+The facility map's own toolbar controls (facility-map.js binds them; a
+region page's boundary choice is plain links):
 one row of the Facilities | Areas switch, the sector filter (full map
 only), in Areas the level and measure (measure hidden while Compare is
 on -- it has no effect on the change it shades), and Compare itself,
@@ -80,5 +81,20 @@ which applies to both views.
         </div></div>
     </div>
     {% endif %}
+    {% endif %}
+    {% if map_config.buffer_options %}
+    {# A region page's map: the region exactly, or a mile or three past its boundary (?buffer=). Links: the page reloads its map's data. #}
+    <div class="dropdown map-toolbar-dropdown facility-map-buffer{% if map_config.area_query and 'buffer=' in map_config.area_query %} is-set{% endif %}">
+        <div class="dropdown-trigger">
+            <button type="button" class="button" aria-haspopup="true" aria-expanded="false" title="How far past the boundary the map reaches">
+                <span class="icon"><span class="fa-duotone fa-fw fa-draw-circle explorer-icon is-areas" aria-hidden="true"></span></span>
+                <span class="map-toolbar-label">{% for label, url, current in map_config.buffer_options %}{% if current %}{{ label }}{% endif %}{% endfor %}</span>
+                <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+            </button>
+        </div>
+        <div class="dropdown-menu" role="menu"><div class="dropdown-content">
+            {% for label, url, current in map_config.buffer_options %}<a href="{{ url }}" class="dropdown-item{% if current %} is-active{% endif %}"{% if current %} aria-current="true"{% endif %}>{{ label }}</a>{% endfor %}
+        </div></div>
+    </div>
     {% endif %}
 </div>
