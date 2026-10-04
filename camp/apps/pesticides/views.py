@@ -625,6 +625,7 @@ class Home(vanilla.TemplateView):
             maptiler_key=settings.MAPTILER_API_KEY,
             focus_find=self.request.GET.get('find') == '1',
             movers=movers,
+            chemicals_board_title=stats.chemicals_title(concern, 'Most applied'),
             **{**data, 'by_county': by_county, **year_context(year, all_years, county, concern=concern)},
             county_rank=county_rank,
             county_metric_options=maps.county_metric_options(county_rank),
@@ -1896,13 +1897,13 @@ def _place_cards(context, concern=False):
     There is no separate chemicals-of-concern card: it repeated the chemicals
     card row for row, and those rows already carry their Prop 65 / IARC
     badges there. Under the concern scope every card is of concern anyway,
-    and the chemicals card's title says so.
+    and the chemicals card's title names the narrowing.
     """
     records_url = context['records_url']
     return {
         'products_card': _section_card('Top products', 'products', context['top_products'], records_url),
         'chemicals_card': _section_card(
-            'Top flagged chemicals' if concern else 'Top chemicals',
+            stats.chemicals_title(concern),
             'chemicals', context['top_chemicals'], records_url),
         'commodities_card': _section_card('Top commodities', 'commodities', context['top_commodities'], records_url),
     }

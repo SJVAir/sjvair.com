@@ -565,9 +565,7 @@ def _place_stats(area, year, all_years, concern=False):
         peak = max(by_month, key=lambda month: month['lbs'])
         peak_month = calendar.month_name[peak['month']]
 
-    # Fetched fifty deep so the chemicals-of-concern board can be filtered out
-    # of the same group-by instead of paying for a second one.
-    top_chemicals = stats.top_related(rows, year, 'chemical', limit=50, all_years=all_years)
+    top_chemicals = stats.top_related(rows, year, 'chemical', limit=stats.RELATED_LIMIT, all_years=all_years)
 
     sections_used = scoped.filter(mtrs__isnull=False).values('mtrs').distinct().count()
     square_miles = area.square_miles
@@ -594,7 +592,7 @@ def _place_stats(area, year, all_years, concern=False):
         'by_method': stats.by_method(rows, year, all_years=all_years),
         'by_month': by_month,
         'peak_month': peak_month,
-        'top_chemicals': top_chemicals[:stats.RELATED_LIMIT],
+        'top_chemicals': top_chemicals,
         'top_commodities': stats.top_related(rows, year, 'commodity', limit=stats.RELATED_LIMIT, all_years=all_years),
         'top_products': stats.top_related(rows, year, 'product', lbs_field='lbs_product_once', limit=stats.RELATED_LIMIT, all_years=all_years),
     }

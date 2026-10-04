@@ -777,6 +777,19 @@ class PlaceConcernScopeTests(RollupTestMixin, TestCase):
         assert response.context['chemicals_card']['title'] == 'Top chemicals'
         assert 'top_chemicals_of_concern' not in response.context
 
+    def test_the_chemicals_card_is_titled_for_each_narrowing(self):
+        url = reverse('pesticides:region', kwargs={'sqid': self.fresno.sqid, 'slug': 'fresno'})
+        titles = {
+            'concern': 'Top flagged chemicals',
+            'restricted': 'Top restricted chemicals',
+            'fumigant': 'Top fumigant chemicals',
+            'aerial': 'Top chemicals applied by air',
+        }
+        assert set(titles) == stats.NARROW_VALUES
+        for narrow, title in titles.items():
+            response = self.client.get(url, {'narrow': narrow})
+            assert response.context['chemicals_card']['title'] == title
+
     def test_place_stats_does_not_compute_the_flagged_list(self):
         area = places.region_area(self.fresno)
         with mock.patch.object(stats, 'top_chemicals_of_concern') as flagged:

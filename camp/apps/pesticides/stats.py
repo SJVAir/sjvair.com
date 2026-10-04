@@ -238,6 +238,30 @@ def narrow_label(narrow):
     return dict(NARROW_CHOICES).get(narrow, '')
 
 
+# What a chemicals board is called under each narrowing. The labels above
+# name the narrowing; these name the board, which lists the chemicals within it.
+NARROW_CHEMICALS_TITLES = {
+    '': 'chemicals',
+    NARROW_CONCERN: 'flagged chemicals',
+    NARROW_RESTRICTED: 'restricted chemicals',
+    NARROW_FUMIGANT: 'fumigant chemicals',
+    NARROW_AERIAL: 'chemicals applied by air',
+}
+
+
+def chemicals_title(narrow, prefix='Top'):
+    """
+    Title of a chemicals board narrowed to `narrow` ('' for all use):
+    "Top flagged chemicals", "Top chemicals applied by air". One place, so a
+    place page and the landing page can't disagree about what a board lists.
+    `prefix` is the landing page's "Most applied"; "Most applied chemicals
+    applied by air" reads badly, so that one stays "Top".
+    """
+    if narrow == NARROW_AERIAL:
+        prefix = 'Top'
+    return f'{prefix} {NARROW_CHEMICALS_TITLES.get(narrow, NARROW_CHEMICALS_TITLES[""])}'
+
+
 def narrow_needs_rollup(narrow):
     """
     Whether the narrowing can only be answered from the rollup -- the totals

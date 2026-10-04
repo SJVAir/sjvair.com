@@ -653,7 +653,9 @@ def check_fit(page):
         return False, 'no instance'
     if result['county'] and not result['countyFitted']:
         return False, 'county page did not fit its county'
-    if result['fit'] == 'valley' and not result['valleyFitted']:
+    # A county in scope frames the county instead of the valley (fitCounty),
+    # so the valley fit only applies to pages with no county.
+    if result['fit'] == 'valley' and not result['county'] and not result['valleyFitted']:
         return False, 'valley page did not fit the counties'
     return True, 'zoom %.2f, county=%s valley=%s' % (result['zoom'], result['countyFitted'], result['valleyFitted'])
 

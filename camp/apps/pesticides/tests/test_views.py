@@ -1124,6 +1124,29 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         html = self.client.get(reverse('pesticides:map')).content.decode()
         assert 'data-narrow=""' in html
 
+    def test_map_page_carries_the_scope_county_to_the_map(self):
+        # The map frames the county itself (section-map.js fitCounty), off
+        # the data attribute.
+        response = self.client.get(reverse('pesticides:map'), {'county': 'kern'})
+        assert response.context['map_config']['county'] == 'kern'
+        assert 'data-county="kern"' in response.content.decode()
+        assert self.client.get(reverse('pesticides:map')).context['map_config']['county'] == ''
+
+    def test_landing_chemicals_board_is_titled_for_each_narrowing(self):
+        titles = {
+            'concern': 'Most applied flagged chemicals',
+            'restricted': 'Most applied restricted chemicals',
+            'fumigant': 'Most applied fumigant chemicals',
+            'aerial': 'Top chemicals applied by air',
+        }
+        assert set(titles) == stats.NARROW_VALUES
+        for narrow, title in titles.items():
+            response = self.client.get(reverse('pesticides:home'), {'narrow': narrow})
+            assert response.context['chemicals_board_title'] == title
+            html = response.content.decode()
+            assert html.count(title) == 1
+            assert 'Most applied chemicals ·' not in html
+
     def test_landing_leaderboard_titles_follow_the_scope(self):
         # Unscoped: a chemicals board, plus a flagged board of its own.
         html = self.client.get(reverse('pesticides:home')).content.decode()
