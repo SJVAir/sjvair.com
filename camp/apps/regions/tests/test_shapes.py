@@ -1,4 +1,4 @@
-from django.contrib.gis.geos import GEOSGeometry, Point
+from django.contrib.gis.geos import Point
 from django.core.cache import cache
 from django.test import RequestFactory, TestCase
 
@@ -43,6 +43,13 @@ class RegionShapeTests(TestCase):
         assert shape.srid == EPSG_LATLON
         assert shape.equals(self.region.boundary.geometry)
 
+    def test_zero_is_a_copy(self):
+        before = self.region.boundary.geometry.wkt
+        shape = region_shape(self.region, 0)
+        shape.transform(EPSG_CALIFORNIA_ALBERS)
+        assert self.region.boundary.geometry.wkt == before
+        assert self.region.boundary.geometry.srid == EPSG_LATLON
+
     def test_buffer_widens(self):
         shape = region_shape(self.region, 1)
         assert shape.srid == EPSG_LATLON
@@ -78,3 +85,9 @@ class BufferOptionsTests(TestCase):
         assert 'buffer' not in options[0]['url']
         assert 'buffer=1' in options[1]['url']
         assert 'buffer=5' in options[3]['url']
+
+    def test_no_params(self):
+        options = buffer_options(RequestFactory().get('/tools/pesticides/'), 0)
+        assert options[0]['url'] == '/tools/pesticides/'
+        assert options[0]['current'] is True
+        assert options[2]['url'] == '/tools/pesticides/?buffer=3'

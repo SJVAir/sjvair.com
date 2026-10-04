@@ -178,7 +178,8 @@ def region_shape(region, miles=0):
     if boundary is None:
         return None
     if not miles:
-        return _latlon(boundary.geometry)
+        # Never the region's own geometry: callers may transform or edit the result.
+        return _latlon(boundary.geometry).clone()
     key = BUFFER_KEY.format(sqid=region.sqid, miles=miles)
     cached = cache.get(key)
     if cached is not None:
