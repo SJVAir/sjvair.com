@@ -3,7 +3,7 @@ from django.core.cache import cache
 from django.test import RequestFactory, TestCase
 
 from camp.apps.regions.models import Boundary, Region
-from camp.apps.regions.shapes import BUFFERS, BUFFER_LABELS, buffer_options, buffer_param, region_shape
+from camp.apps.regions.shapes import BUFFERS, BUFFER_LABELS, buffer_options, buffer_param, parse_buffer, region_shape
 from camp.utils.gis import EPSG_CALIFORNIA_ALBERS, EPSG_LATLON
 
 SQUARE = 'SRID=4326;MULTIPOLYGON (((-119.85 36.65, -119.75 36.65, -119.75 36.75, -119.85 36.75, -119.85 36.65)))'
@@ -27,6 +27,17 @@ class BufferParamTests(TestCase):
         for value in ('', 'abc', '-1', '2', '4', '10', '1.5'):
             assert buffer_param({'buffer': value}) == 0
         assert buffer_param({}) == 0
+
+
+class ParseBufferTests(TestCase):
+    def test_valid_and_absent(self):
+        assert parse_buffer({}) == (0, None)
+        assert parse_buffer({'buffer': ''}) == (0, None)
+        assert parse_buffer({'buffer': '3'}) == (3, None)
+
+    def test_anything_else_is_an_error(self):
+        for raw in ('7', 'x', '-1', '2.5'):
+            assert parse_buffer({'buffer': raw}) == (0, 'buffer must be one of 0, 1, 3, 5'), raw
 
 
 class RegionShapeTests(TestCase):

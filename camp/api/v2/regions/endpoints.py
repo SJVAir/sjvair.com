@@ -4,7 +4,6 @@ from django import forms
 
 from resticus import generics, http
 
-from camp.api.v2.pesticides.sections import parse_buffer
 from camp.apps.regions import shapes
 from camp.apps.regions.models import Region
 from camp.utils.views import CachedEndpointMixin
@@ -101,7 +100,7 @@ class RegionDetail(RegionMixin, generics.DetailEndpoint):
     lookup_url_kwarg = 'region_id'
 
     def get(self, request, *args, **kwargs):
-        miles, error = parse_buffer(request.GET)
+        miles, error = shapes.parse_buffer(request.GET)
         if error:
             return http.Http400({'error': error})
         response = super().get(request, *args, **kwargs)

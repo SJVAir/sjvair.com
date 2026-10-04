@@ -21,7 +21,7 @@ from camp.apps.pesticides.models import (
 )
 from camp.apps.pesticides.townships import township_geometries
 from camp.apps.regions.models import Region
-from camp.apps.regions.shapes import BUFFERS, region_shape
+from camp.apps.regions.shapes import parse_buffer, region_shape
 from camp.utils.gis import round_coords
 from camp.utils.views import CachedEndpointMixin
 
@@ -62,26 +62,6 @@ def bad_request(message):
     # Returned through CachedEndpointMixin, which caches it for the same bad
     # querystring; harmless, since the same params always produce the same error.
     return http.Http400({'error': message})
-
-
-def parse_buffer(params):
-    """
-    The ?buffer= miles as one of BUFFERS (absent is 0), and an error message for any other value. Returns (miles, error).
-
-    Strict on purpose: an API client that sends a bad buffer gets a 400 rather
-    than a silently different answer. The pages' regions.shapes.buffer_param
-    is lenient instead (a bad ?buffer= in a shared URL falls back to 0).
-    """
-    raw = params.get('buffer')
-    if raw in (None, ''):
-        return 0, None
-    try:
-        miles = int(raw)
-    except (TypeError, ValueError):
-        miles = None
-    if miles not in BUFFERS:
-        return 0, f'buffer must be one of {", ".join(str(b) for b in BUFFERS)}'
-    return miles, None
 
 
 def clip_shape(params):
