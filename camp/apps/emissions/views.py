@@ -348,6 +348,10 @@ def nearby_groups(nearby):
     ]
 
 
+# The facility page's toxics table: the rest behind "Show all".
+TOXICS_SHOWN = 10
+
+
 class FacilityDetail(ScopeMixin, vanilla.TemplateView):
     template_name = 'emissions/facility-detail.html'
     section = 'facilities'
@@ -369,6 +373,14 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
         tract = next((region for region in facility_regions if region.type == Region.Type.TRACT), None)
         ranks = stats.facility_ranks(facility, shown_year)
         ghg_card = ghg.facility_card(facility)
+        # Each toxic's change from the year before (a percent, None without
+        # one), and the largest by cancer-weighted share for the stat row.
+        toxics_rows = [
+            dict(row, change=(row['value'] - row['previous']) / row['previous'] * 100 if row['previous'] and row['value'] is not None else None)
+            for row in stats.facility_toxics(facility, shown_year)
+        ]
+        weighted = [row for row in toxics_rows if row['has_cancer_value'] and row['share']]
+        trend = stats.by_year(scope, facility=facility)
         return super().get_context_data(
             facility=facility,
             # The stat row: the page's pollutant for this facility (its row
@@ -381,8 +393,12 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
             # Pollutants it reported get a row; the rest are named in one line under the table.
             ranks=[row for row in ranks if row['value']],
             unreported=[row['pollutant'] for row in ranks if not row['value']],
-            trend=stats.by_year(scope, facility=facility),
-            toxics_rows=stats.facility_toxics(facility, shown_year),
+            trend=trend,
+            # The trend chart only when the page's pollutant is a criteria one this facility has reported.
+            show_trend=not scope.pollutant.toxic and any(point['value'] for point in trend),
+            toxics_rows=toxics_rows,
+            top_toxic=max(weighted, key=lambda row: row['share']) if weighted else None,
+            toxics_shown=TOXICS_SHOWN,
             changes=stats.large_changes(facility, shown_year),
             hot_spots=stats.hot_spots(record),
             health_values=SourceImport.latest('contable'),

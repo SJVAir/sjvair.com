@@ -1,9 +1,9 @@
-{% comment %}The greenhouse-gas caveats, under the facility card and the county table.{% endcomment %}
-<details class="data-notes">
-    <summary>What this is, and isn't</summary>
+{% comment %}The greenhouse-gas caveats: under the county table, and (`items_only`, the list alone) in the facility page's one "What this is, and isn't".{% endcomment %}
+{% if not items_only %}<details class="data-notes">
+    <summary>What this is, and isn't</summary>{% endif %}
     <ul>
         <li><strong>A climate measure, not a local health one.</strong> Greenhouse gases warm the climate; they aren't what people nearby breathe.</li>
         <li><strong>Only large emitters report</strong> (about 10,000 t CO2e a year and up), so most facilities have none.</li>
         <li><strong>Oil and gas production reports for a whole basin</strong>, not one site. Fuel sold by suppliers isn't counted here, and dairies don't report to either program.</li>
     </ul>
-</details>
+{% if not items_only %}</details>{% endif %}

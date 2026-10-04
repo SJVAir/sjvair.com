@@ -176,12 +176,12 @@ class FacilityNoteTests(WellsPagesTestCase):
         location('PLANT ELEMENTARY', north_of(self.plant.point, 500))
         Facility.objects.filter(pk=self.plant.pk).update(sector='oil-gas', point_source='census')
         content = self.get(self.plant.get_absolute_url())
-        assert 'This is a district permit grouping that can span a whole oil field. Its map point is the operator&#x27;s address, not a well.' in content \
-            or "Its map point is the operator's address, not a well." in content
-        assert 'Schools and child care nearby' not in content
+        assert 'its map point is the operator&#x27;s address, not a well' in content \
+            or "its map point is the operator's address, not a well" in content
+        assert 'Schools &amp; child care within ¼ mile' not in content
         Facility.objects.filter(pk=self.plant.pk).update(sector='glass')
         content = self.get(self.plant.get_absolute_url())
-        assert 'district permit grouping' not in content and 'Schools and child care nearby' in content
+        assert 'district permit grouping' not in content and 'Schools &amp; child care within ¼ mile' in content
 
 
 class AboutTests(WellsPagesTestCase):

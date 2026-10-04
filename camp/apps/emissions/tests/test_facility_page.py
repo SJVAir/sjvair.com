@@ -19,9 +19,10 @@ class FacilityHeaderTests(TestCase):
 
     def test_identity_where_and_regulator(self):
         content = self.detail('TEST PLANT')
-        # Sector as a tag linking to its page; SIC on the grey identifiers line.
-        assert re.search(r'<a class="tag[^"]*" href="/tools/emissions/sectors/glass/', content)
-        assert 'class="identifiers has-text-grey"' in content and 'SIC 3221' in content
+        # One grey line, as an area page's: the sector (linking its page), the place, the SIC code.
+        line = content[content.index('class="identifiers has-text-grey"'):]
+        line = line[:line.index('</p>')]
+        assert 'href="/tools/emissions/sectors/glass/' in line and 'Fresno, Fresno County' in line and 'SIC 3221' in line
         # The address as reported, and the regulator's card.
         assert '123 Main St' in content and 'Fresno, CA 93728' in content
         # The county is in Counted in, not repeated in the address.
@@ -30,13 +31,14 @@ class FacilityHeaderTests(TestCase):
         assert re.search(r'<p class="facility-regulator">\s*Regulated by', content)
         assert 'San Joaquin Valley APCD' in content
         assert 'card-header-title">Regulated by' not in content
-        # The district's phone is tappable, and the complaint form is the page's one button.
-        assert 'href="tel:5592306000"' in content
-        assert re.search(r'<a class="button[^"]*" href="https://ww2.valleyair.org/file-a-complaint"', content)
+        # The district's phone is tappable, and the complaint form a link on the same line.
+        regulator = content[content.index('class="facility-regulator"'):]
+        regulator = regulator[:regulator.index('</p>')]
+        assert 'href="tel:5592306000"' in regulator and 'href="https://ww2.valleyair.org/file-a-complaint"' in regulator
 
     def test_minor_source_tag(self):
         content = self.detail('TEST GAS STATION')
-        assert re.search(r'<a class="tag[^"]*" href="/tools/emissions/about/#minor-sources"', content)
+        assert '· <a href="/tools/emissions/about/#minor-sources">Minor source</a>' in content
 
     def test_no_complaint_form_keeps_the_phone(self):
         content = self.detail('TEST CEMENT')
@@ -62,10 +64,14 @@ class FacilityHeaderTests(TestCase):
         # The stat row comes before the table, and the map after it.
         assert content.index('facility-stats') < content.index('Emissions in 2024') < content.index('id="where"')
 
-    def test_no_stat_row_without_anything_to_lead_with(self):
-        # TEST CEMENT reported no SOx, and has no GHG report or Hot Spots score.
+    def test_a_pollutant_it_didnt_report_says_so(self):
+        # TEST CEMENT reported no SOx: its tile says so rather than the row going missing.
         url = Facility.objects.get(name='TEST CEMENT').get_absolute_url()
-        assert 'facility-stats' not in self.client.get(url + '?pollutant=sox').content.decode()
+        content = self.client.get(url + '?pollutant=sox').content.decode()
+        stats = content[content.index('facility-stats'):content.index('Emissions in')]
+        assert 'not reported' in stats
+        # Nothing to chart: the table takes the row.
+        assert 'Over time' not in content
 
     def test_a_placed_facility_gets_its_map(self):
         content = self.detail('TEST PLANT')
@@ -133,7 +139,8 @@ class FacilityToxicsTests(TestCase):
         content = self.detail(self.plant)
         table = content[content.index('toxics-table'):content.index('toxics-lead')]
         assert table.index('Benzene') < table.index('Isopropyl alcohol')
-        assert 'pollutant=benzene' in table and 'no OEHHA cancer value' in table
+        # A chemical with no OEHHA cancer value shows a dash (the column's tooltip says why).
+        assert 'pollutant=benzene' in table and 'no OEHHA cancer value' not in table and 'no cancer value for it' in table
         assert table.count('hazard-dot') == 1
         assert '1.9%' in table  # 0.4466 / 23.65825
         assert 'What this is, and isn' in content
@@ -143,16 +150,16 @@ class FacilityToxicsTests(TestCase):
         table = content[content.index('toxics-table'):content.index('toxics-lead')]
         assert 'Ammonia' not in table
 
-    def test_hot_spots_card_and_its_absence(self):
-        assert 'Hot Spots (AB 2588)' not in self.detail(self.plant)
+    def test_hot_spots_tiles_and_their_absence(self):
+        # Hot Spots is stat-row tiles, its caveats in the page's one "What this is, and isn't".
+        assert 'Hot Spots priority score' not in self.detail(self.plant)
         EmissionsRecord.objects.filter(facility=self.plant, year=2024).update(total_score=12.5, hra=4.27)
         content = self.detail(self.plant)
-        assert 'Hot Spots (AB 2588)' in content and 'High priority above 10' in content
-        assert 'public notification at 10, risk reduction required at 100' in content
-        assert 'Chronic hazard index' not in content
-        assert 'air-toxics-annual-reports' in content
-        # The score also leads the page, in the stat row.
-        assert '<p class="heading">Hot Spots priority score</p><p class="title">12.5</p>' in content
+        stats = content[content.index('facility-stats'):content.index('Emissions in 2024')]
+        assert re.search(r'Hot Spots priority score</p>\s*<p class="title">12.5</p>', stats)
+        assert re.search(r'Hot Spots cancer risk</p>\s*<p class="title">4.3 <span', stats) and 'notification at 10; reduction at 100' in stats
+        assert 'hazard index' not in stats
+        assert 'air-toxics-annual-reports' in content and 'Hot Spots (AB 2588)</p>' in content
 
     def test_no_toxics_no_table(self):
         cement = Facility.objects.get(name='TEST CEMENT')
@@ -177,8 +184,8 @@ class SchoolsCardTests(TestCase):
     def test_card_groups_and_map_overlay(self):
         from camp.apps.emissions.tests.test_areas_pages import map_data
         content = self.detail(self.plant)
-        start = content.index('card-header-title">Schools and child care nearby')
-        card = content[start:content.index('<h2', start)]
+        start = content.index('Schools &amp; child care within ¼ mile')
+        card = content[start:content.index('</div>', start)]
         assert card.index('Within 1,000 ft') < card.index('NEAR ELEMENTARY') < card.index('1,000 ft to ¼ mile') < card.index('QUARTER MILE ACADEMY')
         assert 'FAR HIGH' not in card
         assert re.search(r'NEAR ELEMENTARY.*?Public school · \d{3} ft', card, re.S)
@@ -186,13 +193,13 @@ class SchoolsCardTests(TestCase):
         assert map_data(content, 'ring-miles') == '0.25'
         nearby = map_data(content, 'nearby')
         assert 'NEAR ELEMENTARY' in nearby and 'FAR HIGH' not in nearby and '&quot;FeatureCollection&quot;' in nearby
-        assert 'href="/tools/emissions/about/#schools"' in card
+        assert 'href="/tools/emissions/about/#schools"' in content  # in the page's "What this is, and isn't"
 
     def test_none_within_a_quarter_mile(self):
         from camp.apps.regions.models import Location
         Location.objects.exclude(name='FAR HIGH').delete()
         content = self.detail(self.plant)
-        assert 'None within ¼ mile.' in content
+        assert 'Schools &amp; child care within ¼ mile</p>\n                \n                <p>None.</p>' in content or re.search(r'within ¼ mile</p>\s*<p>None\.</p>', content)
         assert 'Within 1,000 ft' not in content
 
     def test_and_n_more(self):

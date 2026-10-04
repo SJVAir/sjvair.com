@@ -174,12 +174,6 @@ body.emissions
     height: 0.6rem
     border-radius: 50%
     background: #d35400
-  .hot-spots-values
-    dt
-      font-weight: 600
-      margin-top: 0.5rem
-    dd
-      margin-left: 0
   .segment
     height: 100%
   .emissions-legend
@@ -282,6 +276,21 @@ body.emissions
   // trend at 32rem, sized for a narrow column of its own).
   .overview-columns .trend-chart
     max-width: none
+  // The facility page: the SIC code's tooltip (its description) marked as one.
+  .facility-header .is-dotted
+    border-bottom: 1px dotted currentColor
+    cursor: help
+  // The page's pollutant, picked out in the emissions table.
+  .facility-ranks-table tr.is-selected-row td
+    background: rgba($primary, 0.06)
+  .facility-emissions .data-notes
+    margin-top: 0.5rem
+  .toxics-toggle
+    padding-left: 0
+    text-decoration: none
+    color: $link
+  .facility-records .compliance-card .title.is-4, .facility-records .ghg-card .title.is-4
+    margin-bottom: 1rem
   .toxics-lead
     font-size: $size-7
     color: $grey-dark
@@ -330,13 +339,10 @@ body.emissions
   // the CARB context box); give it room.
   .map-wrap
     margin-bottom: 1.5rem
-  // The facility page's Where / Regulated by cards, in the related-card style.
+  // The facility page's place card beside its map.
   .facility-cards
     .card
       height: 100%
-    .card-header
-      box-shadow: none
-      border-bottom: 2px solid $primary
     .card-content p:last-child
       margin-bottom: 0
     // The Counted in tooltip sits inside a .heading (uppercase, spaced):
@@ -345,17 +351,11 @@ body.emissions
       text-transform: none
       letter-spacing: normal
       font-weight: normal
-  // A phone number never breaks across lines.
-  // "Regulated by ... · phone" and the complaint button on one centred row
-  // (the button is taller than the line, and hung below it on the baseline).
+  // The facility header's "Regulated by ... · phone · Report a problem" line.
   .facility-regulator
-    display: flex
-    flex-wrap: wrap
-    align-items: center
-    column-gap: 0.25em
-    row-gap: 0.5rem
-    .button
-      margin-left: 0.75rem !important
+    margin-top: -0.5rem
+    .icon
+      vertical-align: -0.1em
   .facility-regulator a[href^="tel:"]
     white-space: nowrap
   // Home: "Find your area" and "Find a facility" side by side, the same height.

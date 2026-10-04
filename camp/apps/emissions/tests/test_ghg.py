@@ -438,14 +438,15 @@ class GHGPageTests(GHGTestCase):
         report('mrr', '900001', 2024, facility=self.plant, county=self.fresno, co2e=87635.27, ch4=1.1628941, n2o=0.11628941)
         report('ghgrp', '501', 2023, facility=self.plant, county=self.fresno, co2e=71574.356, ch4=0.97, n2o=0.097, co2e_biogenic=12.4)
         content = self.detail(self.plant)
-        card = content[content.index('id="greenhouse-gases"'):content.index('Source: California Air Resources Board')]
+        card = content[content.index('id="greenhouse-gases"'):content.index('</section>', content.index('id="greenhouse-gases"'))]
         assert '<h2 class="title is-4">Greenhouse gases</h2>' in card
         assert '2024: 87,635 t CO2e (CH4 1.2 t, N2O 0.1 t)' in card
         assert '2023: 71,574 t CO2e (CH4 1.0 t, N2O 0.1 t), plus 12 t biogenic CO2' in card
         assert card.index('2024:') < card.index('2023:')
         assert 'href="https://ww2.arb.ca.gov/mrr-data">CARB MRR →</a>' in card
         assert 'href="https://ghgdata.epa.gov/ghgp/service/facilityDetail/2023?id=501&amp;et=undefined">EPA GHGRP →</a>' in card
-        assert "dairies don't report to either program." in card
+        # Its caveats are in the page's one "What this is, and isn't".
+        assert "dairies don't report to either program." in content
         # A report with no per-gas figures has no parenthetical.
         GHGReport.objects.filter(external_id='900001').update(ch4=None, n2o=None)
         assert '2024: 87,635 t CO2e ·' in self.detail(self.plant)

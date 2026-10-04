@@ -1,6 +1,6 @@
 {% comment %}"What this is, and isn't": the caveat panel for the weighted toxics measures (facility page, About). `health_values` is SourceImport.latest('contable').{% endcomment %}
-{% comment %}Compact (facility page): the one point nobody should miss stays in view, the rest folds away; the About page shows it all.{% endcomment %}
-{% if compact %}
+{% comment %}`items_only` (the facility page's one "What this is, and isn't"): the list alone. Compact: the one point nobody should miss stays in view, the rest folds away; the About page shows it all.{% endcomment %}
+{% if items_only %}{% elif compact %}
 <p class="toxics-lead"><strong>Not a health risk.</strong> The weighted share ranks pounds released × how toxic each chemical is, against the Valley's total; it isn't anyone's exposure or a risk "in a million".</p>
 <details class="data-notes">
     <summary>What this is, and isn't</summary>
@@ -16,4 +16,4 @@
         <li><strong>Diesel PM here is from permitted stationary engines only.</strong> Trucks, trains and farm equipment, the main sources of diesel exposure in the Valley, aren't permitted facilities.</li>
         <li><strong>Chemicals with no state cancer value count as zero.</strong> Health values change: this uses OEHHA's table dated {% if health_values.version %}{{ health_values.version }}{% else %}(not yet loaded){% endif %}.</li>
     </ul>
-{% if compact %}</details>{% else %}</div>{% endif %}
+{% if items_only %}{% elif compact %}</details>{% else %}</div>{% endif %}
