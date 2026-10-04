@@ -10,10 +10,10 @@ from django.contrib.gis.measure import D
 
 from resticus import generics
 
-from camp.apps.regions.models import Location, Region
+from camp.apps.regions.models import Location
 from camp.utils.views import CachedEndpointMixin
 
-from .sections import bad_request, parse_bbox
+from .sections import bad_request, clip_shape, parse_bbox
 
 # The map asks for locations from zoom 9 up, and it asks for a bbox padded by
 # half a viewport on each side -- on a wide expanded map at that zoom the
@@ -134,10 +134,10 @@ class LocationListBase(generics.Endpoint):
         """
         sqid = (params.get('region') or '').strip()
         if sqid:
-            region = Region.objects.filter(sqid=sqid, boundary__isnull=False).select_related('boundary').first()
-            if region is None:
-                return None, 'region not found'
-            return {'point__within': region.boundary.geometry}, None
+            shape, error = clip_shape(params)
+            if error:
+                return None, error
+            return {'point__within': shape}, None
         if params.get('lat') or params.get('lng'):
             try:
                 lat, lng = float(params['lat']), float(params['lng'])
@@ -160,6 +160,7 @@ class LocationList(CachedEndpointMixin, LocationListBase):
     `county` (a county slug) keeps only the locations in that county.
     Instead of a bbox, `region` (a region's sqid) or `lat`, `lng` and
     `radius` (miles, up to 10) return every location inside that area.
+    `region` also takes `buffer=0|1|3|5` to widen the region by that many miles.
     """
     cache_timeout = 60 * 60 * 24
     # v2: the GeoJSON property names changed. A day-long cache would keep

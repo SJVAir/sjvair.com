@@ -168,6 +168,26 @@ def buffer_param(params):
     return miles if miles in BUFFERS else 0
 
 
+def parse_buffer(params):
+    """
+    The ?buffer= miles as one of BUFFERS (absent is 0), and an error message for any other value. Returns (miles, error).
+
+    Strict on purpose: an API client that sends a bad buffer gets a 400 rather
+    than a silently different answer. The pages' buffer_param above
+    is lenient instead (a bad ?buffer= in a shared URL falls back to 0).
+    """
+    raw = params.get('buffer')
+    if raw in (None, ''):
+        return 0, None
+    try:
+        miles = int(raw)
+    except (TypeError, ValueError):
+        miles = None
+    if miles not in BUFFERS:
+        return 0, f'buffer must be one of {", ".join(str(b) for b in BUFFERS)}'
+    return miles, None
+
+
 def region_shape(region, miles=0):
     """
     The region's boundary widened by `miles`, as a 4326 geometry (None without

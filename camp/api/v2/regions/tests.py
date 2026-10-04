@@ -1,3 +1,5 @@
+import json
+
 from django.contrib.gis.geos import GEOSGeometry
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
@@ -126,6 +128,16 @@ class RegionDetailTests(TestCase):
         data = get_response_data(response)
         assert data['data']['boundary'] is not None
         assert data['data']['boundary']['geometry'] is not None
+
+    def test_buffer_widens_the_boundary_geometry(self):
+        def area(**params):
+            response = region_detail(self.factory.get('/', params), region_id=self.region.sqid)
+            geometry = get_response_data(response)['data']['boundary']['geometry']
+            return GEOSGeometry(json.dumps(geometry)).area
+        assert area(buffer=3) > area()
+        assert area(buffer=5) > area(buffer=3)
+        response = region_detail(self.factory.get('/', {'buffer': 7}), region_id=self.region.sqid)
+        assert response.status_code == 400
 
     def test_detail_has_bbox(self):
         request = self.factory.get('/')

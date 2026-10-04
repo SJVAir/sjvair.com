@@ -6,3 +6,4 @@ values are carried, matching scope_qs.
 {% if all_years %}<input type="hidden" name="year" value="all">{% elif year and year != latest_year %}<input type="hidden" name="year" value="{{ year }}">{% endif %}
 {% if county %}<input type="hidden" name="county" value="{{ county.slug }}">{% endif %}
 {% if concern %}<input type="hidden" name="narrow" value="{{ concern }}">{% endif %}
+{% if buffer %}<input type="hidden" name="buffer" value="{{ buffer }}">{% endif %}

@@ -338,6 +338,7 @@ html.map-expanded .navbar {
 }
 
 .map-toolbar .map-toolbar-filters,
+.map-toolbar .map-buffer,
 .map-toolbar .map-toolbar-end {
   pointer-events: none;
 }
@@ -350,7 +351,8 @@ html.map-expanded .navbar {
 
 .map-toolbar .control,
 .map-toolbar .map-toolbar-end > *,
-.map-toolbar .map-toolbar-filters > * {
+.map-toolbar .map-toolbar-filters > *,
+.map-toolbar .map-buffer > * {
   pointer-events: auto;
 }
 
@@ -413,6 +415,7 @@ html.map-expanded .navbar {
     max-width: 7rem;
   }
   .map-toolbar .map-toolbar-filters .map-toolbar-label,
+  .map-toolbar .map-buffer .map-toolbar-label,
   .map-toolbar .map-options .map-toolbar-label {
     display: none;
   }

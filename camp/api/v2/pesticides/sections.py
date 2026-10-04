@@ -7,7 +7,7 @@ import math
 
 from datetime import timedelta
 
-from django.contrib.gis.geos import Point, Polygon
+from django.contrib.gis.geos import GEOSGeometry, Point, Polygon
 from django.contrib.gis.measure import D
 from django.db.models import Sum
 from django.shortcuts import get_object_or_404
@@ -21,6 +21,7 @@ from camp.apps.pesticides.models import (
 )
 from camp.apps.pesticides.townships import township_geometries
 from camp.apps.regions.models import Region
+from camp.apps.regions.shapes import parse_buffer, region_shape
 from camp.utils.gis import round_coords
 from camp.utils.views import CachedEndpointMixin
 
@@ -61,6 +62,23 @@ def bad_request(message):
     # Returned through CachedEndpointMixin, which caches it for the same bad
     # querystring; harmless, since the same params always produce the same error.
     return http.Http400({'error': message})
+
+
+def clip_shape(params):
+    """
+    The geometry `region=<sqid>` (widened by `buffer=<miles>`) clips a map layer
+    to, or None when no region is asked for. Returns (geometry, error).
+    """
+    sqid = (params.get('region') or '').strip()
+    if not sqid:
+        return None, None
+    miles, error = parse_buffer(params)
+    if error:
+        return None, error
+    region = Region.objects.filter(sqid=sqid, boundary__isnull=False).select_related('boundary').first()
+    if region is None:
+        return None, 'region not found'
+    return region_shape(region, miles), None
 
 
 def apply_filters(rows, params):
@@ -247,6 +265,11 @@ class SectionListBase(generics.Endpoint):
             boundary = county_boundary(params['county'])
             if boundary is not None:
                 sections = sections.filter(boundary__geometry__intersects=boundary)
+        shape, error = clip_shape(params)
+        if error:
+            return None, error
+        if shape is not None:
+            sections = sections.filter(boundary__geometry__intersects=shape)
         if params.get('bbox'):
             bbox, error = parse_bbox(params['bbox'])
             if error:
@@ -270,6 +293,8 @@ class SectionListBase(generics.Endpoint):
                 boundary__geometry__bboverlaps=radius_bbox(lat, lng, radius),
                 boundary__geometry__distance_lte=(point, D(mi=radius)),
             ), None
+        if shape is not None:
+            return sections, None
         return None, 'give bbox=west,south,east,north or lat, lng, and radius'
 
     def get(self, request):
@@ -282,7 +307,12 @@ class SectionListBase(generics.Endpoint):
         # lookup twice.
         section_pks = list(sections.values_list('pk', flat=True))
         if len(section_pks) > MAX_SECTIONS:
-            too_large = 'bbox too large; zoom in' if params.get('bbox') else 'radius too large'
+            if params.get('bbox'):
+                too_large = 'bbox too large; zoom in'
+            elif params.get('lat') and params.get('lng'):
+                too_large = 'radius too large'
+            else:
+                too_large = 'region too large; narrow it with a filter'
             return bad_request(too_large)
         year, all_years = parse_year(params)
 
@@ -349,7 +379,7 @@ class SectionList(CachedEndpointMixin, SectionListBase):
     """
     MTRS sections with pesticide-use totals, as GeoJSON.
 
-    Give either `bbox=west,south,east,north` or `lat`, `lng`, `radius` (miles: 1, 3, or 5).
+    Give either `bbox=west,south,east,north`, `lat`, `lng`, `radius` (miles: 1, 3, or 5), or `region=<sqid>` with an optional `buffer=0|1|3|5` to clip to that region widened by that many miles.
     Filters: `year` (default latest), `month`, `chemical` (chem code), `product`
     (prodno), `commodity` (site code), `county` (slug), and `narrow=concern|restricted|fumigant|aerial` (or the legacy `concern=1`) to
     count only what that narrowing keeps, e.g. the chemicals of concern (Prop 65, CARB TAC, IARC 1/2A/2B,
@@ -431,6 +461,11 @@ class ActiveNoticeListBase(generics.Endpoint):
             if error:
                 return bad_request(error)
             notices = notices.filter(point__bboverlaps=Polygon.from_bbox(bbox))
+        shape, error = clip_shape(params)
+        if error:
+            return bad_request(error)
+        if shape is not None:
+            notices = notices.filter(point__within=shape)
         narrow = stats.resolve_narrow(params)
         if narrow:
             notices = stats.narrow_notices(notices, narrow)
@@ -490,6 +525,9 @@ class TownshipListBase(generics.Endpoint):
             bbox, error = parse_bbox(params['bbox'])
             if error:
                 return bad_request(error)
+        shape, error = clip_shape(params)
+        if error:
+            return bad_request(error)
         year, all_years = parse_year(params)
 
         compare, error = parse_compare(params, year, all_years)
@@ -521,8 +559,14 @@ class TownshipListBase(generics.Endpoint):
         # No cap: there are only a few hundred townships in the valley, so
         # the whole grid is a small response even unfiltered.
         features = []
+        shape_extent = shape.extent if shape is not None else None
         for township, geometry in sorted(township_geometries().items()):
             if bbox and not bbox_overlaps(bbox, geometry['bbox']):
+                continue
+            if shape is not None and not (
+                bbox_overlaps(shape_extent, geometry['bbox'])
+                and shape.intersects(GEOSGeometry(json.dumps(geometry['geometry'])))
+            ):
                 continue
             t = totals.get(township, ZERO)
             if boundary is not None and not t['applications']:
@@ -551,7 +595,9 @@ class TownshipList(CachedEndpointMixin, TownshipListBase):
     Each township is the union of its sections. Optional
     `bbox=west,south,east,north` limits the grid to what's on screen, and
     `geometry=0` returns the features with `null` geometry (values only) for
-    a client that already holds the outlines.
+    a client that already holds the outlines. `region=<sqid>` with an optional
+    `buffer=0|1|3|5` keeps the townships touching that region widened by that
+    many miles.
     Filters: `year` (default latest), `month`, `chemical` (chem code),
     `product` (prodno), `commodity` (site code), `county` (slug), and
     `narrow=concern|restricted|fumigant|aerial` (or legacy `concern=1`) to count only what that narrowing keeps.
@@ -560,7 +606,7 @@ class TownshipList(CachedEndpointMixin, TownshipListBase):
 
 
 class ActiveNoticeList(CachedEndpointMixin, ActiveNoticeListBase):
-    """Active SprayDays notices of intent (scheduled from four days ago onward) as GeoJSON points. Optional `bbox=west,south,east,north`, `chemical` (chem code), `product` (prodno), `county` (slug), `narrow=concern|restricted|fumigant|aerial`. A request matching more than 2000 notices returns 400; narrow it with a bbox or a filter."""
+    """Active SprayDays notices of intent (scheduled from four days ago onward) as GeoJSON points. Optional `bbox=west,south,east,north`, `chemical` (chem code), `product` (prodno), `county` (slug), `narrow=concern|restricted|fumigant|aerial`. `region=<sqid>` with an optional `buffer=0|1|3|5` keeps the notices inside that region widened by that many miles. A request matching more than 2000 notices returns 400; narrow it with a bbox or a filter."""
     cache_timeout = NOTICE_CACHE_TTL
 
 
