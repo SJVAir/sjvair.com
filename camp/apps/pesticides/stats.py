@@ -26,7 +26,8 @@ LATEST_YEAR_KEY = 'pesticides:latest-year'
 # by_county() rows and v3 added `by_year`, so a landing-stats entry cached
 # under an old key would be missing them. v4: fumigants are now decided by
 # Product.is_fumigant, so cached fumigant counts and narrowings are stale.
-LANDING_KEY = 'pesticides:landing-stats:v4'
+# v5: the flagged board is its own top five rather than the remainder.
+LANDING_KEY = 'pesticides:landing-stats:v5'
 NOTICE_WINDOW_KEY = 'pesticides:notice-window'
 YEARS_KEY = 'pesticides:years'
 ALL_YEARS = 'all'
@@ -1090,12 +1091,10 @@ def concern_notices(notices):
 
 
 def top_chemicals_of_concern(top_chemicals, uses, year, limit=10, all_years=False):
-    # The default is the landing leaderboards'; a place page passes
-    # RELATED_LIMIT, since there it's a related card like the ones beside it.
     """
-    The heaviest chemicals of concern, for the board beside "top chemicals".
-    `top_chemicals` is an already-fetched group-by (the landing and place
-    pages both pull 50), so the common case costs no extra query.
+    The heaviest chemicals of concern, for the landing page's flagged board.
+    `top_chemicals` is an already-fetched group-by (the landing pulls 50), so
+    the common case costs no extra query.
     """
     # is_of_concern is derived in Python, so filter the already-fetched top-50
     # group-by; fall back to a category/IARC-restricted query if that pass
@@ -1393,19 +1392,15 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
     # narrowing its "View all" (the flagged-chemicals list) would be a
     # different narrowing from the page's, so it's all use only.
     if not concern:
-        # Only the ones the board beside it doesn't already list. At five rows
-        # apiece the two boards otherwise repeat each other three rows out of
-        # five, and a repeat says nothing the first board hadn't -- those rows
-        # carry their badges there too. The pair reads as one ranking split in
-        # two: the heaviest chemicals, then the heaviest flagged ones that
-        # didn't make it. Fetched at twice the cap so the board still fills
-        # after the overlap comes out.
-        listed = {row.obj.pk for row in top_chemicals}
+        # A ranking of its own: the five most applied flagged chemicals. Most
+        # of what's applied most is flagged, so overlap with the Top
+        # chemicals board is expected -- the point is that this one answers
+        # "which flagged chemicals are applied most", whatever the other
+        # board lists.
         of_concern = top_chemicals_of_concern(top_chemicals_all, uses, year,
-            limit=RELATED_LIMIT * 2, all_years=all_years)
-        kept = [row for row in of_concern if row.obj.pk not in listed]
+            limit=RELATED_LIMIT, all_years=all_years)
         data['top_chemicals_of_concern'] = with_series(
-            uses, 'chemical', kept[:RELATED_LIMIT], year=year, all_years=all_years)
+            uses, 'chemical', of_concern, year=year, all_years=all_years)
     return data
 
 

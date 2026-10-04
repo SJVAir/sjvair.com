@@ -172,9 +172,9 @@ class StatsTests(RollupTestMixin, TestCase):
         assert data['total_lbs'] == 740.0
         assert data['active_notices'] == 2   # the two 2099 notices; the 2020 one is long past
         assert [r.obj.name for r in data['top_chemicals']] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
-        # Only what the chemicals board doesn't already list, and here it
-        # lists all three, so there is nothing left for this one.
-        assert [r.obj.name for r in data['top_chemicals_of_concern']] == []
+        # A ranking of its own: both flagged chemicals, though the chemicals
+        # board lists them too.
+        assert [r.obj.name for r in data['top_chemicals_of_concern']] == ['GLYPHOSATE', 'CHLORPYRIFOS']
         assert [r.obj.name for r in data['top_commodities']] == ['GRAPE', 'ALMOND', 'COTTON']
         assert [r.obj.name for r in data['top_products']] and all(r.lbs >= 0 for r in data['top_products'])
         assert [(r['county_name'], r['lbs']) for r in data['by_county']] == [('Fresno County', 670.0), ('Kern County', 70.0)]

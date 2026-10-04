@@ -1125,13 +1125,11 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         assert 'data-narrow=""' in html
 
     def test_landing_leaderboard_titles_follow_the_scope(self):
-        # Unscoped: a chemicals board, plus an of-concern board carrying only
-        # what it doesn't already list. Every chemical in the fixture is in
-        # the top five, so nothing is left and that board is left off rather
-        # than rendered empty.
+        # Unscoped: a chemicals board, plus a flagged board of its own.
         html = self.client.get(reverse('pesticides:home')).content.decode()
         assert html.count('Most applied chemicals ·') == 1
-        assert 'flagged chemicals' not in html
+        assert html.count('Top flagged chemicals') == 1
+        assert 'Most applied flagged chemicals' not in html
         # Scoped: one board, and its title says what it now is.
         html = self.client.get(reverse('pesticides:home'), {'concern': '1'}).content.decode()
         assert html.count('Most applied flagged chemicals') == 1
@@ -1678,8 +1676,18 @@ class NarrowPlumbingTests(RollupTestMixin, TestCase):
 
     def test_flagged_board_is_hidden_under_a_narrowing_that_is_not_flagged_chemicals(self):
         url = reverse('pesticides:home')
-        assert 'Other flagged chemicals' not in self.client.get(url, {'narrow': 'fumigant'}).content.decode()
-        assert 'Other flagged chemicals' not in self.client.get(url, {'narrow': 'concern'}).content.decode()
+        assert 'Top flagged chemicals' not in self.client.get(url, {'narrow': 'fumigant'}).content.decode()
+        assert 'Top flagged chemicals' not in self.client.get(url, {'narrow': 'concern'}).content.decode()
+
+    def test_flagged_board_is_its_own_ranking(self):
+        # The chemicals board lists both flagged chemicals too; the flagged
+        # board is the top flagged chemicals regardless of that overlap.
+        response = self.client.get(reverse('pesticides:home'))
+        assert 'Top flagged chemicals' in response.content.decode()
+        assert 'Other flagged chemicals' not in response.content.decode()
+        flagged = [r.obj.name for r in response.context['top_chemicals_of_concern']]
+        assert flagged == ['GLYPHOSATE', 'CHLORPYRIFOS']
+        assert set(flagged) <= {r.obj.name for r in response.context['top_chemicals']}
 
     def excluded_pages_under(self, narrow):
         """{kind: html} for a chemical, product and commodity page the narrowing excludes."""

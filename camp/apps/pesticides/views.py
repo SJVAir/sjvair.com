@@ -1887,7 +1887,7 @@ def _section_card(title, kind, rows, show_all_url, limit=stats.RELATED_LIMIT):
     }
 
 
-def _place_cards(context):
+def _place_cards(context, concern=False):
     """
     The place page's top lists -- one card per kind, all pointing "Show all"
     at the area's records browser, since there's no single entity to filter
@@ -1899,11 +1899,10 @@ def _place_cards(context):
     and the chemicals card's title says so.
     """
     records_url = context['records_url']
-    of_concern = context.get('top_chemicals_of_concern')
     return {
         'products_card': _section_card('Top products', 'products', context['top_products'], records_url),
         'chemicals_card': _section_card(
-            'Top chemicals' if of_concern is not None else 'Top flagged chemicals',
+            'Top flagged chemicals' if concern else 'Top chemicals',
             'chemicals', context['top_chemicals'], records_url),
         'commodities_card': _section_card('Top commodities', 'commodities', context['top_commodities'], records_url),
     }
@@ -2453,7 +2452,7 @@ class AreaOverviewMixin:
             section=None,
             years=stats.years_loaded(),
             **context,
-            **_place_cards(context),
+            **_place_cards(context, concern),
             **extra,
             **self.header_context(),
             **self.tab_scope_context(),

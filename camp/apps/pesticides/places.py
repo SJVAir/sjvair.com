@@ -598,13 +598,6 @@ def _place_stats(area, year, all_years, concern=False):
         'top_commodities': stats.top_related(rows, year, 'commodity', limit=stats.RELATED_LIMIT, all_years=all_years),
         'top_products': stats.top_related(rows, year, 'product', lbs_field='lbs_product_once', limit=stats.RELATED_LIMIT, all_years=all_years),
     }
-
-    # Under the concern scope every board is already of concern, so the
-    # dedicated one would just restate the top chemicals.
-    if not concern:
-        data['top_chemicals_of_concern'] = stats.top_chemicals_of_concern(
-            top_chemicals, rows, year, limit=stats.RELATED_LIMIT, all_years=all_years,
-        )
     return data
 
 

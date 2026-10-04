@@ -1,3 +1,5 @@
+from unittest import mock
+
 from django.contrib.gis.geos import MultiPolygon, Polygon
 from django.core.cache import cache
 from django.test import RequestFactory, TestCase
@@ -131,7 +133,17 @@ class RecordsTotalsFromRollupTests(RollupTestMixin, TestCase):
         with self.assertNumQueries(1):  # one rollup aggregate, nothing against the records
             totals = view._rollup_totals()
         assert totals == raw
-        assert view.get_totals() == raw
+        with mock.patch.object(RecordsBrowser, '_raw_totals') as raw_totals:
+            assert view.get_totals() == raw
+        raw_totals.assert_not_called()
+
+    def test_get_totals_takes_the_raw_path_for_a_custom_date_range(self):
+        view = browser({'start': '2023-05-01', 'end': '2023-07-31'})
+        with mock.patch.object(RecordsBrowser, '_rollup_totals') as rollup_totals, \
+                mock.patch.object(RecordsBrowser, '_raw_totals', return_value={'sentinel': 1}) as raw_totals:
+            assert view.get_totals() == {'sentinel': 1}
+        raw_totals.assert_called_once()
+        rollup_totals.assert_not_called()
 
     def test_custom_date_range_takes_the_raw_path(self):
         assert not browser({'start': '2023-05-01', 'end': '2023-07-31'})._totals_from_rollup()

@@ -1,5 +1,6 @@
 from django.contrib.gis.geos import Point
 import math
+from unittest import mock
 
 import pytest
 
@@ -769,6 +770,19 @@ class PlaceConcernScopeTests(RollupTestMixin, TestCase):
         assert 'top_chemicals_of_concern' not in response.context
         assert response.context['chemicals_card']['title'] == 'Top flagged chemicals'
         assert response.content.decode().count('class="card related-card"') == 3
+
+    def test_the_chemicals_card_is_titled_top_chemicals_without_the_scope(self):
+        url = reverse('pesticides:region', kwargs={'sqid': self.fresno.sqid, 'slug': 'fresno'})
+        response = self.client.get(url)
+        assert response.context['chemicals_card']['title'] == 'Top chemicals'
+        assert 'top_chemicals_of_concern' not in response.context
+
+    def test_place_stats_does_not_compute_the_flagged_list(self):
+        area = places.region_area(self.fresno)
+        with mock.patch.object(stats, 'top_chemicals_of_concern') as flagged:
+            ctx = places.place_context(area, 2023)
+        flagged.assert_not_called()
+        assert 'top_chemicals_of_concern' not in ctx
 
 
 class AreaSquareMilesTests(TestCase):
