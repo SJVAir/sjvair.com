@@ -2,6 +2,7 @@
 <form method="GET" class="notice-filters box" hx-trigger="submit, change delay:250ms">
     {% if county %}<input type="hidden" name="county" value="{{ county.slug }}">{% endif %}
     {% if concern %}<input type="hidden" name="narrow" value="{{ concern }}">{% endif %}
+    {% if buffer %}<input type="hidden" name="buffer" value="{{ buffer }}">{% endif %}
     <div class="field notice-mode">
         <label class="label">Notices</label>
         <div class="control">

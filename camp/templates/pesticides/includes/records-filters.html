@@ -37,6 +37,6 @@
     {% include 'pesticides/includes/entity-picker.html' with kind='commodity' label='Commodity' selected=related.commodity autosubmit=0 %}
     <div class="field is-grouped">
         <div class="control"><button class="button is-link" type="submit">Apply</button></div>
-        <div class="control"><a class="button is-light" href="{{ request.path }}{{ scope_qs }}">Clear</a></div>
+        <div class="control"><a class="button is-light" href="{{ request.path }}{{ scope_qs }}{% if buffer %}{% if scope_qs %}&amp;{% else %}?{% endif %}buffer={{ buffer }}{% endif %}">Clear</a></div>
     </div>
 </form>

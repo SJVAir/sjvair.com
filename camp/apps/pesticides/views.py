@@ -2405,7 +2405,7 @@ class RegionAreaMixin(AreaPageMixin):
         return {'clip_region': self.region.sqid, 'buffer': self.buffer}
 
     def buffer_context(self):
-        return {'buffer': self.buffer, 'buffer_options': shapes.buffer_options(self.request, self.buffer)}
+        return {'buffer': self.buffer, 'buffer_options': shapes.buffer_options(self.request, self.buffer, params=getattr(self, 'original_query', None))}
 
     def area_tab_url(self, key):
         url = self.region.get_pesticides_tab_url(key)
@@ -2542,6 +2542,9 @@ class AreaNarrowedListMixin:
     """
 
     def dispatch(self, request, *args, **kwargs):
+        # What the reader asked for, before the place's own filter goes in:
+        # the toolbar's links are built from this.
+        self.original_query = request.GET
         params = request.GET.copy()
         for key, value in self.area.area_params().items():
             params[key] = value
@@ -2608,7 +2611,12 @@ class AreaRecordsMixin(AreaNarrowedListMixin):
     template_name = 'pesticides/area-records.html'
 
     def get_map_clip(self):
-        return self.map_clip()
+        # The browser's own map has no place outline; draw the area's, like the other tabs.
+        clip = self.map_clip()
+        outline_url = self.area.map_kwargs().get('outline_url')
+        if outline_url:
+            clip['outline_url'] = outline_url
+        return clip
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

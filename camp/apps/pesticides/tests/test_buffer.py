@@ -2,6 +2,7 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
+from camp.apps.pesticides.models import Chemical
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
 from camp.apps.regions.models import Boundary, Region
 
@@ -70,6 +71,34 @@ class RegionTabBufferTests(RollupTestMixin, TestCase):
         assert '<input type="hidden" name="buffer" value="3">' in html
         assert 'name="buffer"' not in self.get(self.city, 'records').content.decode()
 
+    def test_the_notices_filter_form_carries_the_buffer(self):
+        html = self.get(self.city, 'notices', buffer=3).content.decode()
+        assert '<input type="hidden" name="buffer" value="3">' in html
+        assert 'name="buffer"' not in self.get(self.city, 'notices').content.decode()
+
+    def test_the_records_clear_button_keeps_the_buffer(self):
+        path = self.city.get_pesticides_tab_url('records')
+        html = self.get(self.city, 'records', buffer=3).content.decode()
+        assert f'class="button is-light" href="{path}?buffer=3">Clear' in html
+        html = self.get(self.city, 'records', year='2022', buffer=3).content.decode()
+        assert f'href="{path}?year=2022&amp;buffer=3">Clear' in html
+        assert 'buffer=' not in self.get(self.city, 'records').content.decode().split('>Clear')[0].rsplit('href="', 1)[1]
+
+    def test_a_city_records_tab_draws_the_region_outline(self):
+        config = self.get(self.city, 'records', buffer=3).context['map_config']
+        assert config['outline_url'] == f'/api/2.0/regions/{self.city.sqid}/'
+        assert not self.get(self.county, 'records').context['map_config']['outline_url']
+
+    def test_the_toolbar_urls_leave_out_the_injected_place_filter(self):
+        for tab in ('notices', 'records'):
+            options = self.get(self.city, tab, year='2022', buffer=1).context['buffer_options']
+            for option in options:
+                assert 'region=' not in option['url'] and 'county=' not in option['url'], (tab, option['url'])
+                assert 'year=2022' in option['url'], tab
+            assert options[2]['url'].endswith('buffer=3'), tab
+        options = self.get(self.county, 'notices', buffer=1).context['buffer_options']
+        assert all('county=' not in option['url'] for option in options)
+
     def test_no_buffer_is_the_exact_boundary(self):
         for tab in TABS:
             response = self.get(self.city, tab)
@@ -103,3 +132,11 @@ class RegionTabBufferTests(RollupTestMixin, TestCase):
     def test_the_main_map_and_section_pages_are_not_clipped(self):
         config = self.client.get(reverse('pesticides:map'), {'buffer': 3}).context['map_config']
         assert not config['clip_region']
+        section = Region.objects.get(pk=9101)
+        response = self.client.get(reverse('pesticides:section-detail', kwargs={'sqid': section.sqid}), {'buffer': 3})
+        assert response.status_code == 200
+        assert not response.context['map_config']['clip_region']
+        chemical = Chemical.objects.get(pk=1)
+        response = self.client.get(chemical.get_absolute_url(), {'buffer': 3})
+        assert response.status_code == 200
+        assert not response.context['map_config']['clip_region']

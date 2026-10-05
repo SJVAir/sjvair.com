@@ -3653,18 +3653,26 @@
     // Same padded-fetch/skip deal as the grid and the notices, except the
     // padding is dropped rather than asking for a bbox the endpoint refuses
     // (see LOCATIONS_MAX_BBOX_DEGREES).
-    if (this.covers(this.loadedLocationBounds)) return;
-    if (this.locationsRequest && this.covers(this.locationsRequest.bounds)) return;
+    // A clipped page asks for the whole clip shape's locations (the endpoint
+    // ignores the bbox there), so once they are loaded a pan has nothing to
+    // fetch, like area mode.
+    var clipped = !!this.data.clipRegion;
+    if (clipped) {
+      if (this.loadedLocationBounds === 'clip' || (this.locationsRequest && this.locationsRequest.clip)) return;
+    } else {
+      if (this.covers(this.loadedLocationBounds)) return;
+      if (this.locationsRequest && this.covers(this.locationsRequest.bounds)) return;
+    }
 
     var abort = this.startRequest('locations');
-    var bounds = this.fetchBounds();
-    if (boundsSpan(bounds) > LOCATIONS_MAX_BBOX_DEGREES) bounds = this.fetchBounds(true);
-    var request = this.locationsRequest = { bounds: bounds };
+    var bounds = clipped ? 'clip' : this.fetchBounds();
+    if (!clipped && boundsSpan(bounds) > LOCATIONS_MAX_BBOX_DEGREES) bounds = this.fetchBounds(true);
+    var request = this.locationsRequest = clipped ? { clip: true } : { bounds: bounds };
     // The county scope goes along: the fetch bbox always overhangs the county
     // line, and a marker outside it would carry a popup figure from a county
     // this page isn't showing.
     var params = {
-      bbox: bboxParam(bounds),
+      bbox: clipped ? '' : bboxParam(bounds),
       county: this.data.county,
     };
     Object.assign(params, clipParams(this.data));
