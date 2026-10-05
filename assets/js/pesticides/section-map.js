@@ -1347,12 +1347,12 @@
 
     this.syncControls();
 
+    var clipChanged = has('clipRegion') || has('buffer') || has('clipUrl');
     var dataChanged = DATA_KEYS.some(has) || clipChanged;
     var countyChanged = has('county');
     var viewChanged = has('center') || has('zoom');
     var radiusChanged = has('radius');
     var outlineChanged = has('outlineUrl');
-    var clipChanged = has('clipRegion') || has('buffer') || has('clipUrl');
 
     if (outlineChanged) {
       this.clearOutline();
@@ -1361,14 +1361,24 @@
 
     if (clipChanged) {
       // The clip is a different shape: what was loaded under the old one is
-      // void (the loaders below run again), and the map reframes on the new.
+      // void (the dataChanged branch below reloads it, once the new shape
+      // has landed), and the map reframes on the new.
       this.loadedBounds = null;
       this.loadedNoticeBounds = null;
       this.loadedLocationBounds = null;
       this.clearClip();
+      // Sections drawn under the old shape (the lens, "all sections") go.
+      this.clearLens();
+      if (this.allSectionsAdded) this.resetAllSections();
       this.clipPending = !!this.data.clipUrl;
-      // The loaders below wait for the new shape (see settleFit).
-      if (this.clipPending) this.pendingFit = true;
+      if (this.clipPending) {
+        // The loaders below wait for the new shape (see settleFit).
+        this.pendingFit = true;
+      } else if (!this.data.countiesUrl || this.counties) {
+        // No clip to wait for (the page left it, possibly before its first
+        // fetch landed): nothing else is going to release the loaders.
+        this.pendingFit = false;
+      }
       this.loadClip();
     }
 
