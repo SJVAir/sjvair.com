@@ -436,7 +436,7 @@ def check_layers(page):
         var mine = ['radius-fill', 'radius-line', 'grid-fill', 'grid-line',
                     'all-sections-fill', 'all-sections-line', 'lens-fill', 'lens-line', 'lens-outline', 'outline-mask',
                     'selected-line', 'highlight-casing', 'highlight-line', 'counties-line',
-                    'outline-fill', 'outline-casing', 'outline-line',
+                    'outline-fill', 'outline-casing', 'outline-line', 'buffer-line',
                     'locations-hit', 'locations-circle', 'notices-hit', 'notices-circle', 'notices-count', 'locate-circle'];
         var missing = mine.filter(function (id) { return layers.indexOf(id) === -1; });
         mine.forEach(function (id) { mineSet[id] = true; });
@@ -660,15 +660,171 @@ def check_fit(page):
     return True, 'zoom %.2f, county=%s valley=%s' % (result['zoom'], result['countyFitted'], result['valleyFitted'])
 
 
+# Reads the clip state: what the map has drawn, against the clip shape the
+# page fetched (inst.clipGeometry) and its bounds. Points (notices, locations)
+# must lie in the shape itself; cells (the grid, the lens, "all sections")
+# straddle its edge whole, so they are held to its bounds plus a tolerance.
+JS_CLIP_STATE = """
+    if (!inst.data.clipRegion) return { skip: true };
+    var cb = inst.clipBounds, geom = inst.clipGeometry;
+    var tol = inst.level === 'township' ? 0.15 : 0.03;
+    function outside(coords) {
+      if (typeof coords[0] === 'number') {
+        return coords[0] < cb[0][0] - tol || coords[0] > cb[1][0] + tol ||
+               coords[1] < cb[0][1] - tol || coords[1] > cb[1][1] + tol;
+      }
+      return coords.some(outside);
+    }
+    function inRing(pt, ring) {
+      var inside = false;
+      for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        var xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+        if (((yi > pt[1]) !== (yj > pt[1])) && (pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi)) inside = !inside;
+      }
+      return inside;
+    }
+    function inPolygon(pt, rings) {
+      if (!inRing(pt, rings[0])) return false;
+      for (var k = 1; k < rings.length; k++) if (inRing(pt, rings[k])) return false;
+      return true;
+    }
+    function inShape(pt) {
+      if (!geom) return false;
+      if (geom.type === 'Polygon') return inPolygon(pt, geom.coordinates);
+      return geom.coordinates.some(function (rings) { return inPolygon(pt, rings); });
+    }
+    function feats(name) {
+      var d = inst.sourceData[name];
+      return d && d.features ? d.features : [];
+    }
+    var stray = {}, counts = {};
+    ['grid', 'all-sections', 'lens'].forEach(function (name) {
+      var list = feats(name);
+      counts[name] = list.length;
+      stray[name] = cb ? list.filter(function (f) { return f.geometry && outside(f.geometry.coordinates); }).length : 0;
+    });
+    ['notices', 'locations'].forEach(function (name) {
+      var list = feats(name);
+      counts[name] = list.length;
+      // A township bubble sits at its township's centre, which can lie
+      // outside the shape; only section-level markers are points in it.
+      stray[name] = list.filter(function (f) {
+        if (!f.geometry) return false;
+        if (String(f.properties.id).indexOf('township:') === 0) return cb && outside(f.geometry.coordinates);
+        return !inShape(f.geometry.coordinates);
+      }).length;
+    });
+    var b = inst.map.getBounds();
+    var edge = inst.sourceData['buffer-outline'];
+    return {
+      level: inst.level, buffer: inst.data.buffer, hasBounds: !!cb, stray: stray, counts: counts,
+      hasLayer: !!inst.map.getLayer('buffer-line'), edge: !!(edge && edge.geometry),
+      contains: !!cb && b.getWest() <= cb[0][0] + tol && b.getSouth() <= cb[0][1] + tol &&
+                b.getEast() >= cb[1][0] - tol && b.getNorth() >= cb[1][1] - tol,
+    };
+"""
+
+
+def buffer_problems(result, fit=True):
+    """The failures in one JS_CLIP_STATE reading."""
+    if not result['hasBounds']:
+        return ['clip shape never loaded']
+    problems = []
+    strays = {k: v for k, v in result['stray'].items() if v}
+    if strays:
+        problems.append('features outside the clip: %s' % strays)
+    buffered = result['buffer'] not in ('', '0', None)
+    if not result['hasLayer']:
+        problems.append('no buffer-line layer')
+    if result['edge'] != buffered:
+        problems.append('buffer edge drawn=%s but buffer=%s' % (result['edge'], result['buffer']))
+    if fit and not result['contains']:
+        problems.append('the view does not contain the clip shape')
+    return problems
+
+
+def check_buffer(page):
+    """A page with a clip region (a region's area tab) draws nothing outside
+    the clip shape (bounds for cells, the shape itself for notice and school
+    points), shows the dashed buffer edge iff there is a buffer, and fits the
+    shape. Skipped on pages with no clip."""
+    result = page.instance_js(JS_CLIP_STATE)
+    if result is None:
+        return False, 'no instance'
+    if result.get('skip'):
+        return None, 'no clip region (skipped)'
+    problems = buffer_problems(result)
+    if problems:
+        return False, '; '.join(problems)
+    return True, 'buffer=%s, edge=%s, counts=%s' % (result['buffer'], result['edge'], result['counts'])
+
+
+def check_buffer_switch(page):
+    """Switch the buffer through the toolbar (Exact -> +3 -> Exact, or the
+    reverse from a buffered page): after each switch the page carries the new
+    buffer, its shape and edge, and the lens (hovered at the township zoom) or
+    "all sections" (on a ?sections=1 page) draw only inside the current
+    shape."""
+    if not page.instance_js('return !!inst.data.clipRegion'):
+        return None, 'no clip region (skipped)'
+    if not page.js("return !!document.querySelector('.map-buffer a.dropdown-item')"):
+        return None, 'no buffer toolbar (skipped)'
+    start = page.instance_js('return inst.data.buffer') or '0'
+    # Away and back, so the page ends where it began.
+    order = ['3', '0'] if start == '0' else ['0', start]
+    notes = []
+    for want in order:
+        clicked = page.js("""
+            var want = arguments[0];
+            var links = Array.prototype.slice.call(document.querySelectorAll('.map-buffer a.dropdown-item'));
+            var link = links.filter(function (a) {
+              var m = a.getAttribute('href').match(/[?&]buffer=(\\d+)/);
+              return (m ? m[1] : '0') === want;
+            })[0];
+            if (!link) return false;
+            link.click();
+            return true;
+        """, want)
+        if not clicked:
+            return False, 'no toolbar option for buffer=%s' % want
+        swapped = page.wait_for("""
+            var inst = (function () { %s })();
+            return !!(inst && inst.data.buffer === (arguments[0] === '0' ? '0' : arguments[0]) && inst.clipBounds && !inst.clipPending);
+        """ % JS_INSTANCE, SWAP_TIMEOUT, want)
+        if not swapped:
+            return False, 'the page never took buffer=%s' % want
+        page.wait_idle()
+        if page.instance_js('return inst.showAllSections'):
+            page.wait_for("""
+                var inst = (function () { %s })();
+                var run = inst && inst.allSectionsRun;
+                return !!(run && run.done === run.total);
+            """ % JS_INSTANCE, ALL_SECTIONS_TIMEOUT)
+        else:
+            page.instance_js("inst.map.jumpTo({ center: inst.map.getCenter(), zoom: 9 });")
+            page.wait_grid('township')
+            target = page.pick('inst.sourceData.grid.features')
+            if target:
+                page.hover_stamped(target['dx'], target['dy'])
+                page.wait_lens(target['id'])
+                time.sleep(0.5)
+        result = page.instance_js(JS_CLIP_STATE)
+        problems = buffer_problems(result, fit=False)
+        if problems:
+            return False, 'after buffer=%s: %s' % (want, '; '.join(problems))
+        notes.append('%s: %s' % (want, result['counts']))
+    return True, 'switched %s; ' % ' -> '.join(order) + '; '.join(notes)
+
+
 def check_home(page):
     """Home returns to what the page is about: its own region when it has an
     outline, otherwise its county or the valley. Zoom away first, so a pass
     means the button moved the map rather than that it never left."""
     before = page.instance_js("""
-        if (!inst.outlineBounds) return null;
+        var ob = inst.clipBounds || inst.outlineBounds;
+        if (!ob) return null;
         inst.map.jumpTo({ center: [-121.5, 38.5], zoom: 6 });
-        return { west: inst.outlineBounds[0][0], south: inst.outlineBounds[0][1],
-                 east: inst.outlineBounds[1][0], north: inst.outlineBounds[1][1] };
+        return { west: ob[0][0], south: ob[0][1], east: ob[1][0], north: ob[1][1] };
     """)
     if before is None:
         return None, 'no region outline on this page'
@@ -1126,7 +1282,16 @@ def check_lens(page):
         inst.neighborhoodOf(inst.lensId, 2.5).forEach(function (h) { ring[h.properties.id] = true; });
         return inst.gridFeatures.filter(function (f) { return !ring[f.properties.id] && !inst.lensCache[f.properties.id]; });
     })()""", farthest=True)
+    every_township_in_block = False
     if not outside:
+        every_township_in_block = page.instance_js("""
+            var ring = {};
+            inst.neighborhoodOf(inst.lensId, 2.5).forEach(function (h) { ring[h.properties.id] = true; });
+            return inst.gridFeatures.every(function (f) { return ring[f.properties.id]; });
+        """)
+    if not outside and every_township_in_block:
+        pass  # a small clipped area: nothing lies beyond the block (skipped below)
+    elif not outside:
         problems.append('no uncached township outside the 5x5 on bare canvas')
     else:
         page.hover_stamped(outside['dx'], outside['dy'])
@@ -1136,6 +1301,8 @@ def check_lens(page):
         if not followed or rested['lensId'] != outside['id'] or not rested['features']:
             problems.append('lens did not survive a move from a %s to %s outside the block: followed=%s, after 0.5 s %s' % (
                 'lens section' if on_section else 'township gap', outside['id'], followed, rested))
+    if not problems and every_township_in_block and not outside:
+        return None, 'every township is inside the 5x5 block (a small clipped area); the move-beyond-the-block step is skipped'
     detail = 'township %s: %d hosts, %d sections (%d classes) drawn %sms after the hover (request %s); -> %s drawn after %sms with %d new request(s); -> %s outside the block from a %s, kept' % (
         target['id'], result['hosts'], result['features'], result['classes'], page.timings['lens_ms'],
         ' '.join('%dms' % ms for _, ms, _ in first_requests) or 'cached',
@@ -1220,7 +1387,9 @@ def check_lens_popup(page):
     # The lens follows the pointer again: a nudge over the far township
     # draws its lens (it may be uncached: a rest and a request).
     requests_before = len(page.sections_requests())
-    page.hover_stamped(far['dx'] + 2, far['dy'] + 2)
+    # Nudged toward the centre: a far township at the canvas edge would
+    # otherwise be nudged off the map.
+    page.hover_stamped(far['dx'] - 2 * (1 if far['dx'] > 0 else -1), far['dy'] - 2 * (1 if far['dy'] > 0 else -1))
     # What's under test here is the release, so a slow sections request
     # (the dev server has taken over a second at times) is allowed and the
     # latency is reported; the first hover in check_lens keeps the bound.
@@ -1272,7 +1441,8 @@ def check_all_sections(page):
         };
     """, LEGEND_ROWS)
     problems = []
-    if result['features'] <= 1000:
+    clipped = page.instance_js('return !!inst.data.clipRegion')
+    if result['features'] <= (0 if clipped else 1000):  # a clipped small area is under 1000
         problems.append('only %d sections drawn' % result['features'])
     if result['unclassed']:
         problems.append('%d sections unclassed' % result['unclassed'])
@@ -1912,11 +2082,13 @@ CHECKS = [
     ('wheel zoom', check_wheel_zoom),
     ('compare mode', check_compare_mode),
     ('fit', check_fit),
+    ('buffer', check_buffer),
     ('home', check_home),
     ('grid', check_grid),
     ('legend options', check_legend_options),
     ('notices', check_notices),
     ('locations', check_locations),
+    ('buffer switch', check_buffer_switch),
     ('lens', check_lens),
     ('lens popup', check_lens_popup),
     ('all sections', check_all_sections),

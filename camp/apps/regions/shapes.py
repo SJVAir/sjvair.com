@@ -154,7 +154,7 @@ def simplified_features(region_type):
 # outside a boundary. 0 is the boundary itself.
 BUFFERS = (0, 1, 3, 5)
 BUFFER_LABELS = {0: 'Exact boundary', 1: '+1 mile', 3: '+3 miles', 5: '+5 miles'}
-BUFFER_KEY = 'regions:shape:v1:{sqid}:{miles}'
+BUFFER_KEY = 'regions:shape:v2:{sqid}:{boundary}:{miles}'
 METERS_PER_MILE = 1609.344
 BUFFER_SIMPLIFY = 30  # meters, in EPSG 3310
 
@@ -200,7 +200,9 @@ def region_shape(region, miles=0):
     if not miles:
         # Never the region's own geometry: callers may transform or edit the result.
         return _latlon(boundary.geometry).clone()
-    key = BUFFER_KEY.format(sqid=region.sqid, miles=miles)
+    # The boundary's identity (its pk and last change), so a re-import gets a fresh shape.
+    boundary_id = f'{boundary.pk}-{int(boundary.modified.timestamp())}'
+    key = BUFFER_KEY.format(sqid=region.sqid, boundary=boundary_id, miles=miles)
     cached = cache.get(key)
     if cached is not None:
         return GEOSGeometry(cached)
@@ -214,11 +216,15 @@ def region_shape(region, miles=0):
     return shape
 
 
-def buffer_options(request, current):
-    """One link per buffer for the current page, keeping the other filters and dropping paging."""
+def buffer_options(request, current, params=None):
+    """
+    One link per buffer for the current page, keeping the other filters and
+    dropping paging. `params` is the query to build from (default: the request's).
+    """
     options = []
+    query_params = request.GET if params is None else params
     for miles in BUFFERS:
-        params = request.GET.copy()
+        params = query_params.copy()
         params.pop('page', None)
         params.pop('buffer', None)
         if miles:

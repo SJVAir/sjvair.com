@@ -312,7 +312,7 @@ class SectionListBase(generics.Endpoint):
             elif params.get('lat') and params.get('lng'):
                 too_large = 'radius too large'
             else:
-                too_large = 'region too large; narrow it with a filter'
+                too_large = 'region too large; zoom in'
             return bad_request(too_large)
         year, all_years = parse_year(params)
 

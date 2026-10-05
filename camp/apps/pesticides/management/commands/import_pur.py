@@ -204,11 +204,11 @@ class Command(BaseCommand):
         if cas_path:
             for row in read_csv(cas_path):
                 code = parse_int(row.get('chem_code'))
-                # CDPR's column is `casnum`. It was read as `cas_number`,
-                # which matched nothing, so every one of the ~3,200 CAS
-                # numbers in this file was dropped without a word -- leaving
-                # import_comptox to match on name alone.
-                cas = clean(row.get('casnum'))
+                # CDPR has named the column both ways: `casnum` in chem_cas.txt
+                # through 2022, `cas_number` in 2023's CHEM_CAS.txt. Reading
+                # only one dropped every CAS number in the other's file
+                # without a word.
+                cas = clean(row.get('casnum') or row.get('cas_number'))
                 if code and cas:
                     cas_map[code] = cas
             self.stdout.write(f'    {len(cas_map):,} CAS numbers from {cas_path.name}')
@@ -222,10 +222,14 @@ class Command(BaseCommand):
             name = clean(row.get('chemname'))
             if not code or not name:
                 continue
-            _, was_created = Chemical.objects.update_or_create(
-                chem_code=code,
-                defaults={'name': name, 'cas_number': cas_map.get(code, '')},
-            )
+            # Only a CAS number the file actually has: a missing row (or a
+            # column read wrong) must never wipe one an earlier year, or
+            # import_comptox, already stored -- import_carbtac and
+            # import_prop65 match on it.
+            defaults = {'name': name}
+            if cas_map.get(code):
+                defaults['cas_number'] = cas_map[code]
+            _, was_created = Chemical.objects.update_or_create(chem_code=code, defaults=defaults)
             if was_created:
                 created += 1
             else:

@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.contrib.gis.geos import Point
 from django.core.cache import cache
 from django.test import RequestFactory, TestCase
@@ -70,13 +72,24 @@ class RegionShapeTests(TestCase):
         assert not shape.contains(east_of_edge(1.1 * MILE))
 
     def test_buffer_is_cached(self):
-        key = f'regions:shape:v1:{self.region.sqid}:3'
+        boundary = self.region.boundary
+        key = f'regions:shape:v2:{self.region.sqid}:{boundary.pk}-{int(boundary.modified.timestamp())}:3'
         assert cache.get(key) is None
         first = region_shape(self.region, 3)
         assert cache.get(key) is not None
         second = region_shape(self.region, 3)
         assert second.srid == EPSG_LATLON
         assert second.equals(first)
+
+    def test_a_changed_boundary_gets_a_fresh_shape(self):
+        first = region_shape(self.region, 3)
+        Boundary.objects.filter(pk=self.region.boundary.pk).update(
+            geometry='SRID=4326;MULTIPOLYGON (((-119.85 36.65, -119.75 36.65, -119.75 36.95, -119.85 36.95, -119.85 36.65)))',
+            modified=self.region.boundary.modified + timedelta(seconds=5),
+        )
+        self.region.refresh_from_db()
+        second = region_shape(Region.objects.select_related('boundary').get(pk=self.region.pk), 3)
+        assert second.area > first.area
 
     def test_no_boundary_is_none(self):
         bare = Region.objects.create(name='Bare', slug='bare', type=Region.Type.COUNTY, external_id='bare')

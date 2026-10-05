@@ -18,10 +18,11 @@ def lookup_dir(**files):
 
 class ChemicalCasImportTests(TestCase):
     """
-    CDPR's chem_cas.txt keys its column `casnum`. It was read as
-    `cas_number`, which matched nothing, so all ~3,000 CAS numbers in the
-    file were dropped without a word -- leaving import_comptox to match on
-    name alone. These write the real column names.
+    CDPR's CAS lookup has changed its column name: chem_cas.txt through 2022
+    keys it `casnum`, 2023's lookup_tables/CHEM_CAS.txt `cas_number`. Reading
+    only one silently dropped every CAS number in the other year's file, and
+    the empty value then wiped the CAS numbers already stored. These write
+    the real column names of both.
     """
 
     def run_import(self, directory):
@@ -47,14 +48,40 @@ class ChemicalCasImportTests(TestCase):
             chemical__txt='chem_code,chemalpha_cd,chemname\n1,ABC,ABAMECTIN\n'))
         assert Chemical.objects.get(chem_code=1).cas_number == ''
 
-    def test_the_old_column_name_is_not_what_cdpr_ships(self):
-        # Guards the regression directly: a file keyed the way the importer
-        # used to read it yields nothing, because that column doesn't exist.
+    def test_cas_numbers_come_off_the_2023_cas_number_column(self):
+        # 2023's archive: upper-case files under lookup_tables/, and the CAS
+        # column renamed.
+        self.run_import(lookup_dir(
+            CHEMICAL__txt='chem_code,chemname,general_ai_name\n1,ABAMECTIN,ABAMECTIN\n',
+            CHEM_CAS__txt='chem_code,cas_number\n1,71751-41-2\n',
+        ))
+        assert Chemical.objects.get(chem_code=1).cas_number == '71751-41-2'
+
+    def test_a_missing_cas_never_wipes_a_stored_one(self):
+        Chemical.objects.create(chem_code=1, name='ABAMECTIN', cas_number='71751-41-2')
+        # A later year with no CAS row for it, or no CAS file at all.
         self.run_import(lookup_dir(
             chemical__txt='chem_code,chemalpha_cd,chemname\n1,ABC,ABAMECTIN\n',
-            chem_cas__txt='chem_code,cas_number\n1,71751-41-2\n',
+            chem_cas__txt='chem_code,casnum\n',
         ))
-        assert Chemical.objects.get(chem_code=1).cas_number == ''
+        assert Chemical.objects.get(chem_code=1).cas_number == '71751-41-2'
+        self.run_import(lookup_dir(
+            chemical__txt='chem_code,chemalpha_cd,chemname\n1,ABC,ABAMECTIN\n'))
+        assert Chemical.objects.get(chem_code=1).cas_number == '71751-41-2'
+
+    def test_2022_then_2023_keeps_every_cas_number(self):
+        # The reported regression: 2022 filled CAS numbers, then 2023's
+        # renamed column read as empty and blanked them.
+        self.run_import(lookup_dir(
+            chemical__txt='chem_code,chemalpha_cd,chemname\n1,ABC,ABAMECTIN\n2,DEF,ACEPHATE\n',
+            chem_cas__txt='chem_code,casnum\n1,71751-41-2\n2,30560-19-1\n',
+        ))
+        self.run_import(lookup_dir(
+            CHEMICAL__txt='chem_code,chemname,general_ai_name\n1,ABAMECTIN,ABAMECTIN\n2,ACEPHATE,ACEPHATE\n',
+            CHEM_CAS__txt='chem_code,cas_number\n2,30560-19-1\n',
+        ))
+        assert Chemical.objects.get(chem_code=1).cas_number == '71751-41-2'
+        assert Chemical.objects.get(chem_code=2).cas_number == '30560-19-1'
 
 
 class ProductRestrictedTests(TestCase):
