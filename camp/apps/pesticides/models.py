@@ -255,6 +255,11 @@ class Product(TimeStampedModel):
     # applied as a fumigant (fumigants.classify_fumigants). CDPR's flag misses
     # re-registrations -- the 2021 Telone products carry none.
     is_fumigant = models.BooleanField(_('Fumigant'), default=False, db_index=True)
+    # From CDPR's RESTRICTED.txt (2023+ archives). NULL = the product is not in
+    # that file, so `is_restricted` falls back to its ingredients.
+    california_restricted = models.BooleanField(_('California restricted'), null=True, default=None)
+    federally_restricted = models.BooleanField(_('Federally restricted'), null=True, default=None)
+
     @property
     def is_restricted(self):
         """

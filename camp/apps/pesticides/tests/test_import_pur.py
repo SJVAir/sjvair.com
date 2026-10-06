@@ -86,10 +86,10 @@ class ChemicalCasImportTests(TestCase):
 
 class ProductRestrictedTests(TestCase):
     """
-    California restricted-material status has no PUR source: it's 3 CCR
-    6400, and none of the lookup tables carry it. The importer used to read a
-    RESTRICTED.txt that CDPR doesn't publish, so the flag was never set by an
-    import and must not be read as meaning "not restricted".
+    CDPR's 2023+ archives carry lookup_tables/RESTRICTED.txt, one row per
+    product with `x` or blank in federally_restricted / california_restricted.
+    Earlier archives have no such file. A product the file doesn't list stays
+    NULL, which the ingredient rule in `is_restricted` then covers.
     """
 
     def test_products_import_and_fumigant_comes_off_fumigant_sw(self):
@@ -102,13 +102,59 @@ class ProductRestrictedTests(TestCase):
         assert Product.objects.get(prodno=1).fumigant is True
         assert Product.objects.get(prodno=2).fumigant is False
 
-    def test_the_product_import_classifies_nothing_as_restricted(self):
-        # CDPR's distribution says nothing about restricted materials -- that
-        # comes from 3 CCR 6400, via import_restricted_materials, and lands on
-        # the active ingredients rather than the product.
+    def products(self):
         Command()._import_products(lookup_dir(
-            product__txt='prodno,product_name,show_regno,fumigant_sw\n1,K-PAM HL,5481-483-AA,X\n'))
-        assert Product.objects.get(prodno=1).is_restricted is False
+            product__txt=(
+                'prodno,product_name,show_regno,fumigant_sw\n'
+                '325,PRODUCT A,1-1,\n'
+                '1309,PRODUCT B,2-2,\n'
+                '77,PRODUCT C,3-3,\n'
+                '88,PRODUCT D,4-4,\n'
+            )))
+
+    def test_the_product_import_leaves_the_flags_null(self):
+        self.products()
+        product = Product.objects.get(prodno=325)
+        assert product.california_restricted is None
+        assert product.federally_restricted is None
+
+    def test_restricted_file_sets_both_flags(self):
+        self.products()
+        Command()._import_restricted(lookup_dir(
+            RESTRICTED__txt=(
+                'prodno,federally_restricted,california_restricted\n'
+                '325,x,\n'
+                '1309,x,x\n'
+                '77,,\n'
+                '999999,x,x\n'
+            )))
+        a = Product.objects.get(prodno=325)
+        assert a.federally_restricted is True
+        assert a.california_restricted is False
+        b = Product.objects.get(prodno=1309)
+        assert b.federally_restricted is True
+        assert b.california_restricted is True
+        c = Product.objects.get(prodno=77)
+        assert c.federally_restricted is False
+        assert c.california_restricted is False
+
+    def test_a_product_absent_from_the_file_stays_null(self):
+        self.products()
+        Command()._import_restricted(lookup_dir(
+            RESTRICTED__txt='prodno,federally_restricted,california_restricted\n325,x,x\n'))
+        d = Product.objects.get(prodno=88)
+        assert d.federally_restricted is None
+        assert d.california_restricted is None
+
+    def test_an_import_without_the_file_leaves_flags_unchanged(self):
+        self.products()
+        Command()._import_restricted(lookup_dir(
+            RESTRICTED__txt='prodno,federally_restricted,california_restricted\n325,x,x\n'))
+        Command()._import_restricted(lookup_dir())
+        a = Product.objects.get(prodno=325)
+        assert a.federally_restricted is True
+        assert a.california_restricted is True
+        assert Product.objects.get(prodno=88).california_restricted is None
 
 
 class RestrictedMaterialsImportTests(TestCase):
