@@ -1,0 +1,13 @@
+{% load emissions_explorer %}
+<div class="box emissions-context">
+    <p>Permitted facilities in this inventory reported about <strong>{{ context_bar.facilities|amount:pollutant }} tons</strong> of {{ pollutant.label }} in {{ year }}.
+       CARB estimates all sources in {% if county %}{{ county.name }}{% else %}these counties{% endif %} emit about
+       <strong>{{ context_bar.total|amount:pollutant }} tons</strong> a year (projected from its {{ context_bar.base_year }} inventory).</p>
+    <div class="emissions-context-bar" role="img" aria-label="{% for part in context_bar.parts %}{{ part.label }} {{ part.share|percent }}{% if not forloop.last %}, {% endif %}{% endfor %}">
+        {% for part in context_bar.parts %}{% if part.share %}<span class="segment is-{{ part.source_type }}" style="width: {{ part.share|width_pct }}" title="{{ part.label }}: {{ part.share|percent }}"></span>{% endif %}{% endfor %}
+    </div>
+    <p class="emissions-legend">
+        {% for part in context_bar.parts %}<span><span class="swatch is-{{ part.source_type }}"></span>{{ part.label }} {{ part.share|percent }}</span>{% endfor %}
+    </p>
+    <p class="is-size-7"><a href="{% url 'emissions:about' %}#carb-estimates">How CARB estimates all sources</a></p>
+</div>

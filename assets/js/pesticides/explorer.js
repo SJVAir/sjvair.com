@@ -42,7 +42,7 @@
     var root = evt.detail && evt.detail.elt;
     if (!root) return;
     if (window.PesticidesCharts) window.PesticidesCharts.init(root);
-    // Every map on the core: figures, the section map (and later ones).
+    // Every map on the core: figures, the section map, the facility map (and later ones).
     if (window.SJVAirMaps && window.SJVAirMaps.init) window.SJVAirMaps.init(root);
     if (window.PesticidesFindArea) window.PesticidesFindArea.init(root);
     if (window.PesticidesEntityPicker) window.PesticidesEntityPicker.init(root);

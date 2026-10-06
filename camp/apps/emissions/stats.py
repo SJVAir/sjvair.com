@@ -1,0 +1,763 @@
+"""
+Aggregates for the Facility Emissions Explorer.
+
+About 6,500 facilities x 15 years, so everything is computed per request from
+EmissionsRecord and ToxicEmission and cached per scope for a day; no rollup
+tables. Values are tons/yr (CEIDARS) for criteria pollutants, tons/yr for
+ammonia (a precursor, from ToxicEmission pounds ÷ 2,000), lbs/yr for one
+toxic, and a share of the Valley total for the two weighted measures;
+Pollutant.display() is a passthrough that exists so callers don't need to
+care which.
+"""
+
+from dataclasses import dataclass
+from typing import Optional
+from urllib.parse import urlencode
+
+from django.core.cache import cache
+from django.db.models import (
+    Case, Count, ExpressionWrapper, F, FloatField, IntegerField, OuterRef, Q, Subquery, Sum, Value, When,
+)
+from django.db.models.fields.json import KeyTextTransform
+from django.db.models.functions import Cast, Coalesce, Lower
+
+from camp.apps.emissions import cepam
+from camp.apps.emissions.models import MINOR_SOURCE_SIC_CODES, CountyInventory, EmissionsRecord, Facility, ToxicEmission, ToxicPollutant
+from camp.apps.emissions.pollutants import (
+    CRITERIA, DEFAULT_CRITERIA, DEFAULT_TOXIC, LBS_PER_TON, LEGACY_TOXIC_KEYS, NH3, POLLUTANTS, PRECURSORS, WEIGHTED, Pollutant,
+    get_pollutant, toxic_pollutant,
+)
+from camp.apps.regions.models import Region
+
+# Bump when the shape of anything cached here changes. Bumped to 2 for the
+# weighted-toxics rewrite (values(), totals()['value'] and area totals now
+# read from ToxicEmission through value_expr()/scale() instead of the ten
+# named columns).
+CACHE_VERSION = 2
+CACHE_TIMEOUT = 60 * 60 * 24
+# Every stats/areas key includes the generation; bumping it orphans them all
+# (an import just landed). Persistent (no timeout), like the dairies one.
+GENERATION_KEY = 'emissions:stats:generation'
+
+
+def generation():
+    return cache.get(GENERATION_KEY, 0)
+
+
+def clear_caches():
+    """Orphan every cached explorer aggregate and area value: they're keyed under the generation."""
+    cache.set(GENERATION_KEY, generation() + 1, None)
+
+
+def prefix():
+    return f'emissions:v{CACHE_VERSION}:g{generation()}'
+
+
+# A year-over-year change larger than this gets the "may reflect estimation
+# methods" note on a facility page.
+LARGE_CHANGE = 0.5
+# A percent change against a compared-year value below this floor (in the
+# pollutant's own display unit -- tons/yr for criteria, lbs/yr for toxics)
+# reads as "not comparable" instead of a swing that's mostly noise off a
+# near-zero baseline. Applied wherever a compared year's value is computed,
+# for both the Facilities and Areas compare paths.
+# The lbs floor was 10.0 back when toxics were stored at 2000x their real
+# value (a units bug), so it was effectively 0.005 real lbs. Fixing that bug
+# without lowering this floor left it 2000x stricter in real terms, which hid
+# hexavalent chromium's county compare in 7 of 8 counties. 1.0 lb keeps a
+# floor -- a fraction of a pound is still noise -- without suppressing
+# low-mass-but-real toxics like this one. The share floor (0.01% of the
+# Valley total) is the weighted measures' equivalent: a compared year with a
+# smaller share of the Valley total isn't a comparable baseline either.
+SMALL_BASELINE_FLOOR = {'tons': 1.0, 'lbs': 1.0, 'share': 0.0001}
+SORTS = ('-value', 'value', 'rank', '-rank', 'name', '-name', 'city', '-city', 'county', '-county')
+SORT_FIELDS = {'name': 'facility__name', 'county': 'facility__county__name'}
+# The sectors table's sorts: the sector's name, its facility count, and its
+# total (the share column sorts the same way as the total).
+SECTOR_SORTS = ('-value', 'value', 'share', '-share', 'name', '-name', 'facilities', '-facilities')
+
+
+def _float(value):
+    return None if value is None else float(value)
+
+
+def _int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def available_years():
+    def compute():
+        return sorted(EmissionsRecord.objects.values_list('year', flat=True).distinct())
+    return cache.get_or_set(f'{prefix()}:years', compute, 60 * 60)
+
+
+def latest_year():
+    years = available_years()
+    return years[-1] if years else None
+
+
+def comparable_baseline(value, unit):
+    """
+    Whether a compared-year value (already converted to `unit`) clears
+    SMALL_BASELINE_FLOOR -- False for None, 0, or anything below the floor,
+    which the map and popups show as "not comparable" rather than a percent.
+    """
+    if value is None:
+        return False
+    return value >= SMALL_BASELINE_FLOOR.get(unit, SMALL_BASELINE_FLOOR['tons'])
+
+
+def resolve_compare_param(requested, year):
+    """
+    The year the map's Compare shades a change against, in both the
+    Facilities and Areas views, for a raw `?compare=` value: None when
+    there's nothing to compare (no loaded years, no scope year, the same
+    year, or a year with no data). Mirrors the pesticides map's
+    `resolve_compare_param` -- the change is always the scope year minus
+    this one, so a later comparison year just inverts the sign; every
+    surface names the pair in order rather than showing a bare signed
+    number.
+    """
+    years = available_years()
+    if year is None or not years:
+        return None
+    compare = _int(requested)
+    if compare is None or compare == year or compare not in years:
+        return None
+    return compare
+
+
+@dataclass(frozen=True)
+class Scope:
+    year: Optional[int]
+    county: Optional[Region]
+    pollutant: Pollutant
+    minor: bool = False
+    # A region or radius the scope is narrowed to (areas.RegionArea / areas.RadiusArea).
+    area: Optional[object] = None
+
+    @property
+    def toxics(self):
+        return self.pollutant.toxic
+
+    def key(self, name, *extra):
+        parts = [
+            prefix(), name, self.year,
+            self.county.pk if self.county else 'all',
+            self.pollutant.key, int(self.minor),
+            self.area.key if self.area is not None else 'anywhere', *extra,
+        ]
+        return ':'.join(str(part) for part in parts)
+
+    def params(self, **overrides):
+        """The scope as query parameters, leaving out every default."""
+        values = {
+            'year': self.year,
+            'county': self.county.slug if self.county else None,
+            'pollutant': self.pollutant.key,
+            'toxics': '1' if self.toxics else None,
+            'minor': '1' if self.minor else None,
+        }
+        values.update(overrides)
+        if values.get('year') == latest_year():
+            values['year'] = None
+        default = DEFAULT_TOXIC if values.get('toxics') else DEFAULT_CRITERIA
+        if values.get('pollutant') == default:
+            values['pollutant'] = None
+        return {key: value for key, value in values.items() if value not in (None, '')}
+
+    def query(self, **overrides):
+        params = self.params(**overrides)
+        return f'?{urlencode(params)}' if params else ''
+
+
+def resolve_toxic(key):
+    """
+    The toxics picker's Pollutant for `key`: a weighted measure ('cancer',
+    'chronic'), a ToxicPollutant slug, or one of the ten old column keys
+    (LEGACY_TOXIC_KEYS); the default when unknown. Precursors (ammonia)
+    aren't toxics and never resolve here.
+    """
+    if key in POLLUTANTS and POLLUTANTS[key].toxic:
+        return POLLUTANTS[key]
+    row = None
+    if key:
+        rows = ToxicPollutant.objects.filter(kind=ToxicPollutant.Kind.TOXIC)
+        carb_id = LEGACY_TOXIC_KEYS.get(key)
+        row = rows.filter(Q(slug=key) | Q(carb_id=carb_id)).first() if carb_id else rows.filter(slug=key).first()
+    return toxic_pollutant(row) if row else POLLUTANTS[DEFAULT_TOXIC]
+
+
+def legacy_toxic_slug(params):
+    """
+    The slug an old `?toxics=1&pollutant=<field>` link should redirect to, or
+    None when it isn't one (the pollutant is unknown, or its slug happens to
+    already equal the old key -- benzene's does by default -- so there's
+    nothing to redirect to).
+    """
+    key = params.get('pollutant')
+    if params.get('toxics') != '1' or key not in LEGACY_TOXIC_KEYS:
+        return None
+    slug = ToxicPollutant.objects.filter(carb_id=LEGACY_TOXIC_KEYS[key]).values_list('slug', flat=True).first()
+    return slug if slug and slug != key else None
+
+
+def resolve_scope(params):
+    """Scope from a request's GET; anything unknown falls back to its default."""
+    years = available_years()
+    year = _int(params.get('year'))
+    if year not in years:
+        year = years[-1] if years else None
+    county = None
+    if params.get('county'):
+        county = Region.objects.counties().filter(slug=params['county']).first()
+    toxics = params.get('toxics') == '1'
+    key = params.get('pollutant')
+    return Scope(
+        year=year,
+        county=county,
+        pollutant=resolve_toxic(key) if toxics else get_pollutant(key),
+        minor=params.get('minor') == '1',
+    )
+
+
+def toxic_options(year):
+    """
+    The toxics picker: the two weighted measures, then every toxic with any
+    Valley pounds in `year`, by its share of the cancer-weighted total (then
+    name). Precursors are left out.
+    """
+    def compute():
+        rows = (
+            ToxicEmission.objects.filter(year=year, pollutant__kind=ToxicPollutant.Kind.TOXIC)
+            .values('pollutant_id', 'pollutant__slug', 'pollutant__name')
+            .annotate(weight=Sum(weighted_lbs('cancer_weight')), lbs=Sum('lbs'))
+            .filter(lbs__gt=0)
+        )
+        rows = sorted(rows, key=lambda row: (-(row['weight'] or 0), row['pollutant__name'].lower()))
+        return [toxic_pollutant({'pk': r['pollutant_id'], 'slug': r['pollutant__slug'], 'name': r['pollutant__name']}) for r in rows]
+    return WEIGHTED + cache.get_or_set(f'{prefix()}:toxic-options:{year}', compute, CACHE_TIMEOUT)
+
+
+def records(scope, *, all_years=False):
+    queryset = EmissionsRecord.objects.all()
+    if not all_years:
+        queryset = queryset.filter(year=scope.year)
+    if scope.county is not None:
+        queryset = queryset.filter(facility__county=scope.county)
+    if scope.area is not None:
+        queryset = queryset.filter(scope.area.q())
+    if not scope.minor:
+        queryset = queryset.exclude(facility__sic_code__in=MINOR_SOURCE_SIC_CODES)
+    return queryset
+
+
+def weighted_lbs(weight_field):
+    """lbs × the pollutant's weight, as a float expression on a ToxicEmission queryset."""
+    return ExpressionWrapper(Cast('lbs', FloatField()) * F(f'pollutant__{weight_field}'), output_field=FloatField())
+
+
+def value_expr(pollutant):
+    """
+    The un-scaled `value` of one EmissionsRecord row for `pollutant`: its
+    column for a criteria pollutant; for a precursor (ammonia), that
+    facility-year's pounds ÷ 2,000; for one toxic, that facility-year's
+    ToxicEmission pounds; for a weighted measure, Σ lbs × weight over the
+    facility-year's toxics (precursors excluded by kind). Null where the
+    facility reported none.
+    """
+    if pollutant.precursor:
+        rows = ToxicEmission.objects.filter(
+            facility_id=OuterRef('facility_id'), year=OuterRef('year'), pollutant__carb_id=pollutant.carb_id,
+        )
+        lbs = Cast(Subquery(rows.values('lbs')[:1]), FloatField())
+        return ExpressionWrapper(lbs / Value(LBS_PER_TON), output_field=FloatField())
+    if not pollutant.toxic:
+        return F(pollutant.key)
+    rows = ToxicEmission.objects.filter(facility_id=OuterRef('facility_id'), year=OuterRef('year'))
+    if pollutant.weighted:
+        rows = (
+            rows.filter(pollutant__kind=ToxicPollutant.Kind.TOXIC).order_by().values('facility_id')
+            .annotate(total=Sum(weighted_lbs(pollutant.weight_field))).values('total')
+        )
+        return Subquery(rows[:1], output_field=FloatField())
+    return Subquery(rows.filter(pollutant_id=pollutant.pollutant_id).values('lbs')[:1], output_field=FloatField())
+
+
+def valley_totals(weight_field):
+    """{year: the Valley's raw weighted total} over every facility (minor sources included) and county. What a share is a share of."""
+    def compute():
+        rows = (
+            ToxicEmission.objects.filter(pollutant__kind=ToxicPollutant.Kind.TOXIC)
+            .values('year').annotate(total=Sum(weighted_lbs(weight_field)))
+        )
+        return {row['year']: float(row['total'] or 0) for row in rows}
+    return cache.get_or_set(f'{prefix()}:valley-totals:{weight_field}', compute, CACHE_TIMEOUT)
+
+
+def scale(pollutant, year):
+    """What a raw value is multiplied by for display: 1 for tons and lbs; 1 / the Valley's total that year for a weighted measure (0 when there's none)."""
+    if not pollutant.weighted:
+        return 1.0
+    total = valley_totals(pollutant.weight_field).get(year)
+    return 1.0 / total if total else 0.0
+
+
+def valued(scope, *, all_years=False):
+    """records(scope) annotated with `raw` (value_expr) and, for the scope year, `value` (raw × scale, a float)."""
+    queryset = records(scope, all_years=all_years).annotate(raw=value_expr(scope.pollutant))
+    if not all_years:
+        factor = Value(scale(scope.pollutant, scope.year), output_field=FloatField())
+        queryset = queryset.annotate(value=ExpressionWrapper(Cast('raw', FloatField()) * factor, output_field=FloatField()))
+    return queryset
+
+
+def values(scope, *, sector=None):
+    """[(facility_id, value)] for the scope: the one source the map, list, sectors, areas and region pages share."""
+    queryset = valued(scope)
+    if sector:
+        queryset = queryset.filter(facility__sector=sector)
+    return list(queryset.values_list('facility_id', 'value'))
+
+
+def totals(scope):
+    """The scope's facility count, each criteria pollutant's total, and `value`: the scope pollutant's total in its display unit (for a weighted measure, the shown facilities' summed share of the Valley total)."""
+    def compute():
+        row = valued(scope).aggregate(
+            facilities=Count('facility', distinct=True),
+            value=Sum('raw'),
+            **{pollutant.key: Sum(pollutant.key) for pollutant in CRITERIA},
+        )
+        result = {key: (value if key == 'facilities' else _float(value)) for key, value in row.items()}
+        if result['value'] is not None:
+            result['value'] = result['value'] * scale(scope.pollutant, scope.year)
+        return result
+    return cache.get_or_set(scope.key('totals'), compute, CACHE_TIMEOUT)
+
+
+def _competition_ranks(pairs):
+    """[(key, value), ...] sorted by value descending -> {key: rank}; ties share a rank."""
+    result = {}
+    previous = object()
+    rank = 0
+    for position, (key, value) in enumerate(pairs, 1):
+        if value != previous:
+            rank = position
+            previous = value
+        result[key] = rank
+    return result
+
+
+def ranks(scope):
+    def compute():
+        pairs = valued(scope).filter(raw__gt=0).order_by('-raw').values_list('facility_id', 'raw')
+        return _competition_ranks(pairs)
+    return cache.get_or_set(scope.key('ranks'), compute, CACHE_TIMEOUT)
+
+
+def with_ranks(rows, rank_map):
+    return [(rank_map.get(record.facility_id), record) for record in rows]
+
+
+def facility_table(scope, *, sector=None, area=None, q=None, sort='-value', compliance=None):
+    """
+    The scope's facility records, `value` annotated. `area` (an areas.RegionArea)
+    narrows the list without touching the scope, so ranks stay scope-wide.
+    """
+    queryset = valued(scope).select_related('facility', 'facility__county', 'facility__city', 'facility__air_district')
+    if sector:
+        queryset = queryset.filter(facility__sector=sector)
+    if area:
+        queryset = queryset.filter(area.q())
+    if q:
+        queryset = queryset.filter(facility__name__icontains=q)
+    if compliance:
+        from camp.apps.emissions import compliance as _compliance  # compliance imports stats
+        narrowed = _compliance.filter_q(compliance)
+        if narrowed is not None:
+            queryset = queryset.filter(narrowed).distinct()
+    sort = sort if sort in SORTS else '-value'
+    key = sort.lstrip('-')
+    descending = sort.startswith('-')
+    if key == 'value':
+        order = [F('value').desc(nulls_last=True) if descending else F('value').asc(nulls_last=True)]
+    elif key == 'rank':
+        # Rank follows the value, #1 the largest; facilities that reported none
+        # have no rank and stay at the bottom either way.
+        unranked = Case(When(Q(raw__gt=0), then=Value(0)), default=Value(1), output_field=IntegerField())
+        order = [unranked.asc(), F('value').asc() if descending else F('value').desc()]
+    elif key == 'city':
+        # The city the table shows: the matched city, else the address as given.
+        # Unmatched address cities are often not cities at all ("2 MI N/O
+        # LINDSAY"), so they come after the matched ones either way.
+        unmatched = Case(When(facility__city__isnull=True, then=Value(1)), default=Value(0), output_field=IntegerField())
+        city = Lower(Coalesce('facility__city__name', KeyTextTransform('city', 'facility__address')))
+        order = [unmatched.asc(), city.desc() if descending else city.asc()]
+    else:
+        order = [F(SORT_FIELDS[key]).desc() if descending else F(SORT_FIELDS[key]).asc()]
+    return queryset.order_by(*order, 'facility__name')
+
+
+def sort_sectors(rows, sort):
+    """sector_breakdown() rows in a SECTOR_SORTS order."""
+    sort = sort if sort in SECTOR_SORTS else '-value'
+    key = {'share': 'value', 'name': 'label'}.get(sort.lstrip('-'), sort.lstrip('-'))
+    return sorted(rows, key=lambda row: (row[key], row['label']), reverse=sort.startswith('-'))
+
+
+def sector_breakdown(scope):
+    def compute():
+        factor = scale(scope.pollutant, scope.year)
+        rows = list(
+            valued(scope)
+            .values('facility__sector')
+            .annotate(facilities=Count('facility', distinct=True), value=Sum('raw'))
+        )
+        total = sum(float(row['value'] or 0) * factor for row in rows)
+        result = [{
+            'sector': Facility.Sector(row['facility__sector']),
+            'label': Facility.Sector(row['facility__sector']).label,
+            'facilities': row['facilities'],
+            'value': float(row['value'] or 0) * factor,
+            'share': float(row['value'] or 0) * factor / total if total else None,
+        } for row in rows]
+        result.sort(key=lambda row: (-row['value'], row['label']))
+        return result
+    return cache.get_or_set(scope.key('sectors'), compute, CACHE_TIMEOUT)
+
+
+def county_breakdown(scope, *, sector=None):
+    everywhere = Scope(year=scope.year, county=None, pollutant=scope.pollutant, minor=scope.minor)
+
+    def compute():
+        factor = scale(scope.pollutant, scope.year)
+        queryset = valued(everywhere)
+        if sector:
+            queryset = queryset.filter(facility__sector=sector)
+        rows = list(
+            queryset.values('facility__county')
+            .annotate(facilities=Count('facility', distinct=True), value=Sum('raw'))
+        )
+        counties = Region.objects.in_bulk([row['facility__county'] for row in rows if row['facility__county']])
+        total = sum(float(row['value'] or 0) * factor for row in rows)
+        result = [{
+            'county': counties[row['facility__county']],
+            'facilities': row['facilities'],
+            'value': float(row['value'] or 0) * factor,
+            'share': float(row['value'] or 0) * factor / total if total else None,
+        } for row in rows if row['facility__county'] in counties]
+        result.sort(key=lambda row: (-row['value'], row['county'].name))
+        return result
+    return cache.get_or_set(everywhere.key('counties', sector or ''), compute, CACHE_TIMEOUT)
+
+
+def by_year(scope, *, facility=None, sector=None):
+    def compute():
+        if facility is not None:
+            queryset = EmissionsRecord.objects.filter(facility=facility).annotate(raw=value_expr(scope.pollutant))
+        else:
+            queryset = valued(scope, all_years=True)
+            if sector:
+                queryset = queryset.filter(facility__sector=sector)
+        rows = queryset.values('year').annotate(value=Sum('raw')).order_by('year')
+        return [{'year': row['year'], 'value': float(row['value'] or 0) * scale(scope.pollutant, row['year'])} for row in rows]
+    extra = f'facility-{facility.pk}' if facility is not None else f'sector-{sector or ""}'
+    return cache.get_or_set(scope.key('by-year', extra), compute, CACHE_TIMEOUT)
+
+
+def sector_trends(scope):
+    def compute():
+        rows = (
+            valued(scope, all_years=True)
+            .values('facility__sector', 'year')
+            .annotate(value=Sum('raw'))
+            .order_by('facility__sector', 'year')
+        )
+        result = {}
+        for row in rows:
+            result.setdefault(row['facility__sector'], []).append(
+                {'year': row['year'], 'value': float(row['value'] or 0) * scale(scope.pollutant, row['year'])}
+            )
+        return result
+    return cache.get_or_set(scope.key('sector-trends'), compute, CACHE_TIMEOUT)
+
+
+def county_context(scope):
+    """
+    CARB's estimate of every source in the scope's counties, by source type,
+    beside the permitted-facility total; None for toxics and ammonia (CEPAM
+    has neither) or a year CEPAM hasn't been imported for.
+    """
+    if scope.toxics or scope.pollutant.precursor or scope.year is None:
+        return None
+    field = scope.pollutant.key
+
+    def compute():
+        counties = [scope.county] if scope.county else list(Region.objects.counties())
+        sums = dict(
+            CountyInventory.objects
+            .filter(county__in=counties, year=scope.year, inventory=cepam.INVENTORY)
+            .values_list('source_type')
+            .annotate(total=Sum(field))
+        )
+        if not sums:
+            return None
+        parts = [{
+            'source_type': source_type,
+            'label': source_type.label,
+            'tons': cepam.tons_per_year(sums.get(source_type) or 0),
+        } for source_type in CountyInventory.SourceType]
+        total = sum(part['tons'] for part in parts)
+        if not total:
+            return None
+        for part in parts:
+            part['share'] = part['tons'] / total
+        facilities = totals(scope)[field] or 0
+        return {
+            'parts': parts,
+            'total': total,
+            'facilities': facilities,
+            'facility_share': facilities / total,
+            'base_year': cepam.BASE_YEAR,
+            'inventory': cepam.INVENTORY,
+            'counties': counties,
+        }
+    return cache.get_or_set(scope.key('context'), compute, CACHE_TIMEOUT)
+
+
+def county_context_trend(scope):
+    """
+    The permitted facilities' share of CARB's all-sources estimate, by year,
+    for the scope's county (a county page): [{'year', 'share', 'facilities',
+    'total'}], years both have. [] where county_context has nothing (toxics,
+    ammonia) or before CEPAM is imported. CEPAM holds its years after the
+    base year as projections, so a move in the share after it is mostly the
+    facilities' own.
+    """
+    if scope.toxics or scope.pollutant.precursor or scope.county is None:
+        return []
+    field = scope.pollutant.key
+
+    def compute():
+        sums = dict(
+            CountyInventory.objects
+            .filter(county=scope.county, inventory=cepam.INVENTORY)
+            .values_list('year')
+            .annotate(total=Sum(field))
+        )
+        facilities = {row['year']: row['value'] for row in by_year(scope)}
+        rows = []
+        for year in sorted(sums):
+            total = cepam.tons_per_year(sums[year] or 0)
+            if total and year in facilities:
+                rows.append({'year': year, 'share': facilities[year] / total, 'facilities': facilities[year], 'total': total})
+        return rows
+    return cache.get_or_set(scope.key('context-trend'), compute, CACHE_TIMEOUT)
+
+
+# The sectors chart's stack: this many, largest in the scope year, then "Other".
+STACK_SECTORS = 5
+
+
+def sector_stack(scope):
+    """
+    The scope's sectors by year for a stacked chart: {'years': [...],
+    'series': [{'sector', 'label', 'values': [...]}]}, the STACK_SECTORS
+    largest in the scope year then "Other" summing the rest; None with
+    fewer than two years or nothing reported.
+    """
+    trends = sector_trends(scope)
+    years = sorted({row['year'] for points in trends.values() for row in points})
+    if len(years) < 2:
+        return None
+    by_sector = {sector: {row['year']: row['value'] for row in points} for sector, points in trends.items()}
+    def latest(sector):
+        values = by_sector[sector]
+        return values.get(scope.year, values.get(years[-1], 0)) or 0
+    ranked = sorted(by_sector, key=latest, reverse=True)
+    top = [sector for sector in ranked[:STACK_SECTORS] if latest(sector) > 0]
+    if not top:
+        return None
+    series = [{'sector': sector, 'label': Facility.Sector(sector).label,
+               'values': [by_sector[sector].get(year, 0) for year in years]} for sector in top]
+    rest = [sector for sector in ranked if sector not in top]
+    if rest:
+        other = [sum(by_sector[sector].get(year, 0) for sector in rest) for year in years]
+        if any(other):
+            series.append({'sector': 'other', 'label': 'All other sectors', 'values': other})
+    return {'years': years, 'series': series}
+
+
+def _rank_of(value, values):
+    return 1 + sum(1 for other in values if other > value)
+
+
+def precursor_row(facility, year, pollutant=NH3):
+    """
+    facility_ranks()'s row for ammonia: the facility's tons that year (its
+    ToxicEmission pounds ÷ 2,000) ranked among its county's and its sector's
+    facilities that reported any, on the same minor-source rule; None when it
+    reported none.
+    """
+    rows = ToxicEmission.objects.filter(year=year, pollutant__carb_id=pollutant.carb_id)
+    mine = rows.filter(facility=facility).values_list('lbs', flat=True).first()
+    if not mine:
+        return None
+    peers = rows
+    if not facility.is_minor_source:
+        peers = peers.exclude(facility__sic_code__in=MINOR_SOURCE_SIC_CODES)
+    to_tons = lambda values: [float(v) / LBS_PER_TON for v in values if v]
+    county_values = to_tons(peers.filter(facility__county_id=facility.county_id).values_list('lbs', flat=True))
+    sector_values = to_tons(peers.filter(facility__sector=facility.sector).values_list('lbs', flat=True))
+    value = float(mine) / LBS_PER_TON
+    county_total = sum(county_values)
+    return {
+        'pollutant': pollutant, 'value': value,
+        'county_rank': _rank_of(value, county_values), 'county_count': len(county_values),
+        'sector_rank': _rank_of(value, sector_values), 'sector_count': len(sector_values),
+        'county_share': value / county_total if county_total else None,
+    }
+
+
+def facility_ranks(facility, year):
+    """
+    Criteria pollutants for one facility-year, ranked among its county's and
+    its sector's facilities, then ammonia (in tons/yr from ToxicEmission)
+    when the facility reported any.
+    """
+    record = facility.emissions.filter(year=year).first()
+    if record is None:
+        return []
+    fields = [pollutant.key for pollutant in CRITERIA]
+    peers = EmissionsRecord.objects.filter(year=year)
+    if not facility.is_minor_source:
+        peers = peers.exclude(facility__sic_code__in=MINOR_SOURCE_SIC_CODES)
+    county_rows = list(peers.filter(facility__county_id=facility.county_id).values(*fields))
+    sector_rows = list(peers.filter(facility__sector=facility.sector).values(*fields))
+    result = []
+    for pollutant in CRITERIA:
+        value = _float(getattr(record, pollutant.key))
+        row = {
+            'pollutant': pollutant, 'value': value,
+            'county_rank': None, 'county_count': None,
+            'sector_rank': None, 'sector_count': None, 'county_share': None,
+        }
+        if value:
+            county_values = [float(r[pollutant.key]) for r in county_rows if r[pollutant.key]]
+            sector_values = [float(r[pollutant.key]) for r in sector_rows if r[pollutant.key]]
+            county_total = sum(county_values)
+            row.update({
+                'county_rank': _rank_of(value, county_values),
+                'county_count': len(county_values),
+                'sector_rank': _rank_of(value, sector_values),
+                'sector_count': len(sector_values),
+                'county_share': value / county_total if county_total else None,
+            })
+        result.append(row)
+    for pollutant in PRECURSORS:
+        row = precursor_row(facility, year, pollutant)
+        if row is not None:
+            result.append(row)
+    return result
+
+
+def toxic_rows(scope):
+    """ToxicEmission rows in the scope (its year, county, area and minor toggle -- the same filters as records()), toxics only."""
+    queryset = ToxicEmission.objects.filter(year=scope.year, pollutant__kind=ToxicPollutant.Kind.TOXIC)
+    if scope.county is not None:
+        queryset = queryset.filter(facility__county=scope.county)
+    if scope.area is not None:
+        queryset = queryset.filter(scope.area.q())
+    if not scope.minor:
+        queryset = queryset.exclude(facility__sic_code__in=MINOR_SOURCE_SIC_CODES)
+    return queryset
+
+
+def toxics_breakdown(scope, top=8):
+    """
+    What drives the scope's cancer-weighted total, by pollutant: the top
+    `top` and an "Other" bucket, each with its share of the scope's total
+    (and the total's share of the Valley's). None when nothing is weighted.
+    """
+    def compute():
+        rows = (
+            toxic_rows(scope).values('pollutant__slug', 'pollutant__name')
+            .annotate(weight=Sum(weighted_lbs('cancer_weight'))).filter(weight__gt=0).order_by('-weight', 'pollutant__name')
+        )
+        rows = list(rows)
+        total = sum(row['weight'] for row in rows)
+        if not total:
+            return None
+        parts = [{'slug': row['pollutant__slug'], 'name': row['pollutant__name'], 'share': row['weight'] / total} for row in rows[:top]]
+        rest = sum(row['weight'] for row in rows[top:])
+        if rest:
+            parts.append({'slug': None, 'name': 'Other', 'share': rest / total})
+        return {'parts': parts, 'pollutants': len(rows), 'valley_share': total * scale(POLLUTANTS['cancer'], scope.year)}
+    return cache.get_or_set(scope.key('toxics-breakdown', top), compute, CACHE_TIMEOUT)
+
+
+def facility_toxics(facility, year):
+    """
+    Every toxic the facility reported in `year` (precursors left out), in
+    lbs/yr with the year before when it has one, its share of the Valley's
+    cancer-weighted total (None when the pollutant has no cancer value) and
+    whether it carries a non-cancer hazard weight; sorted by cancer weight,
+    then pounds.
+    """
+    current = list(
+        facility.toxic_emissions.filter(year=year, pollutant__kind=ToxicPollutant.Kind.TOXIC).select_related('pollutant')
+    )
+    if not current:
+        return []
+    previous = dict(facility.toxic_emissions.filter(year=year - 1).values_list('pollutant_id', 'lbs'))
+    total = valley_totals('cancer_weight').get(year) or 0
+    rows = []
+    for row in current:
+        lbs = float(row.lbs)
+        weight = lbs * row.pollutant.cancer_weight
+        rows.append({
+            'pollutant': row.pollutant,
+            'value': lbs,
+            'previous': _float(previous.get(row.pollutant_id)),
+            'previous_year': year - 1 if previous else None,
+            'weight': weight,
+            'share': weight / total if total and weight else None,
+            'has_cancer_value': row.pollutant.cancer_weight > 0,
+            'hazard': row.pollutant.chronic_weight > 0,
+        })
+    rows.sort(key=lambda row: (-row['weight'], -row['value']))
+    return rows
+
+
+def hot_spots(record):
+    """The AB 2588 Hot Spots fields on a record as floats, or None when none is set (no card)."""
+    if record is None:
+        return None
+    fields = {name: _float(getattr(record, name)) for name in ('total_score', 'hra', 'chindex', 'ahindex')}
+    return fields if any(value is not None for value in fields.values()) else None
+
+
+def large_changes(facility, year, *, min_base=0.1):
+    """Criteria changes into `year` (from `year` - 1) larger than LARGE_CHANGE, ignoring a base below min_base."""
+    after = facility.emissions.filter(year=year).first()
+    before = facility.emissions.filter(year=year - 1).first()
+    if after is None or before is None:
+        return []
+    changes = []
+    for pollutant in CRITERIA:
+        old = _float(getattr(before, pollutant.key))
+        new = _float(getattr(after, pollutant.key))
+        if not old or new is None or old < min_base:
+            continue
+        pct = (new - old) / old
+        if abs(pct) > LARGE_CHANGE:
+            changes.append({
+                'pollutant': pollutant,
+                'year': after.year,
+                'previous_year': before.year,
+                'pct': pct * 100,
+            })
+    return changes

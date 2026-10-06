@@ -1,0 +1,117 @@
+{% extends 'regions/area-tab.html' %}
+{# emissions_explorer last: its percent and signed_pct (whole percents) win over the pesticides ones of the same name. #}
+{% load humanize pesticides_explorer emissions_explorer %}
+{% comment %}
+An area's Schools tab (views.RegionSchools / NearMeSchools) in the shared tab
+skeleton (regions/area-tab.html): the area's schools and child-care centers
+and how many have a permitted facility, an oil or gas well or a dairy near
+them; the facility map with the sites on it, the filters and the school
+districts the area overlaps beside it; and the sites themselves,
+filtered, sorted, paged and downloadable, each with what's near it
+(schools.area_sites).
+{% endcomment %}
+
+{% block tab-stats %}
+{% with s=site_summary %}
+<div class="level is-mobile stat-row box is-grid-mobile">
+    <div class="level-item has-text-centered"><div><p class="heading">Schools</p><p class="title">{{ s.schools|intcomma }}</p><p class="stat-note">{{ s.child_care|intcomma }} child-care center{{ s.child_care|pluralize }} too</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Facility within ¼ mile</p><p class="title">{{ s.quarter|intcomma }}</p><p class="stat-note">{{ s.notice|intcomma }} within 1,000 ft</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Well within 3,200 ft</p><p class="title">{{ s.wells|intcomma }}</p><p class="stat-note">active or idle oil and gas</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Dairy within 1 mile</p><p class="title">{{ s.dairies|intcomma }}</p><p class="stat-note">schools and child care</p></div></div>
+</div>
+{% endwith %}
+{% endblock %}
+
+{% block tab-map %}
+{% include 'emissions/includes/facility-map.html' %}
+<p class="is-size-7 mt-2">Green dots are the schools and child-care centers here; click one for what's near it.</p>
+{% endblock %}
+
+{% block tab-filters %}
+<form method="get" class="explorer-filters box" hx-trigger="submit, change delay:250ms">
+    {% for key, value in point_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+    {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <div class="field">
+        <label class="label" for="site-q">Search</label>
+        <div class="control has-icons-left">
+            <input class="input" type="search" id="site-q" name="q" value="{{ filters.q|default:'' }}" placeholder="School or center name"
+                hx-get="{{ request.path }}" hx-include="closest form" hx-trigger="keyup changed delay:500ms, search">
+            <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
+        </div>
+    </div>
+    <div class="field">
+        <label class="label" for="site-type">Type</label>
+        <div class="control"><div class="select is-fullwidth"><select id="site-type" name="type">
+            <option value="">Schools and child care</option>
+            {% for value, label in site_types %}<option value="{{ value }}"{% if filters.type == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></div></div>
+    </div>
+    {% if site_districts|length > 1 %}
+    <div class="field">
+        <label class="label" for="site-district">School district</label>
+        <div class="control"><div class="select is-fullwidth"><select id="site-district" name="district">
+            <option value="">All districts</option>
+            {% for sqid, label in site_districts %}<option value="{{ sqid }}"{% if filters.district == sqid %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></div></div>
+        <p class="help">The district that runs a school, or that a site sits in.</p>
+    </div>
+    {% endif %}
+    <div class="field">
+        <label class="checkbox"><input type="checkbox" name="near" value="1"{% if filters.near %} checked{% endif %}> With a facility, well or dairy near</label>
+    </div>
+    {# Every field applies itself as it changes; there's nothing to Apply. #}
+    {% if sites_filtered %}<p class="filters-clear"><a href="{{ clear_filters_url }}">Clear filters</a></p>{% endif %}
+</form>
+{% endblock %}
+
+{% block tab-aside %}{% include 'regions/includes/school-districts-box.html' %}{% endblock %}
+
+{% block tab-table %}
+{% with total=site_summary.schools|add:site_summary.child_care %}
+<p class="summary-sentence mb-3">
+    {{ total|intcomma }} school{{ total|pluralize }} and child care site{{ total|pluralize }}{% if sites_filtered %}
+    · showing {{ site_count|intcomma }}{% endif %}
+</p>
+{% endwith %}
+<div class="table-container">
+<table class="table is-fullwidth is-hoverable is-narrow site-table schools-table is-stacked-mobile">
+    <thead><tr>
+        <th>{% sort_link 'name' 'School or child care' %}</th>
+        <th class="has-text-right">{% sort_link 'notice' 'Facilities, 1,000 ft' %}</th>
+        <th class="has-text-right">{% sort_link 'quarter' 'Facilities, ¼ mile' %}</th>
+        <th class="has-text-right">{% if pollutant.weighted %}{% sort_link 'value' 'Share, ¼ mile' %}{% else %}{% sort_link 'value' pollutant.label|add:', ¼ mile' %}{% endif %}</th>
+        <th class="has-text-right">{% sort_link 'wells' 'Wells, 3,200 ft' %}</th>
+        <th class="has-text-right">{% sort_link 'dairies' 'Dairies, 1 mile' %}</th>
+    </tr></thead>
+    <tbody>
+    {% for row in site_rows %}
+    <tr>
+        <td class="cell-name">{% include 'regions/includes/school-name-cell.html' %}</td>
+        <td class="has-text-right cell-meta{% if not row.notice %} is-none{% endif %}" data-label="Facilities within 1,000 ft">{{ row.notice|intcomma }}</td>
+        <td class="has-text-right cell-meta{% if not row.quarter %} is-none{% endif %}" data-label="Facilities within ¼ mile">{{ row.quarter|intcomma }}</td>
+        <td class="has-text-right cell-meta{% if row.value is None %} is-none{% endif %}" data-label="{% if pollutant.weighted %}Share{% else %}{{ pollutant.label }} ({{ pollutant.unit_label }}){% endif %}, ¼ mile">{% if row.value is None %}—{% else %}{{ row.value|amount:pollutant }}{% endif %}</td>
+        <td class="has-text-right cell-meta{% if not row.wells %} is-none{% endif %}" data-label="Wells within 3,200 ft">{{ row.wells|intcomma }}</td>
+        <td class="has-text-right cell-meta{% if not row.dairies %} is-none{% endif %}" data-label="Dairies within 1 mile">{{ row.dairies|intcomma }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="6">No schools or child care match.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% include 'pesticides/includes/pagination.html' %}
+<p class="mt-3"><a href="{% qs_replace format='csv' page=None %}" hx-boost="false" download>Download these sites (CSV)</a></p>
+{% endblock %}
+
+{% block tab-notes %}
+<details class="data-notes">
+    <summary>What this is, and isn't</summary>
+    <ul>
+        <li><strong>Sites are the state's lists</strong>: CDE's public and private schools and CDSS's licensed child-care centers.</li>
+        <li><strong>Nearness, not exposure.</strong> Distances are straight lines between map points; wind, stack height and what each source emits aren't counted.</li>
+        <li><strong>Why these distances.</strong> 1,000 ft is where a district must notify parents before permitting a source of hazardous air emissions near a school; ¼ mile is what districts review before siting one; 3,200 ft is CalGEM's health protection zone around wells. <a href="{% url 'emissions:about' %}#schools">More on schools nearby</a></li>
+        <li><strong>Facilities count where their point is the site</strong>, not oil &amp; gas or refinery permit groupings, whose addresses are offices. The {{ pollutant.label }} column sums what the facilities within ¼ mile reported in {{ year }}.</li>
+    </ul>
+</details>
+{% endblock %}

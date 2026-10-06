@@ -1,0 +1,56 @@
+{% load humanize %}
+{% comment %}
+A facility's Clean Air Act compliance record from EPA's ICIS-Air
+(compliance.facility_card), shown only when an ICIS row matched this
+facility: badges (Title V, the pollutant class, the current HPV status), the
+five-year rollups counted back from the newest reported event, as a stat
+row; the window's enforcement (notices, formal actions, high-priority
+violations) as a table, with inspections and older events behind "Show
+all"; the ECHO link and the reported-through stamp. Its caveats are
+includes/compliance-notes.html, in the page's one "What this is, and isn't". Nothing is rendered for a facility with no row -- absence isn't compliance.
+{% endcomment %}
+{% with card=compliance_card icis=compliance_card.primary %}
+<section class="compliance-card" id="compliance">
+    <h2 class="title is-4">Compliance (federal Clean Air Act reporting)</h2>
+    <div class="tags are-medium">
+        {% if icis.title_v %}<span class="tag">Title V</span>{% endif %}
+        {% if icis.pollutant_class %}<span class="tag">{{ icis.pollutant_class }}</span>{% endif %}
+        {% if icis.hpv_status == 'unaddressed' %}<span class="tag is-danger is-light">High-priority violation: unaddressed</span>
+        {% elif icis.hpv_status == 'addressed' %}<span class="tag is-warning is-light">High-priority violation: addressed</span>
+        {% else %}<span class="tag is-success is-light">No violation identified</span>{% endif %}
+    </div>
+    {% if card.since %}
+    <p class="heading mt-4 mb-2">Last 5 years, to {{ card.reported_through|date:"M Y" }}</p>
+    <div class="level is-mobile stat-row box compliance-rollup is-grid-mobile" aria-label="Last 5 years: {{ card.inspections|intcomma }} inspection{{ card.inspections|pluralize }} · {{ card.novs|intcomma }} notice{{ card.novs|pluralize }} of violation · {{ card.formals|intcomma }} formal action{{ card.formals|pluralize }}, ${{ card.penalties|floatformat:"0"|intcomma }} in penalties">
+        <div class="level-item has-text-centered"><div><p class="heading">Inspections</p><p class="title is-4">{{ card.inspections|intcomma }}</p></div></div>
+        <div class="level-item has-text-centered"><div><p class="heading">Notices of violation</p><p class="title is-4">{{ card.novs|intcomma }}</p></div></div>
+        <div class="level-item has-text-centered"><div><p class="heading">Formal actions</p><p class="title is-4">{{ card.formals|intcomma }}</p></div></div>
+        <div class="level-item has-text-centered"><div><p class="heading">Penalties</p><p class="title is-4">${{ card.penalties|floatformat:"0"|intcomma }}</p></div></div>
+    </div>
+    {% endif %}
+    {% if card.names %}<p class="is-size-7 has-text-grey">Name as reported to EPA: {{ card.names|join:"; " }}</p>{% endif %}
+    {% if card.events %}
+    <div class="table-container">
+    {% if card.shown %}
+    <table class="table is-fullwidth is-narrow compliance-events">
+        <thead><tr><th>Date</th><th>What</th><th>By</th><th>Detail</th><th class="has-text-right">Penalty</th></tr></thead>
+        <tbody>
+        {% for e in card.shown %}{% include 'emissions/includes/compliance-event-row.html' %}{% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="has-text-grey">No notices of violation, formal actions or high-priority violations in the last 5 years.</p>
+    {% endif %}
+    {% if card.more %}
+    <details class="compliance-more">
+        <summary>{{ card.more|length|intcomma }} more event{{ card.more|length|pluralize }}: inspections and anything older</summary>
+        <table class="table is-fullwidth is-narrow compliance-events"><tbody>
+        {% for e in card.more %}{% include 'emissions/includes/compliance-event-row.html' %}{% endfor %}
+        </tbody></table>
+    </details>
+    {% endif %}
+    </div>
+    {% endif %}
+    <p><a href="{{ icis.dfr_url }}">Full record at EPA ECHO →</a>{% if card.reported_through %} <span class="has-text-grey">· Reported to EPA through {{ card.reported_through|date:"F j, Y" }}.</span>{% endif %}</p>
+</section>
+{% endwith %}

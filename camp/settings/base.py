@@ -127,6 +127,7 @@ INSTALLED_APPS = [
     'camp.apps.ces',
     'camp.apps.calheatscore',
     'camp.apps.ceidars',
+    'camp.apps.emissions',
     'camp.apps.monitors',
     'camp.apps.pesticides',
     'camp.apps.monitors.airgradient',
@@ -439,6 +440,13 @@ AIRNOW_API_KEY = env('AIRNOW_API_KEY')
 # CIMIS
 
 CIMIS_API_KEY = env('CIMIS_API_KEY')
+
+
+# Carbon Mapper
+
+# The public methane catalog works without a key; when set, it's sent as a
+# bearer token (carbonmapper.fetch_csv).
+CARBON_MAPPER_API_KEY = env('CARBON_MAPPER_API_KEY', '')
 
 
 # CompTox

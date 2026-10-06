@@ -1,0 +1,182 @@
+{% extends 'regions/area-tab.html' %}
+{# emissions_explorer last: its percent and signed_pct (whole percents) win over the pesticides ones of the same name. #}
+{% load humanize pesticides_explorer emissions_explorer %}
+{% comment %}
+An area's Oil & gas tab (views.RegionOilGas / NearMeOilGas) in the shared
+tab skeleton (regions/area-tab.html): CalGEM's wells here by status and how many are
+in a verified health protection zone, with the snapshot caveat (and Kern's
+callout); the map with the wells on; the wells themselves, filtered, sorted,
+paged and downloadable; the wells drilled by year; the operators and oil
+fields with the most wells (each a link filtering the table) and the types; and the
+schools near wells, the area's oil & gas permit groupings and the methane
+observed at oil & gas sites. CalGEM's list is today's: nothing here is a
+history of wells in service.
+{% endcomment %}
+
+{% block tab-body %}
+{% if not wells_block %}
+<p class="has-text-grey">No active, idle or new oil or gas wells here.</p>
+{% else %}{{ block.super }}{% endif %}
+{% endblock %}
+
+{% block tab-stats %}
+<div class="wells-block" id="wells">
+    {% with s=wells_block.summary %}
+    <div class="level is-mobile stat-row box wells-line is-grid-mobile" aria-label="{{ s.active|intcomma }} active · {{ s.idle|intcomma }} idle{% if s.new %} · {{ s.new|intcomma }} new{% endif %} · {{ s.hpz|intcomma }} in a verified health-protection zone (3,200 ft of homes or schools)">
+        <div class="level-item has-text-centered"><div><p class="heading">Active</p><p class="title">{{ s.active|intcomma }}</p><p class="stat-note"></p></div></div>
+        <div class="level-item has-text-centered"><div><p class="heading">Idle</p><p class="title">{{ s.idle|intcomma }}</p><p class="stat-note">can still leak</p></div></div>
+        {% if s.new %}<div class="level-item has-text-centered"><div><p class="heading">New</p><p class="title">{{ s.new|intcomma }}</p><p class="stat-note">permitted, not yet drilled or producing</p></div></div>{% endif %}
+        <div class="level-item has-text-centered"><div><p class="heading">In a health-protection zone</p><p class="title">{{ s.hpz|intcomma }}</p><p class="stat-note">3,200 ft of homes or schools</p></div></div>
+    </div>
+    {% endwith %}
+    {% with imported=wells_block.stamp.imported_at|date:"N j, Y" %}
+    <div class="notification is-warning is-light wells-snapshot">
+        {% if wells_block.past_year %}
+        <p><strong>These are today's wells, not {{ wells_block.year }}'s.</strong> CalGEM's current list of active, idle and new wells{% if imported %}, as of {{ imported }}{% endif %}. It isn't broken down by year: wells plugged or abandoned before then aren't shown, and a well drilled after {{ wells_block.year }} still appears. The emissions figures on this page are for {{ wells_block.year }}.</p>
+        {% else %}
+        <p><strong>Current wells{% if imported %}, as of {{ imported }}{% endif %}.</strong> CalGEM's list of active, idle and new wells. It has no history by year; plugged wells aren't shown.</p>
+        {% endif %}
+    </div>
+    {% endwith %}
+    {% if wells_block.kern %}{% include 'emissions/includes/oil-gas-callout.html' with callout=wells_block.kern %}{% endif %}
+</div>
+{% endblock %}
+
+{% block tab-map %}{% include 'emissions/includes/facility-map.html' %}{% endblock %}
+
+{% block tab-filters %}
+{# The Valley's tab (OilGasPage, `find_field`) leads its filter box with "Find your area", beside the form: Enter there would submit it. #}
+<div class="explorer-filters box">
+{% if find_field %}{% include 'emissions/includes/find-field.html' %}{% endif %}
+<form method="get" hx-trigger="submit, change delay:250ms">
+    {% for key, value in point_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+    {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <div class="field">
+        <label class="label" for="well-q">Search</label>
+        <div class="control has-icons-left">
+            <input class="input" type="search" id="well-q" name="q" value="{{ filters.q|default:'' }}" placeholder="Lease or API number"
+                hx-get="{{ request.path }}" hx-include="closest form" hx-trigger="keyup changed delay:500ms, search">
+            <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
+        </div>
+    </div>
+    <div class="field">
+        <label class="label" for="well-status">Status</label>
+        <div class="control"><div class="select is-fullwidth"><select id="well-status" name="status">
+            <option value="">Active, idle and new</option>
+            {% for value, label in status_options %}<option value="{{ value }}"{% if filters.status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></div></div>
+    </div>
+    {% if well_options.operators|length > 1 %}
+    <div class="field">
+        <label class="label" for="well-operator">Operator</label>
+        <div class="control"><div class="select is-fullwidth"><select id="well-operator" name="operator">
+            <option value="">All operators</option>
+            {% for name in well_options.operators %}<option value="{{ name }}"{% if filters.operator == name %} selected{% endif %}>{{ name }}</option>{% endfor %}
+        </select></div></div>
+    </div>
+    {% endif %}
+    {% if well_options.fields|length > 1 %}
+    <div class="field">
+        <label class="label" for="well-field">Oil field</label>
+        <div class="control"><div class="select is-fullwidth"><select id="well-field" name="field">
+            <option value="">All fields</option>
+            {% for name in well_options.fields %}<option value="{{ name }}"{% if filters.field == name %} selected{% endif %}>{{ name }}</option>{% endfor %}
+        </select></div></div>
+    </div>
+    {% endif %}
+    <div class="field">
+        <label class="checkbox"><input type="checkbox" name="hpz" value="1"{% if filters.hpz %} checked{% endif %}> In a health-protection zone</label>
+    </div>
+    {# Every field applies itself as it changes; there's nothing to Apply. #}
+    {% if filters.q or filters.status or filters.operator or filters.field or filters.hpz %}<p class="filters-clear"><a href="{{ clear_filters_url }}">Clear filters</a></p>{% endif %}
+</form>
+</div>
+{% endblock %}
+
+{% block tab-table %}
+<div class="table-container">
+<table class="table is-fullwidth is-hoverable is-narrow well-table is-stacked-mobile">
+    <thead><tr>
+        <th>{% sort_link 'label' 'Well' %}</th>
+        <th>{% sort_link 'operator' 'Operator' %}</th>
+        <th>{% sort_link 'field' 'Field' %}</th>
+        <th>{% sort_link 'status' 'Status' %}</th>
+        <th>{% sort_link 'spud' 'Drilled' %}</th>
+    </tr></thead>
+    <tbody>
+    {% for well in well_rows %}
+    <tr>
+        <td class="cell-name"><a href="{{ well.calgem_url }}">{{ well.label }}</a>{% if well.in_hpz == 'Verified HPZ' %} <span class="tag is-warning is-light" title="In a verified health-protection zone (3,200 ft of homes or schools)">HPZ</span>{% endif %}<br><span class="has-text-grey is-size-7">{{ well.well_type_label }}</span></td>
+        <td class="cell-meta">{{ well.operator_name }}</td>
+        <td class="cell-meta">{{ well.field_name }}</td>
+        <td class="cell-meta" data-label="Status">{{ well.get_status_display }}</td>
+        <td class="cell-meta{% if not well.spud_date %} is-none{% endif %}" data-label="Drilled">{{ well.spud_date.year|default:"—" }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5">No wells match.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% include 'pesticides/includes/pagination.html' %}
+<p class="mt-3"><a href="{% qs_replace format='csv' page=None %}" hx-boost="false" download>Download these wells (CSV)</a></p>
+{% endblock %}
+
+{% block tab-charts %}
+<div class="mt-5">{% well_spud_chart spud total=wells_block.summary.total heading="Drilled by year" %}</div>
+{% endblock %}
+
+{% block tab-related %}
+{% if well_leaders.operators or well_leaders.fields %}
+<div class="columns mt-5">
+    <div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='Top operators' rows=well_leaders.operators count_label='Wells' view_all_url=None %}</div>
+    <div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='Top oil fields' rows=well_leaders.fields count_label='Wells' view_all_url=None %}</div>
+</div>
+{% endif %}
+<div class="columns">
+    {% if well_types %}
+    <div class="column is-half-tablet">
+        <div class="card related-card">
+            <header class="card-header"><p class="card-header-title">Wells by type</p></header>
+            <div class="card-content">
+                <table class="table is-fullwidth is-narrow is-striped">
+                    <tbody>{% for row in well_types %}<tr><td class="rank">{{ forloop.counter }}.</td><td>{{ row.label }}</td><td class="has-text-right">{{ row.count|intcomma }}</td></tr>{% endfor %}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    <div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='Oil & gas permit groupings' rows=oil_gas_card view_all_url=oil_gas_facilities_url %}</div>
+</div>
+{% with schools=wells_block.schools %}
+<section class="mt-5" id="schools-near-wells">
+    <h2 class="title is-4">Schools and child care near wells</h2>
+    {% if schools.count %}
+    <p><strong>{{ schools.count|intcomma }}</strong> {% if schools.count == 1 %}school or child-care center here has{% else %}schools and child-care centers here have{% endif %} an active or idle well within 3,200 ft{% if schools.top|length < schools.count %} (the {{ schools.top|length }} with the most wells){% endif %}:</p>
+    <div class="table-container">
+    <table class="table is-fullwidth is-narrow wells-schools is-stacked-mobile">
+        <thead><tr><th>School or child care</th><th>Type</th><th class="has-text-right">Wells within 3,200 ft</th></tr></thead>
+        <tbody>
+        {% for row in schools.top %}<tr><td class="cell-name">{{ row.name }}</td><td class="cell-meta">{{ row.type_label }}</td><td class="has-text-right cell-value" data-unit="well{{ row.wells|pluralize }}">{{ row.wells|intcomma }}</td></tr>{% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p>No school or child-care center here has a well within 3,200 ft.</p>
+    {% endif %}
+</section>
+{% endwith %}
+{% include 'emissions/includes/methane-oil-gas.html' with here=methane_list_here %}
+{% endblock %}
+
+{% block tab-notes %}
+<details class="data-notes">
+    <summary>What this is, and isn't</summary>
+    <ul>
+        <li><strong>Counts of wells, not emissions.</strong> CalGEM's records; idle wells can still leak, and plugged wells aren't shown.</li>
+        <li><strong>CARB's oil &amp; gas "facilities" are district permit groupings</strong> that can span a whole oil field; their map points aren't well locations.</li>
+        <li><strong>Distances are straight lines</strong> from the school's map point to the well's. <a href="{% url 'emissions:about' %}#oil-gas">More on oil and gas</a></li>
+    </ul>
+</details>
+{% endblock %}

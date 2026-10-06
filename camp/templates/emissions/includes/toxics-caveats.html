@@ -1,0 +1,19 @@
+{% comment %}"What this is, and isn't": the caveat panel for the weighted toxics measures (facility page, About). `health_values` is SourceImport.latest('contable').{% endcomment %}
+{% comment %}`items_only` (the facility page's one "What this is, and isn't"): the list alone. Compact: the one point nobody should miss stays in view, the rest folds away; the About page shows it all.{% endcomment %}
+{% if items_only %}{% elif compact %}
+<p class="toxics-lead"><strong>Not a health risk.</strong> The weighted share ranks pounds released × how toxic each chemical is, against the Valley's total; it isn't anyone's exposure or a risk "in a million".</p>
+<details class="data-notes">
+    <summary>What this is, and isn't</summary>
+{% else %}
+<div class="content toxics-caveats">
+    <p class="heading">What this is, and isn't</p>
+{% endif %}
+    <ul>
+        <li><strong>Not a health risk.</strong> This ranks pounds released × how toxic each chemical is. It ignores stack height, weather, distance to homes and how long anyone is exposed. A tall stack in open land can score higher than a small source next to a school.</li>
+        <li><strong>Relative, not absolute.</strong> The number is a share of the Valley total. It has no units and isn't a risk "in a million".</li>
+        <li><strong>The official measures are CARB's Hot Spots scores.</strong> Where a facility has one, it's shown. As of the district's 2025 report, no Valley facility exceeds the public-notification threshold.</li>
+        <li><strong>Toxics may be from earlier years.</strong> CARB carries a facility's toxics forward from its last inventory.</li>
+        <li><strong>Diesel PM here is from permitted stationary engines only.</strong> Trucks, trains and farm equipment, the main sources of diesel exposure in the Valley, aren't permitted facilities.</li>
+        <li><strong>Chemicals with no state cancer value count as zero.</strong> Health values change: this uses OEHHA's table dated {% if health_values.version %}{{ health_values.version }}{% else %}(not yet loaded){% endif %}.</li>
+    </ul>
+{% if items_only %}{% elif compact %}</details>{% else %}</div>{% endif %}

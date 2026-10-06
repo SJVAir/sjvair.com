@@ -1,0 +1,48 @@
+{% extends 'emissions/base.html' %}
+{% load pesticides_explorer %}
+
+{% block title %}Facilities | {{ block.super }}{% endblock %}
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">Facilities</a></li>{% endblock %}
+
+{% block explorer-content %}
+<div class="columns">
+    <div class="column is-3-desktop">
+        <div class="explorer-filters box">
+        {% include 'emissions/includes/find-field.html' %}
+        <form method="get" hx-trigger="submit, change delay:250ms">
+            {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+            <input type="hidden" name="sort" value="{{ sort }}">
+            <div class="field">
+                <label class="label" for="facility-q">Search</label>
+                <div class="control has-icons-left">
+                    <input class="input" type="search" id="facility-q" name="q" value="{{ filters.q|default:'' }}" placeholder="Facility name"
+                        hx-get="{{ request.path }}" hx-include="closest form" hx-trigger="keyup changed delay:500ms, search">
+                    <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
+                </div>
+            </div>
+            <div class="field">
+                <label class="label" for="facility-sector">Sector</label>
+                <div class="control"><div class="select is-fullwidth"><select id="facility-sector" name="sector">
+                    <option value="">All sectors</option>
+                    {% for value, label in sector_options %}<option value="{{ value }}"{% if filters.sector == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select></div></div>
+            </div>
+            <div class="field">
+                <label class="label" for="facility-compliance">EPA compliance</label>
+                <div class="control"><div class="select is-fullwidth"><select id="facility-compliance" name="compliance">
+                    {% for value, label in compliance_options %}<option value="{{ value }}"{% if filters.compliance == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select></div></div>
+                <p class="help">About 660 large sources; <a href="{% url 'emissions:about' %}#compliance">what this covers</a>.</p>
+            </div>
+            {# Every field applies itself as it changes; there's nothing to Apply. #}
+            {% if filters.q or filters.sector or filters.compliance %}<p class="filters-clear"><a href="{{ request.path }}{{ scope_qs }}">Clear filters</a></p>{% endif %}
+        </form>
+        </div>
+    </div>
+    <div class="column">
+        {% include 'emissions/includes/facility-table.html' with sortable=True %}
+        {% include 'pesticides/includes/pagination.html' %}
+        <p class="mt-3"><a href="{% qs_replace format='csv' page=None %}" hx-boost="false" download>Download these facilities (CSV)</a></p>
+    </div>
+</div>
+{% endblock %}

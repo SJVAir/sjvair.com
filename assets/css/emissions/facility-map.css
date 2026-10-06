@@ -1,0 +1,286 @@
+/* Facility map (assets/js/emissions/facility-map.js). The chrome around it
+   (toolbar, legend card, zoom/locate/home controls, status pill, expanded
+   mode) is the shared map chrome, css/maps/map.css; this file styles only
+   what the facility map adds. */
+
+/* The sector menu can be long. */
+.facility-map-sector .dropdown-content {
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+}
+
+/* Legend body: size key, colour classes, "none reported". */
+.facility-map-legend .legend-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+.facility-map-legend .legend-sizes {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+.facility-map-legend .legend-size {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+}
+.facility-map-legend .legend-size circle {
+  fill: none;
+  stroke: #7a7a7a;
+  stroke-width: 1.25;
+}
+.facility-map-legend .legend-bins {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.35rem;
+}
+.facility-map-legend .legend-swatch {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-right: 0.35rem;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+/* The Dairies tab's EPA size classes: each label spells out its thresholds,
+   so it wraps beside its swatch rather than under it. */
+.facility-map-legend .legend-bins.is-size-classes .legend-bin {
+  display: flex;
+  align-items: baseline;
+  max-width: 15rem;
+}
+.facility-map-legend .legend-bins.is-size-classes .legend-swatch {
+  flex: none;
+}
+.facility-map-legend .legend-ring {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-right: 0.35rem;
+  border: 1px solid #6b7480;
+  border-radius: 50%;
+  background: #c9ced6;
+  vertical-align: middle;
+}
+.facility-map-legend .legend-empty {
+  margin-top: 0.35rem;
+  color: #7a7a7a;
+}
+
+.facility-popup p {
+  margin: 0 0 0.2rem;
+}
+.facility-popup-name {
+  font-weight: 600;
+}
+
+/* The Facilities | Areas switch. The Areas-only dropdowns hide with the
+   `hidden` attribute, which Bulma's .dropdown display would otherwise beat. */
+.map-toolbar [data-areas-only][hidden] {
+  display: none;
+}
+/* An open toolbar menu goes over the legend card (both sit at z-index 1000,
+   and the card comes later): the sector menu, on the switch's second row,
+   reaches it. */
+.map-toolbar:has(.map-toolbar-filters .dropdown.is-active) {
+  z-index: 1002;
+}
+/* One row: the Facilities | Areas switch, sector, then level and measure. */
+.map-toolbar .map-toolbar-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.facility-map-view.buttons {
+  margin-bottom: 0;
+  flex-wrap: nowrap;
+}
+.facility-map-view.buttons .button {
+  margin-bottom: 0;
+}
+.facility-map-view .button {
+  height: 33px; /* the SDK's control buttons, as the other toolbar buttons */
+  font-size: 0.85rem;
+}
+
+/* Area classes: square swatches, and an outline-only "no facilities". */
+.facility-map-legend .legend-swatch.is-area {
+  border-radius: 2px;
+}
+.facility-map-legend .legend-swatch.is-none {
+  background: transparent;
+  border: 1px solid #4a5568;
+}
+.facility-map-legend .legend-note {
+  margin-top: 0.35rem;
+  color: #7a7a7a;
+  max-width: 14rem;
+}
+.area-popup p {
+  margin: 0 0 0.2rem;
+}
+
+/* On a phone the core folds toolbar labels down to their icons; the level and
+   measure have no icon, so they keep their labels. */
+@media (max-width: 768px) {
+  .map-toolbar .facility-map-level .map-toolbar-label,
+  .map-toolbar .facility-map-measure .map-toolbar-label {
+    display: inline;
+    max-width: 8.5rem;
+  }
+}
+
+/* The plain Facilities legend's merged key (valueKeyHtml(), facility-map.js):
+   a circle per colour class at that class's size, largest first. The svgs
+   share one width (the largest circle's), so the labels line up. */
+.facility-map-legend .legend-key {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.facility-map-legend .legend-key-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.facility-map-legend .legend-key-row svg {
+  flex: none;
+}
+.facility-map-legend .legend-key-row circle {
+  stroke-width: 1;
+}
+
+/* The size key's three sample circles (70px cells at MAX_RADIUS 34) crowd a
+   phone-width legend card. Each sample's svg carries its own viewBox
+   (sizeCircle(), facility-map.js), so shrinking its CSS width scales the
+   whole drawing down rather than clipping it -- the map's own circles
+   (paint's `_radius`) are a separate size and untouched. */
+@media (max-width: 480px) {
+  .facility-map-legend .legend-size svg {
+    width: 44px;
+    height: 44px;
+  }
+  .facility-map-legend .legend-sizes {
+    gap: 0.25rem;
+  }
+  /* The same scaling for the merged key: one width for every row keeps the
+     circles in proportion. */
+  .facility-map-legend .legend-key-row svg {
+    width: 44px;
+    height: auto;
+  }
+}
+
+/* The Dairies tab map (dairy-map.js), and dairies on region pages' maps. */
+.map-toolbar [data-counties-only][hidden],
+.map-toolbar [data-dairies-only][hidden] {
+  display: none;
+}
+/* The size legend: a class the toolbar filter has unticked, dimmed and
+   struck through rather than removed, so its swatch still explains the
+   colour a moment ago on the map. */
+.facility-map-legend .legend-bin.is-filtered-out {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+.facility-map-legend .legend-size circle.is-dairy {
+  stroke: #d95f0e;
+}
+.dairy-popup-herd {
+  margin: 0.15rem 0 0.3rem;
+  font-size: 0.8rem;
+}
+.dairy-popup-herd td {
+  padding: 0 0.75rem 0 0;
+}
+
+/* The Options menu's body (inside its toolbar dropdown): the Tiles and
+   Ramp experiment selects. Same look as the pesticides section map's,
+   css/pesticides/section-map.css. */
+.facility-map-options {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+}
+.facility-map-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+}
+.facility-map-options .facility-map-select {
+  justify-content: space-between;
+  align-self: stretch;
+  gap: 0.6rem;
+}
+.facility-map-options .facility-map-select select {
+  font-size: 0.8rem;
+  padding: 0.1rem 0.25rem;
+  border: 1px solid #dbdbdb;
+  border-radius: 4px;
+  background: #fff;
+}
+
+/* The methane source popup: its sector, two facts, then the plume on the
+   map with a stepper through its passes, and the source record link. */
+.methane-popup .methane-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.1rem 0.6rem;
+  margin: 0.4rem 0;
+}
+.methane-popup .methane-facts dt {
+  color: #7a7a7a;
+}
+.methane-popup .methane-facts dd {
+  margin: 0;
+}
+.methane-popup .methane-plume-panel {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #ededed;
+}
+.methane-popup .methane-plume-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.methane-popup .methane-plume-label {
+  color: #7a7a7a;
+}
+.methane-popup .methane-plume-stepper.buttons {
+  margin: 0;
+  flex-wrap: nowrap;
+}
+.methane-popup .methane-plume-stepper .button {
+  margin-bottom: 0;
+}
+.methane-popup .methane-plume-date {
+  min-width: 7.5rem;
+  color: #363636;
+}
+.methane-popup .methane-plume-details {
+  color: #7a7a7a;
+  font-size: 0.85em;
+}
+.methane-popup .methane-plume-details {
+  margin-top: 0.35rem;
+}
+.methane-popup .methane-record {
+  margin-top: 0.5rem;
+}
+
+/* The full map page: once scrolled to, the map fills what the navbar and
+   the sticky scope bar leave of the screen, rather than running past it. */
+body.map-page .map-wrap:not(.is-compact):not(.is-expanded) .map-canvas {
+  height: calc(100vh - 3.25rem - 4.5rem);
+  height: calc(100dvh - 3.25rem - 4.5rem);
+  min-height: 420px;
+}
+

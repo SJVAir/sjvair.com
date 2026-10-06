@@ -1,0 +1,46 @@
+{% extends 'emissions/base.html' %}
+{% load humanize emissions_explorer %}
+
+{% block breadcrumbs %}<span></span>{% endblock %}
+
+{% block explorer-content %}
+<div class="content intro">
+    <p class="is-size-5">
+        See the air pollution reported by permitted facilities across the eight San Joaquin Valley counties, from power
+        plants, refineries and glass factories to dairies, food processors and gas stations: what each one emits, where,
+        and how it compares. Facility emissions come from the California Air Resources Board's
+        <a href="{% url 'emissions:about' %}">facility inventory (CEIDARS)</a>, with CARB's county-wide estimates of all
+        sources for context.
+    </p>
+</div>
+<div class="level stat-row box">
+    <div class="level-item has-text-centered"><div><p class="heading">Facilities in {{ year }}</p><p class="title">{{ totals.facilities|intcomma }}</p><p class="stat-note"></p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">{% if pollutant.weighted %}Share of the Valley's {{ pollutant.label|lower }} toxics{% else %}{{ pollutant.name }}{% endif %}</p><p class="title">{{ total|amount:pollutant }}{% if not pollutant.weighted %} <span class="is-size-5">{{ pollutant.unit_label }}</span>{% endif %}</p><p class="stat-note">{{ by_year|year_change:year }}</p></div></div>
+    {% if top_sectors %}
+    <div class="level-item has-text-centered"><div><p class="heading">Largest sector's share</p><p class="title">{{ top_sectors.0.share|percent }}</p><p class="stat-note"><a href="{% url 'emissions:sector-detail' top_sectors.0.sector %}{{ scope_qs }}">{{ top_sectors.0.label }}</a></p></div></div>
+    {% endif %}
+</div>
+
+<div class="columns find-row">
+    <div class="column is-half">{% include 'emissions/includes/find-area.html' %}</div>
+    <div class="column is-half">{% include 'emissions/includes/find-facility.html' %}</div>
+</div>
+
+{% url 'emissions:facility-list' as facility_list_url %}{% url 'emissions:sector-list' as sector_list_url %}
+<div class="columns leaderboards">
+    <div class="column is-half-tablet">{% include 'emissions/includes/board.html' with title='Top facilities' rows=facility_board view_all_url=facility_list_url %}</div>
+    <div class="column is-half-tablet">{% include 'emissions/includes/board.html' with title='Top sectors' rows=sector_board view_all_url=sector_list_url %}</div>
+</div>
+
+{# The trend and the context for it (all sources, ammonia's sources, or the toxics breakdown) side by side. #}
+<div class="columns">
+    <div class="column is-half-desktop">{% emissions_trend_chart by_year pollutant year heading="Over time" %}</div>
+    <div class="column is-half-desktop">
+        {% if context_bar or nei_context or toxics_breakdown %}<h2 class="title is-4">In context</h2>{% endif %}
+        {% if context_bar %}{% include 'emissions/includes/context-bar.html' %}{% endif %}
+        {% if nei_context %}{% include 'emissions/includes/nei-context-bar.html' %}{% endif %}
+        {% if toxics_breakdown %}{% include 'emissions/includes/toxics-breakdown.html' %}{% endif %}
+    </div>
+</div>
+
+{% endblock %}
