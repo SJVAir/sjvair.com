@@ -517,11 +517,11 @@ class NarrowScopeTests(RollupTestMixin, TestCase):
 
     def test_rollup_only_narrowings_need_the_rollup(self):
         # PesticideUseTotal's per-chemical rows carry no product, so a
-        # fumigant narrowing has to read the rollup instead.
+        # fumigant or restricted narrowing has to read the rollup instead.
         assert stats.narrow_needs_rollup(stats.NARROW_FUMIGANT) is True
         assert stats.narrow_needs_rollup(stats.NARROW_CONCERN) is False
         assert stats.narrow_needs_rollup('') is False
-        assert stats.narrow_needs_rollup(stats.NARROW_RESTRICTED) is False
+        assert stats.narrow_needs_rollup(stats.NARROW_RESTRICTED) is True
 
     def test_county_totals_answer_the_fumigant_narrowing(self):
         # The regression this guards: filtering PesticideUseTotal's chemical
@@ -538,12 +538,63 @@ class NarrowScopeTests(RollupTestMixin, TestCase):
         b = stats.county_totals(2023, concern=stats.NARROW_FUMIGANT)
         assert sum(r['lbs'] or 0 for r in a) != sum(r['lbs'] or 0 for r in b)
 
-    def test_restricted_narrows_on_the_chemical_category(self):
+    def test_restricted_narrows_on_the_product(self):
         rows = PesticideUseRollup.objects.all()
         narrowed = stats.narrow_rows(rows, stats.NARROW_RESTRICTED)
         assert narrowed.exists()
-        for row in narrowed.select_related('chemical'):
-            assert Chemical.Category.CALIFORNIA_RESTRICTED in row.chemical.categories
+        for row in narrowed.select_related('product'):
+            assert row.product.is_restricted
+
+    def test_restricted_follows_cdpr_flag_over_the_ingredients(self):
+        rows = PesticideUseRollup.objects.all()
+        by_ingredient = set(stats.narrow_rows(rows, stats.NARROW_RESTRICTED).values_list('pk', flat=True))
+        assert by_ingredient
+        # CDPR says every product is unrestricted: nothing is kept, even
+        # the products with an ingredient on our list.
+        Product.objects.update(california_restricted=False)
+        assert not stats.narrow_rows(rows, stats.NARROW_RESTRICTED).exists()
+        # CDPR says one unlisted-ingredient product is restricted: all of its
+        # rows are kept, and only its rows.
+        Product.objects.update(california_restricted=None)
+        plain = Product.objects.exclude(
+            pk__in=set(rows.filter(pk__in=by_ingredient).values_list('product', flat=True))).first()
+        plain.california_restricted = True
+        plain.save()
+        kept = stats.narrow_rows(rows, stats.NARROW_RESTRICTED)
+        assert set(kept.filter(product=plain).values_list('pk', flat=True)) == set(
+            rows.filter(product=plain).values_list('pk', flat=True))
+        assert set(kept.values_list('pk', flat=True)) == by_ingredient | set(
+            rows.filter(product=plain).values_list('pk', flat=True))
+
+    def test_restricted_narrowing_keeps_whole_reports(self):
+        # Product is report-level: narrowing keeps every row of a restricted
+        # product's report, so records stay exact.
+        rows = PesticideUseRollup.objects.all()
+        Product.objects.update(california_restricted=False)
+        flagged = Product.objects.get(pk=1)
+        flagged.california_restricted = True
+        flagged.save()
+        kept = stats.narrow_rows(rows, stats.NARROW_RESTRICTED)
+        assert kept.exists()
+        assert set(kept.values_list('product', flat=True)) == {1}
+        assert kept.count() == rows.filter(product=1).count()
+        assert sum(r.records for r in kept) == sum(r.records for r in rows.filter(product=1))
+
+    def test_restricted_notices_follow_the_product_flag(self):
+        notices = PesticideNotice.objects.all()
+        Product.objects.update(california_restricted=False)
+        assert not stats.narrow_notices(notices, stats.NARROW_RESTRICTED).exists()
+        linked = notices.filter(products__isnull=False).first()
+        product = linked.products.first()
+        product.california_restricted = True
+        product.save()
+        narrowed = stats.narrow_notices(notices, stats.NARROW_RESTRICTED)
+        assert linked.pk in set(narrowed.values_list('pk', flat=True))
+        assert narrowed.count() == len(set(narrowed.values_list('pk', flat=True)))
+        # Back to NULL: the ingredient rule decides again.
+        Product.objects.update(california_restricted=None)
+        for notice in stats.narrow_notices(notices, stats.NARROW_RESTRICTED):
+            assert any(p.is_restricted for p in notice.products.all())
 
     def test_restricted_is_its_own_narrowing(self):
         rows = PesticideUseRollup.objects.all()

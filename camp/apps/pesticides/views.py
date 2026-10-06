@@ -687,17 +687,11 @@ class ProductList(ExplorerListMixin, vanilla.ListView):
         fumigant = self.form.bool_value('fumigant')
         if fumigant is not None:
             queryset = queryset.filter(is_fumigant=fumigant)
-        # Restricted is a property of the active ingredient (3 CCR 6400), so
-        # it reads off the chemicals the way "of concern" above does rather
-        # than off the deprecated Product.california_restricted flag, which
-        # no import has ever set.
+        # CDPR's per-product flag, with the ingredient rule for products its
+        # file doesn't list (see ProductQuerySet.restricted_expression).
         restricted = self.form.bool_value('california_restricted')
         if restricted is not None:
-            has_restricted = ProductChemical.objects.filter(
-                chemical__categories__contains=[Chemical.Category.CALIFORNIA_RESTRICTED],
-            ).values('product')
-            queryset = (queryset.filter(pk__in=has_restricted) if restricted
-                else queryset.exclude(pk__in=has_restricted))
+            queryset = queryset.restricted(restricted)
         return queryset
 
     def annotate_queryset(self, queryset, year):
@@ -1083,10 +1077,11 @@ class ProductDetail(ExplorerDetailMixin, vanilla.DetailView):
         # concern pounds at all, so scoping it would blank the page; it
         # renders unscoped with a note instead, like a chemical that isn't
         # of concern.
+        if self.concern == stats.NARROW_RESTRICTED:
+            # The product is restricted by CDPR's flag, not only by an ingredient.
+            return self.object.is_restricted
         if self.concern == stats.NARROW_CONCERN:
             chemicals = stats.of_concern_chemicals()
-        elif self.concern == stats.NARROW_RESTRICTED:
-            chemicals = stats.restricted_chemicals()
         else:
             return True
         return ProductChemical.objects.filter(product=self.object, chemical__in=chemicals).exists()

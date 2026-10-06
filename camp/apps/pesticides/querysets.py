@@ -1,5 +1,5 @@
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
-from django.db.models import Exists, OuterRef, Prefetch, Q, QuerySet
+from django.db.models import BooleanField, Case, Exists, OuterRef, Prefetch, Q, QuerySet, Value, When
 
 
 class SearchMixin:
@@ -73,20 +73,36 @@ class CommodityQuerySet(SearchMixin, QuerySet):
 class ProductQuerySet(SearchMixin, QuerySet):
     search_secondary = 'reg_number'
 
-    def with_restricted(self):
+    @staticmethod
+    def restricted_expression():
         """
-        Annotate whether each product carries a restricted active ingredient
-        (3 CCR 6400), so `Product.is_restricted` costs no query per row.
-        Serializing a list without this walks each product's chemicals.
+        Whether a product is restricted: CDPR's per-product flag when its
+        RESTRICTED.txt lists the product (it applies 3 CCR 6400's formulation
+        and use exemptions), else -- NULL, not in the file -- whether any
+        ingredient is on our 3 CCR 6400 list.
         """
         from camp.apps.pesticides.models import Chemical, ProductChemical
-        return self.annotate(has_restricted_chemical=Exists(
-            ProductChemical.objects.filter(
+        return Case(
+            When(california_restricted=True, then=Value(True)),
+            When(california_restricted=False, then=Value(False)),
+            default=Exists(ProductChemical.objects.filter(
                 product=OuterRef('pk'),
                 chemical__categories__contains=[Chemical.Category.CALIFORNIA_RESTRICTED],
-            )
-        ))
+            )),
+            output_field=BooleanField(),
+        )
 
+    def with_restricted(self):
+        """
+        Annotate whether each product is restricted (see restricted_expression),
+        so `Product.is_restricted` costs no query per row. Serializing a list
+        without this walks each product's chemicals.
+        """
+        return self.annotate(restricted_status=self.restricted_expression())
+
+    def restricted(self, value=True):
+        """The products that are (or, with value=False, are not) restricted."""
+        return self.alias(restricted_alias=self.restricted_expression()).filter(restricted_alias=value)
     def with_commodities(self, **filters):
         from camp.apps.pesticides.models import Commodity
         queryset = Commodity.objects.all()

@@ -207,3 +207,24 @@ class RestrictedMaterialsImportTests(TestCase):
         assert lorsban.is_restricted is True
         # ...and a product whose ingredients aren't restricted isn't.
         assert Product.objects.get(prodno=1).is_restricted is False
+
+    def test_cdpr_flag_beats_the_ingredient_rule(self):
+        call_command('import_restricted_materials', verbosity=0)
+        lorsban = Product.objects.get(prodno=2)
+        assert lorsban.is_restricted is True
+        # CDPR's file lists it unrestricted (a use/formulation exemption).
+        Product.objects.filter(prodno=2).update(california_restricted=False)
+        assert Product.objects.get(prodno=2).is_restricted is False
+        assert Product.objects.with_restricted().get(prodno=2).is_restricted is False
+        # ...and a flagged product is restricted with no listed ingredient.
+        Product.objects.filter(prodno=1).update(california_restricted=True)
+        assert Product.objects.get(prodno=1).is_restricted is True
+        assert Product.objects.with_restricted().get(prodno=1).is_restricted is True
+        assert set(Product.objects.restricted().values_list('prodno', flat=True)) == {1}
+        assert set(Product.objects.restricted(False).values_list('prodno', flat=True)) == {2} | set(
+            Product.objects.exclude(prodno__in=[1, 2]).values_list('prodno', flat=True))
+
+    def test_null_flag_falls_back_to_ingredients(self):
+        call_command('import_restricted_materials', verbosity=0)
+        assert Product.objects.with_restricted().get(prodno=2).is_restricted is True
+        assert Product.objects.with_restricted().get(prodno=1).is_restricted is False

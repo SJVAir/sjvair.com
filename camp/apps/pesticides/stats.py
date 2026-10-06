@@ -11,7 +11,7 @@ from django.contrib.gis.db.models.functions import Centroid
 from django.contrib.gis.measure import D
 from django.conf import settings
 from django.core.cache import cache
-from django.db.models import Case, Count, F, FloatField, Max, Min, Q, Sum, When
+from django.db.models import Case, Count, Exists, F, FloatField, Max, Min, OuterRef, Q, Sum, When
 from django.db.models.functions import Lower, Trim
 from django.utils import timezone
 
@@ -267,10 +267,10 @@ def narrow_needs_rollup(narrow):
     Whether the narrowing can only be answered from the rollup -- the totals
     tables carry neither the product for chemical rows nor the application
     method. A source that pre-sums by chemical can answer "of concern" but
-    not "fumigant", and has to give way to the rollup, where both sit on the
-    same row.
+    not "fumigant" or "restricted" (a property of the product, CDPR's flag),
+    and has to give way to the rollup, where both sit on the same row.
     """
-    return narrow in {NARROW_FUMIGANT, NARROW_AERIAL}
+    return narrow in {NARROW_FUMIGANT, NARROW_AERIAL, NARROW_RESTRICTED}
 
 
 def narrow_rows(rows, narrow, method_field='method'):
@@ -284,7 +284,7 @@ def narrow_rows(rows, narrow, method_field='method'):
     if narrow == NARROW_CONCERN:
         return concern_rows(rows)
     if narrow == NARROW_RESTRICTED:
-        return rows.filter(chemical__in=restricted_chemicals())
+        return rows.filter(Exists(restricted_products().filter(pk=OuterRef('product'))))
     if narrow == NARROW_FUMIGANT:
         return rows.filter(product__is_fumigant=True)
     if narrow == NARROW_AERIAL:
@@ -297,7 +297,11 @@ def narrow_notices(notices, narrow):
     if narrow == NARROW_CONCERN:
         return concern_notices(notices)
     if narrow == NARROW_RESTRICTED:
-        return notices.filter(chemicals__in=restricted_chemicals()).distinct()
+        return notices.filter(Exists(
+            PesticideNotice.products.through.objects.filter(
+                pesticidenotice=OuterRef('pk'), product__in=restricted_products().values('pk'),
+            )
+        ))
     if narrow == NARROW_FUMIGANT:
         # A SprayDays fumigation notice can arrive without a linked product.
         return notices.filter(Q(products__is_fumigant=True) | Q(application_method__iexact='Fumigation')).distinct()
@@ -856,8 +860,8 @@ def top_related(rows, year, field, lbs_field='lbs_chemical', limit=10, all_years
     model = rows.model._meta.get_field(field).related_model
     objects = model.objects
     if field == 'product':
-        # The product badge reads is_restricted, which walks the ingredients
-        # once per row without this.
+        # The product badge reads is_restricted, which falls back to walking
+        # the ingredients once per row without this.
         objects = objects.with_restricted()
     objects = objects.in_bulk([row[field] for row in found])
     return [
@@ -1102,6 +1106,16 @@ def restricted_chemicals():
     the product flag beside it is deprecated and never populated.
     """
     return Chemical.objects.filter(categories__contains=[Chemical.Category.CALIFORNIA_RESTRICTED])
+
+
+def restricted_products():
+    """
+    The products California restricts: CDPR's per-product flag, or -- for a
+    product CDPR's file doesn't list -- a restricted ingredient. Unlike
+    `restricted_chemicals()` (which badges chemicals), this is what the
+    "Restricted materials" narrowing keeps.
+    """
+    return Product.objects.restricted()
 
 
 def concern_rows(rows):

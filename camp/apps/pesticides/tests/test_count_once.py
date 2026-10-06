@@ -4,7 +4,7 @@ from django.urls import reverse
 
 from camp.apps.pesticides import places, rollup, stats
 from camp.apps.pesticides.models import (
-    Chemical, Commodity, FumigationMethod, PesticideUse, PesticideUseRollup, Product,
+    Chemical, Commodity, FumigationMethod, PesticideUse, PesticideUseRollup, Product, ProductChemical,
 )
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
 from camp.apps.regions.models import Region
@@ -256,6 +256,10 @@ class NarrowedCountOnceTests(RollupTestMixin, TestCase):
         low = Chemical.objects.create(chem_code=prodno, name=f'PLAIN {prodno}')
         flagged = Chemical.objects.create(chem_code=prodno + 1, name=f'FLAGGED {prodno}', categories=[category])
         assert low.pk < flagged.pk
+        # The product carries both ingredients, as a real one does: its
+        # restricted status (no CDPR flag here) comes from the flagged one.
+        for chemical in (low, flagged):
+            ProductChemical.objects.create(product=product, chemical=chemical)
         for chemical, lbs in ((flagged, 20), (low, 30)):
             PesticideUse.objects.create(
                 year=2023, use_no=prodno, county_id=9001, mtrs_id=9101, product=product,

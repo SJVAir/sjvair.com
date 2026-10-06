@@ -263,21 +263,25 @@ class Product(TimeStampedModel):
     @property
     def is_restricted(self):
         """
-        Does this product contain an active ingredient California restricts
-        (3 CCR 6400)? The regulation names ingredients, so the status is a
-        property of the chemicals rather than a column here.
+        Is this a California restricted material product (3 CCR 6400)?
+        CDPR's per-product flag decides when it has one; a product its
+        RESTRICTED.txt doesn't list (NULL) is restricted when any active
+        ingredient is on our list.
 
         Reads the annotation `ProductQuerySet.with_restricted()` adds when
         it's there, and falls back to walking `chemicals.all()` -- which is
         a query per product, so a list should annotate or prefetch.
         """
-        annotated = getattr(self, 'has_restricted_chemical', None)
+        if self.california_restricted is not None:
+            return self.california_restricted
+        annotated = getattr(self, 'restricted_status', None)
         if annotated is not None:
             return annotated
         return any(
             Chemical.Category.CALIFORNIA_RESTRICTED in (chemical.categories or [])
             for chemical in self.chemicals.all()
         )
+
     chemicals = models.ManyToManyField(
         'pesticides.Chemical',
         through='ProductChemical',
