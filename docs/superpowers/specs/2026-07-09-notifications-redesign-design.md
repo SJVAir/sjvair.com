@@ -120,6 +120,8 @@ One operational side effect worth knowing about at deploy time: any alerts that 
 
 ## 3. Evaluator anti-flapping logic
 
+> **Superseded 2026-10-06** by `2026-10-06-alert-notification-throttling-design.md`: one trailing-hour window, no per-alert cooldown, and per-subscription texting rules in `notifications.py`.
+
 ### Window changes (`camp/apps/alerts/evaluator.py`)
 
 - `ESCALATION_WINDOW = 15m` (replaces `CREATION_WINDOW`, used for both creating a new alert and escalating an active one — i.e., level rank increasing)

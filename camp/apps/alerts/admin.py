@@ -14,7 +14,7 @@ class SubscriptionInline(admin.TabularInline):
 
 @admin.register(Subscription)
 class SubscriptionAdmin(admin.ModelAdmin):
-    list_display = ['user', 'monitor', 'level']
+    list_display = ['user', 'monitor', 'level', 'last_notified_level', 'last_notified_at']
     list_filter = ['level', 'monitor__county']
 
     def get_urls(self):
@@ -48,7 +48,7 @@ class AlertUpdateAdmin(admin.ModelAdmin):
 
 @admin.register(Notification)
 class NotificationAdmin(admin.ModelAdmin):
-    list_display = ['user', 'status', 'created', 'sent_at']
-    list_filter = ['status']
+    list_display = ['user', 'kind', 'level', 'status', 'created', 'sent_at']
+    list_filter = ['status', 'kind']
     raw_id_fields = ['alert_update', 'subscription', 'user']
     readonly_fields = ['created', 'modified']

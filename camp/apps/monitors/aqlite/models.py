@@ -67,7 +67,12 @@ class AQLite(Monitor):
             # (hourly aggregation task); listed so DefaultCalibration can
             # offer it.
             'calibrations': [processors.AQLiteHourlyAggregator],
-            'alerts': {'stage': entry_models.O3.Stage.CALIBRATED},
+            # The calibrated stage is an hourly aggregate even though raw
+            # readings arrive every 5 minutes.
+            'alerts': {
+                'stage': entry_models.O3.Stage.CALIBRATED,
+                'expected_interval': '1h',
+            },
         },
         entry_models.Temperature: {
             'fields': {'celsius': 'TEMP'},
