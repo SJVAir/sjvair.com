@@ -226,9 +226,11 @@ class FumigationCountOnceTests(RollupTestMixin, TestCase):
 
 class NarrowedCountOnceTests(RollupTestMixin, TestCase):
     """
-    A chemical-based narrowing keeps a record through its flagged ingredient,
-    even when an unflagged ingredient has the lower chemical_id: the rollup
-    designates restricted, then of-concern, ingredients first.
+    A narrowing keeps a record once: the concern narrowing through its flagged
+    ingredient, even when an unflagged ingredient has the lower chemical_id
+    (the rollup designates restricted, then of-concern, ingredients first);
+    the restricted narrowing through its product, which keeps every row of the
+    report together.
     """
 
     fixtures = ['pesticides-explorer']

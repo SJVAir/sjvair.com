@@ -1036,7 +1036,13 @@ class ChemicalDetail(ExplorerDetailMixin, vanilla.DetailView):
         if self.concern == stats.NARROW_CONCERN:
             return self.object.is_of_concern
         if self.concern == stats.NARROW_RESTRICTED:
-            return Chemical.Category.CALIFORNIA_RESTRICTED in (self.object.categories or [])
+            # Restricted is a property of the product (CDPR's flag), so the
+            # chemical applies when a restricted product containing it was
+            # reported in scope, whether or not the chemical is on our list.
+            rows = PesticideUseRollup.objects.filter(chemical=self.object)
+            if self.county is not None:
+                rows = rows.filter(county=self.county)
+            return stats.in_year(stats.narrow_rows(rows, self.concern), self.year, self.all_years).exists()
         return True
 
     def get_notes(self):

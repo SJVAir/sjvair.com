@@ -1726,12 +1726,33 @@ class NarrowPlumbingTests(RollupTestMixin, TestCase):
     def test_restricted_exclusion_notes_name_restricted_materials_not_the_flagged_lists(self):
         pages = self.excluded_pages_under('restricted')
         assert set(pages) == {'chemical', 'product', 'commodity'}
-        assert "This chemical isn't a California restricted material," in pages['chemical']
-        assert "None of this product&#x27;s active ingredients is a California restricted material," in pages['product'] \
-            or "None of this product's active ingredients is a California restricted material," in pages['product']
+        assert "No California restricted material product containing this chemical was reported here," in pages['chemical']
+        assert "CDPR doesn&#x27;t list this product as a California restricted material," in pages['product'] \
+            or "CDPR doesn't list this product as a California restricted material," in pages['product']
         assert 'No restricted material was reported on this commodity in this year and county,' in pages['commodity']
         for html in pages.values():
             assert 'Prop 65' not in html.split('placeholder-note')[1].split('</div>')[0]
+
+    def restricted_chemical_page(self, pk):
+        chemical = Chemical.objects.get(pk=pk)
+        return self.client.get(chemical.get_absolute_url(), {'narrow': 'restricted', 'year': 2023})
+
+    def test_a_listed_chemical_in_only_cdpr_unrestricted_products_is_not_a_blank_page(self):
+        listed = Chemical.objects.get(pk=2)
+        assert Chemical.Category.CALIFORNIA_RESTRICTED in listed.categories
+        Product.objects.update(california_restricted=False)
+        response = self.restricted_chemical_page(2)
+        assert response.context['concern_excluded']
+        assert 'No California restricted material product containing this chemical' in response.content.decode()
+
+    def test_an_unlisted_chemical_in_a_cdpr_restricted_product_is_scoped(self):
+        chemical = Chemical.objects.get(pk=1)
+        assert Chemical.Category.CALIFORNIA_RESTRICTED not in (chemical.categories or [])
+        Product.objects.update(california_restricted=False)
+        Product.objects.filter(pk__in=PesticideUseRollup.objects.filter(chemical=chemical).values('product')).update(
+            california_restricted=True)
+        response = self.restricted_chemical_page(1)
+        assert not response.context['concern_excluded']
 
     def test_concern_exclusion_notes_keep_the_flagged_lists_copy(self):
         Commodity.objects.create(site_code='999901', name='UNUSED CROP')

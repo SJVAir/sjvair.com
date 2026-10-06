@@ -8,7 +8,7 @@
 {% block notes %}
     {% if concern_excluded %}
     {% if concern == 'restricted' %}
-    {% include 'pesticides/includes/concern-note.html' with reason="None of this product's active ingredients is a California restricted material," %}
+    {% include 'pesticides/includes/concern-note.html' with reason="CDPR doesn't list this product as a California restricted material," %}
     {% else %}
     {% include 'pesticides/includes/concern-note.html' with reason="None of this product's active ingredients is on the Prop 65, CARB toxic air contaminant, IARC or California restricted lists," %}
     {% endif %}

@@ -103,6 +103,7 @@ class ProductQuerySet(SearchMixin, QuerySet):
     def restricted(self, value=True):
         """The products that are (or, with value=False, are not) restricted."""
         return self.alias(restricted_alias=self.restricted_expression()).filter(restricted_alias=value)
+
     def with_commodities(self, **filters):
         from camp.apps.pesticides.models import Commodity
         queryset = Commodity.objects.all()

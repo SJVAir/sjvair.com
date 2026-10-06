@@ -27,8 +27,8 @@ REBUILD_SQL = """
 -- `lbs_product_once` and `acres_once` count only that row, so sums across chemicals see the
 -- record once. The designated row is the record's California-restricted
 -- ingredient if it has one, else a chemical of concern, else the lowest
--- chemical_id (NULL chemicals last), so a chemical-based narrowing
--- (restricted / concern) keeps every record it should, exactly once. The two
+-- chemical_id (NULL chemicals last), so the chemical-based concern narrowing
+-- keeps every record it should, exactly once. The two
 -- id lists are parameters (restricted, then concern); they are read at
 -- rebuild time, so when the lists change (import_prop65, import_carbtac,
 -- import_comptox hazard, import_restricted_materials) narrowed application

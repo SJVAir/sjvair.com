@@ -1100,10 +1100,11 @@ def of_concern_chemicals():
 
 def restricted_chemicals():
     """
-    The chemicals California restricts (3 CCR 6400), as set by
-    import_restricted_materials. A restriction is a property of the active
-    ingredient, so it filters on the chemical the way "of concern" does --
-    the product flag beside it is deprecated and never populated.
+    The chemicals on our 3 CCR 6400 list, as set by
+    import_restricted_materials. Used for chemical badges and the curated
+    list, and as the ingredient fallback for products CDPR's RESTRICTED.txt
+    doesn't list. Whether a product is restricted, and so the "Restricted
+    materials" narrowing, follows CDPR's per-product flag (restricted_products).
     """
     return Chemical.objects.filter(categories__contains=[Chemical.Category.CALIFORNIA_RESTRICTED])
 
