@@ -373,12 +373,8 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
         tract = next((region for region in facility_regions if region.type == Region.Type.TRACT), None)
         ranks = stats.facility_ranks(facility, shown_year)
         ghg_card = ghg.facility_card(facility)
-        # Each toxic's change from the year before (a percent, None without
-        # one), and the largest by cancer-weighted share for the stat row.
-        toxics_rows = [
-            dict(row, change=(row['value'] - row['previous']) / row['previous'] * 100 if row['previous'] and row['value'] is not None else None)
-            for row in stats.facility_toxics(facility, shown_year)
-        ]
+        # The toxics, and the largest by cancer-weighted share for the stat row.
+        toxics_rows = stats.facility_toxics(facility, shown_year)
         weighted = [row for row in toxics_rows if row['has_cancer_value'] and row['share']]
         trend = stats.by_year(scope, facility=facility)
         return super().get_context_data(

@@ -8,7 +8,9 @@ links), one stat row (the page's pollutant, the largest toxic, the Hot Spots
 scores, EPA compliance, greenhouse gases), then the emissions table beside
 its trend, the map beside one card about the place, the toxics, compliance
 and greenhouse gases side by side, and one "What this is, and isn't" at the
-foot for the whole page.
+foot for the whole page. The toxics have no year-before column: CARB
+carries most facilities' toxics forward unchanged or scaled by one factor,
+so a per-chemical change rarely says anything.
 {% endcomment %}
 
 {% block title %}{{ facility.name|title }} | {{ block.super }}{% endblock %}
@@ -196,7 +198,6 @@ foot for the whole page.
     <thead><tr>
         <th>Contaminant</th>
         <th class="has-text-right">Lbs/yr</th>
-        <th class="has-text-right">vs {{ shown_year|add:"-1" }}</th>
         <th class="has-text-right">Share of the Valley's cancer-weighted total
             <span class="icon is-small has-text-grey has-tooltip-multiline has-tooltip-bottom has-tooltip-end has-tooltip-arrow" data-tooltip="This pollutant's pounds × its OEHHA cancer potency, as a share of the same sum over every permitted facility in the eight counties in {{ shown_year }}. Not a risk to anyone. A dash: OEHHA has set no cancer value for it."><span class="fa-regular fa-circle-info" aria-hidden="true"></span></span></th>
         <th>Non-cancer hazard
@@ -207,7 +208,6 @@ foot for the whole page.
         <tr{% if forloop.counter > toxics_shown %} class="is-collapsed"{% endif %}>
             <td class="cell-name"><a href="{% qs_replace toxics=1 pollutant=row.pollutant.slug %}">{{ row.pollutant.name }}</a></td>
             <td class="has-text-right cell-value" data-unit="lbs/yr">{{ row.value|quantity }}</td>
-            <td class="has-text-right cell-meta{% if row.change is None %} is-none{% endif %}" data-label="vs {{ shown_year|add:'-1' }}"{% if row.previous is not None %} title="{{ row.previous|quantity }} lbs in {{ shown_year|add:'-1' }}"{% endif %}>{% if row.change is not None %}{{ row.change|signed_pct }}{% else %}—{% endif %}</td>
             <td class="has-text-right cell-meta{% if not row.has_cancer_value %} is-none{% endif %}" data-label="Cancer-weighted share">{% if row.has_cancer_value %}{{ row.share|share_pct }}{% else %}—{% endif %}</td>
             <td class="cell-meta">{% if row.hazard %}<span class="hazard-dot" title="Has a chronic reference exposure level" aria-label="non-cancer hazard"></span>{% endif %}</td>
         </tr>
