@@ -1084,7 +1084,8 @@ class ProductDetail(ExplorerDetailMixin, vanilla.DetailView):
         # renders unscoped with a note instead, like a chemical that isn't
         # of concern.
         if self.concern == stats.NARROW_RESTRICTED:
-            # The product is restricted by CDPR's flag, not only by an ingredient.
+            # Restricted is a property of the product (CDPR's flag, else the
+            # ingredient rule), not of any one chemical.
             return self.object.is_restricted
         if self.concern == stats.NARROW_CONCERN:
             chemicals = stats.of_concern_chemicals()

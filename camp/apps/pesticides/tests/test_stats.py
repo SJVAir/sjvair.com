@@ -596,6 +596,30 @@ class NarrowScopeTests(RollupTestMixin, TestCase):
         for notice in stats.narrow_notices(notices, stats.NARROW_RESTRICTED):
             assert any(p.is_restricted for p in notice.products.all())
 
+    def test_unlinked_restricted_notices_fall_back_to_their_listed_chemicals(self):
+        from django.utils import timezone
+        # SprayDays links only products already in our DB, so a notice with no
+        # linked product is judged by the restricted ingredients it lists.
+        Product.objects.update(california_restricted=False)
+        listed = Chemical.objects.filter(pk__in=stats.restricted_chemicals().values('pk')).first()
+        other = Chemical.objects.exclude(pk__in=stats.restricted_chemicals().values('pk')).first()
+        with_chemical = PesticideNotice.objects.create(
+            application_id=9101, comtrs='10M13S14E10', county_id=9001, scheduled_application=timezone.now())
+        with_chemical.chemicals.add(listed)
+        without = PesticideNotice.objects.create(
+            application_id=9102, comtrs='10M13S14E11', county_id=9001, scheduled_application=timezone.now())
+        without.chemicals.add(other)
+        kept = set(stats.narrow_notices(PesticideNotice.objects.all(), stats.NARROW_RESTRICTED).values_list('pk', flat=True))
+        assert with_chemical.pk in kept
+        assert without.pk not in kept
+        # A linked, unrestricted product decides on its own: the listed chemical doesn't rescue it.
+        linked = PesticideNotice.objects.create(
+            application_id=9103, comtrs='10M13S14E12', county_id=9001, scheduled_application=timezone.now())
+        linked.chemicals.add(listed)
+        linked.products.add(Product.objects.first())
+        kept = set(stats.narrow_notices(PesticideNotice.objects.all(), stats.NARROW_RESTRICTED).values_list('pk', flat=True))
+        assert linked.pk not in kept
+
     def test_restricted_is_its_own_narrowing(self):
         rows = PesticideUseRollup.objects.all()
         everything = set(rows.values_list('pk', flat=True))

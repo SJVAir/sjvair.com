@@ -284,7 +284,8 @@ def narrow_rows(rows, narrow, method_field='method'):
     if narrow == NARROW_CONCERN:
         return concern_rows(rows)
     if narrow == NARROW_RESTRICTED:
-        return rows.filter(Exists(restricted_products().filter(pk=OuterRef('product'))))
+        # A few thousand ids at most: cheaper than a correlated Exists per row.
+        return rows.filter(product_id__in=list(restricted_products().values_list('pk', flat=True)))
     if narrow == NARROW_FUMIGANT:
         return rows.filter(product__is_fumigant=True)
     if narrow == NARROW_AERIAL:
@@ -297,11 +298,17 @@ def narrow_notices(notices, narrow):
     if narrow == NARROW_CONCERN:
         return concern_notices(notices)
     if narrow == NARROW_RESTRICTED:
-        return notices.filter(Exists(
-            PesticideNotice.products.through.objects.filter(
-                pesticidenotice=OuterRef('pk'), product__in=restricted_products().values('pk'),
-            )
-        ))
+        # The product rule's fallback, at the notice level: SprayDays links
+        # only products already in our DB, so a notice with no linked product
+        # is judged by the restricted ingredients it lists.
+        product_links = PesticideNotice.products.through.objects.filter(pesticidenotice=OuterRef('pk'))
+        chemical_links = PesticideNotice.chemicals.through.objects.filter(
+            pesticidenotice=OuterRef('pk'), chemical__in=restricted_chemicals().values('pk'),
+        )
+        return notices.filter(
+            Exists(product_links.filter(product__in=restricted_products().values('pk')))
+            | (~Exists(product_links) & Exists(chemical_links))
+        )
     if narrow == NARROW_FUMIGANT:
         # A SprayDays fumigation notice can arrive without a linked product.
         return notices.filter(Q(products__is_fumigant=True) | Q(application_method__iexact='Fumigation')).distinct()

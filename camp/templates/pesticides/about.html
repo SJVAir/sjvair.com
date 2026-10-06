@@ -60,7 +60,7 @@
         <li><strong>IARC Groups 1, 2A and 2B:</strong> agents the International Agency for Research on Cancer rates as carcinogenic, probably carcinogenic, or possibly carcinogenic to humans (see <a href="#iarc">below</a>). Group 3 is not included.</li>
         <li><strong>California restricted materials:</strong> active ingredients the state restricts under 3 CCR 6400, which need a county permit and a notice of intent before each application (see <a href="#restricted">below</a>).</li>
     </ul>
-    <p>A chemical only has to be on one of them. The first three are health-hazard listings and the last is a regulatory control, but a reader asking whether something is one of the bad ones is asking a single question, and a material the state restricts belongs in the answer. The narrower <strong>Restricted materials</strong> toggle isolates that last list on its own. <strong>Fumigants</strong> keeps only use of fumigant products (see <a href="#fumigant">below</a>). <strong>Applied by air</strong> keeps only the applications reported as made by aircraft (CDPR&rsquo;s application method A).</p>
+    <p>A chemical only has to be on one of them. The first three are health-hazard listings and the last is a regulatory control, but a reader asking whether something is one of the bad ones is asking a single question, and a material the state restricts belongs in the answer. The narrower <strong>Restricted materials</strong> toggle keeps only use of restricted <em>products</em> (see <a href="#restricted">below</a>). <strong>Fumigants</strong> keeps only use of fumigant products (see <a href="#fumigant">below</a>). <strong>Applied by air</strong> keeps only the applications reported as made by aircraft (CDPR&rsquo;s application method A).</p>
     <p>&ldquo;Flagged&rdquo; rather than &ldquo;of concern&rdquo; because three of these four lists are what that phrase usually names; flagged is the union of all four, and a badge on a chemical anywhere in the explorer means it is on one of them.</p>
     <p>This is the same idea as the chemicals list's <strong>Category</strong> filter, but broader: that filter picks out a single DPR category (carcinogen, reproductive toxin, toxic air contaminant and so on) one at a time, while the toggle is the union of all four lists above and follows you from page to page. Being listed says a chemical is <em>listed</em>, not how much of it reached anyone &mdash; see the caveats below.</p>
 
@@ -88,6 +88,7 @@
     <h3 id="restricted">California restricted materials</h3>
     {% health_note 'california_restricted' as restricted_note %}
     <p>{{ restricted_note.summary }}{% if restricted_note.detail %} {{ restricted_note.detail }}{% endif %}</p>
+    <p>A product&rsquo;s own status comes from CDPR&rsquo;s per-product restricted flag, which applies 3 CCR 6400&rsquo;s formulation and use exemptions. Our ingredient list decides only for products CDPR&rsquo;s file doesn&rsquo;t list. A chemical&rsquo;s <strong>Restricted</strong> badge marks the ingredient list, so a list under the <strong>Restricted materials</strong> toggle can include chemicals without the badge: the co-ingredients of restricted products.</p>
 
     <h3 id="ab617">AB 617 communities</h3>
     {% health_note 'ab617' as ab617_note %}

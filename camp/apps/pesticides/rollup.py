@@ -16,7 +16,7 @@ from camp.apps.pesticides.models import (
 
 # Printed by the commands that change the flagged/restricted chemical lists.
 REBUILD_REMINDER = (
-    'Narrowed application counts (restricted, chemicals of concern) are exact after the '
+    'Narrowed application counts (chemicals of concern) are exact after the '
     'next `rebuild_pesticide_rollup --all`: the rollup picks each record\'s counted '
     'ingredient from these lists.'
 )

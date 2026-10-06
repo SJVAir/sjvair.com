@@ -677,6 +677,12 @@ class ProductDetailTests(RollupTestMixin, TestCase):
         summary = escape(notes.note('carb_tac')['summary'])
         assert f'data-tooltip="{summary}"' in html
 
+    def test_restricted_badge_tooltip_uses_the_product_note(self):
+        from camp.apps.pesticides import notes
+        html = self.client.get(self.product.get_absolute_url()).content.decode()
+        summary = escape(notes.note('restricted_material')['summary'])
+        assert f'data-tooltip="{summary}">Restricted</a>' in html
+
     def test_bare_sqid_redirects(self):
         response = self.client.get(reverse('pesticides:product-redirect', kwargs={'sqid': self.product.sqid}))
         assert response.status_code == 301

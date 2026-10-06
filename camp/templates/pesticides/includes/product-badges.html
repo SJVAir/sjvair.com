@@ -1,7 +1,7 @@
 {% load pesticides_explorer %}
 {# A product's own classifications. Fumigant is a property of the product; #}
-{# restricted comes from its active ingredients (3 CCR 6400 names #}
-{# ingredients, not products), so both live here rather than in #}
+{# restricted is CDPR's per-product flag (the ingredient list only decides #}
+{# for products CDPR's file doesn't list), so both live here rather than in #}
 {# classification-badges.html, which takes a chemical. #}
 {% if product.is_fumigant %}
     {% health_note 'fumigant' as fumigant_note %}
@@ -12,6 +12,6 @@
     {% endif %}
 {% endif %}
 {% if product.is_restricted %}
-    {% health_note 'california_restricted' as restricted_note %}
+    {% health_note 'restricted_material' as restricted_note %}
     <a class="tag has-tooltip-multiline has-tooltip-arrow is-warning is-light" href="{% url 'pesticides:about' %}#restricted" data-tooltip="{{ restricted_note.summary }}">Restricted</a>
 {% endif %}
