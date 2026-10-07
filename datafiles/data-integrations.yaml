@@ -141,7 +141,7 @@
       description: The Census Bureau's TIGER/Line files are the reference geography for the United States. SJVAir takes its ZIP codes (as ZIP Code Tabulation Areas), census tracts, and congressional districts directly from TIGER/Line, and the county and place boundaries below are the Bureau's as well, republished by the state.
 
     - name: CA Geographic Boundaries
-      logo: img/logo/ca-open-data.png
+      logo: img/logo/ca-open-data.svg
       url: https://data.ca.gov/dataset/ca-geographic-boundaries
       description: The California Department of Technology publishes the state's county and place boundaries on the California Open Data Portal, drawn from the Census Bureau's TIGER/Line files. SJVAir's eight Valley counties and its cities and census-designated places come from this dataset.
 
