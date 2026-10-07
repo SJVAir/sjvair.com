@@ -1141,7 +1141,7 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
     def test_landing_chemicals_board_is_titled_for_each_narrowing(self):
         titles = {
             'concern': 'Most applied flagged chemicals',
-            'restricted': 'Most applied restricted materials',
+            'restricted': 'Most applied chemicals in restricted products',
             'fumigant': 'Most applied fumigants',
             'aerial': 'Top chemicals applied by air',
         }
