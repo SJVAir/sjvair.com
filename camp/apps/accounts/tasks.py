@@ -21,7 +21,8 @@ def handle_opted_out_number(phone_number):
 
     user = User.objects.filter(phone=phone_number).first()
     if user is None:
-        logger.warning('Twilio reports %s opted out, but no user has that number', phone_number)
+        # Only the last four digits: phone numbers shouldn't land in logs.
+        logger.warning('Twilio reports ...%s opted out, but no user has that number', str(phone_number)[-4:])
         return
     user.opt_out_of_sms(blocked=True)
 

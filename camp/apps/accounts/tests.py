@@ -165,9 +165,11 @@ class SendSMSOptOutTests(TestCase):
     def test_opted_out_error_for_unknown_number_is_logged(self, mock_client_class):
         mock_client_class.return_value.messages.create.side_effect = opted_out_error()
 
-        with self.assertLogs('camp.apps.accounts.tasks', level='WARNING'):
+        with self.assertLogs('camp.apps.accounts.tasks', level='WARNING') as logs:
             tasks.send_sms_message.call_local('+15595550199', 'hello')
 
+        assert '5595550199' not in logs.output[0]
+        assert '0199' in logs.output[0]
         self.user.refresh_from_db()
         assert self.user.sms_blocked is False
 
