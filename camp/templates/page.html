@@ -7,6 +7,7 @@
 {% endblock %}
 
 {% block body %}
+<a class="skip-link" href="#main">Skip to content</a>
 <nav class="navbar is-white" role="navigation" aria-label="main navigation">
     <div class="container">
         <div class="navbar-brand">
@@ -124,7 +125,7 @@
                     <div class="field">
                         <div class="control has-icons-left">
                             <div class="select is-small">
-                                <select id="id_translate" onchange="setLanguage(this.value);">
+                                <select id="id_translate" aria-label="Language" onchange="setLanguage(this.value);">
                                     {% for code, name in settings.LANGUAGES %}
                                     <option value="{{ code }}">{{ name }}</option>
                                     {% endfor %}
@@ -144,7 +145,7 @@
     </div>
 </nav>
 
-<div class="main">
+<main id="main" class="main" tabindex="-1">
     {% block main %}
     <div class="content">
         {% block messages %}
@@ -160,14 +161,14 @@
         {% block content %}{% endblock %}
     </div>
     {% endblock %}
-</div>
+</main>
 
 {% block footer %}
 <footer class="footer">
     <div class="container">
         <div class="columns is-multiline">
             <div class="column nav is-half-tablet is-one-quarter-desktop">
-                <h4>Air Quality</h4>
+                <h2>Air Quality</h2>
                 <ul class="fa-ul">
                     <li>
                         <span class="fa-li">
@@ -190,7 +191,7 @@
                 </ul>
             </div>
             <div class="column nav is-half-tablet is-one-quarter-desktop">
-                <h4>Resources</h4>
+                <h2>Resources</h2>
                 <ul class="fa-ul">
                     <li>
                         <span class="fa-li">
@@ -213,7 +214,7 @@
                 </ul>
             </div>
             <div class="column nav is-half-tablet is-one-quarter-desktop">
-                <h4>About</h4>
+                <h2>About</h2>
                 <ul class="fa-ul">
                     <li>
                         <span class="fa-li">

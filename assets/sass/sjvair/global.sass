@@ -78,6 +78,24 @@ body
     background-color: $white-bis
     top: 0 !important
 
+.skip-link
+    position: absolute
+    left: 0.5rem
+    top: -4rem
+    z-index: 1000
+    padding: 0.5rem 1rem
+    background-color: $white
+    color: $black
+    font-weight: 600
+    border-radius: 4px
+    box-shadow: 0 2px 8px rgba($black, 0.35)
+
+    &:focus
+        top: 0.5rem
+
+main.main:focus
+    outline: none
+
 .tag
     &.air
         font-weight: bold
@@ -141,7 +159,7 @@ footer.footer
         @extend .is-size-7
 
     .nav
-        h4
+        h2
             @extend .has-text-white
             @extend .has-text-weight-bold
             @extend .is-size-5
