@@ -7,6 +7,8 @@ from zoneinfo import ZoneInfo
 
 from django.test import TestCase
 
+from waffle.testutils import override_flag
+
 from camp.apps.accounts.models import User
 from camp.apps.alerts import notifications, tasks
 from camp.apps.alerts.evaluator import AlertEvaluator
@@ -27,6 +29,7 @@ class Clock:
         return self.now
 
 
+@override_flag('sms_alerts', active=True)
 class AlertScenarioTests(TestCase):
     '''
     Replays 10-minute evaluation over synthetic PM2.5 traces (one reading

@@ -108,6 +108,7 @@ INSTALLED_APPS = [
     'pgactivity',
     'prose',
     'resticus',
+    'waffle',
 
     'storages',
     'widget_tweaks',

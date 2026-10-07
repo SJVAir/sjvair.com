@@ -213,6 +213,25 @@ The send task's `status_callback` uses `https://www.sjvair.com`.
   condition=Q(end_time__isnull=True), name='one_open_alert_per_monitor_entry_type')`.
   Safe to add: the earlier migration 0006 empties the table.
 
+## 8. Feature flag (trial rollout)
+
+Alert and reminder texts are limited to selected users by the django-waffle flag
+`sms_alerts`, created by alerts migration 0009 with **Everyone: Unknown**.
+
+- **Where it sits:** `process_subscriptions`, the shared path of `notify_subscribers`
+  and `send_reminders`. The flag is read once per call; a subscriber it is off for is
+  skipped before the rule runs: no text, no `Notification`, no state change, no save.
+- **Who gets texts:** users added to the flag (or in a group on it), staff/superusers
+  per the flag's checkboxes (Superusers is on by default), or everyone when
+  Everyone is Yes. Everyone: No turns it off for all, even listed users. A missing
+  flag texts no one.
+- **What it does not gate:** verification codes, account texts and the STOP webhook.
+- **Broadening:** edit the flag in the Django admin (Waffle > Flags). No deploy.
+- **Caveat:** unflagged subscriptions stay armed (blank `last_notified_level`) for the
+  whole trial. Broadening to everyone therefore causes the same first-tick burst as a
+  fresh deploy: every subscriber currently at or above their threshold is texted at
+  once. Broaden on a clean-air day.
+
 ## Acceptance
 
 `camp/apps/alerts/test_scenarios.py` replays the audit scenarios through the real

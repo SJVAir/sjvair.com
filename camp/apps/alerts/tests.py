@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from django.conf import settings
+from django.contrib.auth.models import Group
 from django.contrib.gis.geos import Point
 from django.core.cache import cache
 from django.db import IntegrityError, transaction
@@ -14,6 +15,8 @@ from django.utils import timezone
 
 from twilio.base.exceptions import TwilioRestException
 from twilio.request_validator import RequestValidator
+from waffle import get_waffle_flag_model
+from waffle.testutils import override_flag
 
 from camp.apps.accounts.models import User
 from camp.apps.alerts import notifications
@@ -794,6 +797,7 @@ class MessageTests(TestCase):
         assert message.startswith('SJVAir: Air quality is still Unhealthy for Sensitive Groups (PM2.5) at ')
 
 
+@override_flag('sms_alerts', active=True)
 class NotifySubscribersTests(TestCase):
     fixtures = ['users.yaml', 'purple-air.yaml']
 
@@ -996,6 +1000,7 @@ class ReminderRuleTests(TestCase):
         assert notifications.get_reminder_level(self.subscription(), MODERATE, self.NOW) is None
 
 
+@override_flag('sms_alerts', active=True)
 class SendRemindersTests(TestCase):
     fixtures = ['users.yaml', 'purple-air.yaml']
 
@@ -1089,3 +1094,125 @@ class DailyRemindersTaskTests(TestCase):
         self.subscription.last_notified_level = ''
         self.subscription.save()
         assert self.run_at(datetime(2026, 7, 16, 17, 0, tzinfo=dt_timezone.utc)) == []
+
+
+class SmsAlertsFlagTests(TestCase):
+    '''The `sms_alerts` waffle flag decides who gets alert and reminder texts.'''
+    fixtures = ['users.yaml', 'purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        self.user = User.objects.get(email='user@sjvair.com')
+        self.flag = get_waffle_flag_model().objects.get(name=notifications.SMS_ALERTS_FLAG)
+        self.subscription = Subscription.objects.create(
+            user=self.user, monitor=self.monitor, level='unhealthy_sensitive',
+        )
+        alert = Alert.objects.create(monitor=self.monitor, entry_type=PM25.entry_type, start_time=timezone.now())
+        alert.create_update(USG)
+        # Waffle caches flags; the test transaction's rollback doesn't flush it.
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    def notify(self):
+        with self.settings(SEND_SMS_ALERTS=True), self.captureOnCommitCallbacks(execute=True):
+            return notifications.notify_subscribers(self.monitor, {PM25: USG})
+
+    def assert_untouched(self):
+        assert Notification.objects.count() == 0
+        self.subscription.refresh_from_db()
+        assert self.subscription.last_notified_level == ''
+        assert self.subscription.last_notified_at is None
+        assert self.subscription.below_threshold_since is None
+
+    def test_flag_exists_from_migration(self):
+        assert get_waffle_flag_model().objects.filter(name='sms_alerts').exists()
+        assert self.flag.everyone is None
+        assert self.flag.note
+
+    def test_fixture_user_is_not_exempt(self):
+        assert not self.user.is_superuser
+        assert not self.user.is_staff
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_unflagged_user_is_not_texted(self, mock_client_class):
+        queued = self.notify()
+
+        assert queued == []
+        assert not mock_client_class.return_value.messages.create.called
+        self.assert_untouched()
+
+    def test_unflagged_user_below_threshold_state_is_not_touched(self):
+        with self.settings(SEND_SMS_ALERTS=True):
+            notifications.notify_subscribers(self.monitor, {PM25: MODERATE})
+        self.assert_untouched()
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_user_on_the_flag_is_texted(self, mock_client_class):
+        mock_client_class.return_value.messages.create.return_value = MagicMock(sid='SM_test_sid')
+        self.flag.users.add(self.user)
+
+        queued = self.notify()
+
+        assert len(queued) == 1
+        assert mock_client_class.return_value.messages.create.call_count == 1
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_user_in_a_flagged_group_is_texted(self, mock_client_class):
+        mock_client_class.return_value.messages.create.return_value = MagicMock(sid='SM_test_sid')
+        group = Group.objects.create(name='sms trial')
+        self.user.groups.add(group)
+        self.flag.groups.add(group)
+
+        assert len(self.notify()) == 1
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_everyone_on_texts_every_subscriber(self, mock_client_class):
+        mock_client_class.return_value.messages.create.return_value = MagicMock(sid='SM_test_sid')
+        self.flag.everyone = True
+        self.flag.save()
+
+        assert len(self.notify()) == 1
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_everyone_off_overrides_a_listed_user(self, mock_client_class):
+        self.flag.users.add(self.user)
+        self.flag.everyone = False
+        self.flag.save()
+
+        assert self.notify() == []
+        assert not mock_client_class.return_value.messages.create.called
+        self.assert_untouched()
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_missing_flag_texts_no_one_not_even_superusers(self, mock_client_class):
+        User.objects.filter(pk=self.user.pk).update(is_superuser=True)
+        self.flag.delete()
+
+        assert self.notify() == []
+        assert not mock_client_class.return_value.messages.create.called
+        self.assert_untouched()
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_superuser_is_texted(self, mock_client_class):
+        mock_client_class.return_value.messages.create.return_value = MagicMock(sid='SM_test_sid')
+        User.objects.filter(pk=self.user.pk).update(is_superuser=True)
+
+        assert len(self.notify()) == 1
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_reminders_respect_the_flag(self, mock_client_class):
+        mock_client_class.return_value.messages.create.return_value = MagicMock(sid='SM_test_sid')
+        Subscription.objects.filter(pk=self.subscription.pk).update(
+            last_notified_level='unhealthy', last_notified_at=timezone.now() - timedelta(days=1),
+        )
+
+        with self.settings(SEND_SMS_ALERTS=True), self.captureOnCommitCallbacks(execute=True):
+            assert notifications.send_reminders(self.monitor, {PM25: USG}) == []
+        assert Notification.objects.count() == 0
+        assert not mock_client_class.return_value.messages.create.called
+
+        self.flag.users.add(self.user)
+        with self.settings(SEND_SMS_ALERTS=True), self.captureOnCommitCallbacks(execute=True):
+            queued = notifications.send_reminders(self.monitor, {PM25: USG})
+        assert len(queued) == 1
+        assert queued[0].kind == Notification.Kind.REMINDER

@@ -9,6 +9,8 @@ from django.db.models import Count
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
+import waffle
+
 from camp.apps.alerts.models import Alert, Notification, Subscription
 from camp.utils.datetime import localtime
 
@@ -26,6 +28,20 @@ DAILY_CAP = 3
 RESET_AFTER = timedelta(hours=2)
 # Local (Pacific) hour for the daily "still bad" reminder.
 REMINDER_HOUR = 10
+# Waffle flag limiting alert/reminder texts to selected users during the trial.
+SMS_ALERTS_FLAG = 'sms_alerts'
+
+
+def sms_alerts_enabled(flag, user):
+    '''
+    Whether the `sms_alerts` flag is on for this user. Waffle's
+    `is_active_for_user` lets a listed user through even when the flag is
+    set to Everyone: No, and treats a missing flag as live for superusers,
+    so those two cases are decided here (both mean off).
+    '''
+    if flag.pk is None or flag.everyone is False:
+        return False
+    return bool(flag.is_active_for_user(user))
 
 
 def get_recipients(monitor):
@@ -162,7 +178,9 @@ def process_subscriptions(monitor, levels, rule, kind, daily_cap=False):
     of this monitor, and queue a text for each level it returns. Rows are
     locked so a concurrent alert run and reminder run can't both text the
     same subscription. With `daily_cap`, the rule also gets `alerts_today`
-    (reminder rules keep their three-argument signature).
+    (reminder rules keep their three-argument signature). Only subscribers
+    the `sms_alerts` waffle flag is active for are processed; the rest are
+    skipped before the rule runs, so their state is left untouched.
     '''
     if not settings.SEND_SMS_ALERTS:
         return []
@@ -173,11 +191,14 @@ def process_subscriptions(monitor, levels, rule, kind, daily_cap=False):
 
     from camp.apps.alerts import tasks
 
+    flag = waffle.get_waffle_flag_model().get(SMS_ALERTS_FLAG)
     now = timezone.now()
     queued = []
     todays = get_alerts_today(monitor, now) if daily_cap else {}
     with transaction.atomic():
         for subscription in get_recipients(monitor).select_for_update(of=('self',)):
+            if not sms_alerts_enabled(flag, subscription.user):
+                continue
             before = (
                 subscription.last_notified_level,
                 subscription.last_notified_at,
