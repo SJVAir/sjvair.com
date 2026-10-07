@@ -26,7 +26,7 @@
 body.pesticides
     // Links inside running text are told apart from it by more than colour
     // (WCAG 1.4.1); navigation, tabs, buttons, tables and boards stay bare.
-    p.is-size-7 a, .help a, .sources a, .data-notes a, .school-kind a, .chart-note a
+    p.is-size-7 a:not(:has(.icon)), .help a:not(:has(.icon)), .sources a:not(:has(.icon)), .data-notes a:not(:has(.icon)), .school-kind a:not(:has(.icon)), .chart-note a:not(:has(.icon))
         text-decoration: underline
 
     // Flag tags: Bulma's derived text colours on the orange/amber tints came
@@ -101,7 +101,7 @@ body.pesticides
     .explorer-icon
         --fa-secondary-opacity: 1
         &.is-map
-            --fa-primary-color: #{$primary}
+            --fa-primary-color: #{$blue}
             --fa-secondary-color: #9ed0f5
         &.is-chemicals
             --fa-primary-color: #7b4fb8
@@ -202,7 +202,7 @@ body.pesticides
             padding-left: 0.5rem
             padding-right: 0.5rem
     .explorer-icon.is-scope
-        --fa-primary-color: #{$link}
+        --fa-primary-color: #{$blue}
         --fa-secondary-color: #{$grey-light}
     // The chemicals-of-concern toggle sits with the pickers, with the link to
     // its definition beside it. When it's on it fills with the notices orange
@@ -258,7 +258,7 @@ body.pesticides
     // The charts (assets/js/pesticides/charts.js draws them with uPlot). The
     // palette lives here as custom properties the script reads.
     .explorer-chart
-        --chart-color: #{$link}
+        --chart-color: #{$blue}
         --chart-grid: #{$grey-lightest}
         --chart-muted: #{$grey}
         --chart-text: #{$text}
@@ -487,7 +487,7 @@ body.pesticides
         margin-right: 0.5rem
     .method-bar-seg, .method-key
         &.is-G
-            background: $link
+            background: $blue
         &.is-A
             background: $warning
         &.is-F
@@ -710,7 +710,7 @@ body.pesticides
                     margin-bottom: 0
 
     .notice-signup
-        border-left: 3px solid $link
+        border-left: 3px solid $blue
         background-color: $grey-lightest
         .notice-signup-logo
             display: block
@@ -1004,7 +1004,7 @@ body.pesticides
             height: auto
         .card-header
             box-shadow: none
-            border-bottom: 2px solid $primary
+            border-bottom: 2px solid $blue
         .card-header-title
             font-weight: 600
         // The way out of a top-five board, in the header rather than a
@@ -1186,7 +1186,7 @@ body.pesticides
         right: 0
         height: 2px
         z-index: 100
-        background: $primary
+        background: $blue
         transform-origin: 0 50%
         animation: pesticides-progress 1.2s ease-in-out infinite
 

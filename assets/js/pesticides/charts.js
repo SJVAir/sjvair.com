@@ -65,7 +65,7 @@
 
   function palette(figure) {
     return {
-      color: cssVar(figure, '--chart-color', '#3273dc'),
+      color: cssVar(figure, '--chart-color', '#3498db'),
       color2: cssVar(figure, '--chart-color-2', '#d95f0e'),
       grid: cssVar(figure, '--chart-grid', '#ededed'),
       muted: cssVar(figure, '--chart-muted', '#6b6b6b'),

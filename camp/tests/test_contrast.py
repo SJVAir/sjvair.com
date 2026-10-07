@@ -43,3 +43,8 @@ class TextContrastTests(SimpleTestCase):
         assert contrast('#a84300', '#fff3eb') >= 4.5  # Prop 65
         assert contrast('#735c00', '#fefaec') >= 4.5  # Fumigant, Restricted, TAC
         assert contrast('#ffffff', '#b94800') >= 4.5  # IARC
+
+    def test_tokens_are_wired_into_bulma(self):
+        variables = (SASS / 'variables.sass').read_text()
+        for wiring in ('$link: $link-blue', '$primary: $link-blue', '$grey: $text-grey'):
+            assert re.search(rf'^{re.escape(wiring)}$', variables, re.M), wiring
