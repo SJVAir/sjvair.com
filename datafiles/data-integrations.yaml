@@ -156,7 +156,7 @@
       description: The California Department of Conservation publishes the Public Land Survey System (PLSS) sections for the state — the square-mile grid of meridian, township, range, and section that pesticide use reports are located by. SJVAir's section maps and section pages use these official geometries unchanged.
 
     - name: California Department of Education
-      logo: img/logo/cde.png
+      logo: img/logo/cde.svg
       url: https://data.ca.gov/organization/california-department-of-education
       description: The Department of Education publishes school district boundaries, with each district's enrollment and demographics, and the directory of public and private schools with their locations. SJVAir uses the district boundaries as regions and shows the schools alongside pesticide use in each district.
 
