@@ -15,12 +15,14 @@ TWILIO_OPT_IN_KIND = 'twilio_opt_in'
 
 # Twilio enforces these itself on a plain number: sends afterwards fail
 # with OPTED_OUT_ERROR until the person texts an opt-in keyword.
-TWILIO_OPT_OUT = {'STOP', 'STOPALL', 'STOP ALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT', 'OPTOUT', 'REVOKE'}
+TWILIO_OPT_OUT = {'STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT', 'OPTOUT', 'REVOKE'}
 TWILIO_OPT_IN = {'START', 'UNSTOP', 'YES'}
 
-# Keywords Twilio doesn't know; we enforce them ourselves. The Filipino and
-# Hmong words still need a native-speaker check.
+# Keywords Twilio doesn't act on; we enforce them ourselves. Twilio only
+# blocks on single-word messages, so 'STOP ALL' (two words) is ours. The
+# Filipino and Hmong words still need a native-speaker check.
 OPT_OUT = {
+    'en': {'STOP ALL'},
     'es': {'PARAR', 'PARA', 'ALTO', 'DETENER', 'CANCELAR', 'BAJA', 'DESUSCRIBIR'},
     'tl': {'TIGIL', 'HINTO', 'ITIGIL'},
     'hmn': {'TSEEM', 'NRES'},
@@ -43,7 +45,8 @@ def normalize(body):
     text = unicodedata.normalize('NFKD', body or '')
     text = ''.join(char for char in text if not unicodedata.combining(char))
     text = re.sub(r'\s+', ' ', text).strip().upper()
-    return text.rstrip('.!?').strip()
+    # Punctuation either side: "Stop!", "¡Alto!", "¿Parar?"
+    return re.sub(r'^[\W_]+|[\W_]+$', '', text)
 
 
 def classify(body):

@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 import twilio.rest
+from twilio.base.exceptions import TwilioRestException
 
 from camp.apps.accounts import sms_keywords
 from camp.apps.accounts.tasks import handle_opted_out_number
@@ -63,6 +64,8 @@ def get_alert_monitors():
         for monitor in monitor_model.objects.filter(pk__in=active_ids | open_alert_ids):
             if monitor.pk not in seen:
                 seen.add(monitor.pk)
+                # is_active is a cached_property that would query per monitor.
+                monitor.__dict__['is_active'] = monitor.pk in active_ids
                 yield monitor
 
 
@@ -118,6 +121,13 @@ def daily_reminders():
 def send_alert_notification(notification_id):
     notification = Notification.objects.select_related('user').get(pk=notification_id)
 
+    # Consent can be withdrawn between queueing and sending.
+    if not notification.user.phone_verified or notification.user.sms_blocked:
+        notification.status = Notification.Status.FAILED
+        notification.error = 'recipient opted out or unverified'
+        notification.save(update_fields=['status', 'error'])
+        return
+
     twilio_client = twilio.rest.Client(
         settings.TWILIO_ACCOUNT_SID,
         settings.TWILIO_AUTH_TOKEN
@@ -141,7 +151,11 @@ def send_alert_notification(notification_id):
         # any unhandled exception here leaves the notification stuck at
         # QUEUED forever with no record of why it failed.
         notification.status = Notification.Status.FAILED
-        notification.error = str(exc)
+        # Never str(exc): Twilio's message can echo the recipient's number.
+        if isinstance(exc, TwilioRestException):
+            notification.error = f'Twilio error {exc.code} (HTTP {exc.status})'
+        else:
+            notification.error = type(exc).__name__
         notification.save(update_fields=['status', 'error'])
         # After the FAILED save, so a failure here can't leave it QUEUED.
         if getattr(exc, 'code', None) == sms_keywords.OPTED_OUT_ERROR:

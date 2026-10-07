@@ -372,6 +372,45 @@ class AuthenticationTests(TestCase):
         user = User.objects.get(pk=self.user.pk)
         assert user.full_name == payload['full_name'] == data['data']['full_name']
 
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_update_phone_unverifies_and_sends_code(self, send_sms_message):
+        assert self.user.phone_verified is True
+        url = reverse('api:v1:account:user-detail')
+        payload = {"phone": "559-555-0199"}
+        request = self.factory.patch(url, payload, content_type='application/json')
+        request.user = self.user
+        response = user_detail(request)
+
+        assert response.status_code == 200
+        user = User.objects.get(pk=self.user.pk)
+        assert str(user.phone) == '+15595550199'
+        assert user.phone_verified is False
+        assert send_sms_message.call_count == 1
+        assert send_sms_message.call_args.args[0] == user.phone
+        assert 'Verification Code' in send_sms_message.call_args.args[1]
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_quick_phone_changes_send_one_code(self, send_sms_message):
+        url = reverse('api:v1:account:user-detail')
+        for phone in ['559-555-0198', '559-555-0197']:
+            request = self.factory.patch(url, {"phone": phone}, content_type='application/json')
+            request.user = User.objects.get(pk=self.user.pk)
+            assert user_detail(request).status_code == 200
+
+        assert send_sms_message.call_count == 1
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_update_without_phone_change_keeps_verified(self, send_sms_message):
+        url = reverse('api:v1:account:user-detail')
+        payload = {"full_name": "Updated User", "phone": str(self.user.phone)}
+        request = self.factory.patch(url, payload, content_type='application/json')
+        request.user = self.user
+        response = user_detail(request)
+
+        assert response.status_code == 200
+        assert User.objects.get(pk=self.user.pk).phone_verified is True
+        send_sms_message.assert_not_called()
+
     def test_change_password(self):
         url = reverse('api:v1:account:change-password')
         payload = {

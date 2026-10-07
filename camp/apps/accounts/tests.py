@@ -24,8 +24,19 @@ class KeywordTests(TestCase):
         assert sms_keywords.normalize('Desuscribír.') == 'DESUSCRIBIR'
 
     def test_english_keywords_are_twilio_enforced(self):
-        for body in ['STOP', 'stop', 'Unsubscribe', 'cancel', 'END', 'quit', 'stop all', 'STOPALL', 'optout', 'revoke']:
+        for body in ['STOP', 'stop', 'Unsubscribe', 'cancel', 'END', 'quit', 'STOPALL', 'optout', 'revoke']:
             assert sms_keywords.classify(body) == sms_keywords.TWILIO_OPT_OUT_KIND, body
+
+    def test_stop_all_is_ours_because_twilio_only_blocks_single_words(self):
+        for body in ['STOP ALL', 'stop all', 'Stop   All!']:
+            assert sms_keywords.classify(body) == sms_keywords.OPT_OUT_KIND, body
+
+    def test_leading_and_trailing_punctuation_is_ignored(self):
+        assert sms_keywords.normalize('¡Alto!') == 'ALTO'
+        assert sms_keywords.normalize('¿Parar?') == 'PARAR'
+        assert sms_keywords.normalize('  "stop"... ') == 'STOP'
+        for body in ['¡Alto!', '¿Parar?', '!!Detener']:
+            assert sms_keywords.classify(body) == sms_keywords.OPT_OUT_KIND, body
 
     def test_other_language_keywords(self):
         for body in ['parar', 'Para', 'ALTO', 'detener', 'Cancelar', 'baja', 'desuscribir', 'tigil', 'Hinto', 'itigil', 'tseem', 'nres']:
@@ -113,6 +124,30 @@ class UserSMSStateTests(TestCase):
         self.user.save(update_fields=['phone'])
         self.user.refresh_from_db()
         assert self.user.sms_blocked is False
+
+    def test_phone_change_unverifies(self):
+        assert self.user.phone_verified is True
+        self.user.phone = '559-555-0123'
+        self.user.save()
+        self.user.refresh_from_db()
+        assert self.user.phone_verified is False
+
+    def test_phone_change_unverifies_with_update_fields(self):
+        self.user.phone = '559-555-0123'
+        self.user.save(update_fields=['phone'])
+        self.user.refresh_from_db()
+        assert self.user.phone_verified is False
+
+    def test_save_without_phone_change_keeps_verified(self):
+        self.user.full_name = 'New Name'
+        self.user.save()
+        self.user.refresh_from_db()
+        assert self.user.phone_verified is True
+
+    def test_new_user_creation_is_unaffected(self):
+        user = User.objects.create_user('new@sjvair.com', 'letmein1', full_name='New', phone='559-555-0188', phone_verified=True)
+        user.refresh_from_db()
+        assert user.phone_verified is True
 
     def test_save_without_phone_change_keeps_block(self):
         self.user.opt_out_of_sms(blocked=True)
@@ -220,6 +255,13 @@ class InboundSMSTests(TestCase):
         self.user.refresh_from_db()
         assert self.user.phone_verified is False
         assert self.user.sms_blocked is True
+
+    def test_stop_all_unverifies_with_confirmation_but_does_not_block(self):
+        response = self.post('Stop All')
+        assert b"You won&apos;t get" in response.content or b"You won't get" in response.content
+        self.user.refresh_from_db()
+        assert self.user.phone_verified is False
+        assert self.user.sms_blocked is False
 
     def test_spanish_keyword_unverifies_and_replies_in_spanish(self):
         self.user.language = 'es'

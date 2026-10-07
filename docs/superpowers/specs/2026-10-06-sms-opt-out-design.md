@@ -54,11 +54,13 @@ One module of constants, easy to edit:
 
 ```python
 # Twilio enforces these itself on a plain number (sends then fail with 21610).
-TWILIO_OPT_OUT = {'STOP', 'STOPALL', 'STOP ALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT', 'OPTOUT', 'REVOKE'}
+TWILIO_OPT_OUT = {'STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT', 'OPTOUT', 'REVOKE'}
 TWILIO_OPT_IN = {'START', 'UNSTOP', 'YES'}
 
-# We enforce these ourselves. Filipino and Hmong need a native-speaker check.
+# We enforce these ourselves. Twilio only acts on single-word messages, so the
+# two-word 'STOP ALL' is ours. Filipino and Hmong need a native-speaker check.
 OPT_OUT = {
+    'en': {'STOP ALL'},
     'es': {'PARAR', 'PARA', 'ALTO', 'DETENER', 'CANCELAR', 'BAJA', 'DESUSCRIBIR'},
     'tl': {'TIGIL', 'HINTO', 'ITIGIL'},
     'hmn': {'TSEEM', 'NRES'},
@@ -67,11 +69,9 @@ OPT_OUT = {
 
 `normalize(body)`:
 
-1. Strip leading and trailing whitespace.
-2. NFKD-normalize and drop combining marks.
-3. Uppercase.
-4. Strip trailing punctuation (`.!?`).
-5. Collapse internal whitespace.
+1. NFKD-normalize and drop combining marks.
+2. Collapse whitespace runs, strip leading and trailing whitespace, and uppercase.
+3. Strip leading and trailing punctuation and other non-alphanumerics (`Stop!`, `¡Alto!`, `¿Parar?`).
 
 Matching is exact on the whole normalized body. A message that merely contains "stop"
 ("please stop by") is not an opt-out.
@@ -102,6 +102,10 @@ Matching is exact on the whole normalized body. A message that merely contains "
 
 ## 4. Send-side handling
 
+- **Consent re-check.** `send_alert_notification` re-reads the user before calling
+  Twilio. If `phone_verified` is False or `sms_blocked` is True (the person opted
+  out after the text was queued), the notification is marked FAILED with the error
+  `recipient opted out or unverified` and nothing is sent.
 - **Alerts** (`camp/apps/alerts/tasks.send_alert_notification`): when Twilio raises a
   `TwilioRestException` with `code == 21610`, the notification is marked FAILED as
   today, and the user is set to `phone_verified=False, sms_blocked=True`.
@@ -131,7 +135,15 @@ a validation error:
 One exception: password reset by phone must not reveal whether an account exists. Its
 form already returns the same response for an unknown phone, so for a blocked user it
 sends nothing and returns the normal response. The message only appears in
-authenticated flows.
+authenticated flows. Password reset therefore stays deliberately silent for blocked
+users (no account enumeration): a blocked user who requests a reset gets no code and
+no hint why, and has to text START first.
+
+**Changing the number.** `User.save()` treats a changed `phone` as a new number: it
+clears `sms_blocked` and sets `phone_verified = False` on every path (web profile, the
+v1/v2 `UserDetail` endpoints, admin). The API also texts a verification code to the
+new number after the change, as the web profile flow does by redirecting to
+phone-verify-send.
 
 ## 6. Reply copy (opt-out confirmation, non-Twilio keywords)
 

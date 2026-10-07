@@ -8,7 +8,8 @@ from django.conf import settings
 from django.contrib.auth.models import Group
 from django.contrib.gis.geos import Point
 from django.core.cache import cache
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
+from django.test.utils import CaptureQueriesContext
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -19,7 +20,7 @@ from waffle import get_waffle_flag_model
 from waffle.testutils import override_flag
 
 from camp.apps.accounts.models import User
-from camp.apps.alerts import notifications
+from camp.apps.alerts import notifications, tasks
 from camp.apps.alerts.models import Alert, AlertUpdate, Notification, Subscription
 from camp.apps.alerts.evaluator import AlertEvaluator
 from camp.apps.alerts.tasks import daily_reminders, get_alert_monitors, periodic_alerts
@@ -376,14 +377,33 @@ class TwilioStatusCallbackTests(TestCase):
         self.notification.refresh_from_db()
         assert self.notification.status == Notification.Status.SENT
 
-    def test_unknown_sid_returns_200_without_error(self):
+    def test_unknown_sid_returns_200_and_changes_nothing(self):
+        with self.assertLogs('camp.apps.alerts.views', level='INFO') as logs:
+            response = self.post_with_signature({
+                'MessageSid': 'SM_does_not_exist',
+                'MessageStatus': 'delivered',
+            })
+        assert response.status_code == 200
+        assert 'SM_does_not_exist' in logs.output[0]
+        self.notification.refresh_from_db()
+        assert self.notification.status == Notification.Status.SENT
+
+    def test_unknown_sid_with_non_terminal_status_returns_200(self):
         response = self.post_with_signature({
             'MessageSid': 'SM_does_not_exist',
+            'MessageStatus': 'sent',
+        })
+        assert response.status_code == 200
+
+    def test_known_but_terminal_row_returns_200(self):
+        self.notification.status = Notification.Status.DELIVERED
+        self.notification.save(update_fields=['status'])
+
+        response = self.post_with_signature({
+            'MessageSid': 'SM_test_sid',
             'MessageStatus': 'delivered',
         })
         assert response.status_code == 200
-        self.notification.refresh_from_db()
-        assert self.notification.status == Notification.Status.SENT
 
     def test_stale_callback_does_not_revert_terminal_status(self):
         self.notification.status = Notification.Status.DELIVERED
@@ -967,7 +987,7 @@ class NotifySubscribersTests(TestCase):
 
         notification = Notification.objects.get()
         assert notification.status == Notification.Status.FAILED
-        assert 'Invalid phone number' in notification.error
+        assert notification.error == 'Twilio error 21211 (HTTP 400)'
 
 
 PACIFIC = ZoneInfo('America/Los_Angeles')
@@ -1216,3 +1236,217 @@ class SmsAlertsFlagTests(TestCase):
             queued = notifications.send_reminders(self.monitor, {PM25: USG})
         assert len(queued) == 1
         assert queued[0].kind == Notification.Kind.REMINDER
+
+
+class SendTaskHardeningTests(TestCase):
+    fixtures = ['users.yaml', 'purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        self.user = User.objects.get(email='user@sjvair.com')
+        alert = Alert.objects.create(monitor=self.monitor, entry_type=PM25.entry_type, start_time=timezone.now())
+        self.notification = Notification.objects.create(
+            alert_update=alert.create_update(USG), user=self.user, message='test message',
+        )
+
+    def send(self):
+        tasks.send_alert_notification.call_local(self.notification.pk)
+        self.notification.refresh_from_db()
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_user_who_opted_out_after_queueing_is_not_texted(self, mock_client_class):
+        self.user.opt_out_of_sms(blocked=False)
+
+        self.send()
+
+        assert self.notification.status == Notification.Status.FAILED
+        assert self.notification.error == 'recipient opted out or unverified'
+        assert not mock_client_class.called
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_blocked_user_is_not_texted(self, mock_client_class):
+        User.objects.filter(pk=self.user.pk).update(sms_blocked=True)
+
+        self.send()
+
+        assert self.notification.status == Notification.Status.FAILED
+        assert not mock_client_class.called
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_twilio_error_does_not_store_the_phone_number(self, mock_client_class):
+        mock_client_class.return_value.messages.create.side_effect = TwilioRestException(
+            status=400, uri='https://api.twilio.com/fake',
+            msg=f'The number {self.user.phone} is not a valid phone number', code=21211,
+        )
+
+        self.send()
+
+        assert self.notification.status == Notification.Status.FAILED
+        assert self.notification.error == 'Twilio error 21211 (HTTP 400)'
+        assert '555' not in self.notification.error
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_other_errors_store_only_the_class_name(self, mock_client_class):
+        mock_client_class.return_value.messages.create.side_effect = ConnectionError(f'cannot reach {self.user.phone}')
+
+        self.send()
+
+        assert self.notification.status == Notification.Status.FAILED
+        assert self.notification.error == 'ConnectionError'
+
+
+class EnqueueRobustnessTests(TestCase):
+    fixtures = ['users.yaml', 'purple-air.yaml']
+
+    def test_one_failed_enqueue_does_not_drop_the_rest(self):
+        monitor = PurpleAir.objects.get(sensor_id=8892)
+        flag = get_waffle_flag_model().objects.get(name=notifications.SMS_ALERTS_FLAG)
+        flag.everyone = True
+        flag.save()
+        cache.clear()
+        self.addCleanup(cache.clear)
+        alert = Alert.objects.create(monitor=monitor, entry_type=PM25.entry_type, start_time=timezone.now())
+        alert.create_update(USG)
+        for index in range(2):
+            user = User.objects.create_user(
+                f'robust{index}@sjvair.com', 'letmein1',
+                full_name='Robust', phone=f'559-555-02{index}0', phone_verified=True,
+            )
+            Subscription.objects.create(user=user, monitor=monitor, level='unhealthy_sensitive')
+
+        with patch('camp.apps.alerts.tasks.send_alert_notification') as mock_send:
+            mock_send.side_effect = [RuntimeError('queue down'), None]
+            with self.settings(SEND_SMS_ALERTS=True), self.captureOnCommitCallbacks(execute=True):
+                queued = notifications.notify_subscribers(monitor, {PM25: USG})
+
+        assert len(queued) == 2
+        assert mock_send.call_count == 2
+
+
+class NotificationIndexTests(TestCase):
+    def test_provider_id_and_subscription_created_are_indexed(self):
+        indexes = {index.name: index for index in Notification._meta.indexes}
+        assert indexes['notification_provider_id_idx'].fields == ['provider_id']
+        assert indexes['notification_sub_created_idx'].fields == ['subscription', 'created']
+
+
+class AlertQueryCountTests(TestCase):
+    fixtures = ['users.yaml', 'purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        self.alert = Alert.objects.create(monitor=self.monitor, entry_type=PM25.entry_type, start_time=timezone.now())
+        self.alert.create_update(USG)
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    def add_subscribers(self, count):
+        start = User.objects.filter(email__startswith='scale').count()
+        for index in range(start, start + count):
+            user = User.objects.create_user(
+                f'scale{index}@sjvair.com', 'letmein1',
+                full_name='Scale', phone=f'559-556-{index:04d}', phone_verified=True,
+            )
+            user.groups.add(self.group)
+            Subscription.objects.create(user=user, monitor=self.monitor, level='unhealthy_sensitive')
+
+    def count_queries(self, level, settled=False):
+        cache.clear()
+        # Fresh start: a previous run's state would make later runs do less work.
+        Subscription.objects.update(
+            last_notified_level='',
+            last_notified_at=None,
+            below_threshold_since=timezone.now() if settled else None,
+        )
+        Notification.objects.all().delete()
+        with self.settings(SEND_SMS_ALERTS=True), CaptureQueriesContext(connection) as context:
+            with patch('camp.apps.alerts.tasks.send_alert_notification'):
+                with self.captureOnCommitCallbacks(execute=True):
+                    notifications.notify_subscribers(self.monitor, {PM25: level})
+        return len(context), Notification.objects.count()
+
+    def make_group_flag(self):
+        flag = get_waffle_flag_model().objects.get(name=notifications.SMS_ALERTS_FLAG)
+        self.group = Group.objects.create(name='sms trial')
+        flag.groups.add(self.group)
+
+    def test_query_count_is_flat_across_subscribers_when_flag_uses_a_group(self):
+        self.make_group_flag()
+
+        # Subscribers already settled below threshold: nothing to write, so
+        # only the read path (flag resolution + recipients) is measured.
+        self.add_subscribers(2)
+        small_queries, _ = self.count_queries(MODERATE, settled=True)
+        self.add_subscribers(18)
+        large_queries, _ = self.count_queries(MODERATE, settled=True)
+
+        assert small_queries == large_queries, (small_queries, large_queries)
+
+    def test_texting_cost_per_subscriber_is_only_the_writes(self):
+        self.make_group_flag()
+
+        self.add_subscribers(2)
+        small_queries, small_sent = self.count_queries(USG)
+        self.add_subscribers(18)
+        large_queries, large_sent = self.count_queries(USG)
+
+        assert (small_sent, large_sent) == (2, 20)
+        # Notification insert + subscription save; nothing from the flag check.
+        assert (large_queries - small_queries) / 18 == 2, (small_queries, large_queries)
+
+    def test_get_alert_monitors_presets_is_active(self):
+        monitors = [m for m in get_alert_monitors() if m.pk == self.monitor.pk]
+        assert monitors
+        assert 'is_active' in monitors[0].__dict__
+
+
+class SmsAlertsUserFilterTests(TestCase):
+    fixtures = ['users.yaml']
+
+    def setUp(self):
+        self.user = User.objects.get(email='user@sjvair.com')
+        self.flag = get_waffle_flag_model().objects.get(name=notifications.SMS_ALERTS_FLAG)
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    def allowed(self):
+        users = notifications.sms_alerts_user_ids(self.flag)
+        return None if users is None else set(users.values_list('pk', flat=True))
+
+    def test_everyone_on_and_authenticated_are_unfiltered(self):
+        self.flag.everyone = True
+        assert self.allowed() is None
+        self.flag.everyone = None
+        self.flag.authenticated = True
+        assert self.allowed() is None
+
+    def test_everyone_off_and_missing_flag_allow_nobody(self):
+        self.flag.users.add(self.user)
+        self.flag.everyone = False
+        assert self.allowed() == set()
+        group = Group.objects.create(name='listed')
+        self.user.groups.add(group)
+        self.flag.groups.add(group)
+        assert self.allowed() == set()
+        missing = get_waffle_flag_model()(name='nope')
+        assert notifications.sms_alerts_user_ids(missing).count() == 0
+
+    def test_users_groups_staff_and_superusers(self):
+        assert self.allowed() == set()
+        self.flag.users.add(self.user)
+        assert self.allowed() == {self.user.pk}
+        self.flag.users.clear()
+        group = Group.objects.create(name='g')
+        self.user.groups.add(group)
+        self.flag.groups.add(group)
+        cache.clear()
+        assert self.allowed() == {self.user.pk}
+        self.flag.groups.clear()
+        cache.clear()
+        self.flag.staff = True
+        User.objects.filter(pk=self.user.pk).update(is_staff=True)
+        assert self.allowed() == {self.user.pk}
+        self.flag.staff = False
+        self.flag.superusers = True
+        User.objects.filter(pk=self.user.pk).update(is_staff=False, is_superuser=True)
+        assert self.allowed() == {self.user.pk}

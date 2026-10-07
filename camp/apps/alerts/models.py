@@ -176,6 +176,16 @@ class Notification(TimeStampedModel):
 
     class Meta:
         ordering = ['-created']
+        indexes = [
+            # The status callback looks rows up by Twilio's sid.
+            models.Index(
+                fields=['provider_id'],
+                condition=~models.Q(provider_id=''),
+                name='notification_provider_id_idx',
+            ),
+            # The per-day cap counts a subscription's recent notifications.
+            models.Index(fields=['subscription', 'created'], name='notification_sub_created_idx'),
+        ]
 
     def __str__(self):
         return f'Notification for {self.user_id} @ {self.status}'

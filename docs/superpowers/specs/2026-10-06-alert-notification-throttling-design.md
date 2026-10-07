@@ -149,7 +149,12 @@ monitor level and `threshold` = the subscription's level:
 
 - the user has a verified, non-empty phone;
 - `settings.SEND_SMS_ALERTS` is on. If it's off, the whole step is skipped and no state
-  changes.
+  changes;
+- the `sms_alerts` waffle flag is on for the user. The flag is resolved once per run
+  and applied in SQL (`user_id__in=<subquery of allowed users>`: the flag's users,
+  groups, staff and superusers, or everyone), not per subscriber, so the number of
+  queries doesn't grow with the number of subscribers. Users the flag excludes are
+  never loaded, so their state is untouched.
 
 **Locking.** Subscription rows are locked (`select_for_update(of=('self',))`) inside one
 transaction per monitor. A concurrent reminder and alert can't both send.

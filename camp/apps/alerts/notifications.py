@@ -5,12 +5,13 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
 import waffle
 
+from camp.apps.accounts.models import User
 from camp.apps.alerts.models import Alert, Notification, Subscription
 from camp.utils.datetime import localtime
 
@@ -32,16 +33,25 @@ REMINDER_HOUR = 10
 SMS_ALERTS_FLAG = 'sms_alerts'
 
 
-def sms_alerts_enabled(flag, user):
+def sms_alerts_user_ids(flag):
     '''
-    Whether the `sms_alerts` flag is on for this user. Waffle's
-    `is_active_for_user` lets a listed user through even when the flag is
-    set to Everyone: No, and treats a missing flag as live for superusers,
-    so those two cases are decided here (both mean off).
+    The `sms_alerts` flag as a lookup on User, or None when it is on for
+    everyone. Mirrors waffle's `is_active_for_user` (everyone beats every
+    other setting; a missing flag is off even for superusers) so the
+    recipients query can apply it in SQL instead of asking per subscriber.
+    Returns a queryset of User pks, so it nests as a subquery.
     '''
     if flag.pk is None or flag.everyone is False:
-        return False
-    return bool(flag.is_active_for_user(user))
+        return User.objects.none().values('pk')
+    if flag.everyone or flag.authenticated:
+        return None
+
+    allowed = Q(pk__in=flag.users.values('pk')) | Q(groups__in=flag.groups.values('pk'))
+    if flag.superusers:
+        allowed |= Q(is_superuser=True)
+    if flag.staff:
+        allowed |= Q(is_staff=True)
+    return User.objects.filter(allowed).values('pk')
 
 
 def get_recipients(monitor):
@@ -172,6 +182,9 @@ def get_alerts_today(monitor, now):
     return {row['subscription_id']: row['total'] for row in rows}
 
 
+_UNSET = object()
+
+
 def process_subscriptions(monitor, levels, rule, kind, daily_cap=False):
     '''
     Run `rule(subscription, level, now) -> Level | None` for every recipient
@@ -180,7 +193,7 @@ def process_subscriptions(monitor, levels, rule, kind, daily_cap=False):
     same subscription. With `daily_cap`, the rule also gets `alerts_today`
     (reminder rules keep their three-argument signature). Only subscribers
     the `sms_alerts` waffle flag is active for are processed; the rest are
-    skipped before the rule runs, so their state is left untouched.
+    excluded in SQL before the rule runs, so their state is left untouched.
     '''
     if not settings.SEND_SMS_ALERTS:
         return []
@@ -195,10 +208,14 @@ def process_subscriptions(monitor, levels, rule, kind, daily_cap=False):
     now = timezone.now()
     queued = []
     todays = get_alerts_today(monitor, now) if daily_cap else {}
+    # The driving update is the same for every subscriber: fetch it once, lazily.
+    alert_update = _UNSET
+    recipients = get_recipients(monitor)
+    allowed_users = sms_alerts_user_ids(flag)
+    if allowed_users is not None:
+        recipients = recipients.filter(user_id__in=allowed_users)
     with transaction.atomic():
-        for subscription in get_recipients(monitor).select_for_update(of=('self',)):
-            if not sms_alerts_enabled(flag, subscription.user):
-                continue
+        for subscription in recipients.select_for_update(of=('self',)):
             before = (
                 subscription.last_notified_level,
                 subscription.last_notified_at,
@@ -208,8 +225,7 @@ def process_subscriptions(monitor, levels, rule, kind, daily_cap=False):
                 send_level = rule(subscription, level, now, alerts_today=todays.get(subscription.pk, 0))
             else:
                 send_level = rule(subscription, level, now)
-            alert_update = None
-            if send_level is not None:
+            if send_level is not None and alert_update is _UNSET:
                 alert_update = get_driving_update(monitor, entry_model)
 
             if send_level is not None and alert_update is None:
@@ -229,9 +245,11 @@ def process_subscriptions(monitor, levels, rule, kind, daily_cap=False):
                 )
                 subscription.last_notified_level = send_level.key
                 subscription.last_notified_at = now
-                # Enqueue only once the row is committed, so the worker can see it.
+                # Enqueue only once the row is committed, so the worker can see
+                # it. robust: one failed enqueue mustn't drop the rest.
                 transaction.on_commit(
-                    lambda pk=notification.pk: tasks.send_alert_notification(pk)
+                    lambda pk=notification.pk: tasks.send_alert_notification(pk),
+                    robust=True,
                 )
                 queued.append(notification)
 

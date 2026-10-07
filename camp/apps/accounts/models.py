@@ -72,12 +72,14 @@ class User(AbstractBaseUser, PermissionsMixin, models.Model):
         return str(self.name)
 
     def save(self, *args, **kwargs):
-        # A carrier opt-out belongs to the number, not the person.
+        # A carrier opt-out and a verification both belong to the number,
+        # not the person: a new number is unverified and unblocked.
         if not self._state.adding and self.tracker.has_changed('phone'):
             self.sms_blocked = False
+            self.phone_verified = False
             update_fields = kwargs.get('update_fields')
             if update_fields is not None:
-                kwargs['update_fields'] = {*update_fields, 'sms_blocked'}
+                kwargs['update_fields'] = {*update_fields, 'sms_blocked', 'phone_verified'}
         super().save(*args, **kwargs)
 
     def get_name(self):

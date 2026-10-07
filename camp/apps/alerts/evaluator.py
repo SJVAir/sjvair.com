@@ -52,7 +52,8 @@ class AlertEvaluator:
         for entry_model, level in levels.items():
             with transaction.atomic():
                 active_alert = (Alert.objects
-                    .select_for_update()
+                    .select_related('latest')
+                    .select_for_update(of=('self',))
                     .filter(
                         monitor_id=self.monitor.pk,
                         entry_type=entry_model.entry_type,
@@ -97,7 +98,12 @@ class AlertEvaluator:
         '''
         now = timezone.now()
         entry = (entry_model.objects
-            .filter(monitor_id=self.monitor.pk, timestamp__lte=now, **lookup)
+            .filter(
+                monitor_id=self.monitor.pk,
+                timestamp__gte=now - interval * 2,
+                timestamp__lte=now,
+                **lookup
+            )
             .order_by('-timestamp')
             .first()
         )
@@ -119,7 +125,11 @@ class AlertEvaluator:
         return alert
 
     def update_check(self, alert, level):
-        if level is None or level == alert.updates.latest().get_level():
+        if level is None:
+            return
+        latest = alert.latest or alert.updates.latest()
+        latest.alert = alert  # get_level() reads it; skip the re-fetch
+        if level == latest.get_level():
             return
 
         now = timezone.now()

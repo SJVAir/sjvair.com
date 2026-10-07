@@ -1,6 +1,7 @@
 import re
 
 from django import forms
+from django.conf import settings
 from django.contrib.auth import authenticate, forms as auth_forms, password_validation
 from django.contrib.auth.tokens import default_token_generator as token_generator
 from django.core.cache import cache
@@ -71,9 +72,24 @@ class UserForm(forms.ModelForm):
     def save(self, *args, **kwargs):
         commit = kwargs.pop('commit', True)
         user = super().save(commit=False, *args, **kwargs)
+        phone_changed = not user._state.adding and user.tracker.has_changed('phone')
         if commit:
             user.save()
+            if phone_changed:
+                self.send_change_code(user)
         return user
+
+    def send_change_code(self, user):
+        '''
+        User.save() un-verified the new number; text a code like the web flow.
+        Rate limited per user (the per-phone limit can't help: each flip is
+        a different number), so flipping the number can't spam texts. If
+        skipped, the client can use the verify-send endpoint.
+        '''
+        key = f'phone-change-code:{user.pk}'
+        if cache.add(key, True, settings.PHONE_VERIFICATION_RATE_LIMIT * 60):
+            user.set_phone_verification_rate_limit()
+            user.send_phone_verification_code()
 
 
 class UserRegistrationForm(UserForm):
