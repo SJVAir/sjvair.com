@@ -72,8 +72,8 @@ def keys_for_product(product):
     keys = []
     if product.is_fumigant:
         keys.append('fumigant')
-    # From the active ingredients, not the deprecated product flag: 3 CCR
-    # 6400 names ingredients, and nothing ever set the flag.
+    # CDPR's per-product flag when it has one, else the ingredient rule
+    # (see Product.is_restricted).
     if product.is_restricted:
         keys.append('restricted_material')
     return keys

@@ -121,6 +121,7 @@ class Command(BaseCommand):
                 self._import_chemicals(paths['lookup_dir'])
                 self._import_commodities(paths['lookup_dir'])
                 self._import_products(paths['lookup_dir'])
+                self._import_restricted(paths['lookup_dir'])
                 self._import_product_chemicals(paths['lookup_dir'])
                 self._import_fumigation_methods(paths['lookup_dir'])
                 self.stdout.write('')
@@ -292,6 +293,34 @@ class Command(BaseCommand):
             except Exception:
                 skipped += 1
         self.stdout.write(f'    {created:,} created, {updated:,} updated, {skipped:,} skipped')
+
+    def _import_restricted(self, lookup_dir):
+        # lookup_tables/RESTRICTED.txt exists in 2023+ archives only. Products
+        # it doesn't list keep whatever flags they have (NULL until listed).
+        path = self._find(lookup_dir, 'RESTRICTED.txt', 'restricted.txt')
+
+        if not path:
+            self.stdout.write('  [restricted] file not found, flags unchanged')
+            return
+
+        self.stdout.write('  Importing restricted flags...')
+        flags = {}
+        for row in read_csv(path):
+            prodno = parse_int(row.get('prodno'))
+            if not prodno:
+                continue
+            flags[prodno] = (
+                clean(row.get('california_restricted')).lower() == 'x',
+                clean(row.get('federally_restricted')).lower() == 'x',
+            )
+
+        products = list(Product.objects.filter(prodno__in=flags))
+        for product in products:
+            product.california_restricted, product.federally_restricted = flags[product.prodno]
+        Product.objects.bulk_update(
+            products, ['california_restricted', 'federally_restricted'], batch_size=1000)
+        self.stdout.write(
+            f'    {len(products):,} updated, {len(flags) - len(products):,} not in the database')
 
     def _import_product_chemicals(self, lookup_dir):
         path = self._find(lookup_dir, 'PROD_CHEM.txt', 'prod_chem.txt')

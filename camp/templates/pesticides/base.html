@@ -94,7 +94,7 @@ unscoped and carries its own note saying why, which this would contradict.
     <div class="container">
         <span class="icon"><span class="fa-duotone fa-fw fa-triangle-exclamation explorer-icon is-concern" aria-hidden="true"></span></span>
         {% if concern == 'restricted' %}
-        <span>Showing restricted materials only — active ingredients California restricts, which need a county permit and a notice of intent before each application. <a href="{% qs_replace narrow=None concern=None page=None %}">Show all use</a></span>
+        <span>Showing restricted materials only — products California restricts (3 CCR 6400), which need a county permit and a notice of intent before each application. <a href="{% qs_replace narrow=None concern=None page=None %}">Show all use</a></span>
         {% elif concern == 'fumigant' %}
         <span>Showing only fumigants: products CDPR flags as fumigants, or whose active ingredient is almost always applied as one. <a href="{% qs_replace narrow=None concern=None page=None %}">Show all use</a></span>
         {% elif concern == 'aerial' %}

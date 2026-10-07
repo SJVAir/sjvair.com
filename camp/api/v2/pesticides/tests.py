@@ -269,6 +269,23 @@ class ProductListTests(TestCase):
         assert data['count'] == 1
         assert data['data'][0]['california_restricted'] is False
 
+    def test_cdpr_flag_decides_the_key_and_the_filter(self):
+        # Flagged True with no restricted ingredient; the fallback product
+        # (NULL, restricted ingredient) is also restricted; flagged False wins
+        # over its listed ingredient.
+        flagged = make_product(prodno=2, reg_number='100-2', name='FLAGGED')
+        flagged.california_restricted = True
+        flagged.save()
+        exempt = make_product(prodno=3, reg_number='100-3', name='EXEMPT')
+        exempt.california_restricted = False
+        exempt.save()
+        names = lambda params: {i['name'] for i in self.client.get(self.url, params).json()['data']}
+        assert 'FLAGGED' in names({'california_restricted': 'true'})
+        assert 'EXEMPT' not in names({'california_restricted': 'true'})
+        assert 'EXEMPT' in names({'california_restricted': 'false'})
+        item = next(i for i in self.client.get(self.url, {'name': 'flagged'}).json()['data'])
+        assert item['california_restricted'] is True
+
 
 class ProductDetailTests(TestCase):
     def setUp(self):

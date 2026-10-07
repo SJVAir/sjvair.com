@@ -16,7 +16,7 @@ from camp.apps.pesticides.models import (
 
 # Printed by the commands that change the flagged/restricted chemical lists.
 REBUILD_REMINDER = (
-    'Narrowed application counts (restricted, chemicals of concern) are exact after the '
+    'Narrowed application counts (chemicals of concern) are exact after the '
     'next `rebuild_pesticide_rollup --all`: the rollup picks each record\'s counted '
     'ingredient from these lists.'
 )
@@ -27,8 +27,8 @@ REBUILD_SQL = """
 -- `lbs_product_once` and `acres_once` count only that row, so sums across chemicals see the
 -- record once. The designated row is the record's California-restricted
 -- ingredient if it has one, else a chemical of concern, else the lowest
--- chemical_id (NULL chemicals last), so a chemical-based narrowing
--- (restricted / concern) keeps every record it should, exactly once. The two
+-- chemical_id (NULL chemicals last), so the chemical-based concern narrowing
+-- keeps every record it should, exactly once. The two
 -- id lists are parameters (restricted, then concern); they are read at
 -- rebuild time, so when the lists change (import_prop65, import_carbtac,
 -- import_comptox hazard, import_restricted_materials) narrowed application
