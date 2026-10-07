@@ -6,7 +6,7 @@
   description: Data from ground-level sensors, both community-deployed and regulatory-grade, providing real-time measurements of PM2.5, ozone, and other key pollutants across the San Joaquin Valley.
   integrations:
     - name: AirGradient
-      logo: img/logo/airgradient-logo.png
+      logo: img/logo/airgradient.svg
       url: https://www.airgradient.com/
       description: AirGradient is an open-source air quality platform that provides both ready-to-use monitors and DIY kits for community scientists. Their <a href="https://www.airgradient.com/manifesto/">commitment to transparency and open data</a> has made them a valuable collaborator in environmental monitoring. In SJVAir, we include all publicly accessible AirGradient monitors in the San Joaquin Valley, with an emphasis on <a href="/about/testing/">tested and verified units</a> to ensure data quality.
 
