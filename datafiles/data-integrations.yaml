@@ -11,7 +11,7 @@
       description: AirGradient is an open-source air quality platform that provides both ready-to-use monitors and DIY kits for community scientists. Their <a href="https://www.airgradient.com/manifesto/">commitment to transparency and open data</a> has made them a valuable collaborator in environmental monitoring. In SJVAir, we include all publicly accessible AirGradient monitors in the San Joaquin Valley, with an emphasis on <a href="/about/testing/">tested and verified units</a> to ensure data quality.
 
     - name: PurpleAir
-      logo: img/logo/purpleair-square.png
+      logo: img/logo/purpleair.svg
       url: https://www2.purpleair.com/
       description: PurpleAir is one of the largest community air quality sensor networks in the world. Their low-cost monitors are widely deployed by residents, schools, and community groups, creating dense coverage across neighborhoods. In SJVAir, we incorporate every publicly accessible PurpleAir monitor in the San Joaquin Valley, alongside a subset of units that we independently <a href="/about/testing/">test and verify</a> for reliability.
 
