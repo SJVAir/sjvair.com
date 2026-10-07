@@ -24,6 +24,19 @@
 
 
 body.pesticides
+    // Links inside running text are told apart from it by more than colour
+    // (WCAG 1.4.1); navigation, tabs, buttons, tables and boards stay bare.
+    p.is-size-7 a, .help a, .sources a, .data-notes a, .school-kind a, .chart-note a
+        text-decoration: underline
+
+    // Flag tags: Bulma's derived text colours on the orange/amber tints came
+    // out at 3.4-4.4:1. Prop 65 and fumigant text, and IARC's white-on-orange.
+    .tag.is-danger.is-light
+        color: #a84300
+    .tag.is-warning.is-light
+        color: #735c00
+    .tag.is-danger:not(.is-light)
+        background-color: #b94800
     .hook
         // Photo: "Aerial View of Tractor Spraying Field" on Pexels
         // (https://www.pexels.com/photo/37993891/), free to use. Darkened so
@@ -790,12 +803,19 @@ body.pesticides
         th .sort-link
             @extend .has-text-grey-dark
             white-space: nowrap
+            // The up/down arrows only say "sortable"; show them on the sorted
+            // column (in the link colour) and when a header is hovered or
+            // focused. opacity, not display, so the column doesn't resize.
             .icon
-                @extend .has-text-grey-light
+                color: $text-grey
+                opacity: 0
+            &:hover .icon, &:focus-visible .icon
+                opacity: 1
             &.is-active
                 @extend .has-text-link
                 .icon
                     @extend .has-text-link
+                    opacity: 1
         tbody td
             vertical-align: middle
         td .tags
@@ -821,9 +841,13 @@ body.pesticides
         .level-item
             min-width: 0
             align-items: flex-start
+        // Sentence case at 0.8rem: Bulma's 11px tracked caps was the smallest
+        // text on the page.
         .heading
             @extend .has-text-grey
-            letter-spacing: 0.02em
+            text-transform: none
+            font-size: 0.8rem
+            letter-spacing: 0
         .title
             @extend .has-text-weight-semibold
             font-variant-numeric: tabular-nums
@@ -1028,7 +1052,7 @@ body.pesticides
             width: 1%
             color: $grey
         thead th
-            font-size: 0.7rem
+            font-size: 0.75rem
             text-transform: uppercase
             letter-spacing: 0.03em
             color: $grey

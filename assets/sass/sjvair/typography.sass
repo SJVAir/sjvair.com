@@ -12,3 +12,7 @@ ul
     &.list-unstyled
         list-style: none !important
         margin-left: 0 !important
+
+// Links in running text carry an underline, not just a colour (WCAG 1.4.1).
+.content p a:not(.button), .help a
+    text-decoration: underline

@@ -51,7 +51,7 @@
 .map-legend-panel .section-map-level {
   display: block;
   margin-top: 0.35rem;
-  color: #7a7a7a;
+  color: #6b6b6b;
 }
 
 /* Why the school markers aren't showing (set by updateLocationsNote); empty
@@ -59,7 +59,7 @@
 .map-legend-panel .section-map-locations-note:not(:empty) {
   display: block;
   margin-top: 0.35rem;
-  color: #7a7a7a;
+  color: #6b6b6b;
 }
 
 /* Marker colours live in the script (LOCATION_COLORS, NOTICE_COLOR): notices
@@ -69,7 +69,7 @@
 
 /* The Options menu's "Show" group label, over the layer checkboxes. */
 .section-map-controls .section-map-group-label {
-  color: #7a7a7a;
+  color: #6b6b6b;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-size: 0.7rem;
@@ -92,7 +92,7 @@
 .section-popup .section-popup-sub {
   margin: 0 0 0.5rem;
   font-size: 0.8rem;
-  color: #7a7a7a;
+  color: #6b6b6b;
 }
 
 .section-popup .section-popup-metric {
@@ -118,7 +118,7 @@
   font-weight: 600;
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: #7a7a7a;
+  color: #6b6b6b;
 }
 
 .section-popup .section-popup-label {
@@ -127,7 +127,7 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #7a7a7a;
+  color: #6b6b6b;
 }
 
 .section-popup .section-popup-chems {
@@ -159,7 +159,7 @@
 .section-popup .section-popup-note {
   margin: 0;
   font-size: 0.85rem;
-  color: #7a7a7a;
+  color: #6b6b6b;
 }
 
 /* A section's scheduled notices, edged in the notices orange so the block
@@ -213,7 +213,7 @@
 }
 
 .section-popup .section-popup-action .fa-regular {
-  color: #7a7a7a;
+  color: #6b6b6b;
 }
 
 .section-popup .section-popup-action:hover .fa-regular {

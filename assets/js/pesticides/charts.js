@@ -68,7 +68,7 @@
       color: cssVar(figure, '--chart-color', '#3273dc'),
       color2: cssVar(figure, '--chart-color-2', '#d95f0e'),
       grid: cssVar(figure, '--chart-grid', '#ededed'),
-      muted: cssVar(figure, '--chart-muted', '#7a7a7a'),
+      muted: cssVar(figure, '--chart-muted', '#6b6b6b'),
       text: cssVar(figure, '--chart-text', '#4a4a4a'),
       font: '11px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif'),
     };
