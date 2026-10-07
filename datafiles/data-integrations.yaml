@@ -21,7 +21,7 @@
       description: AirNow is the official U.S. platform for air quality information, operated through a partnership of the Environmental Protection Agency, NOAA, NASA, the National Park Service, the CDC, and state, tribal, and local agencies. It serves as the central hub for regulatory-grade monitoring data, providing the public with reliable and standardized air quality information nationwide.
 
     - name: AQview
-      logo: img/logo/carb-vertical.png
+      logo: img/logo/carb-vertical.svg
       url: https://aqview.arb.ca.gov/
       description: AQview is the California Air Resources Board's (CARB) data platform for AB 617 communities, providing regulatory-grade PM2.5 measurements in areas most impacted by air pollution. Because AQview does not offer a public API, SJVAir is one of the only external platforms to integrate and display this data outside of CARB's own system.
 
@@ -87,7 +87,7 @@
       description: The Healthy Places Index (HPI), developed by the Public Health Alliance, maps social and environmental conditions that shape health outcomes across California. By combining indicators such as education, housing, job opportunities, and environmental quality, HPI highlights community factors strongly linked to life expectancy and supports efforts to advance health equity.
 
     - name: CEIDARS
-      logo: img/logo/carb-vertical.png
+      logo: img/logo/carb-vertical.svg
       url: https://ww2.arb.ca.gov/our-work/programs/criteria-and-toxics-emissions-inventory
       description: The California Emission Inventory Development and Reporting System (CEIDARS) is CARB's inventory of emissions from permitted stationary sources — refineries, power plants, dairies, manufacturers, and thousands of smaller facilities — reported each year by the local air districts. SJVAir imports the facility-level records for the San Joaquin Valley, with each facility's criteria pollutant and toxic emissions by year, so that what is released nearby can be shown alongside what is measured in the air.
 
@@ -119,7 +119,7 @@
       description: California's Proposition 65 list, maintained by the Office of Environmental Health Hazard Assessment (OEHHA), names the chemicals the state has determined can cause cancer, birth defects, or other reproductive harm. SJVAir marks a chemical as a Prop 65 listing when it appears on the list, and includes those listings in its "chemicals of concern" view.
 
     - name: Toxic Air Contaminants
-      logo: img/logo/carb-vertical.png
+      logo: img/logo/carb-vertical.svg
       url: https://ww2.arb.ca.gov/resources/documents/carb-identified-toxic-air-contaminants
       description: The California Air Resources Board (CARB) identifies toxic air contaminants (TACs) — airborne substances that may cause serious illness or death — and, with OEHHA, publishes health reference values for them. SJVAir flags pesticide chemicals on CARB's TAC list, since these are the ones whose drift into the air is a recognized concern.
 
