@@ -12,6 +12,8 @@ from django.utils import timezone
 
 import twilio.rest
 
+from camp.apps.accounts import sms_keywords
+from camp.apps.accounts.tasks import handle_opted_out_number
 from camp.apps.alerts import notifications
 from camp.apps.alerts.evaluator import AlertEvaluator
 from camp.apps.alerts.models import Alert, Notification, Subscription
@@ -141,6 +143,9 @@ def send_alert_notification(notification_id):
         notification.status = Notification.Status.FAILED
         notification.error = str(exc)
         notification.save(update_fields=['status', 'error'])
+        # After the FAILED save, so a failure here can't leave it QUEUED.
+        if getattr(exc, 'code', None) == sms_keywords.OPTED_OUT_ERROR:
+            handle_opted_out_number(notification.user.phone)
         return
 
     notification.status = Notification.Status.SENT

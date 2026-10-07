@@ -813,6 +813,19 @@ class NotifySubscribersTests(TestCase):
             return notifications.notify_subscribers(self.monitor, {PM25: level})
 
     @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_opted_out_error_blocks_the_user(self, mock_client_class):
+        mock_client_class.return_value.messages.create.side_effect = TwilioRestException(
+            status=400, uri='https://api.twilio.com/fake', msg='Unsubscribed recipient', code=21610,
+        )
+        self.notify(USG)
+
+        notification = Notification.objects.get()
+        assert notification.status == Notification.Status.FAILED
+        self.user.refresh_from_db()
+        assert self.user.phone_verified is False
+        assert self.user.sms_blocked is True
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
     def test_sends_and_records_state(self, mock_client_class):
         mock_client_class.return_value.messages.create.return_value = MagicMock(sid='SM_test_sid')
 

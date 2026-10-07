@@ -13,6 +13,8 @@ from phonenumber_field.formfields import PhoneNumberField
 from phonenumber_field.validators import validate_international_phonenumber
 from phonenumber_field.widgets import RegionalPhoneNumberWidget
 
+from camp.apps.accounts import sms_keywords
+
 from .models import User
 
 
@@ -201,6 +203,8 @@ class SendPhoneVerificationForm(forms.Form):
         super().__init__(*args, **kwargs)
 
     def clean(self):
+        if self.user.sms_blocked:
+            raise forms.ValidationError(sms_keywords.get_opt_in_instructions(), code='sms_blocked')
         self.check_rate_limit()
         return self.cleaned_data
 

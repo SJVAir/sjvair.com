@@ -30,7 +30,7 @@ REMINDER_HOUR = 10
 
 def get_recipients(monitor):
     return (Subscription.objects
-        .filter(monitor_id=monitor.pk, user__phone_verified=True)
+        .filter(monitor_id=monitor.pk, user__phone_verified=True, user__sms_blocked=False)
         .exclude(user__phone='')
         .select_related('user')
     )

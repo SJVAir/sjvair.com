@@ -1,4 +1,3 @@
-from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse, HttpResponseForbidden
@@ -9,9 +8,8 @@ from django.views.decorators.csrf import csrf_exempt
 
 import vanilla
 
-from twilio.request_validator import RequestValidator
-
 from camp.apps.alerts.models import Alert, Notification, Subscription
+from camp.utils.twilio_signature import is_valid_twilio_request
 
 
 class AlertList(LoginRequiredMixin, vanilla.ListView):
@@ -54,11 +52,7 @@ class TwilioStatusCallback(View):
     }
 
     def post(self, request, *args, **kwargs):
-        validator = RequestValidator(settings.TWILIO_AUTH_TOKEN)
-        signature = request.META.get('HTTP_X_TWILIO_SIGNATURE', '')
-        url = request.build_absolute_uri()
-
-        if not validator.validate(url, request.POST, signature):
+        if not is_valid_twilio_request(request):
             return HttpResponseForbidden()
 
         status = self.STATUS_MAP.get(request.POST.get('MessageStatus'))

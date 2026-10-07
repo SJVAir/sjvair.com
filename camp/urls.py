@@ -12,6 +12,7 @@ from health_check.contrib.psutil import Memory
 from health_check.contrib.redis import Redis
 from health_check.views import HealthCheckView
 
+from camp.apps.accounts.views import TwilioInboundSMS
 from camp.apps.alerts.views import TwilioStatusCallback
 from camp.apps.calheatscore.health_checks import CalHeatScoreHealthCheck
 from camp.apps.forecasts.health_checks import ForecastsHealthCheck
@@ -44,6 +45,7 @@ urlpatterns = [
     path('prose/', include('prose.urls')),
 
     path('webhooks/twilio/status/', TwilioStatusCallback.as_view(), name='twilio-status-callback'),
+    path('webhooks/twilio/inbound/', TwilioInboundSMS.as_view(), name='twilio-inbound-sms'),
 
     # Admin-y stuff
     path('admin/', include('admin_honeypot.urls', namespace='admin_honeypot')),

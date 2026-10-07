@@ -33,6 +33,10 @@ class User(AbstractBaseUser, PermissionsMixin, models.Model):
     email = NullEmailField(_('Email address'), unique=True, blank=True, null=True, db_index=True)
     phone = PhoneNumberField(_('Phone number'), unique=True, db_index=True, help_text="Your cell phone number for receiving air quality text alerts.")
     phone_verified = models.BooleanField(default=False)
+    # Twilio is blocking texts to this number (the person texted an English
+    # opt-out keyword, or a send failed with error 21610). Cleared when they
+    # text START.
+    sms_blocked = models.BooleanField(_('SMS blocked by carrier opt-out'), default=False, db_default=False)
     language = models.CharField(_('Preferred Language'), max_length=5, choices=LANGUAGES, default=LANGUAGES.en)
 
     # Normally provided by auth.AbstractUser, but we're not using that here.
@@ -66,6 +70,15 @@ class User(AbstractBaseUser, PermissionsMixin, models.Model):
 
     def __str__(self):
         return str(self.name)
+
+    def save(self, *args, **kwargs):
+        # A carrier opt-out belongs to the number, not the person.
+        if not self._state.adding and self.tracker.has_changed('phone'):
+            self.sms_blocked = False
+            update_fields = kwargs.get('update_fields')
+            if update_fields is not None:
+                kwargs['update_fields'] = {*update_fields, 'sms_blocked'}
+        super().save(*args, **kwargs)
 
     def get_name(self):
         name = HumanName(self.full_name)
@@ -117,6 +130,21 @@ class User(AbstractBaseUser, PermissionsMixin, models.Model):
         return code == cached_code
 
     def send_sms(self, message, verify=True):
+        if self.sms_blocked:
+            return False
         if self.phone and (self.phone_verified or not verify):
             return tasks.send_sms_message(self.phone, message)
         return False
+
+    def opt_out_of_sms(self, blocked):
+        '''
+        Stop all texts to this user. Resuming means verifying the phone again.
+        '''
+        self.phone_verified = False
+        self.sms_blocked = self.sms_blocked or blocked
+        cache.delete(self.phone_verification_code_key)
+        self.save(update_fields=['phone_verified', 'sms_blocked'])
+
+    def clear_sms_block(self):
+        self.sms_blocked = False
+        self.save(update_fields=['sms_blocked'])

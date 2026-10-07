@@ -185,6 +185,33 @@ class AuthenticationTests(TestCase):
         assert send_sms_message.called
 
     @patch("camp.apps.accounts.tasks.send_sms_message")
+    def test_blocked_user_is_told_to_text_start(self, send_sms_message):
+        self.user.opt_out_of_sms(blocked=True)
+
+        url = reverse("api:v1:account:phone-verify-send")
+        request = self.factory.post(url)
+        request.user = self.user
+        response = send_phone_verification(request)
+
+        assert response.status_code == 400
+        assert 'Text START to' in response.content.decode()
+        assert not send_sms_message.called
+        # The rate limit wasn't consumed, so a retry after texting START works.
+        assert not self.user.check_phone_verification_rate_limit()
+
+    @patch("camp.apps.accounts.tasks.send_sms_message")
+    def test_password_reset_for_blocked_user_does_not_reveal_it(self, send_sms_message):
+        self.user.opt_out_of_sms(blocked=True)
+
+        url = reverse("api:v1:account:password-reset")
+        request = self.factory.post(url, {"phone": "559-555-5555"}, content_type="application/json")
+        response = password_reset(request)
+
+        assert response.status_code == 200
+        assert 'Text START' not in response.content.decode()
+        assert not send_sms_message.called
+
+    @patch("camp.apps.accounts.tasks.send_sms_message")
     def test_validate_phone_confirm(self, send_sms_message):
         """
         Ensure a user can validate their phone number with the code
