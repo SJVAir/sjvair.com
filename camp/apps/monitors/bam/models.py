@@ -87,6 +87,12 @@ class BAM1022(Monitor):
 
         return entries
 
+    def create_entry(self, EntryModel, save=True, **data):
+        if EntryModel is entry_models.PM25 and data.get('value') == 99999:
+            # Bad entry (sentinel error state) -- don't create it.
+            return None
+        return super().create_entry(EntryModel, save=save, **data)
+
     def create_entry_legacy(self, payload, sensor=None):
         timestamp = parse_datetime(payload['Time'])
         try:
