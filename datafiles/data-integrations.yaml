@@ -65,7 +65,7 @@
       description: The National Weather Service, part of NOAA, publishes forecasts, current conditions, and observations from its network of weather stations through a free public API at weather.gov. SJVAir's map uses it for the temperature shown alongside air quality readings, and we plan to bring its station observations into our own data pipeline alongside CIMIS.
 
     - name: CalHeatScore
-      logo: img/logo/calepa.png
+      logo: img/logo/calepa.svg
       url: https://calheatscore.calepa.ca.gov/
       description: CalHeatScore is California's heat-risk forecasting tool, developed by the Office of Environmental Health Hazard Assessment at CalEPA with the Department of Insurance and the Department of Public Health. It rates each ZIP code's heat risk for the coming week on a five-step scale, from low to severe, based on forecast temperatures and local health data. SJVAir imports the daily scores for every Valley ZIP code so heat risk can be shown alongside air quality.
 
