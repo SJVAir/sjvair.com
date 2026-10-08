@@ -13,6 +13,8 @@ from phonenumber_field.formfields import PhoneNumberField
 from phonenumber_field.validators import validate_international_phonenumber
 from phonenumber_field.widgets import RegionalPhoneNumberWidget
 
+from camp.apps.accounts import sms_keywords
+
 from .models import User
 
 
@@ -201,14 +203,15 @@ class SendPhoneVerificationForm(forms.Form):
         super().__init__(*args, **kwargs)
 
     def clean(self):
+        if self.user.sms_blocked:
+            raise forms.ValidationError(sms_keywords.get_opt_in_instructions(), code='sms_blocked')
         self.check_rate_limit()
         return self.cleaned_data
 
     def check_rate_limit(self):
-        if self.user.check_phone_verification_rate_limit():
+        if not self.user.claim_phone_verification_slot():
             error = _('You have recently been sent a verification code. Please try again in a few minutes.')
             raise forms.ValidationError(error)
-        self.user.set_phone_verification_rate_limit()
 
 
 class PhoneVerificationCodeForm(forms.Form):
@@ -245,10 +248,9 @@ class PasswordResetForm(forms.Form):
         phone = self.cleaned_data['phone']
         self.user = self.get_user(phone)
         if self.user is not None:
-            if self.user.check_phone_verification_rate_limit():
+            if not self.user.claim_phone_verification_slot():
                 error = _('You have recently been sent a verification code. Please try again in a few minutes.')
                 raise forms.ValidationError(error)
-            self.user.set_phone_verification_rate_limit()
         return phone
 
     def get_user(self, phone):

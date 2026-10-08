@@ -4,9 +4,10 @@ import string
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.core.cache import cache
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from django.utils.functional import cached_property
+from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
@@ -17,6 +18,7 @@ from phonenumber_field.modelfields import PhoneNumberField
 from camp.apps.accounts import managers
 from camp.apps.accounts import tasks
 from camp.utils.fields import NullEmailField
+from camp.utils.sms import gsm_fold, sms_translation
 
 
 class User(AbstractBaseUser, PermissionsMixin, models.Model):
@@ -33,6 +35,10 @@ class User(AbstractBaseUser, PermissionsMixin, models.Model):
     email = NullEmailField(_('Email address'), unique=True, blank=True, null=True, db_index=True)
     phone = PhoneNumberField(_('Phone number'), unique=True, db_index=True, help_text="Your cell phone number for receiving air quality text alerts.")
     phone_verified = models.BooleanField(default=False)
+    # Twilio is blocking texts to this number (the person texted an English
+    # opt-out keyword, or a send failed with error 21610). Cleared when they
+    # text START.
+    sms_blocked = models.BooleanField(_('SMS blocked by carrier opt-out'), default=False, db_default=False)
     language = models.CharField(_('Preferred Language'), max_length=5, choices=LANGUAGES, default=LANGUAGES.en)
 
     # Normally provided by auth.AbstractUser, but we're not using that here.
@@ -59,13 +65,40 @@ class User(AbstractBaseUser, PermissionsMixin, models.Model):
 
     objects = managers.UserManager()
 
-    tracker = FieldTracker(fields=['phone'])
+    tracker = FieldTracker(fields=['phone', 'phone_verified'])
 
     class Meta:
         ordering = ('-date_joined',)
 
     def __str__(self):
         return str(self.name)
+
+    def save(self, *args, **kwargs):
+        # A carrier opt-out and a verification both belong to the number,
+        # not the person: a new number is unverified and unblocked.
+        phone_changed = not self._state.adding and self.tracker.has_changed('phone')
+        if phone_changed:
+            self.sms_blocked = False
+            self.phone_verified = False
+            update_fields = kwargs.get('update_fields')
+            if update_fields is not None:
+                kwargs['update_fields'] = {*update_fields, 'sms_blocked', 'phone_verified'}
+
+        # An existing user whose phone just became verified (not on creation,
+        # not on a number change) is sent the confirmation once this save
+        # commits. A save with update_fields that skips phone_verified leaves
+        # the tracker unchanged, so the transition fires on the save that writes it.
+        update_fields = kwargs.get('update_fields')
+        newly_verified = (
+            not self._state.adding
+            and not phone_changed
+            and self.phone_verified
+            and self.tracker.has_changed('phone_verified')
+            and (update_fields is None or 'phone_verified' in update_fields)
+        )
+        super().save(*args, **kwargs)
+        if newly_verified and self.phone and not self.sms_blocked:
+            transaction.on_commit(self.send_phone_confirmation)
 
     def get_name(self):
         name = HumanName(self.full_name)
@@ -87,7 +120,7 @@ class User(AbstractBaseUser, PermissionsMixin, models.Model):
 
     @property
     def phone_verification_rate_limit_key(self):
-        return f'phone-rate-limit:{self.phone}'
+        return f'phone-rate-limit:{self.pk}'
 
     @property
     def phone_verification_code_key(self):
@@ -97,10 +130,15 @@ class User(AbstractBaseUser, PermissionsMixin, models.Model):
         cache_key = self.phone_verification_rate_limit_key
         return cache.get(cache_key, default=False)
 
-    def set_phone_verification_rate_limit(self):
+    def claim_phone_verification_slot(self):
+        '''
+        Atomically claim the user's phone verification send slot. Keyed on the
+        user (not the number) so changing phone can't buy extra texts.
+        Returns True if claimed, False if a code was sent recently.
+        '''
         cache_key = self.phone_verification_rate_limit_key
         expires = settings.PHONE_VERIFICATION_RATE_LIMIT * 60
-        cache.set(cache_key, True, expires)
+        return cache.add(cache_key, True, expires)
 
     def send_phone_verification_code(self):
         expires = settings.PHONE_VERIFICATION_CODE_EXPIRES * 60
@@ -109,14 +147,42 @@ class User(AbstractBaseUser, PermissionsMixin, models.Model):
             in range(settings.PHONE_VERIFICATION_CODE_DIGITS)
         ])
         cache.set(self.phone_verification_code_key, code, expires)
-        message = f'SJVAir – Verification Code: {code}'
+        # GSM-7 only (no en dash): one stray character would double the segments.
+        with sms_translation(self.language):
+            message = gsm_fold(gettext('SJVAir verification code: {code}').format(code=code))
         self.send_sms(message, verify=False)  # Don't do a verification check
+
+    def send_phone_confirmation(self):
+        '''
+        Confirm the phone is verified, with the opt-out language carriers expect.
+        '''
+        with sms_translation(self.language):
+            message = gsm_fold(gettext(
+                'SJVAir: Your phone is verified for air quality alerts. '
+                'Msg frequency varies. Msg & data rates may apply. Reply STOP to opt out.'
+            ))
+        return self.send_sms(message)
 
     def check_phone_verification_code(self, code):
         cached_code = cache.get(self.phone_verification_code_key)
         return code == cached_code
 
     def send_sms(self, message, verify=True):
+        if self.sms_blocked:
+            return False
         if self.phone and (self.phone_verified or not verify):
             return tasks.send_sms_message(self.phone, message)
         return False
+
+    def opt_out_of_sms(self, blocked):
+        '''
+        Stop all texts to this user. Resuming means verifying the phone again.
+        '''
+        self.phone_verified = False
+        self.sms_blocked = self.sms_blocked or blocked
+        cache.delete(self.phone_verification_code_key)
+        self.save(update_fields=['phone_verified', 'sms_blocked'])
+
+    def clear_sms_block(self):
+        self.sms_blocked = False
+        self.save(update_fields=['sms_blocked'])

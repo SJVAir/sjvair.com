@@ -13,6 +13,7 @@ from phonenumber_field.validators import validate_international_phonenumber
 from phonenumber_field.widgets import RegionalPhoneNumberWidget
 from resticus.auth import TokenAuth
 
+from camp.apps.accounts import sms_keywords
 from camp.apps.accounts.models import User
 
 
@@ -70,9 +71,22 @@ class UserForm(forms.ModelForm):
     def save(self, *args, **kwargs):
         commit = kwargs.pop('commit', True)
         user = super().save(commit=False, *args, **kwargs)
+        phone_changed = not user._state.adding and user.tracker.has_changed('phone')
         if commit:
             user.save()
+            if phone_changed:
+                self.send_change_code(user)
         return user
+
+    def send_change_code(self, user):
+        '''
+        User.save() un-verified the new number; text a code like the web flow.
+        Shares the per-user send slot with the verify-send endpoint, so
+        flipping the number can't spam texts. If skipped, the client can
+        use the verify-send endpoint once the window passes.
+        '''
+        if user.claim_phone_verification_slot():
+            user.send_phone_verification_code()
 
 
 class UserRegistrationForm(UserForm):
@@ -126,14 +140,15 @@ class SendPhoneVerificationForm(forms.Form):
         super().__init__(*args, **kwargs)
 
     def clean(self):
+        if self.user.sms_blocked:
+            raise forms.ValidationError(sms_keywords.get_opt_in_instructions(), code='sms_blocked')
         self.check_rate_limit()
         return self.cleaned_data
 
     def check_rate_limit(self):
-        if self.user.check_phone_verification_rate_limit():
+        if not self.user.claim_phone_verification_slot():
             error = _('You have recently been sent a verification code. Please try again in a few minutes.')
             raise forms.ValidationError(error)
-        self.user.set_phone_verification_rate_limit()
 
 
 class PhoneVerificationForm(forms.Form):
@@ -177,10 +192,9 @@ class PasswordResetForm(forms.Form):
         phone = self.cleaned_data['phone']
         self.user = self.get_user(phone)
         if self.user is not None:
-            if self.user.check_phone_verification_rate_limit():
+            if not self.user.claim_phone_verification_slot():
                 error = _('You have recently been sent a verification code. Please try again in a few minutes.')
                 raise forms.ValidationError(error)
-            self.user.set_phone_verification_rate_limit()
         return phone
 
     def get_user(self, phone):
