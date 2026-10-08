@@ -1221,7 +1221,7 @@ class EntitySearchTests(RollupTestMixin, TestCase):
         Chemical.objects.filter(pk=3).update(name='1080', preferred_name='Sodium fluoroacetate')
         by_name = self.results(type='chemical', q='fluoro')
         assert [r['name'] for r in by_name] == ['Sodium fluoroacetate']
-        assert by_name[0]['detail'] == '1080 · 560'
+        assert by_name[0]['detail'] == '1080 · CDPR chem code 560'
         by_cdpr = self.results(type='chemical', q='1080')
         assert [r['name'] for r in by_cdpr] == ['Sodium fluoroacetate']
 
@@ -1240,16 +1240,29 @@ class EntitySearchTests(RollupTestMixin, TestCase):
         assert [r['name'] for r in results] == ['Glyphosate']
         chemical = Chemical.objects.get(name='GLYPHOSATE')
         assert results[0]['id'] == chemical.sqid
-        assert results[0]['detail'] == str(chemical.chem_code)
+        assert results[0]['detail'] == f'CDPR chem code {chemical.chem_code}'
 
     def test_product_search_detail_is_the_reg_number(self):
         results = self.results(type='product', q='roundup')
-        assert [(r['name'], r['detail']) for r in results] == [('ROUNDUP PRO', '524-475')]
+        assert [(r['name'], r['detail']) for r in results] == [('ROUNDUP PRO', 'CDPR reg. no. 524-475')]
 
     def test_commodity_search_detail_is_the_site_code(self):
         results = self.results(type='commodity', q='grape')
         commodity = Commodity.objects.get(name='GRAPE')
-        assert [(r['name'], r['detail']) for r in results] == [('Grape', commodity.site_code)]
+        assert [(r['name'], r['detail']) for r in results] == [('Grape', f'CDPR site code {commodity.site_code}')]
+
+    def test_exact_then_prefix_then_the_rest(self):
+        from camp.apps.pesticides.models import PesticideUseTotal
+        template = PesticideUseTotal.objects.filter(chemical__isnull=False).first()
+        # The exact match is a longer, later name than the prefix match; it
+        # still leads, by the preferred name it is exactly typed as.
+        prefix = Chemical.objects.create(chem_code=30010, name='ZORBLAT B')
+        exact = Chemical.objects.create(chem_code=30011, name='LONG CDPR NAME FOR ZORBLAT', preferred_name='Zorblat')
+        for chemical in (prefix, exact):
+            PesticideUseTotal.objects.create(year=template.year, county=template.county, chemical=chemical, applications=1, records=1)
+        assert [r['name'] for r in self.results(type='chemical', q='zorblat')] == ['Long CDPR name for zorblat', 'Zorblat B']
+        # Short names lead among prefix matches: "sulf" offers Sulfur first.
+        assert self.results(type='chemical', q='sulf')[0]['name'] == 'Sulfur'
 
     def test_partial_match_falls_back_to_icontains(self):
         assert 'Chlorpyrifos' in [r['name'] for r in self.results(type='chemical', q='chlorpy')]

@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from django.db.models import Case, Count, Prefetch, Q, Sum, When
+from django.db.models.functions import Length
 from django.shortcuts import get_object_or_404
 
 from resticus import generics, http
@@ -246,6 +247,13 @@ SEARCH_KINDS = {
     'product': (Product, 'reg_number'),
     'commodity': (Commodity, 'site_code'),
 }
+# What each kind's bare CDPR code is called in a result's `detail`: a lone
+# "560" or "524-475" doesn't say what it identifies.
+SEARCH_CODE_LABELS = {
+    'chemical': 'CDPR chem code',
+    'product': 'CDPR reg. no.',
+    'commodity': 'CDPR site code',
+}
 SEARCH_DEFAULT_LIMIT = 10
 SEARCH_MAX_LIMIT = 25
 SEARCH_MIN_LENGTH = 2
@@ -286,15 +294,23 @@ class EntitySearchBase(generics.Endpoint):
         if params.get('county'):
             used = used.filter(county__slug=params['county'])
         used = used.values(kind)
-        # Prefix matches first: an autocomplete for "gly" should lead with
-        # the glyphosates, not with every glycol that contains the letters.
+        # Exact matches first, then prefix matches, then the rest: an
+        # autocomplete for "sulfur" should lead with Sulfur, and "gly" with
+        # the glyphosates, not every glycol that contains the letters. Within
+        # a tier the closer text match leads, then the shorter name (so
+        # "sulf" offers Sulfur before Sulfuric acid), then the alphabet.
+        exact = Q(name__iexact=query)
         starts = Q(name__istartswith=query)
         if kind == 'chemical':
+            exact |= Q(preferred_name__iexact=query)
             starts |= Q(preferred_name__istartswith=query)
         queryset = (model.objects.search(query)
             .filter(pk__in=used)
-            .annotate(prefix=Case(When(starts, then=0), default=1))
-            .order_by('prefix', '-rank', 'name', 'pk'))
+            .annotate(
+                tier=Case(When(exact, then=0), When(starts, then=1), default=2),
+                name_length=Length('name'),
+            )
+            .order_by('tier', '-rank', 'name_length', 'name', 'pk'))
 
         # The explorer's narrowing: only the names applied under it in scope.
         # A totals row names one entity, so it can't answer for the others;
@@ -312,7 +328,8 @@ class EntitySearchBase(generics.Endpoint):
         # the detail when it differs, so a reader who typed "1080" sees why
         # "Sodium fluoroacetate" came up.
         def entry(obj):
-            detail = str(getattr(obj, detail_field) or '')
+            code = str(getattr(obj, detail_field) or '')
+            detail = f'{SEARCH_CODE_LABELS[kind]} {code}' if code else ''
             alias = getattr(obj, 'cdpr_alias', '')
             if alias:
                 detail = f'{alias} · {detail}' if detail else alias
@@ -330,6 +347,6 @@ class EntitySearch(CachedEndpointMixin, EntitySearchBase):
     `county` (slug) to offer only names with reported use there, `narrow=concern|restricted|fumigant|aerial`
     (or the legacy `concern=1`) to offer only what that narrowing keeps, and
     `limit` (default 10, capped at 25). Each result carries the entity's `id` (sqid), `name`, and a
-    `detail` string -- chem code, registration number, or site code.
+    `detail` string -- the CDPR chem code, registration number, or site code, labelled.
     """
     cache_timeout = 60 * 5
