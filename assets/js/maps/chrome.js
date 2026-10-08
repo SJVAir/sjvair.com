@@ -132,6 +132,22 @@
     if (shift) menu.style.transform = 'translateX(' + Math.round(shift) + 'px)';
   }
 
+  // What a menu focuses on open: its search box; else, for a panel of
+  // controls (the Options dialog), its first control -- the checked one of a
+  // radio group -- not the last select a query for "select" would find; a
+  // menu of plain links takes no focus (the reader arrows or tabs in).
+  function firstControl(menu) {
+    if (!menu) return null;
+    var search = menu.querySelector('input[type="search"]');
+    if (search) return search;
+    var control = menu.querySelector('input:not([type="hidden"]), select');
+    if (control && control.type === 'radio' && control.name) {
+      var checked = menu.querySelector('input[type="radio"][name="' + control.name + '"]:checked');
+      if (checked) control = checked;
+    }
+    return control;
+  }
+
   function bindToolbar(shell) {
     var toolbar = shell.toolbarEl;
     if (!toolbar || toolbar.getAttribute('data-bound')) return;
@@ -151,12 +167,31 @@
         // with preventScroll on some browsers) and shift the menu's
         // measured position, so settle the transform first.
         keepMenuInView(dropdown.querySelector('.dropdown-menu'));
-        var focusable = dropdown.querySelector('input[type="search"], select');
+        var focusable = firstControl(dropdown.querySelector('.dropdown-menu'));
         if (focusable) focusable.focus({ preventScroll: true });
+      });
+      // ArrowDown on a trigger opens the menu and moves into it.
+      trigger.addEventListener('keydown', function (event) {
+        if (event.key !== 'ArrowDown') return;
+        event.preventDefault();
+        if (!dropdown.classList.contains('is-active')) trigger.click();
+        var first = firstControl(dropdown.querySelector('.dropdown-menu')) ||
+          dropdown.querySelector('.dropdown-menu a[href]');
+        if (first) first.focus({ preventScroll: true });
       });
       // Clicks inside the menu (typing, picking) shouldn't close it.
       var menu = dropdown.querySelector('.dropdown-menu');
       if (menu) menu.addEventListener('click', function (event) { event.stopPropagation(); });
+      // Up and Down walk a menu of links.
+      if (menu) menu.addEventListener('keydown', function (event) {
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+        var item = event.target.closest ? event.target.closest('a.dropdown-item') : null;
+        if (!item) return;
+        var items = Array.prototype.slice.call(menu.querySelectorAll('a.dropdown-item'));
+        var next = items[items.indexOf(item) + (event.key === 'ArrowDown' ? 1 : -1)];
+        event.preventDefault();
+        (next || trigger).focus();
+      });
     });
   }
 
@@ -172,7 +207,17 @@
       click: function () { closeDropdowns(shell, null); },
       keydown: function (event) {
         if (event.key !== 'Escape') return;
-        closeDropdowns(shell, null);
+        // An open menu closes first, and focus goes back to its trigger
+        // (the menu hiding would drop it to the body); only with none open
+        // does Escape leave expanded mode.
+        var open = shell.toolbarEl && shell.toolbarEl.querySelector('.dropdown.is-active');
+        if (open) {
+          var trigger = open.querySelector('.dropdown-trigger .button');
+          var focusInside = open.contains(document.activeElement) || document.activeElement === document.body;
+          closeDropdowns(shell, null);
+          if (trigger && focusInside) trigger.focus();
+          return;
+        }
         if (shell.expanded) setExpanded(shell, false);
       },
       resize: function () {

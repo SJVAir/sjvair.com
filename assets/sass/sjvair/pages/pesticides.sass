@@ -51,9 +51,14 @@ body.pesticides
         .lede
             color: rgba($white, 0.92)
             margin-bottom: 0
-        h1 a
-            font-weight: 700
-            text-decoration: none
+        // The title is a paragraph, not a heading (the page carries the h1),
+        // set as the h1 it replaced.
+        .explorer-title
+            line-height: 1.125
+            font-weight: 600
+            a
+                font-weight: 700
+                text-decoration: none
         .explorer-nav.tabs
             margin-top: $size-6
             margin-bottom: 0
@@ -235,6 +240,12 @@ body.pesticides
     .explorer-scope-help
         color: $grey
         line-height: 1
+        // 24px target (WCAG 2.5.8) around a 1rem icon.
+        display: inline-flex
+        align-items: center
+        justify-content: center
+        min-width: 1.5rem
+        min-height: 1.5rem
         &:hover
             color: $link
 
@@ -778,7 +789,12 @@ body.pesticides
             line-height: 1.35
             li
                 break-inside: avoid
-                padding: 0.2em 0
+                padding: 0
+            // A 24px-tall target (WCAG 2.5.8) for each link, spaced as the
+            // old row padding was.
+            a
+                display: inline-block
+                padding: 0.3rem 0
             &.is-two-column
                 columns: 2
                 column-gap: 1.25rem
@@ -791,6 +807,9 @@ body.pesticides
 
     .right-now
         border-left: 3px solid $info
+        // Links inside its sentences are underlined, as in other running text.
+        p a
+            text-decoration: underline
 
     .summary-sentence
         @extend .has-text-grey-dark
@@ -938,6 +957,16 @@ body.pesticides
         margin-left: 0.35rem
         color: $grey-light
         font-size: 0.8em
+        // A 24px target (WCAG 2.5.8) around a small icon; the negative
+        // margins keep the row from growing by the padding.
+        display: inline-flex
+        align-items: center
+        justify-content: center
+        min-width: 1.5rem
+        min-height: 1.5rem
+        margin-top: -0.25rem
+        margin-bottom: -0.25rem
+        vertical-align: middle
         &:hover
             color: $link
         // With words in front of it the icon is the affordance, not the

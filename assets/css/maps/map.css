@@ -485,3 +485,36 @@ html.map-expanded .navbar {
   opacity: 0.4;
 }
 
+
+/* Keyboard focus on the map's own buttons: Bulma's .button drops the outline
+   and draws a faint ring; the toolbar floats over a busy map, so a solid
+   outline in the link blue, offset clear of the button. */
+.map-toolbar .button:focus-visible,
+.map-panel-toggle:focus-visible,
+.map-wrap .maplibregl-ctrl button:focus-visible,
+.map-locate a:focus-visible,
+.map-reset a:focus-visible {
+  outline: 2px solid #1f6fae;
+  outline-offset: 2px;
+}
+
+/* 24px targets (WCAG 2.5.8) for the legend's checkboxes: the label is the hit
+   area, so it fills its row. */
+.legend-toggle,
+.map-panel-body label:has(> input[type="checkbox"]),
+.section-map-controls label {
+  min-height: 24px;
+}
+.legend-toggle {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* The controls never shrink below the SDK's 29px (a target under 24px fails
+   WCAG 2.5.8), whatever a phone's stylesheet does to them. */
+.map-wrap .maplibregl-ctrl-group button,
+.map-locate a,
+.map-reset a {
+  min-width: 29px;
+  min-height: 29px;
+}

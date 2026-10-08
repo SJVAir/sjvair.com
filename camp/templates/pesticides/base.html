@@ -43,7 +43,8 @@
     <div class="container">
         {% block explorer-header %}
         <div class="content">
-            <h1 class="is-size-2 mb-1"><a href="{% url 'pesticides:home' %}">Pesticide Data Explorer</a></h1>
+            {# Not a heading: the page itself carries the one h1 (the hero persists across boosted navigation). #}
+            <p class="explorer-title is-size-2 mb-1"><a href="{% url 'pesticides:home' %}">Pesticide Data Explorer</a></p>
             <p class="lede">Which pesticides are applied in the San Joaquin Valley, where, and on what.</p>
         </div>
         {% endblock %}

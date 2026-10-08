@@ -1,7 +1,7 @@
 {% load pesticides_explorer %}
 <div class="card related-card{% if card.compact %} is-compact{% endif %}">
     <header class="card-header">
-        <p class="card-header-title">{{ card.title }}</p>
+        <h3 class="card-header-title">{{ card.title }}</h3>
         {# Fewer rows than the cap means these are all of them, and there is #}
         {# nothing for "View all" to show. #}
         {% if not card.complete %}<a class="card-header-icon view-all" href="{{ card.show_all_url }}">View all</a>{% endif %}

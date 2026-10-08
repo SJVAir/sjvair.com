@@ -6,6 +6,7 @@
 {% block breadcrumb-list %}<li class="is-active"><a aria-current="page">Products</a></li>{% endblock %}
 
 {% block explorer-content %}
+<h1 class="is-sr-only">Products</h1>
 <div class="columns">
     <div class="column is-3-desktop">
         {% include 'pesticides/includes/filter-form.html' %}
@@ -19,11 +20,11 @@
             <table class="table is-fullwidth is-striped is-hoverable data-table">
                 <thead>
                     <tr>
-                        <th>{% sort_link 'name' 'Product' %}</th>
-                        <th>{% sort_link 'reg' 'Reg. number' %}</th>
+                        <th {% aria_sort 'name' %}>{% sort_link 'name' 'Product' %}</th>
+                        <th {% aria_sort 'reg' %}>{% sort_link 'reg' 'Reg. number' %}</th>
                         <th>Flags</th>
-                        {% if not related.chemical %}<th class="has-text-right">{% sort_link 'chemicals' 'Active ingredients' %}</th>{% endif %}
-                        <th class="has-text-right">{% sort_link 'lbs' lbs_label %}</th>
+                        {% if not related.chemical %}<th class="has-text-right" {% aria_sort 'chemicals' %}>{% sort_link 'chemicals' 'Active ingredients' %}</th>{% endif %}
+                        <th class="has-text-right" {% aria_sort 'lbs' %}>{% sort_link 'lbs' lbs_label %}</th>
                     </tr>
                 </thead>
                 <tbody>

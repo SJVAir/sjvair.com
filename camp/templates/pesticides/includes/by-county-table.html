@@ -20,12 +20,12 @@ wrapper scrolls before they overflow (all-years pounds run to ten digits).
             <div class="dropdown is-right column-picker">
                 <div class="dropdown-trigger">
                     <button type="button" class="button is-small" aria-haspopup="true"
-                            aria-expanded="false" title="{{ county_metric_column.1 }}">
+                            aria-expanded="false" aria-controls="column-picker-menu" title="{{ county_metric_column.1 }}">
                         <span>{{ county_metric_column.0 }}</span>
                         <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
                     </button>
                 </div>
-                <div class="dropdown-menu" role="menu">
+                <div class="dropdown-menu" id="column-picker-menu">
                     <div class="dropdown-content">
                         {% for option in county_metric_options %}
                         <a class="dropdown-item{% if option.active %} is-active{% endif %}"

@@ -4,14 +4,14 @@
     <table class="table is-fullwidth is-striped is-hoverable data-table records-table">
         <thead>
             <tr>
-                <th>{% sort_link 'date' 'Date' %}</th>
+                <th {% aria_sort 'date' %}>{% sort_link 'date' 'Date' %}</th>
                 {% if not county %}<th>County</th>{% endif %}
                 <th>Section</th>
                 <th>Commodity</th>
                 <th>Product</th>
                 <th>Chemical</th>
-                <th class="has-text-right">{% sort_link 'lbs' 'Lbs' %}</th>
-                <th class="has-text-right">{% sort_link 'acres' 'Acres' %}</th>
+                <th class="has-text-right" {% aria_sort 'lbs' %}>{% sort_link 'lbs' 'Lbs' %}</th>
+                <th class="has-text-right" {% aria_sort 'acres' %}>{% sort_link 'acres' 'Acres' %}</th>
                 <th>Method</th>
             </tr>
         </thead>

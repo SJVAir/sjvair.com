@@ -9,11 +9,11 @@ to each link).
 {% if school_districts %}
 <div class="box school-districts-box" data-reveal-scope>
     <p class="label">School districts here</p>
-    <ul class="school-districts-list">
+    <ul class="school-districts-list" id="school-districts-list">
         {% for d in school_districts %}<li{% if d.is_collapsed %} class="is-collapsed"{% endif %}><a href="{{ d.url }}{{ scope_qs }}">{{ d.name }}</a></li>{% endfor %}
     </ul>
     {% if districts_hidden %}
-    <button type="button" class="button is-small is-text school-districts-toggle" data-reveal-toggle aria-expanded="false"
+    <button type="button" class="button is-small is-text school-districts-toggle" data-reveal-toggle aria-expanded="false" aria-controls="school-districts-list"
         data-show-label="Show all {{ school_districts|length }}" data-hide-label="Show fewer">Show all {{ school_districts|length }}</button>
     {% endif %}
 </div>

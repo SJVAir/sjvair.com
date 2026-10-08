@@ -5,6 +5,7 @@
 {% block breadcrumbs %}{% endblock %}
 
 {% block explorer-content %}
+<h1 class="is-sr-only">Pesticide Data Explorer</h1>
 <div class="content intro">
     <p class="is-size-5">
         Browse the pesticides applied across the eight San Joaquin Valley counties: which chemicals, in which products,
@@ -96,6 +97,7 @@ flagged chemicals (stats.landing_stats). It overlaps the chemicals board on
 purpose -- most of what's applied most is flagged -- and is left off entirely
 when nothing is flagged, rather than rendered empty.
 {% endcomment %}
+<h2 class="is-sr-only">Most applied, most treated and biggest movers</h2>
 <div class="columns leaderboards is-multiline">
     <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most applied products' rows=top_products kind='products' view_all_url=product_list_url %}</div>
     {% if concern %}

@@ -18,10 +18,10 @@ as the row.
     <table class="table is-fullwidth is-striped is-hoverable data-table schools-table">
         <thead>
             <tr>
-                <th>{% sort_link 'name' 'School or child care' param='schools_sort' %}</th>
-                {% if schools.show_city %}<th>{% sort_link 'city' 'City' param='schools_sort' %}</th>{% endif %}
-                <th class="has-text-right">{% sort_link 'lbs' 'Lbs nearby' param='schools_sort' %}</th>
-                <th class="has-text-right">{% sort_link 'applications' 'Applications' param='schools_sort' %}</th>
+                <th {% aria_sort 'name' param='schools_sort' %}>{% sort_link 'name' 'School or child care' param='schools_sort' %}</th>
+                {% if schools.show_city %}<th {% aria_sort 'city' param='schools_sort' %}>{% sort_link 'city' 'City' param='schools_sort' %}</th>{% endif %}
+                <th class="has-text-right" {% aria_sort 'lbs' param='schools_sort' %}>{% sort_link 'lbs' 'Lbs nearby' param='schools_sort' %}</th>
+                <th class="has-text-right" {% aria_sort 'applications' param='schools_sort' %}>{% sort_link 'applications' 'Applications' param='schools_sort' %}</th>
                 <th>Section</th>
             </tr>
         </thead>

@@ -74,6 +74,19 @@ def sort_link(context, key, label, param='sort'):
     )
 
 
+@register.simple_tag(takes_context=True)
+def aria_sort(context, key, param='sort'):
+    """
+    The `aria-sort` attribute for a column header whose sort_link sorts on
+    `key`: ascending or descending on the sorted column, nothing on the rest.
+    Goes on the `<th>`, not the link.
+    """
+    current = context.get(param) or ''
+    if current.lstrip('-') != key:
+        return ''
+    return mark_safe('aria-sort="descending"' if current.startswith('-') else 'aria-sort="ascending"')
+
+
 @register.filter
 def lbs(value):
     """Whole pounds with commas; below ten pounds keep a decimal, below one keep two ("0.19"), so a bait's few ounces don't read as nothing."""
@@ -215,6 +228,36 @@ def _delta_phrase(delta, lead):
 def delta_phrase(delta):
     """A trend_deltas() entry as "down 2% since 2022", for a stat's subtext."""
     return _delta_phrase(delta, lead=False) or ''
+
+
+@register.filter
+def chart_table(chart):
+    """
+    A trend or stacked chart's numbers as table rows for a screen reader (the
+    chart itself is a picture): {'columns': [...], 'rows': [(x, [values])]},
+    read from the same dict the browser draws from. None for a chart this
+    can't tabulate.
+    """
+    if not chart or not chart.get('x'):
+        return None
+    unit = (chart.get('unit') or 'value').capitalize()
+    if chart.get('series'):
+        columns = [item['label'] for item in chart['series']]
+        columns = [f'{label} (lbs)' for label in columns]
+        rows = [
+            (x, [item['values'][i] for item in chart['series']])
+            for i, x in enumerate(chart['x'])
+        ]
+    elif chart.get('y') is not None:
+        columns = [unit]
+        series = [chart['y']]
+        if chart.get('compare'):
+            columns.append(chart.get('compare_label') or 'Comparison')
+            series.append(chart['compare'])
+        rows = [(x, [values[i] for values in series]) for i, x in enumerate(chart['x'])]
+    else:
+        return None
+    return {'columns': columns, 'rows': rows}
 
 
 def _chart_id():

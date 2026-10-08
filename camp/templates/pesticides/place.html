@@ -101,6 +101,7 @@
             {% if upcoming_count %}<p class="mt-1"><a href="{{ notices_tab_url }}">See them day by day</a></p>{% endif %}
             <p class="mt-2 mb-0"><a href="{{ spraydays_url }}" target="_blank" rel="noopener">Sign up for SprayDays notices</a> to be alerted before applications happen near you.</p>
         </div>
+        <h2 class="is-sr-only">Products, chemicals and commodities</h2>
         {# Products before chemicals; under the concern scope the chemicals card's title says what it now is. #}
         <div class="mt-5">{% include 'pesticides/includes/related-card.html' with card=products_card %}</div>
         <div class="mt-5">{% include 'pesticides/includes/related-card.html' with card=chemicals_card %}</div>
@@ -111,6 +112,7 @@
 {# Full width: two four-column tables don't fit a half. #}
 {% if movers %}
 <section class="movers-section mt-6">
+    <h2 class="is-sr-only">Biggest movers</h2>
     {% include 'pesticides/includes/movers.html' with title='Biggest movers' kind='chemicals' %}
 </section>
 {% endif %}

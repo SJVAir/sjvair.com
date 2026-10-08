@@ -21,6 +21,7 @@ active ingredients are a registration fact, and three products in five have
 exactly one. It takes the narrow column and doesn't stretch, so the pair
 doesn't render as one row of content beside ten and a screen of whitespace.
 {% endcomment %}
+<h2 class="is-sr-only">Related</h2>
 <div class="columns">
     <div class="column{% if related_a.compact %} is-4-desktop{% elif related_b.compact %} is-8-desktop{% endif %}">{% include 'pesticides/includes/related-card.html' with card=related_a %}</div>
     <div class="column{% if related_b.compact %} is-4-desktop{% elif related_a.compact %} is-8-desktop{% endif %}">{% include 'pesticides/includes/related-card.html' with card=related_b %}</div>

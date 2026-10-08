@@ -90,14 +90,74 @@
       : button.getAttribute('data-hide-label');
   });
 
+  // The keyboard side of the dropdowns (they are disclosure widgets of plain
+  // links, not ARIA menus): Escape closes the open one and puts focus back on
+  // its trigger, which would otherwise be lost to the body when the menu
+  // hides; ArrowDown on a trigger opens its menu and moves into the list, and
+  // Up/Down walk the links.
+  function menuItems(picker) {
+    return Array.prototype.slice.call(picker.querySelectorAll('.dropdown-menu a[href], .dropdown-menu input:not([type="hidden"]), .dropdown-menu button'));
+  }
   document.addEventListener('keydown', function (evt) {
-    if (evt.key !== 'Escape') return;
-    document.querySelectorAll(DROPDOWNS_OPEN).forEach(function (picker) {
-      picker.classList.remove('is-active');
-      var button = picker.querySelector('.dropdown-trigger .button');
-      if (button) button.setAttribute('aria-expanded', 'false');
-    });
+    if (evt.key === 'Escape') {
+      document.querySelectorAll(DROPDOWNS_OPEN).forEach(function (picker) {
+        var button = picker.querySelector('.dropdown-trigger .button');
+        var focusInside = picker.contains(document.activeElement) || document.activeElement === document.body;
+        picker.classList.remove('is-active');
+        if (button) {
+          button.setAttribute('aria-expanded', 'false');
+          if (focusInside) button.focus();
+        }
+      });
+      return;
+    }
+    if (evt.key !== 'ArrowDown' && evt.key !== 'ArrowUp') return;
+    var trigger = evt.target.closest ? evt.target.closest(DROPDOWN_TRIGGERS) : null;
+    if (trigger && evt.key === 'ArrowDown') {
+      var picker = trigger.closest(DROPDOWNS);
+      if (!picker.classList.contains('is-active')) {
+        picker.classList.add('is-active');
+        trigger.setAttribute('aria-expanded', 'true');
+      }
+      var first = menuItems(picker)[0];
+      if (first) {
+        evt.preventDefault();
+        first.focus();
+      }
+      return;
+    }
+    var item = evt.target.closest ? evt.target.closest('.dropdown-item') : null;
+    var owner = item ? item.closest(DROPDOWNS) : null;
+    if (!owner) return;
+    var items = menuItems(owner);
+    var index = items.indexOf(item);
+    var next = items[index + (evt.key === 'ArrowDown' ? 1 : -1)];
+    if (next) {
+      evt.preventDefault();
+      next.focus();
+    } else if (evt.key === 'ArrowUp') {
+      evt.preventDefault();
+      owner.querySelector('.dropdown-trigger .button').focus();
+    }
   });
+
+  // A tooltip's bubble is centred on its element and up to 22rem wide, so one
+  // near either edge of the screen would run off it. When the pointer or
+  // focus arrives, anchor the bubble to the near edge instead (the
+  // has-tooltip-end / -start rules in global.sass). Left on the element, so
+  // a resize is corrected the next time it is shown.
+  function placeTooltip(evt) {
+    var el = evt.target && evt.target.closest ? evt.target.closest('[data-tooltip]') : null;
+    if (!el) return;
+    var rect = el.getBoundingClientRect();
+    var center = rect.left + rect.width / 2;
+    var viewport = document.documentElement.clientWidth;
+    var half = Math.min(176, (viewport - 16) / 2);
+    el.classList.toggle('has-tooltip-end', center + half > viewport - 8);
+    el.classList.toggle('has-tooltip-start', center - half < 8 && center + half <= viewport - 8);
+  }
+  document.addEventListener('mouseover', placeTooltip);
+  document.addEventListener('focusin', placeTooltip);
 
   // Filter forms carry hidden fields that are usually empty; dropping empty
   // values keeps the pushed URL to the parameters that mean something.
