@@ -13,6 +13,7 @@ from statistics import mean
 
 from django.contrib.gis.db.models.functions import Area, Centroid, Distance, Intersection, Transform
 from django.core.cache import cache
+from django.db.models import Case, When
 
 from camp.apps.ces.models import CES4, CES5
 from camp.apps.regions.models import Region
@@ -86,22 +87,21 @@ def _row(record):
 NEAREST_PLACE_DEGREES = 0.1
 
 
-def tract_place(region):
+def tract_place(geometry):
     """
-    A short place hint for a census tract region ("Fresno", "near Easton"),
-    from regions already loaded: the city containing the tract's interior
-    point, else the CDP containing it, else the nearest city or CDP within
-    NEAREST_PLACE_DEGREES. None for a tract with no boundary or nothing near.
-    The postal city wins over the CDP where both exist.
+    A short place hint for a census tract's boundary geometry ("Fresno",
+    "near Easton"): the city containing its interior point, else the CDP
+    containing it, else the nearest city or CDP within NEAREST_PLACE_DEGREES;
+    None with nothing near. One query for the containing places (the postal
+    city sorts ahead of a CDP), one more only when none contains it.
     """
-    boundary = getattr(region, 'boundary', None)
-    if boundary is None:
-        return None
-    point = boundary.geometry.point_on_surface
-    for kind in (Region.Type.CITY, Region.Type.CDP):
-        found = Region.objects.filter(type=kind, boundary__geometry__contains=point).order_by('name').first()
-        if found is not None:
-            return found.name
+    point = geometry.point_on_surface
+    found = (
+        Region.objects.filter(type__in=(Region.Type.CITY, Region.Type.CDP), boundary__geometry__contains=point)
+        .order_by(Case(When(type=Region.Type.CITY, then=0), default=1), 'name').first()
+    )
+    if found is not None:
+        return found.name
     nearest = (
         Region.objects.filter(
             type__in=(Region.Type.CITY, Region.Type.CDP),
@@ -133,6 +133,7 @@ def member_tracts(geometry, model, version):
     albers = geometry.transform(EPSG_CALIFORNIA_ALBERS, clone=True)
     candidates = (
         model.objects.filter(boundary__version=version, boundary__geometry__intersects=geometry)
+        .select_related('boundary__region')
         .annotate(
             centroid=Centroid('boundary__geometry'),
             tract_sq_m=Area(Transform('boundary__geometry', EPSG_CALIFORNIA_ALBERS)),
@@ -148,8 +149,10 @@ def member_tracts(geometry, model, version):
     return members
 
 
-def _summary(geometry, model, version):
-    rows = [_row(record) for record in member_tracts(geometry, model, version)]
+def _summary(geometry, model, version, places=True):
+    records = member_tracts(geometry, model, version)
+    rows = [_row(record) for record in records]
+    shapes = {row['region'].pk: record.boundary.geometry for row, record in zip(rows, records)}
     rows.sort(key=lambda row: (row['ci_score_p'] is None, -(row['ci_score_p'] or 0)))
     scored_rows = [row for row in rows if row['ci_score_p'] is not None]
     scores = [row['ci_score_p'] for row in scored_rows]
@@ -160,10 +163,13 @@ def _summary(geometry, model, version):
         record = model.objects.filter(boundary__version=version, boundary__geometry__contains=geometry.centroid).first()
         if record is not None:
             containing = _row(record)
-    # The place hint is a spatial lookup, so only the rows a page names get one.
-    named = [*scored_rows[:TOP_N], *scored_rows[-1:], *([containing] if containing else [])]
-    for row in {id(row): row for row in named}.values():
-        row['place'] = tract_place(row['region'])
+            shapes[containing['region'].pk] = record.boundary.geometry
+    # The place hint is a spatial lookup, so only the rows a page shows get
+    # one (the top tracts and the containing tract), and only for callers that
+    # ask: the admin reports don't.
+    if places:
+        for row in [*scored_rows[:TOP_N], *([containing] if containing else [])]:
+            row['place'] = tract_place(shapes[row['region'].pk])
     return {
         'model': model.__name__,
         'version': version,
@@ -187,12 +193,13 @@ def _summary(geometry, model, version):
     }
 
 
-def tract_summary(geometry, *, model=None):
+def tract_summary(geometry, *, model=None, places=True):
     """
     The CES tracts a geometry covers and what they add up to (see the module
     docstring for the keys), or None when no CES data is loaded. `model`
     defaults to current_model(); passing one uses its newest tract vintage.
-    Cached a day per model, vintage and geometry.
+    `places=False` skips the place hints on the rows a page names. Cached a
+    day per model, vintage, geometry and `places`.
     """
     if model is None:
         model, version = current_model()
@@ -204,8 +211,8 @@ def tract_summary(geometry, *, model=None):
     if model is None or not version:
         return None
     digest = hashlib.md5(geometry.ewkb).hexdigest()
-    key = f'ces:v{CACHE_VERSION}:g{generation()}:summary:{model.__name__}:{version}:{digest}'
-    return cache.get_or_set(key, lambda: _summary(geometry, model, version), CACHE_TIMEOUT)
+    key = f'ces:v{CACHE_VERSION}:g{generation()}:summary:{model.__name__}:{version}:{int(places)}:{digest}'
+    return cache.get_or_set(key, lambda: _summary(geometry, model, version, places), CACHE_TIMEOUT)
 
 
 def tract_record(region):

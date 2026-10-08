@@ -775,7 +775,7 @@ class ExplorerDetailMixin:
     section = None
     lbs_field = 'lbs_chemical'
     use_field = None          # PesticideUse FK name for this entity
-    # Whether pounds per treated acre means anything here. It's the acreage
+    # Whether pounds per acre-treatment means anything here. It's the acreage
     # each application covered, so summing it across the chemicals on one
     # field counts that ground once per chemical: sound for a product, near
     # enough for a chemical, and badly inflated for a commodity, where every

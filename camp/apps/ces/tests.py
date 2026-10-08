@@ -257,18 +257,23 @@ class TractLabelTests(TestCase):
     def test_the_city_wins_over_the_cdp_that_also_contains_it(self):
         # The fixture's Fresno city contains the tract.
         make_place('Calwa', Region.Type.CDP, -119.9, 36.6, -119.6, 36.9)
-        assert stats.tract_place(self.tract) == 'Fresno'
+        assert stats.tract_place(self.tract.boundary.geometry) == 'Fresno'
         Region.objects.filter(type=Region.Type.CITY).delete()
-        assert stats.tract_place(self.tract) == 'Calwa'
+        assert stats.tract_place(self.tract.boundary.geometry) == 'Calwa'
 
     def test_the_nearest_place_when_none_contains_it(self):
         Region.objects.filter(type=Region.Type.CITY).delete()
-        assert stats.tract_place(self.tract) is None
+        assert stats.tract_place(self.tract.boundary.geometry) is None
         make_place('Easton', Region.Type.CDP, -119.69, 36.7, -119.65, 36.8)
         # The tract's interior point is about 0.02 degrees west of Easton.
-        assert stats.tract_place(self.tract) == 'near Easton'
+        assert stats.tract_place(self.tract.boundary.geometry) == 'near Easton'
 
     def test_the_summary_labels_the_tracts_it_names(self):
         summary = stats.tract_summary(bbox(-119.8, 36.7, -119.6, 36.8))
         assert [row['place'] for row in summary['top']] == ['Fresno', 'near Fresno']
+        assert summary['highest']['number'] == '1.01'
+
+    def test_places_can_be_skipped(self):
+        summary = stats.tract_summary(bbox(-119.8, 36.7, -119.6, 36.8), places=False)
+        assert all('place' not in row for row in summary['top'])
         assert summary['highest']['number'] == '1.01'

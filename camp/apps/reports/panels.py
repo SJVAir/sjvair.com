@@ -23,7 +23,7 @@ def tract_stats(geometry):
     """
     empty = {'tracts': 0, 'dac_tracts': 0, 'population': 0, 'dac_population': 0,
              'avg_percentile': None, 'max_percentile': None}
-    summary = ces_stats.tract_summary(geometry)
+    summary = ces_stats.tract_summary(geometry, places=False)
     if summary is None:
         return empty
     population = summary['population']

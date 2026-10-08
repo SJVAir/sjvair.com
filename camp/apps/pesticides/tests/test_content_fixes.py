@@ -69,6 +69,16 @@ class PlaceContentTests(RollupTestMixin, TestCase):
         assert 'sign up with SprayDays' in html and 'https://spraydays.cdpr.ca.gov/' in html
         assert 'No notices match' not in html
 
+    def test_empty_scheduled_list_with_filters_says_so(self):
+        PesticideNotice.objects.all().delete()
+        chemical = Chemical.objects.get(name='GLYPHOSATE')
+        html = squash(self.client.get(self.fresno.get_pesticides_tab_url('notices'), {'chemical': chemical.sqid}).content.decode())
+        assert 'Nothing is scheduled with these filters.' in html
+
+    def test_compact_empty_state_keeps_the_plain_message(self):
+        html = squash(render_to_string('pesticides/includes/notice-rows.html', {'object_list': [], 'compact': True, 'mode': 'active'}))
+        assert 'No notices match.' in html and 'Browse past notices' not in html
+
     def test_empty_archive_says_so_without_the_dead_end_links(self):
         PesticideNotice.objects.all().delete()
         html = squash(self.client.get(self.fresno.get_pesticides_tab_url('notices'), {'past': 1}).content.decode())

@@ -1251,18 +1251,42 @@ class EntitySearchTests(RollupTestMixin, TestCase):
         commodity = Commodity.objects.get(name='GRAPE')
         assert [(r['name'], r['detail']) for r in results] == [('Grape', f'CDPR site code {commodity.site_code}')]
 
-    def test_exact_then_prefix_then_the_rest(self):
+    def seed(self, **fields):
         from camp.apps.pesticides.models import PesticideUseTotal
         template = PesticideUseTotal.objects.filter(chemical__isnull=False).first()
-        # The exact match is a longer, later name than the prefix match; it
-        # still leads, by the preferred name it is exactly typed as.
-        prefix = Chemical.objects.create(chem_code=30010, name='ZORBLAT B')
-        exact = Chemical.objects.create(chem_code=30011, name='LONG CDPR NAME FOR ZORBLAT', preferred_name='Zorblat')
-        for chemical in (prefix, exact):
-            PesticideUseTotal.objects.create(year=template.year, county=template.county, chemical=chemical, applications=1, records=1)
-        assert [r['name'] for r in self.results(type='chemical', q='zorblat')] == ['Long CDPR name for zorblat', 'Zorblat B']
-        # Short names lead among prefix matches: "sulf" offers Sulfur first.
-        assert self.results(type='chemical', q='sulf')[0]['name'] == 'Sulfur'
+        chemical = Chemical.objects.create(**fields)
+        PesticideUseTotal.objects.create(year=template.year, county=template.county, chemical=chemical, applications=1, records=1)
+        return chemical
+
+    def test_exact_match_leads_prefix_matches(self):
+        # Under the old order (prefix, rank, name) "ZORBLAT A" led: both have
+        # one token hit and it sorts first by name.
+        self.seed(chem_code=30010, name='ZORBLAT A')
+        self.seed(chem_code=30011, name='ZZ 9', preferred_name='Zorblat')
+        assert [r['name'] for r in self.results(type='chemical', q='zorblat')] == ['ZZ 9', 'Zorblat A']
+
+    def test_shorter_names_lead_within_a_tier(self):
+        # Neither name holds the token "zorblat", so rank ties at 0 and the old
+        # order fell to the alphabet, putting ZORBLATAAAA first.
+        self.seed(chem_code=30020, name='ZORBLATAAAA')
+        self.seed(chem_code=30021, name='ZORBLATB')
+        assert [r['name'] for r in self.results(type='chemical', q='zorblat')] == ['Zorblatb', 'Zorblataaaa']
+
+    def test_length_is_the_shown_name(self):
+        # 1080 shows as "Sodium fluoroacetate" (21), so "Sodium chlorate" (15) is shorter.
+        from camp.apps.pesticides.models import PesticideUseTotal
+        self.seed(chem_code=30030, name='1080', preferred_name='Sodium fluoroacetate')
+        self.seed(chem_code=30031, name='SODIUM CHLORATE')
+        assert [r['name'] for r in self.results(type='chemical', q='sodium')] == ['Sodium chlorate', 'Sodium fluoroacetate']
+
+    def test_a_whole_code_is_an_exact_match(self):
+        from camp.apps.pesticides.models import PesticideUseTotal
+        template = PesticideUseTotal.objects.filter(product__isnull=False).first()
+        for number, (pk_name, reg) in enumerate((('AAA 999-1 X', '1-1'), ('ZZ', '999-1'))):
+            product = Product.objects.create(prodno=990000 + number, name=pk_name, reg_number=reg)
+            PesticideUseTotal.objects.create(year=template.year, county=template.county, product=product, applications=1, records=1)
+        # Both match "999-1"; only ZZ's registration number is exactly it.
+        assert [r['name'] for r in self.results(type='product', q='999-1')] == ['ZZ', 'AAA 999-1 X']
 
     def test_partial_match_falls_back_to_icontains(self):
         assert 'Chlorpyrifos' in [r['name'] for r in self.results(type='chemical', q='chlorpy')]
