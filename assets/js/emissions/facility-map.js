@@ -1174,7 +1174,7 @@
           valueText(p.value_prev, this.data.unit) + '</p>');
     }
     this.shell.placePopup('<div class="facility-popup">' +
-      '<p class="facility-popup-name"><a href="' + escapeHtml(this.facilityUrl(p.id)) + '">' + escapeHtml(p.name) + '</a></p>' +
+      '<p class="facility-popup-name"><a href="' + escapeHtml(this.facilityUrl(p.id)) + '">' + escapeHtml(p.display_name || p.name) + '</a></p>' +
       '<p>' + escapeHtml(p.sector) + '</p>' +
       '<p>' + escapeHtml(this.data.label) + ': <strong>' + value + '</strong>' + (p.rank ? ' · #' + p.rank : '') + '</p>' +
       changeLine +

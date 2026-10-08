@@ -31,7 +31,7 @@ class RegionPageTests(TestCase):
     def test_county_page(self):
         content = self.get(self.fresno, {'year': '2024'})
         assert '<h1' in content and 'Fresno County' in content
-        assert 'TEST PLANT' in content
+        assert 'Test Plant' in content
         # The page is the area: no county picker in the scope bar.
         assert 'data-scope="county"' not in content
         assert map_data(content, 'areas') == '1'
@@ -41,7 +41,7 @@ class RegionPageTests(TestCase):
     def test_city_page_counts_by_point(self):
         city = Region.objects.get(type=Region.Type.CITY, slug='fresno')
         content = self.get(city, {'year': '2024'})
-        assert 'TEST PLANT' in content
+        assert 'Test Plant' in content
         assert map_data(content, 'level') == 'tract'
 
     def test_urban_area_and_cdp_pages(self):
@@ -57,7 +57,7 @@ class RegionPageTests(TestCase):
             assert f'<p class="identifiers has-text-grey">\n        {kind} · Fresno County' in content
             assert f'<title>{name} ({kind}) | ' in content
             assert f'<a aria-current="page">{name} ({kind})</a>' in content
-            assert 'TEST PLANT' in content
+            assert 'Test Plant' in content
             assert map_data(content, 'level') == 'tract'
 
     def test_tract_page(self):
@@ -66,7 +66,7 @@ class RegionPageTests(TestCase):
         tract.save(update_fields=['metadata'])
         content = self.get(tract, {'year': '2024'})
         assert 'Census Tract 1' in content and '4,321' in content
-        assert 'TEST PLANT' in content
+        assert 'Test Plant' in content
         assert map_data(content, 'areas') == ''  # the finest level: Facilities only
 
     def test_retired_tracts_and_other_types_404(self):
@@ -141,7 +141,7 @@ class AB617PageTests(TestCase):
         content = response.content.decode()
         assert '<h1 class="mb-1">Shafter</h1>' in content
         assert 'AB 617 Community · selected by CARB in 2018 · Fresno County' in content
-        assert 'TEST PLANT' in content
+        assert 'Test Plant' in content
         assert map_data(content, 'level') == 'tract'
         # Shafter the city (fixture) and Shafter the AB 617 community share a
         # name -- the <title>/breadcrumb disambiguates, the h1 doesn't.
@@ -243,7 +243,7 @@ class NearMeTests(TestCase):
         response = self.client.get(self.url, {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'label': 'near Fresno', 'year': '2024'})
         assert response.status_code == 200
         content = response.content.decode()
-        assert 'Within 1 mile of Fresno' in content and 'TEST PLANT' in content
+        assert 'Within 1 mile of Fresno' in content and 'Test Plant' in content
         assert map_data(content, 'radius') == '1'
         assert map_data(content, 'center') == '36.7370,-119.7870'
         assert map_data(content, 'default-level') == 'tract'

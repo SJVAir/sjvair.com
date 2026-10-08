@@ -631,7 +631,7 @@ def series(points):
 def facility_board(scope):
     """The home page's top facilities card: each one's link, its value and its by-year line."""
     return [
-        {'label': record.facility.name, 'url': record.facility.get_absolute_url(), 'value': record.value,
+        {'label': record.facility.display_name, 'url': record.facility.get_absolute_url(), 'value': record.value,
          'series': series(stats.by_year(scope, facility=record.facility))}
         for record in stats.facility_table(scope)[:HOME_BOARD_ROWS]
     ]
@@ -1050,7 +1050,7 @@ class OilGasTabMixin:
             sort=well_filters['sort'], filters=well_filters, well_options=wells.filter_options(area),
             status_options=Well.Status.choices, spud=wells.spud_by_year(area), well_types=wells.by_type(area),
             oil_gas_card=[
-                {'label': record.facility.name, 'url': record.facility.get_absolute_url(), 'value': record.value}
+                {'label': record.facility.display_name, 'url': record.facility.get_absolute_url(), 'value': record.value}
                 for record in stats.facility_table(scope, sector=Facility.Sector.OIL_GAS)[:5]
             ],
             well_leaders=self.well_leaders(area),
@@ -1234,7 +1234,7 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, ScopeMixin, vanilla.TemplateV
             top_sectors=top_sectors,
             # The Overview's two cards (rank-card.html): five facilities, every sector.
             facility_card=[
-                {'label': record.facility.name, 'url': record.facility.get_absolute_url(), 'value': record.value}
+                {'label': record.facility.display_name, 'url': record.facility.get_absolute_url(), 'value': record.value}
                 for _, record in top_rows[:5]
             ] if tab == 'overview' else [],
             sector_card=[

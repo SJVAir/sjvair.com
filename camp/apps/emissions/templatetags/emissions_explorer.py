@@ -7,6 +7,7 @@ from django.urls import reverse
 from django.utils.html import format_html
 
 from camp.apps.emissions import cepam, dairies, sectors, stats
+from camp.apps.emissions.names import facility_name as _facility_name
 
 register = template.Library()
 
@@ -167,6 +168,14 @@ def lookup(mapping, key):
         return mapping.get(key, '')
     except AttributeError:
         return ''
+
+
+@register.filter
+def facility_name(value):
+    """A facility name for display, title-cased (names.facility_name): for a row that's a dict or a plain name string, not a Facility instance (which has .display_name)."""
+    if isinstance(value, dict):
+        value = value.get('name')
+    return _facility_name(value)
 
 
 @register.filter

@@ -6,6 +6,7 @@ from django.utils.translation import gettext_lazy as _
 from django_sqids import SqidsField, shuffle_alphabet
 from model_utils.models import TimeStampedModel
 
+from camp.apps.emissions.names import facility_name
 from camp.utils import geocode as _geocode
 
 
@@ -167,6 +168,11 @@ class Facility(TimeStampedModel):
     @property
     def is_minor_source(self):
         return self.sic_code in MINOR_SOURCE_SIC_CODES
+
+    @property
+    def display_name(self):
+        """The name as the explorer shows it (title-cased); self.name stays CARB's raw text."""
+        return facility_name(self.name)
 
     @property
     def has_trusted_point(self):

@@ -7,6 +7,7 @@ from django.db.models import Max, Q
 
 from camp.apps.emissions import stats
 from camp.apps.emissions.models import GHGReport, SourceImport
+from camp.apps.emissions.names import facility_name
 
 
 PROGRAMS = (GHGReport.Program.MRR, GHGReport.Program.GHGRP)
@@ -55,7 +56,7 @@ def county_table(county, limit=10):
         for report in reports:
             key = ('facility', report.facility_id) if report.facility_id else (report.program, report.external_id)
             row = groups.setdefault(key, {
-                'name': report.facility.name if report.facility_id else report.name,
+                'name': report.facility.display_name if report.facility_id else facility_name(report.name),
                 'facility': report.facility, 'sector': '', 'basin_wide': False, 'mrr': None, 'ghgrp': None, 'ch4': None,
             })
             row[str(report.program)] = report.co2e

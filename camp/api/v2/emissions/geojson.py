@@ -43,6 +43,7 @@ class FacilityGeoJSONBase(generics.Endpoint):
             properties = {
                 'id': facility.sqid,
                 'name': facility.name,
+                'display_name': facility.display_name,
                 'sector': facility.get_sector_display(),
                 'value': scope.pollutant.display(record.value),
                 'rank': rank_map.get(record.facility_id),
@@ -91,7 +92,7 @@ class FacilityGeoJSON(CachedEndpointMixin, FacilityGeoJSONBase):
     isn't shown even if it reported in the compared year.
     """
     cache_timeout = 60 * 60
-    cache_key_version = 3
+    cache_key_version = 4  # bumped: properties gained display_name
 
 
 class DistrictListBase(generics.Endpoint):

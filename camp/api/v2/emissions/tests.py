@@ -128,6 +128,13 @@ class FacilityGeoJSONTests(TestCase):
         assert cement['properties']['sector'] == 'Cement, concrete & minerals'
         assert cement['properties']['id'] == Facility.objects.get(name='TEST CEMENT').sqid
 
+    def test_display_name_is_added_alongside_the_raw_name(self):
+        # name stays CARB's raw text (the public API contract); display_name
+        # is the title-cased one the map popups show.
+        by_name = {f['properties']['name']: f['properties'] for f in self.features()}
+        assert by_name['TEST CEMENT']['display_name'] == 'Test Cement'
+        assert by_name['TEST PLANT']['display_name'] == 'Test Plant'
+
     def test_collection_properties(self):
         response = self.client.get(reverse('api:v2:emissions:geojson'), {'toxics': 1, 'pollutant': 'benzene'})
         body = response.json()

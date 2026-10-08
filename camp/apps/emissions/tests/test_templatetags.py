@@ -30,6 +30,21 @@ class AmountTests(TestCase):
         assert tags.amount(2.0, benzene) == '2.0'
 
 
+class FacilityNameFilterTests(TestCase):
+    def test_plain_string(self):
+        assert tags.facility_name('NATIONAL CEMENT CO') == 'National Cement Co'
+
+    def test_dict_row(self):
+        assert tags.facility_name({'name': 'NATIONAL CEMENT CO', 'other': 1}) == 'National Cement Co'
+
+    def test_missing_name_key_is_empty(self):
+        assert tags.facility_name({'other': 1}) == ''
+
+    def test_empty_and_none(self):
+        assert tags.facility_name('') == ''
+        assert tags.facility_name(None) == ''
+
+
 class PercentTests(TestCase):
     def test_percent(self):
         assert tags.percent(0.123) == '12%'

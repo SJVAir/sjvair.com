@@ -61,7 +61,7 @@ class RegionFilterTests(ListTestCase):
 
     def test_an_unknown_region_is_ignored(self):
         content = self.client.get(reverse('emissions:facility-list'), {'region': 'nope'}).content.decode()
-        assert 'TEST CEMENT' in content and 'TEST PLANT' in content
+        assert 'Test Cement' in content and 'Test Plant' in content
 
 
 class FacilityTableLinkTests(ListTestCase):
@@ -148,7 +148,7 @@ class ComplianceFilterTests(ListTestCase):
         from camp.apps.emissions.models import AirComplianceFacility
         AirComplianceFacility.objects.create(facility=self.plant, pgm_sys_id='CASJV00006019C0001', name='X', current_hpv='Unaddressed-Local', match_method='parsed')
         content = self.client.get(reverse('emissions:facility-list'), {'compliance': 'hpv'}).content.decode()
-        assert 'TEST PLANT' in content and 'TEST CEMENT' not in content
+        assert 'Test Plant' in content and 'TEST CEMENT' not in content
         assert '<option value="hpv" selected>' in content
         body = self.client.get(reverse('emissions:facility-list'), {'compliance': 'any', 'format': 'csv'}).content.decode()
         assert 'TEST PLANT' in body and 'TEST CEMENT' not in body

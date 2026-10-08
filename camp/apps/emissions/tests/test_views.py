@@ -52,7 +52,7 @@ class HomeTests(ViewTestCase):
     def test_top_facilities_and_totals(self):
         response = self.get('home')
         content = response.content.decode()
-        assert 'TEST CEMENT' in content
+        assert 'Test Cement' in content
         assert 'TEST GAS STATION' not in content
         assert '106' in content
 
@@ -120,15 +120,20 @@ class ExplorerMarkupTests(ViewTestCase):
 
 
 class FacilityListTests(ViewTestCase):
+    def test_list_shows_the_cased_name_not_carbs_raw_one(self):
+        content = self.get('facility-list').content.decode()
+        assert 'Test Plant' in content and 'Test Cement' in content
+        assert 'TEST PLANT' not in content and 'TEST CEMENT' not in content
+
     def test_filters_and_sort(self):
-        assert 'TEST PLANT' in self.get('facility-list', params={'q': 'plant'}).content.decode()
+        assert 'Test Plant' in self.get('facility-list', params={'q': 'plant'}).content.decode()
         assert 'TEST CEMENT' not in self.get('facility-list', params={'q': 'plant'}).content.decode()
         assert 'TEST PLANT' not in self.get('facility-list', params={'sector': 'cement-minerals'}).content.decode()
         self.get('facility-list', params={'sort': 'name', 'region': 'nosuchregion', 'page': 99})
 
     def test_minor_sources_only_when_asked(self):
         assert 'TEST GAS STATION' not in self.get('facility-list').content.decode()
-        assert 'TEST GAS STATION' in self.get('facility-list', params={'minor': 1, 'pollutant': 'rog'}).content.decode()
+        assert 'Test Gas Station' in self.get('facility-list', params={'minor': 1, 'pollutant': 'rog'}).content.decode()
 
     def test_csv(self):
         response = self.get('facility-list', params={'format': 'csv'})
@@ -168,9 +173,15 @@ class FacilityDetailTests(ViewTestCase):
         assert response.status_code == status
         return response.content.decode()
 
+    def test_page_shows_the_cased_name_not_carbs_raw_one(self):
+        content = self.detail(self.plant)
+        assert '<h1 class="mb-1">Test Plant</h1>' in content
+        assert '<title>Test Plant |' in content
+        assert 'TEST PLANT' not in content
+
     def test_page(self):
         content = self.detail(self.plant)
-        assert 'TEST PLANT' in content
+        assert 'Test Plant' in content
         assert 'Regulated by' in content and 'San Joaquin Valley APCD' in content
         assert 'Report an air pollution problem' in content
         assert 'Glass manufacturing' in content
@@ -217,7 +228,7 @@ class SectorTests(ViewTestCase):
     def test_detail(self):
         content = self.get('sector-detail', 'glass').content.decode()
         assert 'Glass manufacturing' in content
-        assert 'TEST PLANT' in content
+        assert 'Test Plant' in content
         assert 'TEST CEMENT' not in content
 
     def test_unknown_sector_is_404(self):

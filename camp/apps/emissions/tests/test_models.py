@@ -36,6 +36,11 @@ class FacilityTests(TestCase):
         assert set(Facility.objects.major_sources().values_list('name', flat=True)) == {'TEST PLANT', 'TEST CEMENT'}
         assert Facility.objects.get(pk=2).is_minor_source
 
+    def test_display_name_cases_carbs_raw_name(self):
+        facility = Facility.objects.get(name='TEST PLANT')
+        assert facility.display_name == 'Test Plant'
+        assert facility.name == 'TEST PLANT'  # the stored name is untouched
+
     def test_geocode_sets_point_without_saving(self):
         facility = Facility.objects.get(pk=2)
         point = Point(-119.0, 35.4, srid=4326)

@@ -106,7 +106,7 @@ class HomeSearchTests(TestCase):
         content = self.client.get(reverse('emissions:home')).content.decode()
         facilities = content[content.index('Top facilities · 2024'):content.index('Top sectors · 2024')]
         # TEST PLANT is the fixture's top NOx emitter; the card links it and the full list.
-        assert '>TEST PLANT</a>' in facilities
+        assert '>Test Plant</a>' in facilities
         assert f'href="{reverse("emissions:facility-list")}">View all</a>' in facilities
         sectors = content[content.index('Top sectors · 2024'):]
         assert f'href="{reverse("emissions:sector-list")}">View all</a>' in sectors

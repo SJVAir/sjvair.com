@@ -13,15 +13,15 @@ carries most facilities' toxics forward unchanged or scaled by one factor,
 so a per-chemical change rarely says anything.
 {% endcomment %}
 
-{% block title %}{{ facility.name|title }} | {{ block.super }}{% endblock %}
+{% block title %}{{ facility.display_name }} | {{ block.super }}{% endblock %}
 {% block breadcrumb-list %}
 <li><a href="{% url 'emissions:facility-list' %}{{ scope_qs }}">Facilities</a></li>
-<li class="is-active"><a aria-current="page">{{ facility.name }}</a></li>
+<li class="is-active"><a aria-current="page">{{ facility.display_name }}</a></li>
 {% endblock %}
 
 {% block explorer-content %}
 <div class="content area-header facility-header">
-    <h1 class="mb-1">{{ facility.name }}</h1>
+    <h1 class="mb-1">{{ facility.display_name }}</h1>
     <p class="identifiers has-text-grey">
         <a href="{% url 'emissions:sector-detail' facility.sector %}{{ scope_qs }}">{{ facility.get_sector_display }}</a>
         · {% if facility.city %}{{ facility.city.name }}{% if facility.county %}, {{ facility.county.name }}{% endif %}{% else %}{% with city=facility.address.city|display_city %}{{ city }}{% if city and facility.county %}, {% endif %}{% if facility.county %}{{ facility.county.name }}{% endif %}{% endwith %}{% endif %}

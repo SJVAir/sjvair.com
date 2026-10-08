@@ -398,7 +398,7 @@ class ReadSideTests(GHGTestCase):
         report('ghgrp', '601', 2023, county=self.kern, co2e=30000.0, name='Basin Gathering')
         table = ghg.county_table(self.fresno)
         assert table['years'] == {'mrr': 2024, 'ghgrp': 2023}
-        assert [row['name'] for row in table['rows']] == ['Valley Oil - SJV Basin', 'TEST PLANT', 'Lonely Landfill']
+        assert [row['name'] for row in table['rows']] == ['Valley Oil - SJV Basin', 'Test Plant', 'Lonely Landfill']
         basin, plant, landfill = table['rows']
         assert basin['basin_wide'] and basin['facility'] is None and basin['mrr'] == 2898915.0 and basin['ghgrp'] is None and basin['ch4'] == 1477.8
         assert plant['facility'] == self.plant and plant['mrr'] == 1100.0 and plant['ghgrp'] == 1000.0 and plant['ch4'] == 3.0
@@ -460,9 +460,9 @@ class GHGPageTests(GHGTestCase):
         table = content[content.index('id="greenhouse-gases"'):]
         assert '<h2 class="title is-4">Largest greenhouse-gas reporters</h2>' in table
         assert '<th class="has-text-right">CARB MRR 2024</th>' in table and '<th class="has-text-right">EPA GHGRP 2023</th>' in table
-        assert table.index('Valley Oil') < table.index('TEST PLANT') < table.index('Lonely Landfill')
+        assert table.index('Valley Oil') < table.index('Test Plant') < table.index('Lonely Landfill')
         assert 'basin-wide, not one site' in table
-        assert f'href="{self.plant.get_absolute_url()}' in table and '>TEST PLANT</a>' in table
+        assert f'href="{self.plant.get_absolute_url()}' in table and '>Test Plant</a>' in table
         assert 'not matched to a permitted facility' in table
         assert '2,898,915' in table and '87,635' in table and '71,574' in table and '1,478' in table
         assert '<strong>Only large emitters report</strong> (about 10,000 t CO2e a year and up)' in table
