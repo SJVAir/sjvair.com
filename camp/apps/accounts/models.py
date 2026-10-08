@@ -4,9 +4,10 @@ import string
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.core.cache import cache
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from django.utils.functional import cached_property
+from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
@@ -17,6 +18,7 @@ from phonenumber_field.modelfields import PhoneNumberField
 from camp.apps.accounts import managers
 from camp.apps.accounts import tasks
 from camp.utils.fields import NullEmailField
+from camp.utils.sms import gsm_fold, sms_translation
 
 
 class User(AbstractBaseUser, PermissionsMixin, models.Model):
@@ -63,7 +65,7 @@ class User(AbstractBaseUser, PermissionsMixin, models.Model):
 
     objects = managers.UserManager()
 
-    tracker = FieldTracker(fields=['phone'])
+    tracker = FieldTracker(fields=['phone', 'phone_verified'])
 
     class Meta:
         ordering = ('-date_joined',)
@@ -74,13 +76,29 @@ class User(AbstractBaseUser, PermissionsMixin, models.Model):
     def save(self, *args, **kwargs):
         # A carrier opt-out and a verification both belong to the number,
         # not the person: a new number is unverified and unblocked.
-        if not self._state.adding and self.tracker.has_changed('phone'):
+        phone_changed = not self._state.adding and self.tracker.has_changed('phone')
+        if phone_changed:
             self.sms_blocked = False
             self.phone_verified = False
             update_fields = kwargs.get('update_fields')
             if update_fields is not None:
                 kwargs['update_fields'] = {*update_fields, 'sms_blocked', 'phone_verified'}
+
+        # An existing user whose phone just became verified (not on creation,
+        # not on a number change) is sent the confirmation once this save
+        # commits. A save with update_fields that skips phone_verified leaves
+        # the tracker unchanged, so the transition fires on the save that writes it.
+        update_fields = kwargs.get('update_fields')
+        newly_verified = (
+            not self._state.adding
+            and not phone_changed
+            and self.phone_verified
+            and self.tracker.has_changed('phone_verified')
+            and (update_fields is None or 'phone_verified' in update_fields)
+        )
         super().save(*args, **kwargs)
+        if newly_verified and self.phone and not self.sms_blocked:
+            transaction.on_commit(self.send_phone_confirmation)
 
     def get_name(self):
         name = HumanName(self.full_name)
@@ -129,8 +147,21 @@ class User(AbstractBaseUser, PermissionsMixin, models.Model):
             in range(settings.PHONE_VERIFICATION_CODE_DIGITS)
         ])
         cache.set(self.phone_verification_code_key, code, expires)
-        message = f'SJVAir – Verification Code: {code}'
+        # GSM-7 only (no en dash): one stray character would double the segments.
+        with sms_translation(self.language):
+            message = gsm_fold(gettext('SJVAir verification code: {code}').format(code=code))
         self.send_sms(message, verify=False)  # Don't do a verification check
+
+    def send_phone_confirmation(self):
+        '''
+        Confirm the phone is verified, with the opt-out language carriers expect.
+        '''
+        with sms_translation(self.language):
+            message = gsm_fold(gettext(
+                'SJVAir: Your phone is verified for air quality alerts. '
+                'Msg frequency varies. Msg & data rates may apply. Reply STOP to opt out.'
+            ))
+        return self.send_sms(message)
 
     def check_phone_verification_code(self, code):
         cached_code = cache.get(self.phone_verification_code_key)

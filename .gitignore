@@ -54,6 +54,8 @@ coverage.xml
 # Translations
 *.mo
 *.pot
+# Our own compiled catalogs ship with the app (Heroku has no compile step).
+!camp/locale/**/*.mo
 
 # Django stuff:
 *.log

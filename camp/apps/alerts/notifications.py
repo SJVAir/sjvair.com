@@ -1,6 +1,4 @@
 import logging
-import re
-import unicodedata
 from datetime import timedelta
 
 from django.conf import settings
@@ -14,6 +12,7 @@ import waffle
 from camp.apps.accounts.models import User
 from camp.apps.alerts.models import Alert, Notification, Subscription
 from camp.utils.datetime import localtime
+from camp.utils.sms import gsm_fold, sms_safe, sms_translation
 
 logger = logging.getLogger(__name__)
 
@@ -124,42 +123,25 @@ def get_reminder_level(subscription, level, now):
     return level
 
 
-SMS_CHAR_MAP = str.maketrans({
-    '\u2018': "'", '\u2019': "'", '\u201c': '"', '\u201d': '"',
-    '\u2013': '-', '\u2014': '-', '\u2026': '...',
-})
-
-
-# ASCII printables that are not in the GSM-7 basic set (extension table or absent).
-NOT_GSM_7_BASIC = set('[]{}\\^~|`')
-
-
-def sms_safe(text, max_length=60):
+def build_message(monitor, entry_model, level, kind, language=None):
     '''
-    Reduce owner-set text to plain ASCII so one stray character (accent,
-    curly quote, emoji) can't force UCS-2 and double the billed segments.
+    The SMS body for one alert or reminder, rendered in `language` (the
+    recipient's; English if blank or unknown). Plain GSM-7 text: one emoji
+    or accent would force UCS-2 and double the billed segments, so the
+    finished body (translations included) is folded to ASCII.
     '''
-    text = unicodedata.normalize('NFKD', text.translate(SMS_CHAR_MAP))
-    text = ''.join(char for char in text if ord(char) < 128 and char.isprintable() and char not in NOT_GSM_7_BASIC)
-    text = re.sub(r'\s+', ' ', text).strip()
-    if len(text) > max_length:
-        text = text[:max_length - 3].rstrip() + '...'
-    return text
+    with sms_translation(language):
+        params = {'level': str(level.label), 'pollutant': str(entry_model.label), 'name': sms_safe(monitor.name)}
+        if kind == Notification.Kind.REMINDER:
+            first_line = _('SJVAir: Air quality is still {level} ({pollutant}) at {name}.')
+        else:
+            first_line = _('SJVAir alert: Air quality is {level} ({pollutant}) at {name}.')
 
-
-def build_message(monitor, entry_model, level, kind):
-    # Plain GSM-7 text: one emoji would force UCS-2 and double the billed segments.
-    params = {'level': level.label, 'pollutant': entry_model.label, 'name': sms_safe(monitor.name)}
-    if kind == Notification.Kind.REMINDER:
-        first_line = _('SJVAir: Air quality is still {level} ({pollutant}) at {name}.')
-    else:
-        first_line = _('SJVAir alert: Air quality is {level} ({pollutant}) at {name}.')
-
-    lines = [first_line.format(**params)]
-    if level.guidance:
-        lines.append(str(level.guidance))
-    lines.append(f'https://www.sjvair.com{monitor.get_absolute_url()}')
-    return '\n'.join(lines)
+        lines = [first_line.format(**params)]
+        if level.guidance:
+            lines.append(str(level.guidance))
+        lines.append(f'https://www.sjvair.com{monitor.get_absolute_url()}')
+        return gsm_fold('\n'.join(lines))
 
 
 def get_driving_update(monitor, entry_model):
@@ -210,6 +192,8 @@ def process_subscriptions(monitor, levels, rule, kind, daily_cap=False):
     todays = get_alerts_today(monitor, now) if daily_cap else {}
     # The driving update is the same for every subscriber: fetch it once, lazily.
     alert_update = _UNSET
+    # One body per (language, level), not per subscriber.
+    messages = {}
     recipients = get_recipients(monitor)
     allowed_users = sms_alerts_user_ids(flag)
     if allowed_users is not None:
@@ -234,6 +218,9 @@ def process_subscriptions(monitor, levels, rule, kind, daily_cap=False):
                     entry_model.entry_type, monitor.pk, subscription.pk,
                 )
             elif send_level is not None:
+                language = subscription.user.language
+                if (language, send_level.key) not in messages:
+                    messages[language, send_level.key] = build_message(monitor, entry_model, send_level, kind, language)
                 notification = Notification.objects.create(
                     alert_update=alert_update,
                     subscription=subscription,
@@ -241,7 +228,7 @@ def process_subscriptions(monitor, levels, rule, kind, daily_cap=False):
                     kind=kind,
                     created=now,
                     level=send_level.key,
-                    message=build_message(monitor, entry_model, send_level, kind),
+                    message=messages[language, send_level.key],
                 )
                 subscription.last_notified_level = send_level.key
                 subscription.last_notified_at = now

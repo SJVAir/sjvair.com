@@ -4,7 +4,9 @@ import unicodedata
 import phonenumbers
 
 from django.conf import settings
-from django.utils.translation import gettext as _
+from django.utils.translation import gettext
+
+from camp.utils.sms import gsm_fold, sms_translation
 
 # Twilio error code for a send to a number that has opted out.
 OPTED_OUT_ERROR = 21610
@@ -26,18 +28,6 @@ OPT_OUT = {
     'es': {'PARAR', 'PARA', 'ALTO', 'DETENER', 'CANCELAR', 'BAJA', 'DESUSCRIBIR'},
     'tl': {'TIGIL', 'HINTO', 'ITIGIL'},
     'hmn': {'TSEEM', 'NRES'},
-}
-
-# ASCII only so the reply stays a GSM-7 SMS. Filipino and Hmong fall back
-# to English until there are vetted translations.
-OPT_OUT_REPLIES = {
-    'en': "SJVAir: You won't get any more texts from us. To get alerts again, verify your phone at https://www.sjvair.com/account/",
-    'es': 'SJVAir: Ya no recibira mensajes de nosotros. Para volver a recibir alertas, verifique su telefono en https://www.sjvair.com/account/',
-}
-
-OPT_IN_REPLIES = {
-    'en': 'SJVAir: To get air quality alerts again, verify your phone at https://www.sjvair.com/account/',
-    'es': 'SJVAir: Para volver a recibir alertas de calidad del aire, verifique su telefono en https://www.sjvair.com/account/',
 }
 
 
@@ -65,11 +55,24 @@ def classify(body):
 
 
 def get_opt_out_reply(language):
-    return OPT_OUT_REPLIES.get(language, OPT_OUT_REPLIES['en'])
+    '''
+    The reply to an opt-out keyword, in the user's language. Anything
+    without a translation in the catalogs comes back in English. Folded to
+    ASCII so the reply stays a GSM-7 SMS.
+    '''
+    with sms_translation(language):
+        return gsm_fold(gettext(
+            "SJVAir: You won't get any more texts from us. "
+            'To get alerts again, verify your phone at https://www.sjvair.com/account/'
+        ))
 
 
 def get_opt_in_reply(language):
-    return OPT_IN_REPLIES.get(language, OPT_IN_REPLIES['en'])
+    with sms_translation(language):
+        return gsm_fold(gettext(
+            'SJVAir: To get air quality alerts again, '
+            'verify your phone at https://www.sjvair.com/account/'
+        ))
 
 
 def get_opt_in_instructions():
@@ -79,5 +82,5 @@ def get_opt_in_instructions():
             phonenumbers.PhoneNumberFormat.NATIONAL,
         )
     except (IndexError, phonenumbers.NumberParseException):
-        return _('Text START to our number to allow texts from SJVAir again, then request a new code.')
-    return _('Text START to {number} to allow texts from SJVAir again, then request a new code.').format(number=number)
+        return gettext('Text START to our number to allow texts from SJVAir again, then request a new code.')
+    return gettext('Text START to {number} to allow texts from SJVAir again, then request a new code.').format(number=number)

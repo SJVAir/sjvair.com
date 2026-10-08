@@ -387,7 +387,7 @@ class AuthenticationTests(TestCase):
         assert user.phone_verified is False
         assert send_sms_message.call_count == 1
         assert send_sms_message.call_args.args[0] == user.phone
-        assert 'Verification Code' in send_sms_message.call_args.args[1]
+        assert 'verification code' in send_sms_message.call_args.args[1]
 
     @patch('camp.apps.accounts.tasks.send_sms_message')
     def test_quick_phone_changes_send_one_code(self, send_sms_message):

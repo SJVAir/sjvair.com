@@ -17,6 +17,7 @@ import zoneinfo
 
 import dj_database_url
 
+from django.conf.locale import LANG_INFO
 from django.utils.translation import gettext_lazy as _
 
 from unipath import Path
@@ -270,6 +271,19 @@ LANGUAGES = (
     ('hmn', _('Hmong')),
     ('es', _('Spanish')),
 )
+
+# Django's LANG_INFO has no entry for Filipino or Hmong. Translations still
+# activate without one, but get_language_info() (templates, language pickers)
+# raises KeyError, so register them. Remove once Django ships these codes.
+EXTRA_LANG_INFO = {
+    'tl': {'bidi': False, 'code': 'tl', 'name': 'Filipino', 'name_local': 'Filipino'},
+    'hmn': {'bidi': False, 'code': 'hmn', 'name': 'Hmong', 'name_local': 'Hmoob'},
+}
+LANG_INFO.update(EXTRA_LANG_INFO)
+
+# Message catalogs: `makemessages -a -e py` writes them here, and
+# `compilemessages` builds the .mo files Django loads.
+LOCALE_PATHS = [BASE_DIR.child('camp', 'locale')]
 
 
 # Static files (CSS, JavaScript, Images)

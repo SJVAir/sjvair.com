@@ -12,7 +12,7 @@ from django.db import IntegrityError, connection, transaction
 from django.test.utils import CaptureQueriesContext
 from django.test import TestCase
 from django.urls import reverse
-from django.utils import timezone
+from django.utils import timezone, translation
 
 from twilio.base.exceptions import TwilioRestException
 from twilio.request_validator import RequestValidator
@@ -807,6 +807,35 @@ class MessageTests(TestCase):
                 assert len(message) <= 306, message
         assert '...' in message
 
+    def test_message_is_built_in_the_recipients_language(self):
+        seen = []
+        real = notifications._
+
+        def spy(message):
+            seen.append(translation.get_language())
+            return real(message)
+
+        with patch.object(notifications, '_', spy):
+            notifications.build_message(self.monitor, PM25, USG, Notification.Kind.ALERT, language='es')
+            notifications.build_message(self.monitor, PM25, USG, Notification.Kind.ALERT, language='bogus')
+            notifications.build_message(self.monitor, PM25, USG, Notification.Kind.ALERT)
+        assert seen == ['es', 'en', 'en']
+
+    def test_untranslated_languages_get_the_english_message(self):
+        english = notifications.build_message(self.monitor, PM25, USG, Notification.Kind.ALERT)
+        for language in ('es', 'tl', 'hmn'):
+            assert notifications.build_message(self.monitor, PM25, USG, Notification.Kind.ALERT, language=language) == english
+
+    def test_translated_accented_message_is_folded_to_gsm7(self):
+        # Simulate a catalog entry with accents: the final body must still be GSM-7 safe.
+        accented = 'SJVAir alerta: La calidad del aire es {level} ({pollutant}) en {name}. Tel\u00e9fono \u2013 se\u00f1al \u201cX\u201d'
+        with patch.object(notifications, '_', lambda message: accented):
+            message = notifications.build_message(self.monitor, PM25, USG, Notification.Kind.ALERT, language='es')
+        assert 'Telefono - senal "X"' in message
+        assert message.isascii()
+        assert set(message) <= GSM_7_BASIC, message
+        assert len(message) <= 306, message
+
     def test_alert_message_content(self):
         message = notifications.build_message(self.monitor, PM25, USG, Notification.Kind.ALERT)
         assert message.startswith('SJVAir alert: Air quality is Unhealthy for Sensitive Groups (PM2.5) at ')
@@ -835,6 +864,36 @@ class NotifySubscribersTests(TestCase):
     def notify(self, level, enabled=True):
         with self.settings(SEND_SMS_ALERTS=enabled), self.captureOnCommitCallbacks(execute=True):
             return notifications.notify_subscribers(self.monitor, {PM25: level})
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_each_subscriber_is_texted_in_their_own_language(self, mock_client_class):
+        mock_client_class.return_value.messages.create.return_value = MagicMock(sid='SM_test_sid')
+        self.user.language = 'es'
+        self.user.save()
+        other = User.objects.create(full_name='Otra Persona', phone='+15595550171', phone_verified=True, language='en')
+        Subscription.objects.create(user=other, monitor=self.monitor, level='unhealthy_sensitive')
+
+        seen = {}
+        real = notifications._
+
+        def spy(message):
+            seen.setdefault(translation.get_language(), 0)
+            seen[translation.get_language()] += 1
+            return real(message)
+
+        built = []
+        real_build = notifications.build_message
+
+        def spy_build(*args, **kwargs):
+            built.append(kwargs['language'] if 'language' in kwargs else args[4])
+            return real_build(*args, **kwargs)
+
+        with patch.object(notifications, '_', spy), patch.object(notifications, 'build_message', spy_build):
+            queued = self.notify(USG)
+
+        assert len(queued) == 2
+        assert sorted(built) == ['en', 'es']
+        assert set(seen) == {'en', 'es'}
 
     @patch('camp.apps.alerts.tasks.twilio.rest.Client')
     def test_opted_out_error_blocks_the_user(self, mock_client_class):

@@ -6,12 +6,16 @@ from django.conf import settings
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import translation
 
 from twilio.base.exceptions import TwilioRestException
 from twilio.request_validator import RequestValidator
 
-from camp.apps.accounts import sms_keywords, tasks
+from camp.api.v1.accounts import forms as v1_forms
+from camp.api.v2.accounts import forms as v2_forms
+from camp.apps.accounts import forms as web_forms, sms_keywords, tasks
 from camp.apps.accounts.models import User
+from camp.utils.sms import gsm_fold, sms_language
 from camp.apps.alerts.models import Subscription
 from camp.apps.alerts.notifications import get_recipients
 from camp.apps.monitors.purpleair.models import PurpleAir
@@ -420,3 +424,209 @@ class InboundSMSTests(TestCase):
         Subscription.objects.create(user=self.user, monitor=monitor, level='unhealthy_sensitive')
         User.objects.filter(pk=self.user.pk).update(sms_blocked=True)
         assert not get_recipients(monitor).filter(user=self.user).exists()
+
+
+CONFIRMATION = (
+    'SJVAir: Your phone is verified for air quality alerts. Msg frequency varies. '
+    'Msg & data rates may apply. Reply STOP to opt out.'
+)
+
+
+class PhoneConfirmationTests(TestCase):
+    fixtures = ['users.yaml']
+
+    def setUp(self):
+        self.user = User.objects.get(email='user@sjvair.com')
+        User.objects.filter(pk=self.user.pk).update(phone_verified=False)
+        self.user.refresh_from_db()
+        cache.set(self.user.phone_verification_code_key, '123456', 600)
+
+    def tearDown(self):
+        cache.clear()
+        return super().tearDown()
+
+    def confirmations(self, mock_send):
+        return [call for call in mock_send.call_args_list if call.args[1] == CONFIRMATION]
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_web_verification_view_sends_one_confirmation(self, mock_send):
+        self.client.force_login(self.user)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse('account:phone-verify-submit'), {'code': '123456'})
+        assert response.status_code == 302
+        assert len(self.confirmations(mock_send)) == 1
+        assert mock_send.call_count == 1
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_api_v1_confirm_sends_one_confirmation(self, mock_send):
+        form = v1_forms.ConfirmPhoneVerificationForm({'code': '123456'}, user=self.user)
+        assert form.is_valid()
+        with self.captureOnCommitCallbacks(execute=True):
+            form.save()
+        assert len(self.confirmations(mock_send)) == 1
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_api_v2_confirm_sends_one_confirmation(self, mock_send):
+        form = v2_forms.ConfirmPhoneVerificationForm({'code': '123456'}, user=self.user)
+        assert form.is_valid()
+        with self.captureOnCommitCallbacks(execute=True):
+            form.save()
+        assert len(self.confirmations(mock_send)) == 1
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_password_reset_sends_one_confirmation(self, mock_send):
+        for module in (web_forms, v1_forms, v2_forms):
+            User.objects.filter(pk=self.user.pk).update(phone_verified=False)
+            user = User.objects.get(pk=self.user.pk)
+            mock_send.reset_mock()
+            data = {'code': '123456', 'new_password1': 'sjvair-test-9x', 'new_password2': 'sjvair-test-9x'}
+            form = module.SetPasswordForm(user, data)
+            assert form.is_valid(), form.errors
+            with self.captureOnCommitCallbacks(execute=True):
+                form.save()
+            assert len(self.confirmations(mock_send)) == 1, module
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_confirmation_goes_out_only_after_commit(self, mock_send):
+        with self.captureOnCommitCallbacks(execute=False) as callbacks:
+            self.user.phone_verified = True
+            self.user.save()
+        mock_send.assert_not_called()
+        assert len(callbacks) == 1
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_saving_an_already_verified_user_sends_nothing(self, mock_send):
+        self.user.phone_verified = True
+        with self.captureOnCommitCallbacks(execute=True):
+            self.user.save()
+        mock_send.reset_mock()
+        with self.captureOnCommitCallbacks(execute=True):
+            self.user.save()
+            self.user.full_name = 'Joe Tester'
+            self.user.save()
+        mock_send.assert_not_called()
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_unverifying_sends_nothing(self, mock_send):
+        User.objects.filter(pk=self.user.pk).update(phone_verified=True)
+        user = User.objects.get(pk=self.user.pk)
+        with self.captureOnCommitCallbacks(execute=True):
+            user.opt_out_of_sms(blocked=False)
+        mock_send.assert_not_called()
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_blocked_user_gets_no_confirmation(self, mock_send):
+        self.user.sms_blocked = True
+        self.user.phone_verified = True
+        with self.captureOnCommitCallbacks(execute=True):
+            self.user.save()
+        mock_send.assert_not_called()
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_creating_a_verified_user_sends_nothing(self, mock_send):
+        with self.captureOnCommitCallbacks(execute=True):
+            User.objects.create(full_name='New Person', phone='+15595550142', phone_verified=True)
+        mock_send.assert_not_called()
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_phone_change_and_verified_in_one_save_sends_nothing(self, mock_send):
+        self.user.phone = '+15595550143'
+        self.user.phone_verified = True
+        with self.captureOnCommitCallbacks(execute=True):
+            self.user.save()
+        mock_send.assert_not_called()
+        self.user.refresh_from_db()
+        assert self.user.phone_verified is False
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_update_fields_without_phone_verified_does_not_send_or_consume(self, mock_send):
+        self.user.phone_verified = True
+        with self.captureOnCommitCallbacks(execute=True):
+            self.user.save(update_fields=['full_name'])
+        mock_send.assert_not_called()
+        with self.captureOnCommitCallbacks(execute=True):
+            self.user.save(update_fields=['phone_verified'])
+        assert len(self.confirmations(mock_send)) == 1
+
+
+class SMSLanguageTests(TestCase):
+    fixtures = ['users.yaml']
+
+    def setUp(self):
+        self.user = User.objects.get(email='user@sjvair.com')
+
+    def tearDown(self):
+        cache.clear()
+        return super().tearDown()
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_verification_code_text_is_gsm_safe(self, mock_send):
+        self.user.send_phone_verification_code()
+        message = mock_send.call_args.args[1]
+        code = cache.get(self.user.phone_verification_code_key)
+        assert message == f'SJVAir verification code: {code}'
+        assert message.isascii()
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_user_language_is_active_while_building_text(self, mock_send):
+        seen = []
+        real = sms_keywords.gettext
+
+        def spy(message):
+            seen.append(translation.get_language())
+            return real(message)
+
+        self.user.language = 'es'
+        with patch.object(sms_keywords, 'gettext', spy):
+            sms_keywords.get_opt_in_reply(self.user.language)
+        assert seen == ['es']
+
+    def test_spanish_user_gets_spanish_opt_out_reply(self):
+        reply = sms_keywords.get_opt_out_reply('es')
+        assert reply.startswith('SJVAir: Ya no recibira mensajes')
+        assert reply.isascii()
+        assert translation.get_language() != 'es'
+
+    def test_untranslated_languages_fall_back_to_english(self):
+        for language in ('tl', 'hmn', 'fr', '', None):
+            assert sms_keywords.get_opt_out_reply(language).startswith("SJVAir: You won't get any more texts")
+            assert sms_keywords.get_opt_in_reply(language).startswith('SJVAir: To get air quality alerts again')
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_untranslated_confirmation_is_english_for_every_language(self, mock_send):
+        for language in ('es', 'tl', 'hmn'):
+            mock_send.reset_mock()
+            User.objects.filter(pk=self.user.pk).update(language=language, phone_verified=False)
+            user = User.objects.get(pk=self.user.pk)
+            user.phone_verified = True
+            with self.captureOnCommitCallbacks(execute=True):
+                user.save()
+            assert mock_send.call_args.args[1] == CONFIRMATION
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_confirmation_is_built_in_the_users_language(self, mock_send):
+        seen = []
+        def spy(message):
+            seen.append(translation.get_language())
+            return message
+
+        self.user.language = 'hmn'
+        with patch('camp.apps.accounts.models.gettext', spy):
+            self.user.send_phone_confirmation()
+        assert seen == ['hmn']
+
+    def test_tl_and_hmn_activate_cleanly(self):
+        for language in ('tl', 'hmn'):
+            with translation.override(language):
+                assert translation.get_language() == language
+                assert translation.gettext('Good') == 'Good'
+                assert translation.get_language_info(language)['code'] == language
+
+    def test_language_variant_resolves_to_the_catalog_language(self):
+        assert sms_language('es-mx') == 'es'
+        assert sms_keywords.get_opt_out_reply('es-mx').startswith('SJVAir: Ya no recibira mensajes')
+        assert sms_language('xx') == 'en'
+
+    def test_fold_keeps_inverted_punctuation_as_ascii(self):
+        assert gsm_fold('\u00bfQu\u00e9?') == '?Que?'
+        assert gsm_fold('\u00a1Hola!') == '!Hola!'
