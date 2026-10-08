@@ -206,7 +206,7 @@
     var handlers = shell.documentHandlers = {
       click: function () { closeDropdowns(shell, null); },
       keydown: function (event) {
-        if (event.key !== 'Escape') return;
+        if (event.key !== 'Escape' || event.defaultPrevented) return;
         // An open menu closes first, and focus goes back to its trigger
         // (the menu hiding would drop it to the body); only with none open
         // does Escape leave expanded mode.

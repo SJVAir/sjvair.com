@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from django.db.models import Case, Count, Prefetch, Q, Sum, When
-from django.db.models.functions import Length
+from django.db.models import Case, Count, Prefetch, Q, Sum, Value, When
+from django.db.models.functions import Coalesce, Length, NullIf
 from django.shortcuts import get_object_or_404
 
 from resticus import generics, http
@@ -297,18 +297,29 @@ class EntitySearchBase(generics.Endpoint):
         # Exact matches first, then prefix matches, then the rest: an
         # autocomplete for "sulfur" should lead with Sulfur, and "gly" with
         # the glyphosates, not every glycol that contains the letters. Within
-        # a tier the closer text match leads, then the shorter name (so
+        # a tier the closer text match leads, then the shorter shown name (so
         # "sulf" offers Sulfur before Sulfuric acid), then the alphabet.
         exact = Q(name__iexact=query)
         starts = Q(name__istartswith=query)
+        # Typing a whole registration number, site code or CAS number is as exact as typing a name.
         if kind == 'chemical':
             exact |= Q(preferred_name__iexact=query)
             starts |= Q(preferred_name__istartswith=query)
+            exact |= Q(cas_number__iexact=query)
+            # A bare code ("1080") is shown as its preferred name
+            # (display_chemical_name), so that is the length that matters.
+            name_length = Case(
+                When(name__regex=r'[A-Za-z]', then=Length('name')),
+                default=Coalesce(Length(NullIf('preferred_name', Value(''))), Length('name')),
+            )
+        else:
+            exact |= Q(**{f'{detail_field}__iexact': query})
+            name_length = Length('name')
         queryset = (model.objects.search(query)
             .filter(pk__in=used)
             .annotate(
                 tier=Case(When(exact, then=0), When(starts, then=1), default=2),
-                name_length=Length('name'),
+                name_length=name_length,
             )
             .order_by('tier', '-rank', 'name_length', 'name', 'pk'))
 

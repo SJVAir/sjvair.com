@@ -1331,7 +1331,7 @@ class CompareIsAMapControlTests(RollupTestMixin, TestCase):
 
 class LbsPerTreatedAcreTests(RollupTestMixin, TestCase):
     """
-    Pounds per treated acre is the acreage each application covered, so it
+    Pounds per acre-treatment is the acreage each application covered, so it
     only survives where the applications don't pile onto the same ground.
     """
 
@@ -1344,12 +1344,12 @@ class LbsPerTreatedAcreTests(RollupTestMixin, TestCase):
         chemical = Chemical.objects.get(pk=1)
         ctx = self.client.get(chemical.get_absolute_url(), {'year': '2023'}).context
         assert ctx['totals']['lbs_per_acre'] == ctx['totals']['lbs'] / ctx['totals']['acres']
-        assert 'Lbs per treated acre' in self.client.get(chemical.get_absolute_url()).content.decode()
+        assert 'Lbs per acre-treatment' in self.client.get(chemical.get_absolute_url()).content.decode()
 
     def test_a_product_page_shows_it(self):
         product = Product.objects.first()
         html = self.client.get(product.get_absolute_url(), {'year': '2023'}).content.decode()
-        assert 'Lbs per treated acre' in html
+        assert 'Lbs per acre-treatment' in html
 
     def test_a_commodity_page_does_not(self):
         # Every chemical used on the crop is counted against the same acres,
@@ -1357,7 +1357,7 @@ class LbsPerTreatedAcreTests(RollupTestMixin, TestCase):
         commodity = Commodity.objects.first()
         ctx = self.client.get(commodity.get_absolute_url(), {'year': '2023'}).context
         assert ctx['totals']['lbs_per_acre'] is None
-        assert 'Lbs per treated acre' not in self.client.get(commodity.get_absolute_url()).content.decode()
+        assert 'Lbs per acre-treatment' not in self.client.get(commodity.get_absolute_url()).content.decode()
 
     def test_it_is_left_off_when_nothing_was_treated(self):
         totals = stats.year_totals(PesticideUseRollup.objects.none(), 2023)
