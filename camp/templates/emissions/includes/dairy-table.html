@@ -10,10 +10,10 @@ page hides it (the page is the county).
 <table class="table is-fullwidth is-hoverable is-narrow dairy-table is-stacked-mobile">
     <thead>
         <tr>
-            <th>{% if sortable %}{% sort_link 'name' 'Dairy' %}{% else %}Dairy{% endif %}</th>
-            <th>{% if sortable %}{% sort_link 'city' 'City' %}{% else %}City{% endif %}</th>
-            {% if not hide_county %}<th>{% if sortable %}{% sort_link 'county' 'County' %}{% else %}County{% endif %}</th>{% endif %}
-            <th class="has-text-right">{% if sortable %}{% sort_link 'mature_cows' 'Mature dairy cows' %}{% else %}Mature dairy cows{% endif %}</th>
+            <th{% if sortable %} {% aria_sort 'name' %}{% endif %}>{% if sortable %}{% sort_link 'name' 'Dairy' %}{% else %}Dairy{% endif %}</th>
+            <th{% if sortable %} {% aria_sort 'city' %}{% endif %}>{% if sortable %}{% sort_link 'city' 'City' %}{% else %}City{% endif %}</th>
+            {% if not hide_county %}<th{% if sortable %} {% aria_sort 'county' %}{% endif %}>{% if sortable %}{% sort_link 'county' 'County' %}{% else %}County{% endif %}</th>{% endif %}
+            <th class="has-text-right"{% if sortable %} {% aria_sort 'mature_cows' %}{% endif %}>{% if sortable %}{% sort_link 'mature_cows' 'Mature dairy cows' %}{% else %}Mature dairy cows{% endif %}</th>
             <th class="has-text-right">Other cattle</th>
             <th>EPA size</th>
             <th>Digester since</th>

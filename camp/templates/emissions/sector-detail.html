@@ -43,7 +43,7 @@
 
 {% include 'emissions/includes/facility-map.html' %}
 <h2 class="title is-4">Facilities</h2>
-{% include 'emissions/includes/facility-table.html' with sortable=False hide_city=columns.hide_city hide_county=columns.hide_county hide_sector=columns.hide_sector %}
+{% include 'emissions/includes/facility-table.html' with sortable=False hide_city=columns.hide_city hide_county=columns.hide_county hide_sector=columns.hide_sector rank_label='Valley rank' rank_note='Rank across the whole Valley, not within this sector.' %}
 {% if facility_count > rows|length %}
 <p><a href="{% url 'emissions:facility-list' %}{{ scope_qs }}{% if scope_qs %}&amp;{% else %}?{% endif %}sector={{ sector.value }}">All {{ facility_count|intcomma }} facilities in this sector →</a></p>
 {% endif %}

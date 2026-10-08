@@ -15,9 +15,9 @@ filtered, sorted, paged and downloadable, each with what's near it
 {% with s=site_summary %}
 <div class="level is-mobile stat-row box is-grid-mobile">
     <div class="level-item has-text-centered"><div><p class="heading">Schools</p><p class="title">{{ s.schools|intcomma }}</p><p class="stat-note">{{ s.child_care|intcomma }} child-care center{{ s.child_care|pluralize }} too</p></div></div>
-    <div class="level-item has-text-centered"><div><p class="heading">Facility within ¼ mile</p><p class="title">{{ s.quarter|intcomma }}</p><p class="stat-note">{{ s.notice|intcomma }} within 1,000 ft</p></div></div>
-    <div class="level-item has-text-centered"><div><p class="heading">Well within 3,200 ft</p><p class="title">{{ s.wells|intcomma }}</p><p class="stat-note">active or idle oil and gas</p></div></div>
-    <div class="level-item has-text-centered"><div><p class="heading">Dairy within 1 mile</p><p class="title">{{ s.dairies|intcomma }}</p><p class="stat-note">schools and child care</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Near a facility · ¼ mile</p><p class="title">{{ s.quarter|intcomma }}</p><p class="stat-note">{{ s.notice|intcomma }} sites within 1,000 ft</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Near a well · 3,200 ft</p><p class="title">{{ s.wells|intcomma }}</p><p class="stat-note">active or idle oil and gas</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Near a dairy · 1 mile</p><p class="title">{{ s.dairies|intcomma }}</p><p class="stat-note">schools and child care</p></div></div>
 </div>
 {% endwith %}
 {% endblock %}
@@ -77,12 +77,12 @@ filtered, sorted, paged and downloadable, each with what's near it
 <div class="table-container">
 <table class="table is-fullwidth is-hoverable is-narrow site-table schools-table is-stacked-mobile">
     <thead><tr>
-        <th>{% sort_link 'name' 'School or child care' %}</th>
-        <th class="has-text-right">{% sort_link 'notice' 'Facilities, 1,000 ft' %}</th>
-        <th class="has-text-right">{% sort_link 'quarter' 'Facilities, ¼ mile' %}</th>
-        <th class="has-text-right">{% if pollutant.weighted %}{% sort_link 'value' 'Share, ¼ mile' %}{% else %}{% sort_link 'value' pollutant.label|add:', ¼ mile' %}{% endif %}</th>
-        <th class="has-text-right">{% sort_link 'wells' 'Wells, 3,200 ft' %}</th>
-        <th class="has-text-right">{% sort_link 'dairies' 'Dairies, 1 mile' %}</th>
+        <th {% aria_sort 'name' %}>{% sort_link 'name' 'School or child care' %}</th>
+        <th class="has-text-right" {% aria_sort 'notice' %}>{% sort_link 'notice' 'Facilities, 1,000 ft' %}</th>
+        <th class="has-text-right" {% aria_sort 'quarter' %}>{% sort_link 'quarter' 'Facilities, ¼ mile' %}</th>
+        <th class="has-text-right" {% aria_sort 'value' %}>{% if pollutant.weighted %}{% sort_link 'value' 'Share, ¼ mile' %}{% else %}{% sort_link 'value' pollutant.label|add:', ¼ mile' %}{% endif %}</th>
+        <th class="has-text-right" {% aria_sort 'wells' %}>{% sort_link 'wells' 'Wells, 3,200 ft' %}</th>
+        <th class="has-text-right" {% aria_sort 'dairies' %}>{% sort_link 'dairies' 'Dairies, 1 mile' %}</th>
     </tr></thead>
     <tbody>
     {% for row in site_rows %}

@@ -1,9 +1,11 @@
 {% extends 'emissions/base.html' %}
 {% load humanize emissions_explorer %}
 
+{% block explorer-hero-class %}{% endblock %}
 {% block breadcrumbs %}<span></span>{% endblock %}
 
 {% block explorer-content %}
+<h1 class="is-sr-only">Facility Emissions Explorer</h1>
 <div class="content intro">
     <p class="is-size-5">
         Air pollution reported by permitted facilities across the eight San Joaquin Valley counties, and CARB's

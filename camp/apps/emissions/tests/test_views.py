@@ -84,6 +84,40 @@ class HomeTests(ViewTestCase):
         content = response.content.decode()
         assert 'entry-card' in content and 'Pick your area to see its schools' in content
 
+    def hero_classes(self, url):
+        html = self.client.get(url).content.decode()
+        tag = re.search(r'<section\b[^>]*\bid="explorer-hero"[^>]*>', html).group(0)
+        return re.search(r'class="([^"]*)"', tag).group(1).split()
+
+    def test_home_renders_the_full_hero(self):
+        assert 'is-compact' not in self.hero_classes(reverse('emissions:home'))
+
+    def test_inner_pages_render_the_compact_hero(self):
+        for name in ('emissions:map', 'emissions:facility-list'):
+            assert 'is-compact' in self.hero_classes(reverse(name))
+
+
+class ExplorerMarkupTests(ViewTestCase):
+    def test_dropdowns_are_not_aria_menus(self):
+        html = self.get('map').content.decode()
+        assert 'role="menu"' not in html and 'role="menuitem"' not in html
+
+    def test_one_h1_per_page(self):
+        fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        for url in (
+            reverse('emissions:home'),
+            reverse('emissions:map'),
+            reverse('emissions:facility-list'),
+            reverse('emissions:sector-list'),
+            reverse('emissions:about'),
+            reverse('emissions:dairy-list'),
+            reverse('emissions:oil-gas'),
+            fresno.get_emissions_url(),
+            self.plant.get_absolute_url(),
+        ):
+            html = self.client.get(url).content.decode()
+            assert len(re.findall(r'<h1[\s>]', html)) == 1, url
+
 
 class FacilityListTests(ViewTestCase):
     def test_filters_and_sort(self):
@@ -345,15 +379,16 @@ class ToxicsPagesTests(ViewTestCase):
         assert 'share/yr' not in content and 'share of Valley total</span>' not in content
 
     def test_region_page_shows_the_breakdown_and_no_per_square_mile(self):
-        # The stat row (before the map/toolbar, whose measure dropdown keeps
-        # "Per square mile" as a disabled option's label) is where the tile
+        # The stat row (before the map wrap -- the toolbar now comes before the
+        # map canvas in the DOM for keyboard focus order, and its measure dropdown
+        # keeps "Per square mile" as a disabled option's label) is where the tile
         # itself would appear.
         kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
         content = self.client.get(kern.get_emissions_url(), {'toxics': 1}).content.decode()
-        stat_row = content[:content.index('class="facility-map map-canvas"')]
+        stat_row = content[:content.index('class="map-wrap')]
         assert 'What drives it' in content and 'Per square mile' not in stat_row
         content = self.client.get(kern.get_emissions_url()).content.decode()
-        stat_row = content[:content.index('class="facility-map map-canvas"')]
+        stat_row = content[:content.index('class="map-wrap')]
         assert 'What drives it' not in content and 'Per square mile' in stat_row
 
     def test_share_measures_are_disabled(self):

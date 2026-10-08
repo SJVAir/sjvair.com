@@ -453,6 +453,10 @@ class SectorDetail(ScopeMixin, vanilla.TemplateView):
                 scope, mode='compact', sector=self.sector, fit=True,
                 # Facilities only, a dataset page: the wells and methane
                 # sources have the Oil & gas tab (OilGasPage).
+                # Framed on the sector's own facilities, not the whole
+                # Valley; falls back to the Valley's bounds when the
+                # sector has too few mapped facilities for a sane box.
+                bounds=stats.sector_bounds(scope, self.sector),
             ),
             oil_gas_url=reverse('emissions:oil-gas') + scope.query(county=None) if self.sector == Facility.Sector.OIL_GAS else None,
             **kwargs,
@@ -663,7 +667,7 @@ def reporting_sectors(scope):
 
 def facility_map_config(scope, *, mode='full', highlight=None, sector=None, params=None, areas_view=None,
                         outline_url='', center='', zoom='', radius='', nearby=None, wells=None, methane=None, fit=False,
-                        main_layer=True, locations=None, area_params=None, buffer_options=None):
+                        main_layer=True, locations=None, area_params=None, buffer_options=None, bounds=None):
     """
     The data-* attributes of a `.facility-map` container (see
     assets/js/emissions/facility-map.js). `nearby` is a FeatureCollection
@@ -674,7 +678,10 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
     return, or None) offers the Methane sources (Carbon Mapper) overlay the
     same way. `area_params` (area_map_params) limits every layer's points to
     an area page's area, perhaps widened (?buffer=); `buffer_options` are
-    the region page toolbar's choices for how far past the boundary.
+    the region page toolbar's choices for how far past the boundary. `bounds`
+    overrides the default Valley-wide frame (mapconfig.covered_bounds()) --
+    a sector page's own facility extent (stats.sector_bounds()), so the map
+    opens framed on them instead of the whole Valley.
     """
     params = dict(params) if params is not None else scope.params()
     if sector:
@@ -709,7 +716,7 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         'highlight_point': f'{point.x:.5f},{point.y:.5f}' if point is not None else '',
         'center': center or (f'{point.y},{point.x}' if point is not None else ''),
         'zoom': zoom or (11 if point is not None else ''),
-        'bounds': mapconfig.covered_bounds(),
+        'bounds': bounds or mapconfig.covered_bounds(),
         # The region or circle the page is about (region pages, near-me).
         'outline_url': outline_url,
         'radius': radius,
@@ -1245,6 +1252,11 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, ScopeMixin, vanilla.TemplateV
             county_options=[],
             scope_qs=base.query(county=None),
             scope_params=base.params(county=None),
+            # Year/pollutant/toxics/minor do nothing on the Community tab
+            # (CalEnviroScreen isn't scoped by any of them); every other tab,
+            # including Oil & gas (year and pollutant drive its permit
+            # groupings card and Kern callout), keeps the pickers.
+            scope_pickers=tab != 'community',
             **kwargs,
             community_about_url=reverse('emissions:about') + '#calenviroscreen',
         )

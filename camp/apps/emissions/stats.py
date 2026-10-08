@@ -10,6 +10,8 @@ Pollutant.display() is a passthrough that exists so callers don't need to
 care which.
 """
 
+import re
+
 from dataclasses import dataclass
 from typing import Optional
 from urllib.parse import urlencode
@@ -42,6 +44,37 @@ GENERATION_KEY = 'emissions:stats:generation'
 
 def generation():
     return cache.get(GENERATION_KEY, 0)
+
+
+# CARB's FCITY field is a free-text address line, not always a place: a
+# district label ("KERN COUNTY"), an oilfield name ("HEAVY OIL WESTERN"), a
+# survey description ("SEC6,T29S,R28E") or "VARIOUS LOCATIONS" show up where a
+# real city would. None of those read sanely title-cased in a City column.
+NON_PLACE_CITY_RE = re.compile(
+    r'\bcounty$|^(?:heavy|light)\s+oil\b|^sec\s*\d+|^various\s+locations$',
+    re.IGNORECASE,
+)
+# Naive title-casing of an all-caps abbreviation reads wrong ("AFB" -> "Afb");
+# fix the ones seen in the data rather than try to detect acronyms generally.
+CITY_CASING_FIXES = {'Afb': 'AFB'}
+
+
+def display_city(value):
+    """
+    A facility's raw CARB address city (Facility.address['city']), as a City
+    column should show it: title-cased, with CARB's non-place strings (a
+    county name, an oilfield label, a survey description, "Various Locations")
+    suppressed to '' rather than printed as if they were a city. The caller
+    renders '' as its usual empty-value dash; CSV export uses the raw value,
+    not this.
+    """
+    text = ' '.join(str(value or '').split())
+    if not text or NON_PLACE_CITY_RE.search(text):
+        return ''
+    text = text.title()
+    for wrong, right in CITY_CASING_FIXES.items():
+        text = re.sub(rf'\b{re.escape(wrong)}\b', right, text)
+    return text
 
 
 def clear_caches():
@@ -399,6 +432,29 @@ def facility_table(scope, *, sector=None, area=None, q=None, sort='-value', comp
     else:
         order = [F(SORT_FIELDS[key]).desc() if descending else F(SORT_FIELDS[key]).asc()]
     return queryset.order_by(*order, 'facility__name')
+
+
+def sector_bounds(scope, sector):
+    """
+    'west,south,east,north' around a sector's own mapped facilities, in the
+    same format as camp.utils.mapconfig.covered_bounds() -- a sector page
+    frames its own facilities rather than the whole Valley. None when too
+    few facilities have a point to make a sane box (a one-facility sector
+    would otherwise zoom to a point), so the caller falls back to the
+    Valley's bounds.
+    """
+    from django.contrib.gis.db.models import Extent
+    extent = (
+        facility_table(scope, sector=sector)
+        .filter(facility__point__isnull=False)
+        .aggregate(extent=Extent('facility__point'))['extent']
+    )
+    if not extent:
+        return None
+    west, south, east, north = extent
+    if west == east or south == north:
+        return None
+    return ','.join(f'{value:.4f}' for value in extent)
 
 
 def sort_sectors(rows, sort):

@@ -38,7 +38,7 @@ class CommunityCardTests(TestCase):
         assert "<strong>1 of 2</strong> census tracts are in California's most burdened 25%." in card
         assert f'<a href="{self.other.get_emissions_url()}">51st</a> to <a href="{self.tract.get_emissions_url()}">89th</a>' in card
         # A county page lists its highest tracts.
-        assert 'Highest tracts' in card and card.index('Census Tract 1.01') < card.index('Census Tract 1.02')
+        assert 'Highest tracts' in card and card.index('Tract 1.01') < card.index('Tract 1.02')
         # And the page's Community tab is linked from its Overview.
         assert f'href="{self.fresno.get_emissions_tab_url("community")}' in self.get(self.fresno.get_emissions_url())
 
@@ -55,7 +55,7 @@ class CommunityCardTests(TestCase):
         url = reverse('emissions:near-me-community')
         content = self.get(url, {'lat': '36.73', 'lng': '-119.78', 'radius': '1'})
         card = content[content.index('id="community"'):]
-        assert f'Inside census tract <a href="{self.tract.get_emissions_url()}">Census Tract 1.01</a>, at the 89th percentile' in card
+        assert f'Inside <a href="{self.tract.get_emissions_url()}">Tract 1.01 · Fresno</a>, at the 89th percentile' in card
         assert 'SB 535 disadvantaged community' in card
         content = self.get(url, {'lat': '36.73', 'lng': '-119.78', 'radius': '3'})
         assert '1 of 1</strong> census tract is in' in content

@@ -6,6 +6,7 @@
 {% block breadcrumb-list %}<li class="is-active"><a aria-current="page">Dairies</a></li>{% endblock %}
 
 {% block explorer-content %}
+<h1 class="is-sr-only">Dairies</h1>
 {% for note in notes %}<p class="notification is-warning is-light py-2 px-3 dairy-note">{{ note }}</p>{% endfor %}
 {% if not has_data %}
 <p class="has-text-grey">No dairy data has been loaded yet.</p>

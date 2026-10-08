@@ -6,7 +6,7 @@ from django.contrib.humanize.templatetags.humanize import ordinal
 from django.urls import reverse
 from django.utils.html import format_html
 
-from camp.apps.emissions import cepam, dairies, sectors
+from camp.apps.emissions import cepam, dairies, sectors, stats
 
 register = template.Library()
 
@@ -167,6 +167,12 @@ def lookup(mapping, key):
         return mapping.get(key, '')
     except AttributeError:
         return ''
+
+
+@register.filter
+def display_city(value):
+    """A facility's raw address city, cleaned for display (stats.display_city); '' for CARB's non-place strings."""
+    return stats.display_city(value)
 
 
 @register.simple_tag(takes_context=True)

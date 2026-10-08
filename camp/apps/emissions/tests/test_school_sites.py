@@ -70,7 +70,7 @@ class SchoolsTabTests(SchoolSitesTestCase):
         url = self.fresno.get_emissions_tab_url('schools')
         content = self.client.get(url, {'year': '2024'}).content.decode()
         assert 'site-table' in content and 'CLOSE ELEMENTARY' in content
-        assert 'Facility within ¼ mile' in content
+        assert 'Near a facility · ¼ mile' in content
         assert f'href="{url}' in self.client.get(self.fresno.get_emissions_url()).content.decode()
         response = self.client.get(url, {'format': 'csv', 'year': '2024'})
         assert response['Content-Type'] == 'text/csv'

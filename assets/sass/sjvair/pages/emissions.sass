@@ -200,10 +200,8 @@ body.emissions
     align-items: center
     gap: 0.4rem
     font-weight: 600
-    // The checkbox itself renders at ~13px; the label is its click target,
-    // so give it room to clear the 24x24 WCAG 2.2 minimum.
-    min-height: 1.5rem
-    padding: 0.25rem 0
+    // The 24x24 WCAG 2.2 minimum itself is global (css/maps/map.css); only
+    // the pointer cursor, which that rule doesn't set, is needed here.
     cursor: pointer
   .legend-wells
     display: flex
@@ -335,13 +333,6 @@ body.emissions
     stroke-width: 1.5
   .facility-table tr.is-minor td
     color: #6b7280
-  // A bottom tooltip in a row's last column: anchored to its icon's right edge
-  // so it opens leftward and stays inside the table, instead of centring past
-  // the edge and making the table scroll sideways.
-  [data-tooltip].has-tooltip-bottom.has-tooltip-end::before
-    left: auto
-    right: -0.5rem
-    transform: translate(0, 100%)
   // Every map on the explorer sits above page content (a heading, a table,
   // the CARB context box); give it room.
   .map-wrap

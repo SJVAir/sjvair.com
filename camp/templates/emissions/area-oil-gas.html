@@ -139,11 +139,11 @@ history of wells in service.
 <div class="table-container">
 <table class="table is-fullwidth is-hoverable is-narrow well-table is-stacked-mobile">
     <thead><tr>
-        <th>{% sort_link 'label' 'Well' %}</th>
-        <th>{% sort_link 'operator' 'Operator' %}</th>
-        <th>{% sort_link 'field' 'Field' %}</th>
-        <th>{% sort_link 'status' 'Status' %}</th>
-        <th>{% sort_link 'spud' 'Drilled' %}</th>
+        <th {% aria_sort 'label' %}>{% sort_link 'label' 'Well' %}</th>
+        <th {% aria_sort 'operator' %}>{% sort_link 'operator' 'Operator' %}</th>
+        <th {% aria_sort 'field' %}>{% sort_link 'field' 'Field' %}</th>
+        <th {% aria_sort 'status' %}>{% sort_link 'status' 'Status' %}</th>
+        <th {% aria_sort 'spud' %}>{% sort_link 'spud' 'Drilled' %}</th>
     </tr></thead>
     <tbody>
     {% for well in well_rows %}

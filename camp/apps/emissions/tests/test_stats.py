@@ -1,6 +1,7 @@
+from django.contrib.gis.geos import Point
 from django.core.cache import cache
 from django.http import QueryDict
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from camp.apps.emissions import cepam, stats
 from camp.apps.emissions.models import CountyInventory, EmissionsRecord, Facility, ToxicPollutant
@@ -356,3 +357,53 @@ class PrecursorTests(StatsTestCase):
         assert (nh3['sector_rank'], nh3['sector_count']) == (1, 1) and nh3['county_share'] == 1.0
         assert [row['pollutant'].key for row in stats.facility_ranks(self.cement, 2024)][-1] == 'tog'
         assert stats.precursor_row(self.cement, 2024) is None
+
+
+class SectorBoundsTests(StatsTestCase):
+    def test_a_single_facility_sector_falls_back_to_none(self):
+        # TEST PLANT is glass's only fixture facility: one point can't make a box.
+        assert stats.sector_bounds(scope(), Facility.Sector.GLASS) is None
+
+    def test_a_sector_with_spread_out_facilities_gets_its_own_box(self):
+        extra = Facility.objects.create(
+            county_code=10, air_district=self.plant.air_district, facid=999, name='EXTRA GLASS',
+            county=self.plant.county, sic_code=self.plant.sic_code, sector=Facility.Sector.GLASS,
+            point=Point(-121.0, 37.5),
+        )
+        EmissionsRecord.objects.create(facility=extra, year=2024, nox=1.0)
+        bounds = stats.sector_bounds(scope(), Facility.Sector.GLASS)
+        assert bounds is not None
+        west, south, east, north = (float(v) for v in bounds.split(','))
+        # The box's west/east are the extent of both facilities' longitudes
+        # (TEST PLANT at -119.787, EXTRA GLASS at -121.0) -- its own edges,
+        # not strictly between them.
+        assert west <= -121.0 and east >= -119.787
+        assert south < north
+
+
+class DisplayCityTests(SimpleTestCase):
+    def test_a_real_city_passes_through_title_cased(self):
+        assert stats.display_city('BAKERSFIELD') == 'Bakersfield'
+        assert stats.display_city('Fresno') == 'Fresno'
+
+    def test_county_labels_are_suppressed(self):
+        assert stats.display_city('KERN COUNTY') == ''
+        assert stats.display_city('Fresno County') == ''
+
+    def test_oilfield_labels_are_suppressed(self):
+        assert stats.display_city('HEAVY OIL WESTERN') == ''
+        assert stats.display_city('Light Oil Central') == ''
+
+    def test_survey_descriptions_are_suppressed(self):
+        assert stats.display_city('SEC6,T29S,R28E') == ''
+        assert stats.display_city('Sec 6, T29S, R28E') == ''
+
+    def test_various_locations_is_suppressed(self):
+        assert stats.display_city('VARIOUS LOCATIONS') == ''
+
+    def test_afb_keeps_its_casing(self):
+        assert stats.display_city('EDWARDS AFB') == 'Edwards AFB'
+
+    def test_blank_is_blank(self):
+        assert stats.display_city('') == ''
+        assert stats.display_city(None) == ''

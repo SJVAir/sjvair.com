@@ -24,7 +24,7 @@ so a per-chemical change rarely says anything.
     <h1 class="mb-1">{{ facility.name }}</h1>
     <p class="identifiers has-text-grey">
         <a href="{% url 'emissions:sector-detail' facility.sector %}{{ scope_qs }}">{{ facility.get_sector_display }}</a>
-        · {% if facility.city %}{{ facility.city.name }}{% else %}{{ facility.address.city|title }}{% endif %}{% if facility.county %}, {{ facility.county.name }}{% endif %}
+        · {% if facility.city %}{{ facility.city.name }}{% if facility.county %}, {{ facility.county.name }}{% endif %}{% else %}{% with city=facility.address.city|display_city %}{{ city }}{% if city and facility.county %}, {% endif %}{% if facility.county %}{{ facility.county.name }}{% endif %}{% endwith %}{% endif %}
         {% if facility.sic_code %}{% sic_title facility.sic_code as sic_label %}· <span{% if sic_label %} class="has-tooltip-multiline has-tooltip-bottom has-tooltip-arrow is-dotted" data-tooltip="{{ sic_label }}"{% endif %}>SIC {{ facility.sic_code }}</span>{% endif %}
         {% if facility.is_minor_source %}· <a href="{% url 'emissions:about' %}#minor-sources">Minor source</a>{% endif %}
     </p>

@@ -30,15 +30,15 @@
     hx-boost="true"
     hx-target="#explorer-body"
     hx-select="#explorer-body"
-    hx-select-oob="#explorer-tabs"
+    hx-select-oob="#explorer-hero"
     hx-swap="outerHTML"
     hx-push-url="true"
     hx-indicator="body">
-<section class="section is-small hook" id="explorer-hero">
+<section class="section is-small hook explorer-hero {% block explorer-hero-class %}is-compact{% endblock %}" id="explorer-hero">
     <div class="container">
         <div class="content">
-            <h1 class="is-size-2 mb-1"><a href="{% url 'emissions:home' %}">Facility Emissions Explorer</a></h1>
-            <p class="lede">Air pollution reported by the Valley's permitted facilities, and the dairies CARB tracks: who emits what, how much, and where.</p>
+            <p class="explorer-title is-size-2 mb-1"><a href="{% url 'emissions:home' %}">Facility Emissions Explorer</a></p>
+            <p class="lede">Air pollution from the Valley's permitted facilities, dairies and oil fields: who emits what, how much, where, and what's near schools and homes.</p>
         </div>
         <div class="tabs is-boxed explorer-nav">
             <ul id="explorer-tabs">

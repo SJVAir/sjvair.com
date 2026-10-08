@@ -9,19 +9,24 @@ A page can show options that don't apply to it as disabled, each with a
 tooltip saying why: `disabled_years` ({year: tooltip}), `disabled_pollutants`
 ({key: tooltip}) and `disabled_toggles` ({'toxics': tooltip, 'minor':
 tooltip}). Pages that set none render exactly as before.
+
+`scope_pickers` (default True) hides the year/pollutant/toxics/minor controls
+on a tab none of them affect (the Community tab's CalEnviroScreen numbers
+aren't scoped by any of them) without hiding the rest of this include.
 {% endcomment %}
 {% if not hide_scope %}
 <div class="explorer-scope-pickers">
+    {% if scope_pickers != False %}
     {% if year_options|length > 1 %}
     <div class="dropdown is-right explorer-scope-picker" data-scope="year">
         <div class="dropdown-trigger">
-            <button type="button" class="button is-small" aria-haspopup="true" aria-expanded="false" aria-label="Year: {{ year }}">
+            <button type="button" class="button is-small" aria-haspopup="true" aria-expanded="false" aria-controls="scope-menu-year" aria-label="Year: {{ year }}">
                 <span class="icon"><span class="fa-duotone fa-fw fa-calendar explorer-icon is-scope" aria-hidden="true"></span></span>
                 <span class="explorer-scope-label">{{ year }}</span>
                 <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
             </button>
         </div>
-        <div class="dropdown-menu" role="menu">
+        <div class="dropdown-menu" id="scope-menu-year">
             <div class="dropdown-content explorer-scope-years">
                 {% for option in year_options reversed %}
                 {% if option in disabled_years %}
@@ -37,13 +42,13 @@ tooltip}). Pages that set none render exactly as before.
     {% if county_options %}
     <div class="dropdown is-right explorer-scope-picker" data-scope="county">
         <div class="dropdown-trigger">
-            <button type="button" class="button is-small" aria-haspopup="true" aria-expanded="false" aria-label="County: {% if county %}{{ county.name }}{% else %}all counties{% endif %}">
+            <button type="button" class="button is-small" aria-haspopup="true" aria-expanded="false" aria-controls="scope-menu-county" aria-label="County: {% if county %}{{ county.name }}{% else %}all counties{% endif %}">
                 <span class="icon"><span class="fa-duotone fa-fw fa-map explorer-icon is-scope" aria-hidden="true"></span></span>
                 <span class="explorer-scope-label">{% if county %}{{ county.name|cut:" County" }}{% else %}All counties{% endif %}</span>
                 <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
             </button>
         </div>
-        <div class="dropdown-menu" role="menu">
+        <div class="dropdown-menu" id="scope-menu-county">
             <div class="dropdown-content">
                 <a class="dropdown-item{% if not county %} is-active{% endif %}" href="{% qs_replace county=None page=None %}">All counties</a>
                 <hr class="dropdown-divider">
@@ -56,13 +61,13 @@ tooltip}). Pages that set none render exactly as before.
     {% endif %}
     <div class="dropdown is-right explorer-scope-picker" data-scope="pollutant">
         <div class="dropdown-trigger">
-            <button type="button" class="button is-small" aria-haspopup="true" aria-expanded="false" aria-label="{{ pollutant.label }} (pollutant)">
+            <button type="button" class="button is-small" aria-haspopup="true" aria-expanded="false" aria-controls="scope-menu-pollutant" aria-label="{{ pollutant.label }} (pollutant)">
                 <span class="icon"><span class="fa-duotone fa-fw fa-smoke explorer-icon is-scope" aria-hidden="true"></span></span>
                 <span class="explorer-scope-label">{{ pollutant.label }}</span>
                 <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
             </button>
         </div>
-        <div class="dropdown-menu" role="menu">
+        <div class="dropdown-menu" id="scope-menu-pollutant">
             <div class="dropdown-content">
                 {% for option in pollutant_options %}
                 {% if option.precursor %}<hr class="dropdown-divider"><span class="dropdown-item explorer-scope-group">Precursor</span>{% endif %}
@@ -103,6 +108,7 @@ tooltip}). Pages that set none render exactly as before.
         <span class="icon"><span class="fa-duotone fa-fw fa-gas-pump explorer-icon is-minor" aria-hidden="true"></span></span>
         <span class="explorer-scope-label">Include minor sources</span>
     </a>
+    {% endif %}
     {% endif %}
 </div>
 {% endif %}

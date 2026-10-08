@@ -5,6 +5,7 @@
 {% block breadcrumb-list %}<li class="is-active"><a aria-current="page">About</a></li>{% endblock %}
 
 {% block explorer-content %}
+<h1 class="is-sr-only">About the data</h1>
 <div class="columns about-layout">
 {# The contents first in the markup: at the top on a phone, a sticky column #}
 {# beside the text on a desktop (the pesticides About's layout). #}
@@ -23,7 +24,7 @@
         <li><a href="#calenviroscreen">CalEnviroScreen</a></li>
         <li><a href="#compliance">Compliance</a></li>
         <li><a href="#ammonia">Ammonia</a></li>
-        <li><a href="#oil-gas">Oil and gas</a></li>
+        <li><a href="#oil-gas">Oil &amp; gas</a></li>
         <li><a href="#greenhouse-gases">Greenhouse gases</a></li>
         <li><a href="#methane">Methane</a></li>
         <li><a href="#sources">Sources</a></li>
@@ -34,7 +35,7 @@
 <h2 id="coverage">What this covers</h2>
 <p>The Facility Emissions Explorer shows air pollution reported by <strong>permitted stationary sources</strong> in the San Joaquin Valley's eight counties: power plants, glass and cement plants, oil fields, food processors, dairies with permits, landfills, hospitals, gas stations and thousands more. The data is the California Air Resources Board's facility inventory (CEIDARS), which the air districts report to CARB every year. For the Valley's dairies, permitted or not, see <a href="#dairies">Dairies</a>.</p>
 <p>It does <strong>not</strong> cover cars and trucks, farm equipment, trains, most farming and dust, consumer products, wildfires, or facilities too small to need a permit. Those are most of the valley's air pollution; see <a href="#carb-estimates">CARB's estimates of all sources</a>.</p>
-<p>Alongside counties, cities, ZIP areas, census tracts and school districts, the Valley's four <strong>AB 617 communities</strong> -- Arvin/Lamont, South Central Fresno, Shafter and Stockton, selected by CARB for community air monitoring and emissions-reduction planning -- have their own pages too, each linking to its page at the Valley Air District.</p>
+<p>Alongside counties, cities, ZIP areas, census tracts and school districts, the Valley's four <strong>AB 617 communities</strong> — Arvin/Lamont, South Central Fresno, Shafter and Stockton, selected by CARB for community air monitoring and emissions-reduction planning — have their own pages too, each linking to its page at the Valley Air District.</p>
 
 <h2 id="districts">Two air districts</h2>
 <p>Seven of the eight counties are entirely within the San Joaquin Valley Air Pollution Control District. Kern County is split: its desert and mountain east is the Eastern Kern Air Pollution Control District, which regulates Kern's largest cement plants, US Borax at Boron and Edwards Air Force Base. Each facility's page names the district that regulates it and how to report a problem to them.</p>
@@ -103,7 +104,7 @@
 <p>Ammonia isn't toxic at these levels, but it reacts with other pollution to form fine particles (PM2.5), the Valley's main winter air problem. Most Valley ammonia, about 90%, comes from livestock and fertilizer that aren't permitted facilities; only 7 dairies report ammonia to CARB. County figures are EPA and CARB model estimates for 2023, not measurements.</p>
 <p>Facility ammonia is what each permitted facility reports to CARB, shown in tons per year beside the criteria pollutants (CARB delivers it in its toxics feed, but the explorer never weights or lists it as a toxic). County and Valley totals by source come from EPA's National Emissions Inventory (NEI), whose California point sources are CARB's own inventory resubmitted: the county pages' ammonia bar and the county dairy pages' dairy-cattle tile are EPA's 2023 estimates by source. {% if nei_stamp %}NEI {{ nei_stamp.version }} loaded.{% else %}No NEI data has been loaded yet.{% endif %}</p>
 
-<h2 id="oil-gas">Oil and gas</h2>
+<h2 id="oil-gas">Oil &amp; gas</h2>
 <p>CARB's inventory lists oil and gas production as district permit groupings ("HEAVY OIL WESTERN", "LIGHT OIL") that can cover a whole field, and half of Kern's have no map point at all; where one exists it's the operator's address. So the explorer also shows <strong>where the wells are</strong>: every active, idle and newly permitted well in CalGEM's WellSTAR database (about 66,000 in the eight counties, nearly all in Kern), as an <em>Oil &amp; gas wells</em> overlay on the map, as counts on region pages, and as the schools and child-care centers with a well within 3,200 ft, the distance state law (SB 1137) sets for a health protection zone around homes, schools and other sensitive receptors.</p>
 <p>Well counts are CalGEM's regulatory records, not emissions. Idle wells can still leak; plugged wells aren't shown. Health-protection-zone status is CalGEM's and is still being revised. Distances to schools are straight lines from the school's map point (the law measures from property lines). Oil &amp; gas "facilities" in CARB's inventory are permit groupings that can cover a whole field; their map points aren't well locations.</p>
 <p>Well data is a snapshot, refreshed weekly from CalGEM. It isn't broken down by year, so it can't show how many wells were active in a past year, and wells plugged since are gone from it. Spud (drilling start) dates are missing for about half of wells.</p>
