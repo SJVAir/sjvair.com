@@ -783,16 +783,17 @@ class HomeTests(RollupTestMixin, TestCase):
         assert html.index('id="explorer-body"') < html.index('class="explorer-scope-pickers"')
         assert 'hx-select="#explorer-body"' in html
 
-    def test_home_renders_the_full_hero(self):
-        html = self.client.get(self.url).content.decode()
-        hero = html[html.index('id="explorer-hero"') - 120:html.index('id="explorer-hero"')]
-        assert 'explorer-hero' in hero
-        assert 'is-compact' not in hero
+    def hero_classes(self, url):
+        html = self.client.get(url).content.decode()
+        tag = re.search(r'<section\b[^>]*\bid="explorer-hero"[^>]*>', html).group(0)
+        return re.search(r'class="([^"]*)"', tag).group(1).split()
 
-    def test_inner_page_renders_the_compact_hero(self):
-        html = self.client.get(reverse('pesticides:product-list')).content.decode()
-        hero = html[html.index('id="explorer-hero"') - 120:html.index('id="explorer-hero"')]
-        assert 'explorer-hero is-compact' in hero
+    def test_home_renders_the_full_hero(self):
+        assert 'is-compact' not in self.hero_classes(self.url)
+
+    def test_inner_pages_render_the_compact_hero(self):
+        for name in ('pesticides:product-list', 'pesticides:about'):
+            assert 'is-compact' in self.hero_classes(reverse(name))
 
     def test_htmx_request_gets_full_page(self):
         # Boosted requests are ordinary GETs: the server renders the whole

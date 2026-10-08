@@ -207,11 +207,27 @@
     pathBeforeRequest = window.location.pathname;
   });
 
+  // On a phone the tab row scrolls sideways; keep the current section's tab
+  // in view. Only the row's own scrollLeft moves: scrollIntoView would also
+  // scroll the page up to the hero when a filter swap happens further down.
+  function showActiveTab() {
+    var tab = document.querySelector('#explorer-tabs .is-active a');
+    var row = document.querySelector('#explorer-hero .explorer-nav.tabs');
+    if (!tab || !row) return;
+    var t = tab.getBoundingClientRect();
+    var r = row.getBoundingClientRect();
+    row.scrollLeft += (t.left + t.width / 2) - (r.left + r.width / 2);
+  }
+  showActiveTab();
+  window.addEventListener('load', showActiveTab);
+
   document.body.addEventListener('htmx:afterSwap', function () {
     // hx-push-url has already updated the address by now.
     if (window.location.pathname !== pathBeforeRequest) {
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     }
+    // The out-of-band hero swap has landed: bring its active tab into view.
+    showActiveTab();
     if (!refocusId) return;
     var input = document.getElementById(refocusId);
     refocusId = null;
