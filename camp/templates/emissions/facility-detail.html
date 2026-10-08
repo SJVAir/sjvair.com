@@ -209,7 +209,7 @@ so a per-chemical change rarely says anything.
             <td class="cell-name"><a href="{% qs_replace toxics=1 pollutant=row.pollutant.slug %}">{{ row.pollutant.name }}</a></td>
             <td class="has-text-right cell-value" data-unit="lbs/yr">{{ row.value|quantity }}</td>
             <td class="has-text-right cell-meta{% if not row.has_cancer_value %} is-none{% endif %}" data-label="Cancer-weighted share">{% if row.has_cancer_value %}{{ row.share|share_pct }}{% else %}—{% endif %}</td>
-            <td class="cell-meta">{% if row.hazard %}<span class="hazard-dot" title="Has a chronic reference exposure level" aria-label="non-cancer hazard"></span>{% endif %}</td>
+            <td class="cell-meta">{% if row.hazard %}<span class="hazard-dot" role="img" title="Has a chronic reference exposure level" aria-label="non-cancer hazard"></span>{% endif %}</td>
         </tr>
         {% endfor %}
     </tbody>

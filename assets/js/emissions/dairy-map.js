@@ -29,6 +29,17 @@
 (function () {
   'use strict';
 
+  // Sets a toolbar dropdown's visible label and keeps its button's
+  // accessible name ("Sector: Power plants") in step: on phones the label
+  // is hidden and the name is all a screen reader has.
+  function setToolbarLabel(dropdown, label) {
+    var text = dropdown.querySelector('.map-toolbar-label');
+    if (text) text.textContent = label;
+    var button = dropdown.querySelector('.dropdown-trigger button');
+    var name = button && button.getAttribute('data-name');
+    if (name) button.setAttribute('aria-label', label === name ? name : name + ': ' + label);
+  }
+
   var M = window.SJVAirMaps;
   if (!M || !M.register) return;
 
@@ -793,8 +804,7 @@
     this.clearHover();
     var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.dairy-map-measure');
     if (dropdown) {
-      var text = dropdown.querySelector('.map-toolbar-label');
-      if (text && label) text.textContent = label;
+      if (label) setToolbarLabel(dropdown, label);
       Array.prototype.forEach.call(dropdown.querySelectorAll('[data-measure]'), function (item) {
         item.classList.toggle('is-active', item.getAttribute('data-measure') === measure);
       });
@@ -815,8 +825,7 @@
     });
     if (dropdown) {
       dropdown.classList.toggle('is-set', this.sizes.length !== SIZE_VALUES.length);
-      var text = dropdown.querySelector('.map-toolbar-label');
-      if (text) text.textContent = sizesLabel(this.sizes);
+      setToolbarLabel(dropdown, sizesLabel(this.sizes));
     }
     this.dairyHover.clear();
     this.applyFilters();
@@ -829,8 +838,7 @@
     var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.dairy-map-digester');
     if (dropdown) {
       dropdown.classList.toggle('is-set', !!this.digester);
-      var text = dropdown.querySelector('.map-toolbar-label');
-      if (text && label) text.textContent = label;
+      if (label) setToolbarLabel(dropdown, label);
       Array.prototype.forEach.call(dropdown.querySelectorAll('[data-digester]'), function (item) {
         item.classList.toggle('is-active', item.getAttribute('data-digester') === (digester || ''));
       });
