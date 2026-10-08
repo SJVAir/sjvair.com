@@ -982,7 +982,8 @@ class MapPageTests(RollupTestMixin, TestCase):
         html = response.content.decode()
         assert 'data-show-locations="0"' in html
         assert 'data-locations-url="/api/2.0/pesticides/locations/"' in html
-        assert 'name="locations" checked' not in html
+        # The layer toggles are built by the script, in the legend; the server renders none.
+        assert 'name="locations"' not in html
 
     def test_nav_has_map_tab(self):
         html = self.client.get(reverse('pesticides:chemical-list')).content.decode()
@@ -1830,9 +1831,16 @@ class MapTweaksTests(RollupTestMixin, TestCase):
         assert 'section-map-sections-toggle' in legend and 'name="sections"' in legend
         assert legend.index('section-map-level') < legend.index('name="sections"')
         assert 'name="sections" checked' not in legend
-        html = self.client.get(reverse('pesticides:map'), {'sections': '1'}).content.decode()
-        # The URL param is read by the script; the container still says the default.
-        assert 'data-show-all-sections="0"' in html
+
+    def test_shade_by_is_checked_from_the_url(self):
+        html = self.client.get(reverse('pesticides:map')).content.decode()
+        assert 'value="lbs_chemical" checked' in html and 'value="applications" checked' not in html
+        html = self.client.get(reverse('pesticides:map'), {'metric': 'applications'}).content.decode()
+        assert 'value="applications" checked' in html and 'value="lbs_chemical" checked' not in html
+
+    def test_compare_view_has_shade_by_too(self):
+        html = self.client.get(reverse('pesticides:map'), {'compare': '2022'}).content.decode()
+        assert '<fieldset class="map-metric">' in html
 
 
 class MapChromeDefaultsTests(TestCase):

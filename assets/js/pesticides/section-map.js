@@ -1852,7 +1852,7 @@
         if (err.status) {
           // The server answered, but not with a grid.
           self.clearGrid();
-          if (self.legendEl) self.legendEl.innerHTML = '';
+          self.clearLegend();
         } else {
           logError('failed to load sections', err);
         }
@@ -1902,7 +1902,7 @@
         self.clearGrid();
         self.loadedBounds = null;
         self.loadedLevel = null;
-        if (self.legendEl) self.legendEl.innerHTML = '';
+        self.clearLegend();
         self.setStatus('Couldn\'t load the grid; try again');
       });
   };
@@ -3251,6 +3251,14 @@
   };
 
   // -- the marker legend --
+  // An empty key (a failed or empty grid) still lists the marker toggles:
+  // they're the only way to turn those layers back on.
+  SectionMap.prototype.clearLegend = function () {
+    if (!this.legendEl) return;
+    this.legendEl.innerHTML = '';
+    this.appendMarkerLegend();
+  };
+
   // The marker layers' rows under the shade classes: always listed, each a
   // checkbox that shows or hides the layer (checked while shown; the change
   // is delegated from the list in onChrome). Dots, not squares: the markers

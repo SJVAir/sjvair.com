@@ -327,6 +327,11 @@
   outline-offset: -3px;
 }
 
+/* On the checked option's blue fill the blue ring vanishes: ring it white. */
+.map-toolbar .map-metric-option:has(input:checked:focus-visible) {
+  outline-color: #fff;
+}
+
 .map-toolbar .map-metric-option input {
   position: absolute;
   opacity: 0;
@@ -356,6 +361,18 @@
   font-size: 0.85rem;
 }
 
+/* A folded legend keeps its switches, as the core keeps .legend-toggle
+   (css/maps/map.css): the marker rows' toggles and All sections stay,
+   the key, the notes and the schools' kinds fold. */
+.map-panel.is-collapsed .map-panel-body:has(.section-map-toggle) {
+  display: block;
+}
+
+.map-panel.is-collapsed .map-panel-body:has(.section-map-toggle) > :not(.section-map-legend, .section-map-sections-toggle),
+.map-panel.is-collapsed .map-panel-body .section-map-legend > li:not(.is-toggle) {
+  display: none;
+}
+
 .map-legend-panel .section-map-legend li.is-kind {
   padding-left: 1.4rem;
 }
@@ -377,7 +394,15 @@
   }
   /* "Lbs" / "Apps" on a phone; the full words stay as the accessible names. */
   .map-toolbar .map-metric-legend {
-    display: none;
+    /* Visually hidden, not display:none, which would drop the group's name. */
+    position: absolute;
+    float: none;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   .map-toolbar .map-metric-full {
     position: absolute;

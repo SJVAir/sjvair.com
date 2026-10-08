@@ -2,6 +2,7 @@ import re
 from html import unescape
 from urllib.parse import parse_qs, urlparse
 
+from django.conf import settings
 from django.contrib.gis.geos import MultiPolygon, Polygon
 from django.core.cache import cache
 from django.test import TestCase
@@ -544,6 +545,9 @@ class NoticeModeTests(TestCase):
         for page in (reverse('pesticides:notice-list'), self.tab):
             assert 'data-notices-past="0"' in self.client.get(page).content.decode()
             assert 'data-notices-past="1"' in self.client.get(page, {'past': 1}).content.decode()
+        # ...and the wording itself lives in the script.
+        script = open(settings.BASE_DIR.child('assets', 'js', 'pesticides', 'section-map.js')).read()
+        assert "(past ? 'Past notices' : 'Notices of intent')" in script
 
     def test_tab_skips_the_upcoming_context(self):
         context = self.client.get(self.tab).context

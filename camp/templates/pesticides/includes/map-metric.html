@@ -7,6 +7,6 @@ as the accessible names.
 {% endcomment %}
 <fieldset class="map-metric">
     <legend class="map-metric-legend">Shade by</legend>
-    <label class="map-metric-option"><input type="radio" name="metric" value="lbs_chemical" checked><span class="map-metric-full">Pounds</span><span class="map-metric-short" aria-hidden="true">Lbs</span></label>
-    <label class="map-metric-option"><input type="radio" name="metric" value="applications"><span class="map-metric-full">Applications</span><span class="map-metric-short" aria-hidden="true">Apps</span></label>
+    <label class="map-metric-option"><input type="radio" name="metric" value="lbs_chemical"{% if request.GET.metric != 'applications' %} checked{% endif %}><span class="map-metric-full">Pounds</span><span class="map-metric-short" aria-hidden="true">Lbs</span></label>
+    <label class="map-metric-option"><input type="radio" name="metric" value="applications"{% if request.GET.metric == 'applications' %} checked{% endif %}><span class="map-metric-full">Applications</span><span class="map-metric-short" aria-hidden="true">Apps</span></label>
 </fieldset>
