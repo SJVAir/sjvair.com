@@ -12,6 +12,8 @@ class ChemicalSerializer(serializers.Serializer):
         ('id', lambda c: c.sqid),
         'chem_code',
         'name',
+        'preferred_name',
+        'display_name',
         'cas_number',
         'dtxsid',
         'iarc_group',
@@ -33,8 +35,14 @@ class ProductSerializer(serializers.Serializer):
         'prodno',
         'reg_number',
         'name',
-        'fumigant',
-        'california_restricted',
+        # The classified flag (fumigants.classify_fumigants), which corrects
+        # CDPR's misses; the raw CDPR flag is kept beside it.
+        ('fumigant', lambda p: p.is_fumigant),
+        ('cdpr_fumigant', lambda p: p.fumigant),
+        # Computed from the active ingredients; the key is kept so the
+        # response shape doesn't change, but the value is now true rather
+        # than a column nothing ever set.
+        ('california_restricted', lambda p: p.is_restricted),
     )
 
 
@@ -59,6 +67,14 @@ class ProductDetailSerializer(ProductSerializer):
     )
 
 
+class FumigationMethodSerializer(serializers.Serializer):
+    fields = (
+        ('id', lambda m: m.sqid),
+        'code',
+        'name',
+    )
+
+
 class PesticideUseSerializer(serializers.Serializer):
     fields = (
         ('id', lambda r: r.sqid),
@@ -74,6 +90,7 @@ class PesticideUseSerializer(serializers.Serializer):
         ('product', ProductSerializer),
         ('chemical', ChemicalSerializer),
         ('commodity', CommoditySerializer),
+        ('fume_method', FumigationMethodSerializer),
     )
 
 

@@ -1,0 +1,60 @@
+{% load pesticides_explorer %}
+{% comment %}
+The schools table's filters, in a box beside the map like the other data
+browsers': the name search, the type, the district a site is filed under
+(the one that runs it, or that it sits in), and on a district's own page
+"run by this district only". Every field applies itself as it changes.
+`schools` is places.schools_panel().
+{% endcomment %}
+<form method="GET" class="explorer-filters schools-filters box" hx-trigger="submit, change delay:250ms">
+    {% include 'pesticides/includes/scope-hidden.html' %}
+    {# A near-me place's point and name ride along. #}
+    {% for field in point_hidden %}<input type="hidden" name="{{ field.name }}" value="{{ field.value }}">{% endfor %}
+    {# Carry the sort through a filter change; the column links set it directly. #}
+    {% if not schools.sort_is_default %}<input type="hidden" name="schools_sort" value="{{ schools.sort }}">{% endif %}
+    <div class="field">
+        <label class="label" for="id_schools_q">Search</label>
+        <div class="control has-icons-left">
+            <input id="id_schools_q" class="input" type="search" name="schools_q"
+                value="{{ schools.query }}" placeholder="School or child care"
+                hx-get="{{ request.path }}" hx-include="closest form" hx-trigger="keyup changed delay:500ms, search">
+            <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
+        </div>
+    </div>
+    <div class="field">
+        <label class="label" for="id_schools_type">Type</label>
+        <div class="control">
+            <div class="select is-fullwidth">
+                <select id="id_schools_type" name="schools_type">
+                    {% for option in schools.type_options %}
+                    <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+    {% if schools.is_district %}
+    <div class="field">
+        <label class="checkbox">
+            <input type="checkbox" name="schools_run_by" value="1"{% if schools.run_by_only %} checked{% endif %}>
+            Run by {{ schools.district_name }} only
+        </label>
+    </div>
+    {% elif schools.district_options|length > 1 %}
+    <div class="field">
+        <label class="label" for="id_schools_district">School district</label>
+        <div class="control">
+            <div class="select is-fullwidth">
+                <select id="id_schools_district" name="schools_district">
+                    <option value="">All districts</option>
+                    {% for option in schools.district_options %}
+                    <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    <noscript><button class="button is-link" type="submit">Apply</button></noscript>
+    {% if schools.is_filtered %}<p class="filters-clear"><a href="{% qs_replace schools_q=None schools_type=None schools_run_by=None schools_district=None %}">Clear filters</a></p>{% endif %}
+</form>

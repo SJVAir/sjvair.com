@@ -1,0 +1,46 @@
+{% load humanize pesticides_explorer %}
+{# One county's page: every row is that county, so no County column. #}
+<div class="table-container">
+    <table class="table is-fullwidth is-striped is-hoverable data-table notice-rows">
+        <thead>
+            <tr>
+                <th>Scheduled</th>
+                {% if not compact %}
+                {% if not county %}<th>County</th>{% endif %}
+                <th>Section</th>
+                {% endif %}
+                <th>Method</th>
+                <th class="has-text-right">Treated</th>
+                <th>Materials</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for notice in object_list %}
+            <tr>
+                <td><a href="{% url 'pesticides:notice-detail' sqid=notice.sqid %}">{{ notice.scheduled_application|date:'M j, Y g:i A' }}</a></td>
+                {% if not compact %}
+                {% if not county %}<td>{% if notice.county %}<a href="{% region_url notice.county %}">{{ notice.county.short_name }}</a>{% else %}—{% endif %}</td>{% endif %}
+                <td>
+                    {% if notice.mtrs %}
+                        <a class="mtrs-code" href="{% url 'pesticides:section-detail' sqid=notice.mtrs.sqid %}">{{ notice.mtrs.external_id }}</a>
+                    {% else %}—{% endif %}
+                </td>
+                {% endif %}
+                <td>{{ notice.application_method|notice_method|default:'—' }}</td>
+                <td class="has-text-right">{% if notice.treated_amount %}{{ notice.treated_amount|floatformat:'-1'|intcomma }} {{ notice.treated_units|lower }}{% else %}—{% endif %}</td>
+                <td>
+                    {% for product in notice.products.all %}<a class="tag is-light" href="{{ product.get_absolute_url }}">{{ product.name }}</a> {% endfor %}
+                    {% for chem in notice.chemicals.all %}<a class="tag" href="{{ chem.get_absolute_url }}">{{ chem.display_name }}</a> {% endfor %}
+                </td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="{% if compact %}4{% elif county %}5{% else %}6{% endif %}" class="has-text-centered has-text-grey">
+                {% if compact %}No notices match.
+                {% elif mode == 'active' %}Nothing is scheduled{% if active_filters %} with these filters{% endif %}. <a class="is-underlined" href="{% qs_replace past=1 page=None %}">Browse past notices</a>, or <a class="is-underlined" href="https://spraydays.cdpr.ca.gov/" target="_blank" rel="noopener">sign up with SprayDays</a> to be told when one is filed.
+                {% else %}No past notices match{% if active_filters %} these filters{% endif %}.
+                {% endif %}
+            </td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>

@@ -1,0 +1,16 @@
+{% extends 'pesticides/base.html' %}
+{% block title %}Map | {{ block.super }}{% endblock %}
+{% block body-class %}{{ block.super }} map-page{% endblock %}
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">Map</a></li>{% endblock %}
+{% block explorer-content %}
+<div class="content">
+    <h1 class="title is-4 mb-2">Pesticide use by square mile{% if map_config.year_label %}, {{ map_config.year_label }}{% endif %}</h1>
+    {# What the legend doesn't already say (township vs section, the shades). #}
+    <p class="has-text-grey map-intro">Click a square-mile section for its top chemicals. Orange dots are notices of intent scheduled now; &ldquo;Schools &amp; child care&rdquo; in Options adds schools and child care centers, each with the use reported within about a mile.</p>
+    {% if no_matches %}
+    <p class="notification is-warning is-light">No matches for that filter.</p>
+    {% endif %}
+</div>
+{% include 'pesticides/includes/section-map.html' %}
+<p class="is-size-7 has-text-grey mt-3">Squares with no reported use{% if map_config.year_label %} in {{ map_config.year_label }}{% endif %} are outlined only; dark lines are county boundaries. Want to be told about notices near you? <a href="https://spraydays.cdpr.ca.gov/" target="_blank" rel="noopener">Sign up with SprayDays</a>.</p>
+{% endblock %}

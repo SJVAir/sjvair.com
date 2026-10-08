@@ -1,0 +1,38 @@
+{% comment %}
+An explorer's area page header, the same on every one of its tabs: the
+area's name, a line saying what kind of place it is, any links that go with
+it (an AB 617 community's own page), the near-me radius buttons, and the tab
+row. The tabs are links, each its own page, so a tab can be shared and loads
+only what it shows.
+
+Context: `name`; `kind` (the grey line under it); `header_links`, a list of
+{label, url} opened in a new tab; `radius_options` [{miles, url, current}];
+`tabs` [{key, label, icon, icon_class, url, current}]; `tab_links`
+[{label, url, icon, icon_class}], the same place in another explorer, at the
+row's right end and never current. The row shows with more than one tab or
+any tab link.
+{% endcomment %}
+<div class="content area-header">
+    <h1 class="mb-1">{{ name }}</h1>
+    <p class="identifiers has-text-grey">
+        {{ kind }}
+        {% for link in header_links %}&middot; <a href="{{ link.url }}" target="_blank" rel="noopener">{{ link.label }}</a>{% endfor %}
+    </p>
+    {% if radius_options %}
+    <nav class="radius-switcher" aria-label="Search radius, in miles">
+        <div class="buttons has-addons are-small">
+            {% for option in radius_options %}
+            <a class="button{% if option.current %} is-selected is-primary{% endif %}" href="{{ option.url }}"{% if option.current %} aria-current="page"{% endif %}>{{ option.miles }} mi</a>
+            {% endfor %}
+        </div>
+    </nav>
+    {% endif %}
+</div>
+{% if tabs|length > 1 or tab_links %}
+<nav class="tabs area-tabs" aria-label="{{ name }}">
+    <ul>
+        {% for t in tabs %}<li{% if t.current %} class="is-active"{% endif %}><a href="{{ t.url }}"{% if t.current %} aria-current="page"{% endif %}><span class="icon is-small"><span class="fa-duotone fa-fw {{ t.icon }} explorer-icon {{ t.icon_class }}" aria-hidden="true"></span></span><span>{{ t.label }}</span></a></li>{% endfor %}
+        {% for t in tab_links %}<li{% if forloop.first %} class="is-cross-link"{% endif %}><a href="{{ t.url }}"><span class="icon is-small"><span class="fa-duotone fa-fw {{ t.icon }} explorer-icon {{ t.icon_class }}" aria-hidden="true"></span></span><span>{{ t.label }}</span></a></li>{% endfor %}
+    </ul>
+</nav>
+{% endif %}

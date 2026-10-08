@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.contrib.gis.geos import MultiPolygon, Point, Polygon
+from django.core.cache import cache
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -297,8 +298,11 @@ class DegradedMonitorsTests(StaffClientMixin, TestCase):
     def test_map_marks_each_degraded_monitor(self):
         response = self.client.get(reverse('reports:degraded-monitors'))
         content = response.content.decode()
-        assert 'class="admin-leaflet-map"' in content
-        assert 'js/admin/leaflet-maps.js' in content
+        assert 'class="map-figure"' in content
+        assert 'maptiler-sdk/maptiler-sdk.js' in content
+        assert 'js/admin/map-figure.js' in content
+        assert content.index('js/maps/registry.js') < content.index('js/admin/map-figure.js')
+        assert 'leaflet' not in content.lower()
         assert content.count('"kind": "marker"') == 5
         assert content.count('"kind": "area"') == 8  # county outlines
         rows = {r['name']: r for r in response.context['rows']}
@@ -328,7 +332,7 @@ class DegradedMonitorsTests(StaffClientMixin, TestCase):
     def test_no_map_when_nothing_is_degraded(self):
         response = self.client.get(reverse('reports:degraded-monitors'), {'type': 'aqlite'})
         assert response.context['map'] is None
-        assert 'class="admin-leaflet-map"' not in response.content.decode()
+        assert 'class="map-figure"' not in response.content.decode()
 
     def test_sjvair_only_by_default(self):
         partner = PurpleAir.objects.create(name='Partner', sensor_id=10, position=Point(-119.75, 36.75), location='outside')
@@ -426,10 +430,11 @@ class CoverageTests(StaffClientMixin, TestCase):
     def test_map_shades_tracts_and_marks_monitors(self):
         response = self.client.get(reverse('reports:coverage'))
         content = response.content.decode()
-        assert 'class="admin-leaflet-map"' in content
+        assert 'class="map-figure"' in content
         assert content.count('"kind": "area"') == 2 + 8  # two fixture tracts plus county outlines
         assert content.count('"kind": "marker"') == 2
         assert '"fillColor": "#c0392b"' in content  # the DAC tract
+        assert '"style": {' not in content  # the style keys are flat
 
     def test_county_without_region_row_has_no_population(self):
         Region.objects.counties().filter(name='Fresno County').delete()
@@ -664,6 +669,7 @@ class CommunityPanelTests(StaffClientMixin, TestCase):
 
     def setUp(self):
         super().setUp()
+        cache.clear()  # ces.stats.tract_summary caches a day per geometry; Testville's bbox is identical across tests
         self.testville = make_place('Testville', Region.Type.CDP, (-119.8, 36.7, -119.7, 36.8), '9001')
         self.emptyville = make_place('Emptyville', Region.Type.CITY, (-119.7, 36.7, -119.6, 36.8), '9002')
         host = Host.objects.create(name='Library')
@@ -731,6 +737,21 @@ class CommunityPanelTests(StaffClientMixin, TestCase):
         assert 'include_hidden=1' in links['Include hidden monitors']
         assert 'range=90d' in links['SJVAir monitors only']
         assert 'sjvair_only' not in links['SJVAir monitors only']
+
+    def test_no_score_tracts_are_left_out_of_the_average(self):
+        # A -999 ("no score") tract whose centroid is inside Testville: it counts
+        # and its people count, but it must not drag the average to -455.
+        from camp.apps.ces.models import CES5
+        region = Region.objects.create(name='Census Tract 1.03', slug='tract-06019000103', type=Region.Type.TRACT, external_id='06019000103')
+        boundary = Boundary.objects.create(region=region, version='2020', geometry=MultiPolygon(Polygon.from_bbox((-119.8, 36.7, -119.75, 36.8))))
+        region.boundary = boundary
+        region.save(update_fields=['boundary'])
+        CES5.objects.create(boundary=boundary, population=1000, ci_score_p=-999, dac_sb535=False)
+        context = self.panel(self.testville)
+        assert context['tracts']['tracts'] == 2
+        assert context['tracts']['population'] == 5650
+        assert context['tracts']['avg_percentile'] == 89.2
+        assert context['tracts']['max_percentile'] == 89.2
 
     def test_county_islands_are_inside(self):
         outer = Polygon.from_bbox((-119.8, 36.7, -119.7, 36.8))

@@ -5,6 +5,7 @@
 - name: Central California Environmental Justice Network
   logo: img/logo/ccejn.png
   url: https://ccejn.org/
+  size: seal
 
 - name: Valley Improvement Projects
   logo: img/logo/vip.jpg
@@ -17,6 +18,7 @@
 - name: Madera Coalition for Community Justice
   logo: img/logo/mccj.jpg
   url: http://www.maderaccj.org/
+  size: seal
 
 - name: The Center on Race, Poverty & the Environment
   logo: img/logo/crpe.png
@@ -38,10 +40,44 @@
   logo: img/logo/rootaccess.svg
   url: https://rootaccess.org/
 
+- name: Clean Water Action
+  logo: img/logo/cleanwateraction.svg
+  url: https://cleanwater.org/california
+
+- name: Parent Institute for Quality Education
+  logo: img/logo/piqe.png
+  url: https://www.piqe.org/
+  size: seal
+
 - name: University of California, Merced
   logo: img/logo/ucmerced.png
   url: https://www.ucmerced.edu/
+  size: compact
+
+- name: University of California, Berkeley
+  logo: img/logo/ucberkeley.svg
+  url: https://www.berkeley.edu/
+
+- name: Stanford University
+  logo: img/logo/stanford.png
+  url: https://law.stanford.edu/environmental-and-natural-resources-law-policy-program-enrlp/sustainable-and-humane-food-systems/
 
 - name: San Joaquin Valley Air Pollution Control District
   logo: img/logo/sjvapcd.svg
   url: https://valleyair.org/
+
+- name: Tulare County Health & Human Services Agency
+  logo: img/logo/tulare-hhsa.png
+  url: https://tchhsa.org/
+
+- name: California Air Resources Board
+  logo: img/logo/carb.svg
+  url: https://ww2.arb.ca.gov/
+
+- name: California Environmental Protection Agency
+  logo: img/logo/calepa.svg
+  url: https://calepa.ca.gov/
+
+- name: U.S. Environmental Protection Agency
+  logo: img/logo/epa-horizontal.svg
+  url: https://www.epa.gov/

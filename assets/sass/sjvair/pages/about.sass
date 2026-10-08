@@ -13,14 +13,32 @@ body.about
             display: flex
             align-items: center
             justify-content: center
-            height: 120px // adjust to taste
-            min-width: 120px   // ensures wide-but-short logos don’t shrink too far
+            height: 92px
+            min-width: 80px
             max-width: 100%
 
             img
-                max-height: 100%
+                max-height: 70px // wordmarks and stacked logos
                 max-width: 100%
                 object-fit: contain
+
+            // A round seal carries less weight than a wordmark of the same
+            // height, so it gets the full box (partners.yaml `size: seal`).
+            &.is-seal img
+                max-height: 92px
+
+            // A heavy, wide wordmark reads larger than its neighbors
+            // (partners.yaml `size: compact`).
+            &.is-compact img
+                max-width: 72%
+
+            // The funders and school district logos: few to a row, so each
+            // has room to be larger than a partner logo.
+            &.is-large
+                height: 120px
+
+                img
+                    max-height: 120px
 
     section.technology-stack
         img
@@ -48,8 +66,14 @@ body.about.data
             &.satellite-atmospheric-data
                 @extend .has-text-grey-dark
 
-            &.environmental-health-mapping
+            &.environmental-health-data
                 @extend .has-text-success-dark
+
+            &.pesticide-data
+                color: #556b2f
+
+            &.geospatial-data
+                @extend .has-text-info-dark
 
         .description
             @extend .has-text-grey

@@ -10,6 +10,10 @@
   logo: img/logo/tech/pandas.svg
   url: https://pandas.pydata.org/
 
+- name: GeoPandas
+  logo: img/logo/tech/geopandas.svg
+  url: https://geopandas.org/
+
 - name: scikit-learn
   logo: img/logo/tech/scikit-learn-logo.svg
   url: https://scikit-learn.org/
@@ -18,21 +22,45 @@
   logo: img/logo/tech/vuejs.svg
   url: https://vuejs.org/
 
+- name: htmx
+  logo: img/logo/tech/htmx.svg
+  url: https://htmx.org/
+
+- name: Bulma
+  logo: img/logo/tech/bulma.svg
+  url: https://bulma.io/
+
 - name: OpenStreetMap
   logo: img/logo/tech/openstreetmap.svg
   url: https://www.openstreetmap.org/
 
-- name: Leaflet
-  logo: img/logo/tech/leaflet.svg
-  url: https://leafletjs.com/
+- name: MapLibre GL JS
+  logo: img/logo/tech/maplibre.svg
+  url: https://maplibre.org/
 
 - name: PostgreSQL
   logo: img/logo/tech/postgresql.svg
   url: https://www.postgresql.org/
 
+- name: PostGIS
+  logo: img/logo/tech/postgis.png
+  url: https://postgis.net/
+
 - name: Redis
   logo: img/logo/tech/redis.svg
   url: https://redis.io/
+
+- name: Memcached
+  logo: img/logo/tech/memcached.svg
+  url: https://memcached.org/
+
+- name: Gunicorn
+  logo: img/logo/tech/gunicorn.svg
+  url: https://gunicorn.org/
+
+- name: Docker
+  logo: img/logo/tech/docker.svg
+  url: https://www.docker.com/
 
 - name: MicroPython
   logo: img/logo/tech/micropython.svg

@@ -4,43 +4,39 @@ knows about one city, CDP or urban area, and the communities inside a county.
 """
 
 from django.contrib.humanize.templatetags.humanize import intcomma
-from django.db.models import Avg, Count, Max, Q, Sum
 from django.urls import reverse
 
+from camp.apps.ces import stats as ces_stats
 from camp.apps.regions.models import Region
 from camp.apps.regions.panels import Panel, monitors_inside, register, status_counts, type_rows
 from camp.apps.reports.scope import MonitorScope
-from camp.apps.reports.views import (
-    Centroid, CoverageCommunity, ces_tracts, county_column, per_10k, sphere_km, to_radians,
-)
+from camp.apps.reports.views import Centroid, CoverageCommunity, county_column, per_10k, sphere_km, to_radians
 from camp.utils.gis import fill_holes, has_holes
 
 
 def tract_stats(geometry):
-    """CES tracts whose centroid is inside `geometry`: counts, populations, percentiles."""
-    _model, _version, tracts = ces_tracts()
+    """
+    CES tracts the geometry covers (ces.stats.tract_summary: centroid inside,
+    or a tenth of the tract's area), as the panel templates read them. A
+    geometry too small to cover a tract reports the population of the tract
+    it sits in. -999 "no score" tracts count but aren't averaged.
+    """
     empty = {'tracts': 0, 'dac_tracts': 0, 'population': 0, 'dac_population': 0,
              'avg_percentile': None, 'max_percentile': None}
-    if tracts is None:
+    summary = ces_stats.tract_summary(geometry, places=False)
+    if summary is None:
         return empty
-    inside = tracts.annotate(c=Centroid('boundary__geometry')).filter(c__within=geometry)
-    stats = inside.aggregate(
-        tracts=Count('pk'),
-        dac_tracts=Count('pk', filter=Q(dac_sb535=True)),
-        total_population=Sum('population', default=0),
-        dac_population=Sum('population', filter=Q(dac_sb535=True), default=0),
-        avg_percentile=Avg('ci_score_p'),
-        max_percentile=Max('ci_score_p'),
-    )
-    stats['population'] = stats.pop('total_population')
-    if stats['tracts'] == 0:
-        # No tract centroid inside: use the tract the region's centroid sits in.
-        containing = tracts.filter(boundary__geometry__contains=geometry.centroid).first()
-        if containing is not None:
-            stats['population'] = containing.population or 0
-    for key in ('avg_percentile', 'max_percentile'):
-        stats[key] = round(stats[key], 1) if stats[key] is not None else None
-    return stats
+    population = summary['population']
+    if not summary['count'] and summary['containing']:
+        population = summary['containing']['population']
+    return {
+        'tracts': summary['count'],
+        'dac_tracts': summary['dac_tracts'],
+        'population': population,
+        'dac_population': summary['dac_population'],
+        'avg_percentile': round(summary['mean_p'], 1) if summary['mean_p'] is not None else None,
+        'max_percentile': round(summary['max_p'], 1) if summary['max_p'] is not None else None,
+    }
 
 
 def nearest_counted(scope, geometry):

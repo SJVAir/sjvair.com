@@ -1,4 +1,6 @@
 import django_filters
+
+from django.db.models import Q
 from django.utils import timezone
 from resticus.filters import FilterSet
 
@@ -33,13 +35,21 @@ class CommodityFilter(FilterSet):
 
 class ProductFilter(FilterSet):
     name = django_filters.CharFilter(field_name='name', lookup_expr='icontains')
+    # CDPR's per-product flag, or -- for a product its file doesn't list --
+    # a chemical carrying the 3 CCR 6400 classification.
+    california_restricted = django_filters.BooleanFilter(method='filter_restricted')
+    # The classified flag, not CDPR's raw one (which the response exposes as
+    # `cdpr_fumigant`).
+    fumigant = django_filters.BooleanFilter(field_name='is_fumigant')
 
     class Meta:
         model = Product
-        fields = {
-            'fumigant': ['exact'],
-            'california_restricted': ['exact'],
-        }
+        fields = []
+
+    def filter_restricted(self, queryset, name, value):
+        if value is None:
+            return queryset
+        return queryset.restricted(value)
 
 
 class PesticideUseFilter(FilterSet):
@@ -47,6 +57,7 @@ class PesticideUseFilter(FilterSet):
     chemical = django_filters.NumberFilter(field_name='chemical__chem_code')
     commodity = django_filters.CharFilter(field_name='commodity__site_code')
     product = django_filters.NumberFilter(field_name='product__prodno')
+    fume_method = django_filters.NumberFilter(field_name='fume_method__code')
     region_id = django_filters.CharFilter(method='filter_region_id')
 
     def filter_region_id(self, queryset, name, value):

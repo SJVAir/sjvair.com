@@ -5,6 +5,7 @@ import pdfplumber
 import requests
 from django.core.management.base import BaseCommand
 
+from camp.apps.pesticides import rollup
 from camp.apps.pesticides.models import Chemical
 
 # URL changes when CARB updates the table; re-check periodically.
@@ -103,3 +104,4 @@ class Command(BaseCommand):
         self.stdout.write(f'Matched {matched:,} chemicals by CAS number')
         self.stdout.write(f'  Added TOXIC_AIR_CONTAMINANT to {tac_added:,}')
         self.stdout.write(f'  Added CARCINOGEN to {carcinogen_added:,}')
+        self.stdout.write(rollup.REBUILD_REMINDER)

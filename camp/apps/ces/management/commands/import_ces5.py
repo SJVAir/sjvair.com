@@ -3,6 +3,7 @@ import pandas as pd
 
 from django.core.management.base import BaseCommand
 
+from camp.apps.ces import stats as ces_stats
 from camp.apps.ces.models import CES5, DACCategory
 from camp.apps.regions.models import Boundary, Region
 from camp.utils import geodata
@@ -136,6 +137,7 @@ class Command(BaseCommand):
 
         self.stdout.write('\nSaving records...')
         self.save_records(ces5)
+        ces_stats.clear_caches()
         self.stdout.write(self.style.SUCCESS('\n✓ Done'))
 
     def get_ces5(self):
