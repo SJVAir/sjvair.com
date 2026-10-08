@@ -116,6 +116,11 @@
     if (trigger && evt.key === 'ArrowDown') {
       var picker = trigger.closest(DROPDOWNS);
       if (!picker.classList.contains('is-active')) {
+        document.querySelectorAll(DROPDOWNS_OPEN).forEach(function (other) {
+          other.classList.remove('is-active');
+          var otherButton = other.querySelector('.dropdown-trigger .button');
+          if (otherButton) otherButton.setAttribute('aria-expanded', 'false');
+        });
         picker.classList.add('is-active');
         trigger.setAttribute('aria-expanded', 'true');
       }
@@ -149,12 +154,25 @@
   function placeTooltip(evt) {
     var el = evt.target && evt.target.closest ? evt.target.closest('[data-tooltip]') : null;
     if (!el) return;
+    // Side tooltips are placed by the extension, and a class set by hand in
+    // a template is the template's: this only adds and removes its own,
+    // which it records in data-tooltip-auto.
+    if (el.classList.contains('has-tooltip-left') || el.classList.contains('has-tooltip-right')) return;
+    var auto = el.getAttribute('data-tooltip-auto');
+    if (!auto && (el.classList.contains('has-tooltip-end') || el.classList.contains('has-tooltip-start'))) return;
     var rect = el.getBoundingClientRect();
     var center = rect.left + rect.width / 2;
     var viewport = document.documentElement.clientWidth;
     var half = Math.min(176, (viewport - 16) / 2);
-    el.classList.toggle('has-tooltip-end', center + half > viewport - 8);
-    el.classList.toggle('has-tooltip-start', center - half < 8 && center + half <= viewport - 8);
+    var want = center + half > viewport - 8 ? 'end' : (center - half < 8 ? 'start' : '');
+    if (auto === want) return;
+    if (auto) el.classList.remove('has-tooltip-' + auto);
+    if (want) {
+      el.classList.add('has-tooltip-' + want);
+      el.setAttribute('data-tooltip-auto', want);
+    } else {
+      el.removeAttribute('data-tooltip-auto');
+    }
   }
   document.addEventListener('mouseover', placeTooltip);
   document.addEventListener('focusin', placeTooltip);

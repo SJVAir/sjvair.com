@@ -56,9 +56,10 @@ body.pesticides
         .explorer-title
             line-height: 1.125
             font-weight: 600
-            a
-                font-weight: 700
-                text-decoration: none
+        // `h1 a` is for explorers whose hero title is still an h1.
+        .explorer-title a, h1 a
+            font-weight: 700
+            text-decoration: none
         .explorer-nav.tabs
             margin-top: $size-6
             margin-bottom: 0

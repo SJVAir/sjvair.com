@@ -26,8 +26,17 @@ class ChartTableTests(SimpleTestCase):
             {'method': 'A', 'label': 'Air', 'values': [1, 2]},
         ]}
         table = chart_table(method_stack_chart(stack)['chart'])
-        assert table['columns'] == ['Ground (lbs)', 'Air (lbs)']
-        assert table['rows'] == [(2022, [10, 1]), (2023, [20, 2])]
+        assert table['columns'] == ['Ground (pounds)', 'Air (pounds)']
+        assert table['rows'] == [(2022, ['10', '1']), (2023, ['20', '2'])]
+
+    def test_columns_and_numbers_follow_the_charts_unit(self):
+        chart = {'type': 'stack', 'unit': 'tons', 'x': [2022, 2023], 'series': [
+            {'label': 'Dairy', 'values': [0.0123, 1234.4]}, {'label': 'Oil', 'values': [0, 12.345]},
+        ]}
+        table = chart_table(chart)
+        assert table['columns'] == ['Dairy (tons)', 'Oil (tons)']
+        assert table['rows'] == [(2022, ['0.0123', '0']), (2023, ['1,234', '12.3'])]
+        assert chart_table({'unit': 'lbs', 'x': [1], 'series': [{'label': 'A', 'values': [None]}]})['rows'] == [(1, ['—'])]
 
     def test_chart_titles_are_headings(self):
         rows = [{'year': 2023, 'lbs': 88.0}]
@@ -73,11 +82,6 @@ class ExplorerMarkupTests(RollupTestMixin, TestCase):
         # The toolbar precedes the canvas (and so its attribution) in focus order.
         assert html.index('class="map-toolbar"') < html.index('map-canvas')
 
-    def test_reveal_toggles_control_their_list(self):
-        html = self.client.get(self.fresno.get_pesticides_tab_url('overview')).content.decode()
-        for toggle in re.findall(r'<button[^>]*data-reveal-toggle[^>]*>', html):
-            assert 'aria-controls="' in toggle
-
 
 class PaginationTests(SimpleTestCase):
     def test_disabled_ends_are_not_links(self):
@@ -88,3 +92,16 @@ class PaginationTests(SimpleTestCase):
         html = render_to_string('pesticides/includes/pagination.html', context, request=RequestFactory().get('/'))
         assert '<span class="pagination-previous is-disabled" aria-disabled="true">Previous</span>' in html
         assert '<a class="pagination-previous"' not in html
+
+
+class RevealToggleTests(TestCase):
+    def test_toggles_control_their_list(self):
+        from camp.apps.regions.tests.test_within_template import within
+        html = render_to_string('regions/includes/within.html', {
+            'within': within(n_communities=20, n_districts=14, n_zips=16), 'within_name': 'Kern County', 'scope_qs': '',
+        })
+        toggles = re.findall(r'<button[^>]*data-reveal-toggle[^>]*>', html)
+        assert len(toggles) == 3
+        for toggle in toggles:
+            target = re.search(r'aria-controls="([^"]+)"', toggle).group(1)
+            assert f'id="{target}"' in html

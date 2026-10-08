@@ -16,7 +16,7 @@
         <caption>{{ title }}</caption>
         <thead><tr><th scope="col">Year</th>{% for column in table.columns %}<th scope="col">{{ column }}</th>{% endfor %}</tr></thead>
         <tbody>
-        {% for x, values in table.rows %}<tr><th scope="row">{{ x }}</th>{% for value in values %}<td>{% if value is None %}—{% else %}{{ value|lbs }}{% endif %}</td>{% endfor %}</tr>{% endfor %}
+        {% for x, values in table.rows %}<tr><th scope="row">{{ x }}</th>{% for value in values %}<td>{{ value }}</td>{% endfor %}</tr>{% endfor %}
         </tbody>
     </table>
     </div>

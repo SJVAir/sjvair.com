@@ -498,8 +498,8 @@ html.map-expanded .navbar {
   outline-offset: 2px;
 }
 
-/* 24px targets (WCAG 2.5.8) for the legend's checkboxes: the label is the hit
-   area, so it fills its row. */
+/* 24px targets (WCAG 2.5.8) for the legend's and Options' checkboxes: the
+   label is the hit area, given a 24px minimum height. */
 .legend-toggle,
 .map-panel-body label:has(> input[type="checkbox"]),
 .section-map-controls label {

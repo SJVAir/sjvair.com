@@ -230,6 +230,22 @@ def delta_phrase(delta):
     return _delta_phrase(delta, lead=False) or ''
 
 
+def _chart_number(value):
+    """
+    A chart value in any unit: thousands separators from 1,000 up, three
+    significant figures below that, so a small tonnage stays meaningful
+    ("0.0123", not "0.01") and a whole number stays whole. None is a dash.
+    """
+    if value is None:
+        return '—'
+    if abs(value) >= 1000:
+        return f'{int(round(value)):,}'
+    if value == 0:
+        return '0'
+    text = f'{value:.3g}'
+    return text if 'e' not in text else f'{value:f}'.rstrip('0').rstrip('.')
+
+
 @register.filter
 def chart_table(chart):
     """
@@ -242,10 +258,10 @@ def chart_table(chart):
         return None
     unit = (chart.get('unit') or 'value').capitalize()
     if chart.get('series'):
-        columns = [item['label'] for item in chart['series']]
-        columns = [f'{label} (lbs)' for label in columns]
+        suffix = chart.get('unit') or 'lbs'
+        columns = [f"{item['label']} ({suffix})" for item in chart['series']]
         rows = [
-            (x, [item['values'][i] for item in chart['series']])
+            (x, [_chart_number(item['values'][i]) for item in chart['series']])
             for i, x in enumerate(chart['x'])
         ]
     elif chart.get('y') is not None:
@@ -254,7 +270,7 @@ def chart_table(chart):
         if chart.get('compare'):
             columns.append(chart.get('compare_label') or 'Comparison')
             series.append(chart['compare'])
-        rows = [(x, [values[i] for values in series]) for i, x in enumerate(chart['x'])]
+        rows = [(x, [_chart_number(values[i]) for values in series]) for i, x in enumerate(chart['x'])]
     else:
         return None
     return {'columns': columns, 'rows': rows}

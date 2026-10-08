@@ -15,7 +15,7 @@ county, compare, compare_options.
         <div class="control">
             <div class="dropdown map-toolbar-dropdown{% if kind == 'chemical' and related.chemical or kind == 'product' and related.product or kind == 'commodity' and related.commodity %} is-set{% endif %}">
                 <div class="dropdown-trigger">
-                    <button type="button" class="button" aria-haspopup="true" aria-expanded="false" aria-controls="map-menu-{{ kind }}">
+                    <button type="button" class="button" aria-expanded="false" aria-controls="map-menu-{{ kind }}">
                         <span class="icon"><span class="fa-duotone fa-fw {{ icon }} explorer-icon {{ icon_class }}" aria-hidden="true"></span></span>
                         <span class="map-toolbar-label">
                             {% if kind == 'product' and related.product %}{{ related.product.display_name }}
@@ -47,7 +47,7 @@ county, compare, compare_options.
         <div class="control">
             <div class="dropdown map-toolbar-dropdown{% if compare %} is-set{% endif %}">
                 <div class="dropdown-trigger">
-                    <button type="button" class="button" aria-haspopup="true" aria-expanded="false" aria-controls="map-menu-compare"
+                    <button type="button" class="button" aria-expanded="false" aria-controls="map-menu-compare"
                             aria-label="Compare with: {% if compare %}{{ compare }}{% else %}off{% endif %}">
                         <span class="icon"><span class="fa-duotone fa-fw fa-left-right explorer-icon is-scope" aria-hidden="true"></span></span>
                         <span class="map-toolbar-label">{% if compare %}vs {{ compare }}{% else %}Compare{% endif %}</span>

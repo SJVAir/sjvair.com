@@ -14,7 +14,7 @@ itself is left out rather than rendering an empty flex box.
     {% if year_options|length > 1 %}
     <div class="dropdown is-right explorer-scope-picker" data-scope="year">
         <div class="dropdown-trigger">
-            <button type="button" class="button is-small" aria-haspopup="true" aria-expanded="false" aria-controls="scope-menu-year" aria-label="Year: {% if all_years %}all years{% else %}{{ year }}{% endif %}">
+            <button type="button" class="button is-small" aria-expanded="false" aria-controls="scope-menu-year" aria-label="Year: {% if all_years %}all years{% else %}{{ year }}{% endif %}">
                 <span class="icon"><span class="fa-duotone fa-fw fa-calendar explorer-icon is-scope" aria-hidden="true"></span></span>
                 <span class="explorer-scope-label">{% if all_years %}All years{% else %}{{ year }}{% endif %}</span>
                 <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
@@ -42,7 +42,7 @@ itself is left out rather than rendering an empty flex box.
     {% if county_options %}
     <div class="dropdown is-right explorer-scope-picker" data-scope="county">
         <div class="dropdown-trigger">
-            <button type="button" class="button is-small" aria-haspopup="true" aria-expanded="false" aria-controls="scope-menu-county" aria-label="County: {% if county %}{{ county.short_name }}{% else %}all counties{% endif %}">
+            <button type="button" class="button is-small" aria-expanded="false" aria-controls="scope-menu-county" aria-label="County: {% if county %}{{ county.short_name }}{% else %}all counties{% endif %}">
                 <span class="icon"><span class="fa-duotone fa-fw fa-map explorer-icon is-scope" aria-hidden="true"></span></span>
                 <span class="explorer-scope-label">{% if county %}{{ county.short_name }}{% else %}All counties{% endif %}</span>
                 <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
@@ -68,7 +68,7 @@ itself is left out rather than rendering an empty flex box.
     {% if scope_concern %}
     <div class="dropdown is-right explorer-scope-picker" data-scope="narrow">
         <div class="dropdown-trigger">
-            <button type="button" class="button is-small{% if concern %} is-set{% endif %}" aria-haspopup="true" aria-expanded="false" aria-controls="scope-menu-narrow"
+            <button type="button" class="button is-small{% if concern %} is-set{% endif %}" aria-expanded="false" aria-controls="scope-menu-narrow"
                     aria-label="Narrow to: {% if concern %}{{ narrow_label }}{% else %}all use{% endif %}">
                 <span class="icon"><span class="fa-duotone fa-fw {% if concern %}fa-filter-circle-xmark{% else %}fa-filter{% endif %} explorer-icon is-concern" aria-hidden="true"></span></span>
                 <span class="explorer-scope-label">{% if concern %}{{ narrow_label }}{% else %}All use{% endif %}</span>
