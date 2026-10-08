@@ -37,7 +37,7 @@
                 <tr><th>County</th><td>{% if object.county %}<a href="{% region_url object.county %}">{{ object.county.short_name }}</a>{% else %}—{% endif %}</td></tr>
                 <tr>
                     <th>Section</th>
-                    <td>{% if object.mtrs %}<a href="{% url 'pesticides:section-detail' sqid=object.mtrs.sqid %}">{{ object.mtrs.external_id }}</a>{% else %}—{% endif %}</td>
+                    <td>{% if object.mtrs %}<a class="mtrs-code" href="{% url 'pesticides:section-detail' sqid=object.mtrs.sqid %}">{{ object.mtrs.external_id }}</a>{% else %}—{% endif %}</td>
                 </tr>
             </tbody>
         </table>

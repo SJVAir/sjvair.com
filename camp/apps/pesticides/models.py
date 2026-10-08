@@ -29,6 +29,7 @@ NAME_INITIALISMS = {
     'NPE', 'NTA', 'OIT', 'PBO', 'PBTC', 'PCNB', 'PCP', 'TBTO', 'TCMTB', 'TEA',
 }
 NAME_SMALL_WORDS = {'OF', 'IN', 'AND', 'OR', 'TO', 'AS', 'BY', 'ON', 'IS', 'FOR', 'THE'}
+CONFIDENTIAL_AI_NAME = 'AI IS CONFIDENTIAL'
 _WORD_RE = re.compile(r'[A-Za-z]+')
 
 
@@ -73,8 +74,11 @@ def display_chemical_name(name, preferred_name):
     CompTox's preferred name replaces it when the two are the same name (so
     "GLYPHOSATE, ISOPROPYLAMINE SALT" reads "Glyphosate isopropylamine
     salt") or when CDPR's has no letters at all ("1080" for sodium
-    fluoroacetate).
+    fluoroacetate). CDPR's "AI IS CONFIDENTIAL" placeholder is spelled out,
+    since "AI" reads as artificial intelligence to most people.
     """
+    if (name or '').strip().upper() == CONFIDENTIAL_AI_NAME:
+        return 'Confidential active ingredient'
     if preferred_name:
         if not any(ch.isalpha() for ch in name):
             return preferred_name

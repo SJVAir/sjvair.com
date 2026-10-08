@@ -59,9 +59,10 @@ class NoticeListTests(TestCase):
 
     def test_summary_sentence_names_the_picked_month(self):
         past = self.client.get(self.url, {'past': 1, 'month': 'all'})
-        assert 'in the archive.' in past.content.decode()
+        past_html = ' '.join(past.content.decode().split())
+        assert 'past notice' in past_html and 'in the archive' not in past_html
         month = self.client.get(self.url, {'past': 1, 'archive_year': 2020, 'month': 1})
-        assert 'in the archive in January 2020.' in ' '.join(month.content.decode().split())
+        assert 'past notice in January 2020.' in ' '.join(month.content.decode().split())
 
     def test_archive_months_has_all_months_first(self):
         html = self.client.get(self.url, {'past': 1, 'month': 'all'}).content.decode()
@@ -82,7 +83,7 @@ class NoticeListTests(TestCase):
         notices_url = response.context['map_config']['notices_url']
         assert 'year=2020' in notices_url and 'month=1' in notices_url
         html = response.content.decode()
-        assert 'in the archive in January 2020.' in ' '.join(html.split())
+        assert 'past notice in January 2020.' in ' '.join(html.split())
         all_link = html[html.rindex('<a', 0, html.index('All months')):html.index('All months')]
         assert 'is-active' not in all_link
         jan_link = html[html.rindex('<a', 0, html.index('January 2020 <')):html.index('January 2020 <')]
@@ -343,7 +344,7 @@ class AreaNoticesTabTests(TestCase):
         notices_url = response.context['map_config']['notices_url']
         assert 'year=2020' in notices_url and 'month=1' in notices_url
         assert response.context['map_config']['section_notices_url'].count('month=1') == 1
-        assert 'in the archive in January 2020 here.' in ' '.join(self.client.get(self.url, {'past': 1}).content.decode().split())
+        assert 'past notice here in January 2020.' in ' '.join(self.client.get(self.url, {'past': 1}).content.decode().split())
 
     def test_past_mode_lists_the_archive_and_counts_only_the_place(self):
         response = self.client.get(self.url, {'past': 1})

@@ -80,6 +80,6 @@ class EmptyTableSpanTests(RollupTestMixin, TestCase):
         self.check(self.fresno.get_pesticides_tab_url('records'), {'chemical': 'nope'}, 'No records match.')
 
     def test_notices(self):
-        self.check(reverse('pesticides:notice-list'), {'chemical': 'nope'}, 'No notices match.')
-        self.check(reverse('pesticides:notice-list'), {'county': 'fresno', 'chemical': 'nope'}, 'No notices match.')
-        self.check(self.fresno.get_pesticides_tab_url('notices'), {'chemical': 'nope'}, 'No notices match.')
+        self.check(reverse('pesticides:notice-list'), {'chemical': 'nope'}, 'Nothing is scheduled')
+        self.check(reverse('pesticides:notice-list'), {'county': 'fresno', 'chemical': 'nope'}, 'Nothing is scheduled')
+        self.check(self.fresno.get_pesticides_tab_url('notices'), {'chemical': 'nope'}, 'Nothing is scheduled')

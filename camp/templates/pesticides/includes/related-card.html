@@ -4,7 +4,7 @@
         <h3 class="card-header-title">{{ card.title }}</h3>
         {# Fewer rows than the cap means these are all of them, and there is #}
         {# nothing for "View all" to show. #}
-        {% if not card.complete %}<a class="card-header-icon view-all" href="{{ card.show_all_url }}">View all</a>{% endif %}
+        {% if not card.complete %}<a class="card-header-icon view-all" href="{{ card.show_all_url }}">View all<span class="is-sr-only"> {{ card.kind }}</span></a>{% endif %}
     </header>
     <div class="card-content">
         {% if card.rows %}

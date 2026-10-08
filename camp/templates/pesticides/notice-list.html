@@ -28,8 +28,7 @@
 </div>
 {# Full width under the filters and map, as on the records page. #}
 <p class="summary-sentence mt-4 mb-3">
-    {{ count }} notice{{ count|pluralize }}
-    {% if mode == 'active' %}currently scheduled{% else %}in the archive{% if filter_month_label %} in {{ filter_month_label }}{% endif %}{% endif %}.
+    {% if mode == 'active' %}{{ count }} notice{{ count|pluralize }} currently scheduled.{% else %}{{ count }} past notice{{ count|pluralize }}{% if filter_month_label %} in {{ filter_month_label }}{% endif %}.{% endif %}
 </p>
 {% include 'pesticides/includes/notice-rows.html' %}
 {% include 'pesticides/includes/pagination.html' %}

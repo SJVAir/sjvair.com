@@ -24,6 +24,11 @@
 
 
 body.pesticides
+    // A section code (T13S-R21E-27) breaks nowhere: a hyphen is a line break
+    // to the browser, and half a code is not a code.
+    a.mtrs-code
+        white-space: nowrap
+
     // Links inside running text are told apart from it by more than colour
     // (WCAG 1.4.1); navigation, tabs, buttons, tables and boards stay bare.
     p.is-size-7 a:not(:has(.icon)), .help a:not(:has(.icon)), .sources a:not(:has(.icon)), .data-notes a:not(:has(.icon)), .school-kind a:not(:has(.icon)), .chart-note a:not(:has(.icon))
@@ -803,8 +808,16 @@ body.pesticides
             max-width: 24rem
             .tags
                 gap: 0.3rem
+                // Links, so they read as links: link colour and an underline
+                // rather than the grey of a label.
                 .tag
                     font-variant-numeric: tabular-nums
+                    background: $white
+                    border: 1px solid $grey-lighter
+                    color: $link
+                    text-decoration: underline
+                    &:hover, &:focus-visible
+                        border-color: $link
 
     .right-now
         border-left: 3px solid $info

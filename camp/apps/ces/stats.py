@@ -11,7 +11,7 @@ inside it, not an OEHHA score, and the pages say so.
 import hashlib
 from statistics import mean
 
-from django.contrib.gis.db.models.functions import Area, Centroid, Intersection, Transform
+from django.contrib.gis.db.models.functions import Area, Centroid, Distance, Intersection, Transform
 from django.core.cache import cache
 
 from camp.apps.ces.models import CES4, CES5
@@ -28,7 +28,7 @@ NO_SCORE = -999
 MIN_OVERLAP = 0.10
 TOP_PERCENTILE = 75
 TOP_N = 5
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 CACHE_TIMEOUT = 60 * 60 * 24
 # Every key includes the generation; an import bumps it (clear_caches) so a
 # re-imported CES isn't served from day-old summaries. Persistent, no timeout.
@@ -71,12 +71,59 @@ def _score(value):
 
 
 def _row(record):
+    region = record.boundary.region
     return {
-        'region': record.boundary.region,
+        'region': region,
+        'number': tract_number(region),
         'ci_score_p': _score(record.ci_score_p),
         'dac': record.dac_sb535,
         'population': record.population or 0,
     }
+
+
+# How far (degrees, ~10 km) to look for the nearest place when no city or
+# community contains a tract's interior point.
+NEAREST_PLACE_DEGREES = 0.1
+
+
+def tract_place(region):
+    """
+    A short place hint for a census tract region ("Fresno", "near Easton"),
+    from regions already loaded: the city containing the tract's interior
+    point, else the CDP containing it, else the nearest city or CDP within
+    NEAREST_PLACE_DEGREES. None for a tract with no boundary or nothing near.
+    The postal city wins over the CDP where both exist.
+    """
+    boundary = getattr(region, 'boundary', None)
+    if boundary is None:
+        return None
+    point = boundary.geometry.point_on_surface
+    for kind in (Region.Type.CITY, Region.Type.CDP):
+        found = Region.objects.filter(type=kind, boundary__geometry__contains=point).order_by('name').first()
+        if found is not None:
+            return found.name
+    nearest = (
+        Region.objects.filter(
+            type__in=(Region.Type.CITY, Region.Type.CDP),
+            boundary__geometry__dwithin=(point, NEAREST_PLACE_DEGREES),
+        )
+        .annotate(distance=Distance('boundary__geometry', point))
+        .order_by('distance').first()
+    )
+    return f'near {nearest.name}' if nearest is not None else None
+
+
+def tract_number(region):
+    """
+    The census tract number as the Census Bureau prints it, from the 11-digit
+    GEOID's last six digits: 06019002001 -> "20.01", 06019000400 -> "4". None
+    when the region has no usable GEOID.
+    """
+    geoid = (region.external_id or '').strip()
+    if len(geoid) != 11 or not geoid.isdigit():
+        return None
+    number, suffix = int(geoid[5:9]), geoid[9:]
+    return f'{number}' if suffix == '00' else f'{number}.{suffix}'
 
 
 def member_tracts(geometry, model, version):
@@ -113,6 +160,10 @@ def _summary(geometry, model, version):
         record = model.objects.filter(boundary__version=version, boundary__geometry__contains=geometry.centroid).first()
         if record is not None:
             containing = _row(record)
+    # The place hint is a spatial lookup, so only the rows a page names get one.
+    named = [*scored_rows[:TOP_N], *scored_rows[-1:], *([containing] if containing else [])]
+    for row in {id(row): row for row in named}.values():
+        row['place'] = tract_place(row['region'])
     return {
         'model': model.__name__,
         'version': version,

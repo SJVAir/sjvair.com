@@ -22,7 +22,7 @@
                 {% if not county %}<td>{% if use.county %}<a href="{% region_url use.county %}">{{ use.county.short_name }}</a>{% else %}—{% endif %}</td>{% endif %}
                 <td>
                     {% if use.mtrs %}
-                        <a href="{% url 'pesticides:section-detail' sqid=use.mtrs.sqid %}">{{ use.mtrs.external_id }}</a>
+                        <a class="mtrs-code" href="{% url 'pesticides:section-detail' sqid=use.mtrs.sqid %}">{{ use.mtrs.external_id }}</a>
                     {% else %}—{% endif %}
                 </td>
                 <td>

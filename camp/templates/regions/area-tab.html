@@ -12,10 +12,11 @@ show to replace in one go.
 
 Context: `explorer_base` (the explorer's base template), `area_crumbs`
 [{label, url}] for the breadcrumb before the tab, `tab_label`, and what
-regions/includes/area-header.html takes.
+regions/includes/area-header.html takes. Optional `title_name` replaces `name`
+in the <title>, for an explorer that tells same-named places apart there.
 {% endcomment %}
 
-{% block title %}{{ tab_label }} · {{ name }} | {{ block.super }}{% endblock %}
+{% block title %}{{ tab_label }} · {{ title_name|default:name }} | {{ block.super }}{% endblock %}
 {% block breadcrumb-list %}{% for crumb in area_crumbs %}<li><a href="{{ crumb.url }}">{{ crumb.label }}</a></li>{% endfor %}<li class="is-active"><a aria-current="page">{{ tab_label }}</a></li>{% endblock %}
 
 {% block explorer-content %}

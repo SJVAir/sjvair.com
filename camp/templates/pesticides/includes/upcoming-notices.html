@@ -33,7 +33,7 @@
                     <td>{{ notice.application_method|notice_method|default:'—' }}</td>
                     <td class="has-text-right">{% if notice.treated_amount %}{{ notice.treated_amount|floatformat:'-1'|intcomma }} {{ notice.treated_units|lower }}{% else %}—{% endif %}</td>
                     <td>
-                        {% if notice.mtrs %}<a href="{% url 'pesticides:section-detail' sqid=notice.mtrs.sqid %}">{{ notice.mtrs.external_id }}</a>{% else %}—{% endif %}
+                        {% if notice.mtrs %}<a class="mtrs-code" href="{% url 'pesticides:section-detail' sqid=notice.mtrs.sqid %}">{{ notice.mtrs.external_id }}</a>{% else %}—{% endif %}
                     </td>
                 </tr>
             {% endfor %}

@@ -122,7 +122,7 @@ class AB617CommunityTests(RollupTestMixin, TestCase):
         response = self.client.get(self.region_url)
         assert response.status_code == 200
         html = response.content.decode()
-        assert '<title>South Central Fresno (AB 617 Community)' in html
+        assert '<title>Overview · South Central Fresno (AB 617 Community)' in html
         assert 'https://community.valleyair.org/selected-communities/south-central-fresno' in html
 
     def test_no_row_without_communities(self):

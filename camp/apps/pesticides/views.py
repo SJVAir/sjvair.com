@@ -1758,7 +1758,7 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
         sentence = (
             f"{totals['records']:,} applications, "
             f"{totals['lbs']:,.0f} lbs, "
-            f"{totals['acres']:,.0f} acres treated"
+            f"{totals['acres']:,.0f} acre-treatments"
         )
         descriptors = []
         label = stats.year_label(self.year, self.all_years)
@@ -1914,11 +1914,15 @@ def _section_card(title, kind, rows, show_all_url, limit=stats.RELATED_LIMIT):
     }
 
 
-def _place_cards(context, concern=False):
+def _place_cards(context, concern=False, year=None, all_years=False):
     """
-    The place page's top lists -- one card per kind, all pointing "Show all"
-    at the area's records browser, since there's no single entity to filter
-    by (same as a section page's).
+    The place page's top lists -- one card per kind.
+
+    "View all" goes to the kind's own list (products, chemicals, commodities)
+    when the place is a county, the one area those lists can be scoped to;
+    every other place falls back to its records browser, since there's no
+    list narrowed to an arbitrary area. Either way each card's link names
+    what it lists (related-card.html reads `kind`).
 
     There is no separate chemicals-of-concern card: it repeated the chemicals
     card row for row, and those rows already carry their Prop 65 / IARC
@@ -1926,12 +1930,20 @@ def _place_cards(context, concern=False):
     and the chemicals card's title names the narrowing.
     """
     records_url = context['records_url']
+    county = context['area'].county
+    scope = stats.scope_param(year, all_years, county, concern) if county else ''
+
+    def view_all(list_url_name):
+        if county is None:
+            return records_url
+        return reverse(list_url_name) + (f'?{scope}' if scope else '')
+
     return {
-        'products_card': _section_card('Top products', 'products', context['top_products'], records_url),
+        'products_card': _section_card('Top products', 'products', context['top_products'], view_all('pesticides:product-list')),
         'chemicals_card': _section_card(
             stats.chemicals_title(concern),
-            'chemicals', context['top_chemicals'], records_url),
-        'commodities_card': _section_card('Top commodities', 'commodities', context['top_commodities'], records_url),
+            'chemicals', context['top_chemicals'], view_all('pesticides:chemical-list')),
+        'commodities_card': _section_card('Top commodities', 'commodities', context['top_commodities'], view_all('pesticides:commodity-list')),
     }
 
 
@@ -2355,6 +2367,7 @@ class AreaPageMixin:
                 links.append({'label': 'Community page', 'url': community_url})
         return {
             'name': area.label,
+            'title_name': area.page_title,
             'kind': kind,
             'header_links': links,
             'tabs': self.tabs(),
@@ -2502,7 +2515,7 @@ class AreaOverviewMixin:
             section=None,
             years=stats.years_loaded(),
             **context,
-            **_place_cards(context, concern),
+            **_place_cards(context, concern, year, all_years),
             **extra,
             **self.header_context(),
             **self.tab_scope_context(),
