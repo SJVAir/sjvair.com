@@ -29,17 +29,19 @@
 {% endblock %}
 
 {% block main %}
-{# Boosted navigation swaps only #explorer-body; the hero stays put and just #}
-{# has its tabs refreshed out of band, so it never flickers. #}
+{# Boosted navigation swaps #explorer-body, and the whole hero out of band: the #}
+{# hero's size (full on the home page, compact elsewhere) and its tabs both #}
+{# change from page to page, so it is re-rendered from each response rather #}
+{# than patched. Its class comes from the explorer-hero-class block. #}
 <div id="explorer"
     hx-boost="true"
     hx-target="#explorer-body"
     hx-select="#explorer-body"
-    hx-select-oob="#explorer-tabs"
+    hx-select-oob="#explorer-hero"
     hx-swap="outerHTML"
     hx-push-url="true"
     hx-indicator="body">
-<section class="section is-small hook" id="explorer-hero">
+<section class="section is-small hook explorer-hero {% block explorer-hero-class %}is-compact{% endblock %}" id="explorer-hero">
     <div class="container">
         {% block explorer-header %}
         <div class="content">

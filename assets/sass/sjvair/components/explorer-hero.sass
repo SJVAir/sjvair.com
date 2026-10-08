@@ -1,0 +1,40 @@
+// The explorers' shared hero band (section.hook.explorer-hero). Both explorers
+// render it; the home page keeps the full hero and every other page adds
+// `.is-compact` (the explorer-hero-class block in the base template): title
+// and tabs only, about 110px tall on a desktop.
+//
+// The hero's photo, tabs and colours live in pages/pesticides.sass, which
+// loads after this file, so the selector here carries enough weight to win.
+section.hook.explorer-hero.is-compact
+  padding-top: 1rem
+  padding-bottom: 0
+  .lede
+    display: none
+  // The title's `is-size-2` utility is !important, so the compact size has to be too.
+  .explorer-title, h1
+    font-size: 1.75rem !important
+    margin-bottom: 0 !important
+  .content
+    margin-bottom: 0
+  .explorer-nav.tabs
+    margin-top: 0.6rem
+  @include mobile
+    padding-top: 0.75rem
+    .explorer-title, h1
+      font-size: 1.25rem !important
+      white-space: nowrap
+    // The tab row scrolls sideways (Bulma's .tabs) rather than wrapping; the
+    // labels stay visible instead of collapsing to icons.
+    .explorer-nav.tabs ul
+      flex-wrap: nowrap
+    .explorer-nav.tabs li a
+      white-space: nowrap
+    // The explorer pages hide the labels on a phone (icons only); compact
+    // pages bring them back.
+    .explorer-nav.tabs .tab-label
+      display: inline
+      margin-left: 0.35em
+      font-size: $size-7
+    .explorer-nav.tabs li a
+      padding-left: 0.6em
+      padding-right: 0.6em

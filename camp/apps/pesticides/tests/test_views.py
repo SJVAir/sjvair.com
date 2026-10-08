@@ -774,13 +774,25 @@ class HomeTests(RollupTestMixin, TestCase):
         html = self.client.get(self.url).content.decode()
         assert 'id="explorer"' in html
         assert 'hx-boost="true"' in html
-        # Only the body swaps; the hero's tabs refresh out of band. The scope
-        # bar is inside the body, so it swaps with the page it describes.
+        # The body swaps and the hero refreshes out of band (its size and tabs
+        # change per page). The scope bar is inside the body, so it swaps
+        # with the page it describes.
         assert 'hx-target="#explorer-body"' in html
-        assert 'hx-select-oob="#explorer-tabs"' in html
+        assert 'hx-select-oob="#explorer-hero"' in html
         assert 'id="explorer-body"' in html and 'id="explorer-tabs"' in html
         assert html.index('id="explorer-body"') < html.index('class="explorer-scope-pickers"')
         assert 'hx-select="#explorer-body"' in html
+
+    def test_home_renders_the_full_hero(self):
+        html = self.client.get(self.url).content.decode()
+        hero = html[html.index('id="explorer-hero"') - 120:html.index('id="explorer-hero"')]
+        assert 'explorer-hero' in hero
+        assert 'is-compact' not in hero
+
+    def test_inner_page_renders_the_compact_hero(self):
+        html = self.client.get(reverse('pesticides:product-list')).content.decode()
+        hero = html[html.index('id="explorer-hero"') - 120:html.index('id="explorer-hero"')]
+        assert 'explorer-hero is-compact' in hero
 
     def test_htmx_request_gets_full_page(self):
         # Boosted requests are ordinary GETs: the server renders the whole
