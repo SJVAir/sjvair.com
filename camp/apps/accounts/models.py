@@ -102,7 +102,7 @@ class User(AbstractBaseUser, PermissionsMixin, models.Model):
 
     @property
     def phone_verification_rate_limit_key(self):
-        return f'phone-rate-limit:{self.phone}'
+        return f'phone-rate-limit:{self.pk}'
 
     @property
     def phone_verification_code_key(self):
@@ -112,10 +112,15 @@ class User(AbstractBaseUser, PermissionsMixin, models.Model):
         cache_key = self.phone_verification_rate_limit_key
         return cache.get(cache_key, default=False)
 
-    def set_phone_verification_rate_limit(self):
+    def claim_phone_verification_slot(self):
+        '''
+        Atomically claim the user's phone verification send slot. Keyed on the
+        user (not the number) so changing phone can't buy extra texts.
+        Returns True if claimed, False if a code was sent recently.
+        '''
         cache_key = self.phone_verification_rate_limit_key
         expires = settings.PHONE_VERIFICATION_RATE_LIMIT * 60
-        cache.set(cache_key, True, expires)
+        return cache.add(cache_key, True, expires)
 
     def send_phone_verification_code(self):
         expires = settings.PHONE_VERIFICATION_CODE_EXPIRES * 60

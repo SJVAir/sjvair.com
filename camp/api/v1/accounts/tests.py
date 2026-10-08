@@ -400,6 +400,72 @@ class AuthenticationTests(TestCase):
         assert send_sms_message.call_count == 1
 
     @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_changing_phone_does_not_bypass_verify_send_rate_limit(self, send_sms_message):
+        detail_url = reverse('api:v1:account:user-detail')
+        request = self.factory.patch(detail_url, {"phone": "559-555-0198"}, content_type='application/json')
+        request.user = User.objects.get(pk=self.user.pk)
+        assert user_detail(request).status_code == 200
+        assert send_sms_message.call_count == 1
+
+        # The new number has never been texted, but the user already was.
+        send_url = reverse('api:v1:account:phone-verify-send')
+        request = self.factory.post(send_url)
+        request.user = User.objects.get(pk=self.user.pk)
+        response = send_phone_verification(request)
+
+        assert response.status_code == 400
+        assert 'recently been sent' in response.content.decode()
+        assert send_sms_message.call_count == 1
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_cycling_phones_then_verify_send_sends_one_code(self, send_sms_message):
+        detail_url = reverse('api:v1:account:user-detail')
+        for phone in ['559-555-0198', '559-555-0197']:
+            request = self.factory.patch(detail_url, {"phone": phone}, content_type='application/json')
+            request.user = User.objects.get(pk=self.user.pk)
+            assert user_detail(request).status_code == 200
+
+        # The second number was never texted, but the user was moments ago.
+        send_url = reverse('api:v1:account:phone-verify-send')
+        request = self.factory.post(send_url)
+        request.user = User.objects.get(pk=self.user.pk)
+        response = send_phone_verification(request)
+
+        assert response.status_code == 400
+        assert 'recently been sent' in response.content.decode()
+        assert send_sms_message.call_count == 1
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_verify_send_twice_is_rate_limited(self, send_sms_message):
+        self.user.phone_verified = False
+        self.user.save()
+        send_url = reverse('api:v1:account:phone-verify-send')
+        statuses = []
+        for _ in range(2):
+            request = self.factory.post(send_url)
+            request.user = User.objects.get(pk=self.user.pk)
+            statuses.append(send_phone_verification(request).status_code)
+
+        assert statuses == [204, 400]
+        assert send_sms_message.call_count == 1
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_verify_send_then_phone_change_sends_one_code(self, send_sms_message):
+        self.user.phone_verified = False
+        self.user.save()
+        send_url = reverse('api:v1:account:phone-verify-send')
+        request = self.factory.post(send_url)
+        request.user = User.objects.get(pk=self.user.pk)
+        assert send_phone_verification(request).status_code == 204
+
+        detail_url = reverse('api:v1:account:user-detail')
+        request = self.factory.patch(detail_url, {"phone": "559-555-0198"}, content_type='application/json')
+        request.user = User.objects.get(pk=self.user.pk)
+        assert user_detail(request).status_code == 200
+
+        assert send_sms_message.call_count == 1
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
     def test_update_without_phone_change_keeps_verified(self, send_sms_message):
         url = reverse('api:v1:account:user-detail')
         payload = {"full_name": "Updated User", "phone": str(self.user.phone)}

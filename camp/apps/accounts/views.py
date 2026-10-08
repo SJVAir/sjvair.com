@@ -59,9 +59,6 @@ class ProfileView(LoginRequiredMixin, vanilla.UpdateView):
 
     def form_valid(self, form):
         self.phone_changed = self.object.tracker.has_changed('phone')
-        if self.phone_changed:
-            self.object.phone_verified = False
-        
         return super().form_valid(form)
 
     def get_success_url(self):

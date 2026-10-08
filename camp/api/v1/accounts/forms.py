@@ -1,7 +1,6 @@
 import re
 
 from django import forms
-from django.conf import settings
 from django.contrib.auth import authenticate, forms as auth_forms, password_validation
 from django.contrib.auth.tokens import default_token_generator as token_generator
 from django.core.cache import cache
@@ -82,13 +81,11 @@ class UserForm(forms.ModelForm):
     def send_change_code(self, user):
         '''
         User.save() un-verified the new number; text a code like the web flow.
-        Rate limited per user (the per-phone limit can't help: each flip is
-        a different number), so flipping the number can't spam texts. If
-        skipped, the client can use the verify-send endpoint.
+        Shares the per-user send slot with the verify-send endpoint, so
+        flipping the number can't spam texts. If skipped, the client can
+        use the verify-send endpoint once the window passes.
         '''
-        key = f'phone-change-code:{user.pk}'
-        if cache.add(key, True, settings.PHONE_VERIFICATION_RATE_LIMIT * 60):
-            user.set_phone_verification_rate_limit()
+        if user.claim_phone_verification_slot():
             user.send_phone_verification_code()
 
 
@@ -149,10 +146,9 @@ class SendPhoneVerificationForm(forms.Form):
         return self.cleaned_data
 
     def check_rate_limit(self):
-        if self.user.check_phone_verification_rate_limit():
+        if not self.user.claim_phone_verification_slot():
             error = _('You have recently been sent a verification code. Please try again in a few minutes.')
             raise forms.ValidationError(error)
-        self.user.set_phone_verification_rate_limit()
 
 
 class PhoneVerificationForm(forms.Form):
@@ -196,10 +192,9 @@ class PasswordResetForm(forms.Form):
         phone = self.cleaned_data['phone']
         self.user = self.get_user(phone)
         if self.user is not None:
-            if self.user.check_phone_verification_rate_limit():
+            if not self.user.claim_phone_verification_slot():
                 error = _('You have recently been sent a verification code. Please try again in a few minutes.')
                 raise forms.ValidationError(error)
-            self.user.set_phone_verification_rate_limit()
         return phone
 
     def get_user(self, phone):

@@ -217,6 +217,63 @@ class SendSMSOptOutTests(TestCase):
             tasks.send_sms_message.call_local(self.user.phone, 'hello')
 
 
+class WebPhoneChangeTests(TestCase):
+    fixtures = ['users.yaml']
+
+    def setUp(self):
+        self.user = User.objects.get(email='user@sjvair.com')
+        self.client.force_login(self.user)
+
+    def tearDown(self):
+        cache.clear()
+        return super().tearDown()
+
+    def change_phone(self, phone='559-555-0198'):
+        return self.client.post(reverse('account:profile'), {
+            'full_name': self.user.full_name,
+            'email': self.user.email,
+            'phone': phone,
+            'language': self.user.language,
+        })
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_profile_phone_change_unverifies_and_redirects_to_verify(self, mock_send):
+        assert self.user.phone_verified is True
+        response = self.change_phone()
+
+        assert response.status_code == 302
+        assert response['Location'] == reverse('account:phone-verify-send')
+        user = User.objects.get(pk=self.user.pk)
+        assert str(user.phone) == '+15595550198'
+        assert user.phone_verified is False
+        mock_send.assert_not_called()
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_profile_phone_change_then_verify_send_sends_one_code(self, mock_send):
+        self.change_phone()
+        send_url = reverse('account:phone-verify-send')
+        first = self.client.post(send_url, {})
+        second = self.client.post(send_url, {})
+
+        assert first.status_code == 302
+        assert second.status_code == 200
+        assert 'recently been sent' in second.content.decode()
+        assert mock_send.call_count == 1
+
+    @patch('camp.apps.accounts.tasks.send_sms_message')
+    def test_changing_phone_between_sends_does_not_bypass_rate_limit(self, mock_send):
+        self.user.phone_verified = False
+        self.user.save()
+        send_url = reverse('account:phone-verify-send')
+        self.client.post(send_url, {})
+        self.change_phone('559-555-0197')
+        response = self.client.post(send_url, {})
+
+        assert response.status_code == 200
+        assert 'recently been sent' in response.content.decode()
+        assert mock_send.call_count == 1
+
+
 class InboundSMSTests(TestCase):
     fixtures = ['users.yaml', 'purple-air.yaml']
 

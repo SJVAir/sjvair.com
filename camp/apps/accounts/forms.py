@@ -209,10 +209,9 @@ class SendPhoneVerificationForm(forms.Form):
         return self.cleaned_data
 
     def check_rate_limit(self):
-        if self.user.check_phone_verification_rate_limit():
+        if not self.user.claim_phone_verification_slot():
             error = _('You have recently been sent a verification code. Please try again in a few minutes.')
             raise forms.ValidationError(error)
-        self.user.set_phone_verification_rate_limit()
 
 
 class PhoneVerificationCodeForm(forms.Form):
@@ -249,10 +248,9 @@ class PasswordResetForm(forms.Form):
         phone = self.cleaned_data['phone']
         self.user = self.get_user(phone)
         if self.user is not None:
-            if self.user.check_phone_verification_rate_limit():
+            if not self.user.claim_phone_verification_slot():
                 error = _('You have recently been sent a verification code. Please try again in a few minutes.')
                 raise forms.ValidationError(error)
-            self.user.set_phone_verification_rate_limit()
         return phone
 
     def get_user(self, phone):
