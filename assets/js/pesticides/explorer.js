@@ -100,7 +100,10 @@
   }
   document.addEventListener('keydown', function (evt) {
     if (evt.key === 'Escape') {
-      document.querySelectorAll(DROPDOWNS_OPEN).forEach(function (picker) {
+      var pickers = document.querySelectorAll(DROPDOWNS_OPEN);
+      // Spent: an expanded map (maps/chrome.js) mustn't also collapse.
+      if (pickers.length) evt.preventDefault();
+      pickers.forEach(function (picker) {
         var button = picker.querySelector('.dropdown-trigger .button');
         var focusInside = picker.contains(document.activeElement) || document.activeElement === document.body;
         picker.classList.remove('is-active');
@@ -225,6 +228,10 @@
     // hx-push-url has already updated the address by now.
     if (window.location.pathname !== pathBeforeRequest) {
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      // A new page: land keyboard and screen-reader focus on it, as the skip
+      // link does, rather than leave it on the body.
+      var main = document.getElementById('main');
+      if (main && !refocusId) main.focus({ preventScroll: true });
     }
     // The out-of-band hero swap has landed: bring its active tab into view.
     showActiveTab();

@@ -33,6 +33,9 @@
 {# hero's size (full on the home page, compact elsewhere) and its tabs both #}
 {# change from page to page, so it is re-rendered from each response rather #}
 {# than patched. Its class comes from the explorer-hero-class block. #}
+{# hx-select-oob is inherited: every boosted link and filter hx-get also swaps #}
+{# the hero, so every response swapped into #explorer-body must be a full page #}
+{# carrying #explorer-hero, or the hero is dropped. #}
 <div id="explorer"
     hx-boost="true"
     hx-target="#explorer-body"
