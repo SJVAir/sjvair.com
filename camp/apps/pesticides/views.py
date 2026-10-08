@@ -1267,13 +1267,17 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # on the county outlines (see `fit`).
         data={**{key.replace('_', '-'): value for key, value in config.items()}, 'bounds': ''},
         features={'toolbar': True, 'expand': True, 'legend': True, 'status': True},
-        # The filter pickers only on the map page; Options and Expand everywhere.
+        # The filter pickers only on the map page; Shade by, Tweaks and Expand everywhere.
         # On a region's area tabs, only the buffer picker.
         toolbar_template=(
             'pesticides/includes/map-toolbar.html' if toolbar
             else 'pesticides/includes/buffer-toolbar.html' if clip_region else None
         ),
+        # Shade by on every section map; the experiment selects live in Tweaks.
+        toolbar_end_template='pesticides/includes/map-metric.html',
         options_template='pesticides/includes/map-options.html',
+        options_label='Tweaks',
+        options_icon='fa-flask-gear',
         legend_template='pesticides/includes/map-legend.html',
     )
     return config

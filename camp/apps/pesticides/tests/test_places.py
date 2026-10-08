@@ -607,7 +607,6 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         assert response.context['map_config']['show_locations'] == '1'
         html = response.content.decode()
         assert 'data-show-locations="1"' in html
-        assert 'name="locations" checked' in html
 
     def test_a_district_with_demographics_but_no_addresses_says_so(self):
         Location.objects.all().delete()

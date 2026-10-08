@@ -870,7 +870,7 @@
   });
 
   // The module's own controls, in the chrome the shell has just bound: the
-  // Options menu (metric, layer toggles, experiment selects), the legend
+  // Tweaks menu (experiment selects), Shade by, the legend toggles, the legend
   // body's elements, and the filter form's view params. Runs at build and
   // after every adopt (the swap brings new elements).
   SectionMap.prototype.onChrome = function (wrap) {
@@ -894,19 +894,31 @@
       });
     }
 
+    // Shade by is in the toolbar, not the Tweaks menu, so the whole wrapper
+    // is searched. "All sections" sits in the legend body.
+    Array.prototype.forEach.call(wrap.querySelectorAll('input[name="metric"]'), function (radio) {
+      radio.addEventListener('change', self.onMetricChange.bind(self));
+    });
+    var sectionsInput = wrap.querySelector('input[name="sections"]');
+    if (sectionsInput) sectionsInput.addEventListener('change', this.onSectionsToggle.bind(this));
+    // The marker layers' toggles are rows the legend re-renders on every
+    // update, so one delegated listener on the list, not one per checkbox.
+    if (this.legendEl && !this.legendEl.getAttribute('data-toggles-bound')) {
+      this.legendEl.setAttribute('data-toggles-bound', '1');
+      this.legendEl.addEventListener('change', function (event) {
+        var name = event.target && event.target.name;
+        if (name === 'notices') self.onNoticesToggle(event);
+        else if (name === 'locations') self.onLocationsToggle(event);
+      });
+    }
+
     if (this.controlsEl) {
       var controls = this.controlsEl;
-      Array.prototype.forEach.call(controls.querySelectorAll('input[name="metric"]'), function (radio) {
-        radio.addEventListener('change', self.onMetricChange.bind(self));
-      });
       var bindChange = function (selector, handler) {
         var input = controls.querySelector(selector);
         if (input) input.addEventListener('change', handler.bind(self));
         return input;
       };
-      bindChange('input[name="notices"]', this.onNoticesToggle);
-      bindChange('input[name="locations"]', this.onLocationsToggle);
-      bindChange('input[name="sections"]', this.onSectionsToggle);
       // Experiment controls: basemap style, colour ramp and bins, applied
       // live and written to the URL (?tiles=, ?ramp=, ?bins=).
       var fill = function (select, pairs) {
@@ -937,22 +949,24 @@
     this.syncControls();
   };
 
-  // Puts the Options controls in line with this map's view: after a bind,
-  // and after an adopt that changed a default (see onAdopt).
+  // Puts the toolbar's Shade by, the legend's toggles and the Tweaks
+  // controls in line with this map's view: after a bind, and after an adopt
+  // that changed a default (see onAdopt).
   SectionMap.prototype.syncControls = function () {
-    if (!this.controlsEl) return;
-    var controls = this.controlsEl;
+    var wrap = this.wrapEl;
+    if (!wrap) return;
     var metric = this.metric;
-    Array.prototype.forEach.call(controls.querySelectorAll('input[name="metric"]'), function (radio) {
+    Array.prototype.forEach.call(wrap.querySelectorAll('input[name="metric"]'), function (radio) {
       radio.checked = radio.value === metric;
     });
     var set = function (selector, prop, value) {
-      var input = controls.querySelector(selector);
+      var input = wrap.querySelector(selector);
       if (input) input[prop] = value;
     };
     set('input[name="notices"]', 'checked', this.showNotices);
     set('input[name="locations"]', 'checked', this.showLocations);
     set('input[name="sections"]', 'checked', this.showAllSections);
+    if (!this.controlsEl) return;
     set('select[name="tiles"]', 'value', this.tileStyle);
     set('select[name="ramp"]', 'value', this.rampName);
     set('select[name="bins"]', 'value', String(this.bins));
@@ -2076,11 +2090,19 @@
 
   SectionMap.prototype.updateLegend = function () {
     if (this.legendEl) {
+      // Re-rendering replaces the toggle rows; a keyboard reader who just
+      // pressed one keeps their place.
+      var active = document.activeElement;
+      var activeName = active && active.name && this.legendEl.contains(active) ? active.name : null;
       renderLegend(this.legendEl, this.currentClasses, this.legendUnit(), this.legendCaption());
       this.appendMarkerLegend();
+      if (activeName) {
+        var again = this.legendEl.querySelector('input[name="' + activeName + '"]');
+        if (again) again.focus({ preventScroll: true });
+      }
     }
     // "All sections" only means something at the township zoom.
-    var sectionsToggle = this.controlsEl ? this.controlsEl.querySelector('input[name="sections"]') : null;
+    var sectionsToggle = this.wrapEl ? this.wrapEl.querySelector('input[name="sections"]') : null;
     if (sectionsToggle) sectionsToggle.disabled = this.level === 'section';
     if (this.levelEl) {
       this.levelEl.textContent = this.allSectionsActive() ? LEVEL_TEXT.allSections : (LEVEL_TEXT[this.level] || '');
@@ -3229,22 +3251,38 @@
   };
 
   // -- the marker legend --
-  // Marker rows under the shade classes, for whichever marker layers are on.
-  // Dots, not squares: the markers aren't a class of the grid.
+  // The marker layers' rows under the shade classes: always listed, each a
+  // checkbox that shows or hides the layer (checked while shown; the change
+  // is delegated from the list in onChrome). Dots, not squares: the markers
+  // aren't a class of the grid. With schools on, their two kinds follow.
   SectionMap.prototype.appendMarkerLegend = function () {
     if (!this.legendEl) return;
-    var rows = [];
-    if (this.showLocations) rows = rows.concat(MARKER_LEGEND);
+    var past = this.data.noticesPast === '1';
     // A number on a marker is how many notices it stands for; zoomed out a marker
     // can gather several sections, and a click zooms in to them.
-    if (this.showNotices) rows.push({ color: NOTICE_COLOR, label: (this.data.noticesPast === '1' ? 'Past notice' : 'Notice of intent') + ' (numbered: how many)' });
+    var rows = [
+      { name: 'notices', on: this.showNotices, dots: [NOTICE_COLOR], label: (past ? 'Past notices' : 'Notices of intent') + ' (numbered: how many)' },
+      { name: 'locations', on: this.showLocations, dots: MARKER_LEGEND.map(function (row) { return row.color; }), label: 'Schools & child care' },
+    ];
     for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
       var li = document.createElement('li');
-      li.className = 'is-marker';
+      li.className = 'is-marker is-toggle';
       li.innerHTML =
-        '<span class="swatch is-dot" style="background-color: ' + rows[i].color + ';"></span>' +
-        '<span class="range">' + escapeHtml(rows[i].label) + '</span>';
+        '<label class="section-map-toggle"><input type="checkbox" name="' + row.name + '"' + (row.on ? ' checked' : '') + '>' +
+        row.dots.map(function (color) { return '<span class="swatch is-dot" style="background-color: ' + color + ';"></span>'; }).join('') +
+        '<span class="range">' + escapeHtml(row.label) + '</span></label>';
       this.legendEl.appendChild(li);
+    }
+    if (this.showLocations) {
+      for (var j = 0; j < MARKER_LEGEND.length; j++) {
+        var kind = document.createElement('li');
+        kind.className = 'is-marker is-kind';
+        kind.innerHTML =
+          '<span class="swatch is-dot" style="background-color: ' + MARKER_LEGEND[j].color + ';"></span>' +
+          '<span class="range">' + escapeHtml(MARKER_LEGEND[j].label) + '</span>';
+        this.legendEl.appendChild(kind);
+      }
     }
   };
 

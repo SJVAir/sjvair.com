@@ -1,7 +1,7 @@
 {% comment %}
 One interactive map and its chrome (assets/js/maps/*): the container, whose
 data-* attributes carry the map's config, then the toolbar row (the map's own
-filters, an Options dropdown, Expand), the status pill, and the Legend card.
+filters, an optional end group, an Options dropdown, Expand), the status pill, and the Legend card.
 Everything sits inside the wrapper so it comes along in expanded mode. The
 script unhides what it binds, reading which chrome is here from the container's
 data-features (what's rendered wins over the map module's own spec).
@@ -13,16 +13,17 @@ Context: `map`, a camp.utils.mapconfig.map_config().
     <div class="map-toolbar" hidden>
         {% if map.toolbar_template %}{% include map.toolbar_template %}{% endif %}
         <div class="map-toolbar-end">
+            {% if map.toolbar_end_template %}{% include map.toolbar_end_template %}{% endif %}
             {% if map.options_template %}
             <div class="dropdown is-right map-toolbar-dropdown map-options">
                 <div class="dropdown-trigger">
-                    <button type="button" class="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="{{ map.container_id|default:'map' }}-options" aria-label="Map options">
-                        <span class="icon"><span class="fa-duotone fa-fw fa-gear map-panel-icon is-options" aria-hidden="true"></span></span>
-                        <span class="map-toolbar-label">Options</span>
+                    <button type="button" class="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="{{ map.container_id|default:'map' }}-options" aria-label="Map {{ map.options_label|default:"Options"|lower }}">
+                        <span class="icon"><span class="fa-duotone fa-fw {{ map.options_icon|default:"fa-gear" }} map-panel-icon is-options" aria-hidden="true"></span></span>
+                        <span class="map-toolbar-label">{{ map.options_label|default:"Options" }}</span>
                         <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
                     </button>
                 </div>
-                <div class="dropdown-menu" id="{{ map.container_id|default:'map' }}-options" role="dialog" aria-label="Map options">
+                <div class="dropdown-menu" id="{{ map.container_id|default:'map' }}-options" role="dialog" aria-label="Map {{ map.options_label|default:"Options"|lower }}">
                     <div class="dropdown-content">{% include map.options_template %}</div>
                 </div>
             </div>

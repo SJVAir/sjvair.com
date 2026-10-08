@@ -538,12 +538,12 @@ class NoticeModeTests(TestCase):
             month = self.client.get(page, {'past': 1, 'archive_year': 2020, 'month': 1}).context['map_config']['section_notices_url']
             assert 'past=1' in month and 'archive_year=2020' in month and 'month=1' in month
 
-    def test_options_label_follows_the_mode(self):
+    def test_legend_toggle_wording_follows_the_mode(self):
+        # The legend's Notices row is built by the script, which words it
+        # from the container's mode.
         for page in (reverse('pesticides:notice-list'), self.tab):
-            assert 'Notices of intent</label>' in self.client.get(page).content.decode()
-            assert 'Past notices</label>' not in self.client.get(page).content.decode()
-            past = self.client.get(page, {'past': 1}).content.decode()
-            assert 'Past notices</label>' in past and 'Notices of intent</label>' not in past
+            assert 'data-notices-past="0"' in self.client.get(page).content.decode()
+            assert 'data-notices-past="1"' in self.client.get(page, {'past': 1}).content.decode()
 
     def test_tab_skips_the_upcoming_context(self):
         context = self.client.get(self.tab).context

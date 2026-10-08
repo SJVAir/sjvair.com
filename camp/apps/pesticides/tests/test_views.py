@@ -3,6 +3,7 @@ from unittest import mock
 
 from django.core.cache import cache
 from django.db.models import Sum
+from django.template.loader import render_to_string
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils.html import escape
@@ -13,6 +14,7 @@ from camp.apps.pesticides.models import (
 )
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
 from camp.apps.regions.models import Region
+from camp.utils import mapconfig
 
 
 class ChemicalListTests(RollupTestMixin, TestCase):
@@ -880,8 +882,8 @@ class MapPageTests(RollupTestMixin, TestCase):
         html = self.client.get(self.url).content.decode()
         assert 'class="map-wrap"' in html
         assert 'class="section-map map-canvas" id="section-map-2023"' in html
-        # The page's filters, then Options (the metric and layer toggles), then Expand.
-        assert html.index('class="map-toolbar-filters"') < html.index('map-options') < html.index('class="button map-expand"')
+        # The page's filters, then Shade by, then Tweaks, then Expand.
+        assert html.index('class="map-toolbar-filters"') < html.index('class="map-metric"') < html.index('map-options') < html.index('class="button map-expand"')
         assert 'name="metric"' in html and 'class="section-map-controls"' in html
         # The legend body's hooks for the script, and the toggle pointing at it.
         assert 'aria-controls="section-map-2023-legend"' in html and 'id="section-map-2023-legend"' in html
@@ -973,7 +975,6 @@ class MapPageTests(RollupTestMixin, TestCase):
         assert response.context['map_config']['show_notices'] == '1'
         html = response.content.decode()
         assert 'data-show-notices="1"' in html
-        assert 'name="notices" checked' in html
 
     def test_school_markers_are_off_by_default(self):
         response = self.client.get(self.url)
@@ -1780,3 +1781,77 @@ class NarrowPlumbingTests(RollupTestMixin, TestCase):
         assert "This chemical isn't on the Prop 65, CARB toxic air contaminant, IARC or California restricted lists," in pages['chemical']
         assert 'active ingredients is on the Prop 65, CARB' in pages['product'].replace('&#x27;', "'")
         assert 'No flagged chemical was reported on this commodity in this year and county,' in pages['commodity']
+
+
+class MapTweaksTests(RollupTestMixin, TestCase):
+    """Shade by on every section map, Options renamed Tweaks, the layer toggles in the legend."""
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def urls(self):
+        fresno = Region.objects.get(pk=9001)
+        return {
+            'map': reverse('pesticides:map'),
+            'region': reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': 'fresno'}),
+            'chemical': Chemical.objects.get(pk=1).get_absolute_url(),
+        }
+
+    def toolbar_end(self, html):
+        return html.split('class="map-toolbar-end"')[1].split('map-canvas')[0]
+
+    def test_every_section_map_has_shade_by_and_tweaks(self):
+        for name, url in self.urls().items():
+            html = self.client.get(url, {'year': 2023}).content.decode()
+            end = self.toolbar_end(html)
+            assert '<fieldset class="map-metric">' in end, name
+            assert '<legend class="map-metric-legend">Shade by</legend>' in end, name
+            assert 'value="lbs_chemical" checked' in end and 'value="applications"' in end, name
+            # The full words are the accessible names; Lbs / Apps are decoration.
+            assert 'Pounds' in end and 'Applications' in end and 'aria-hidden="true">Lbs<' in end, name
+            assert end.index('map-metric') < end.index('map-options'), name
+            assert 'aria-label="Map tweaks"' in end and '<span class="map-toolbar-label">Tweaks</span>' in end, name
+            assert 'fa-flask-gear' in end and 'fa-gear' not in end, name
+            assert 'Options' not in end, name
+
+    def test_tweaks_panel_has_only_the_experiment_selects(self):
+        for name, url in self.urls().items():
+            html = self.client.get(url, {'year': 2023}).content.decode()
+            panel = html.split('class="section-map-controls"')[1].split('</div>')[0]
+            for field in ('tiles', 'ramp', 'bins'):
+                assert f'<select name="{field}">' in panel, name
+            for field in ('notices', 'locations', 'sections', 'metric'):
+                assert f'name="{field}"' not in panel, name
+
+    def test_legend_carries_all_sections_toggle(self):
+        html = self.client.get(reverse('pesticides:map')).content.decode()
+        legend = html.split('class="county-legend section-map-legend"')[1]
+        assert 'section-map-sections-toggle' in legend and 'name="sections"' in legend
+        assert legend.index('section-map-level') < legend.index('name="sections"')
+        assert 'name="sections" checked' not in legend
+        html = self.client.get(reverse('pesticides:map'), {'sections': '1'}).content.decode()
+        # The URL param is read by the script; the container still says the default.
+        assert 'data-show-all-sections="0"' in html
+
+
+class MapChromeDefaultsTests(TestCase):
+    """The shared map.html with none of the opt-in keys: Options, a gear, no Shade by."""
+
+    def test_defaults_unchanged(self):
+        config = mapconfig.map_config('facility-map', data={'bounds': ''}, features={'toolbar': True}, options_template='maps/includes/scripts.html')
+        html = render_to_string('maps/includes/map.html', {'map': config})
+        assert 'aria-label="Map options"' in html
+        assert '<span class="map-toolbar-label">Options</span>' in html
+        assert 'fa-gear' in html
+        assert 'map-metric' not in html
+
+    def test_toolbar_end_template_renders_before_options(self):
+        config = mapconfig.map_config(
+            'facility-map', data={'bounds': ''}, features={'toolbar': True},
+            options_template='maps/includes/scripts.html', toolbar_end_template='pesticides/includes/map-metric.html',
+            options_label='Tweaks', options_icon='fa-flask-gear',
+        )
+        html = render_to_string('maps/includes/map.html', {'map': config})
+        assert html.index('map-metric') < html.index('map-options')
+        assert 'aria-label="Map tweaks"' in html and 'fa-flask-gear' in html
