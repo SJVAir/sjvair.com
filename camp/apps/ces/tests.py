@@ -231,3 +231,44 @@ class TractRecordTests(TestCase):
         CES5.objects.all().delete()
         CES4.objects.all().delete()
         assert stats.tract_record(tract) is None
+
+
+def make_place(name, kind, west, south, east, north):
+    region = Region.objects.create(name=name, slug=name.lower(), type=kind, external_id=f'{kind}-{name}')
+    region.boundary = Boundary.objects.create(region=region, version='t', geometry=bbox(west, south, east, north))
+    region.save(update_fields=['boundary'])
+    return region
+
+
+class TractLabelTests(TestCase):
+    """A tract names itself by number and by the place it sits in."""
+    fixtures = ['regions.yaml', 'calenviroscreen.yaml']
+
+    def setUp(self):
+        cache.clear()
+        self.tract = Region.objects.get(external_id='06019000101')
+
+    def test_tract_number_is_the_census_number(self):
+        assert stats.tract_number(Region(external_id='06019002001')) == '20.01'
+        assert stats.tract_number(Region(external_id='06019000400')) == '4'
+        assert stats.tract_number(Region(external_id='06019000101')) == '1.01'
+        assert stats.tract_number(Region(external_id='nope')) is None
+
+    def test_the_city_wins_over_the_cdp_that_also_contains_it(self):
+        # The fixture's Fresno city contains the tract.
+        make_place('Calwa', Region.Type.CDP, -119.9, 36.6, -119.6, 36.9)
+        assert stats.tract_place(self.tract) == 'Fresno'
+        Region.objects.filter(type=Region.Type.CITY).delete()
+        assert stats.tract_place(self.tract) == 'Calwa'
+
+    def test_the_nearest_place_when_none_contains_it(self):
+        Region.objects.filter(type=Region.Type.CITY).delete()
+        assert stats.tract_place(self.tract) is None
+        make_place('Easton', Region.Type.CDP, -119.69, 36.7, -119.65, 36.8)
+        # The tract's interior point is about 0.02 degrees west of Easton.
+        assert stats.tract_place(self.tract) == 'near Easton'
+
+    def test_the_summary_labels_the_tracts_it_names(self):
+        summary = stats.tract_summary(bbox(-119.8, 36.7, -119.6, 36.8))
+        assert [row['place'] for row in summary['top']] == ['Fresno', 'near Fresno']
+        assert summary['highest']['number'] == '1.01'

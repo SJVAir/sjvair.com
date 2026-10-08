@@ -35,7 +35,16 @@ $google: #4285F4
 $github: #211f1f
 $tiktok: #010101
 
-$primary: $blue
+// $blue stays the brand colour for fills and lines (map strokes, chart series,
+// badge backgrounds). Text set in the blue, links and buttons use $link-blue and
+// $text-grey, which clear 4.5:1 on #fff, #fafafa and #ededed (#fff and #fafafa
+// for the grey). Both are pinned by camp/tests/test_contrast.py.
+$link-blue: #1f6fae
+$text-grey: #6b6b6b
+
+$primary: $link-blue
+$link: $link-blue
+$grey: $text-grey
 
 @import "bulma/sass/utilities/initial-variables"
 @import "bulma/sass/utilities/functions"

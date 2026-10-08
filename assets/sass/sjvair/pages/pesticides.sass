@@ -24,6 +24,24 @@
 
 
 body.pesticides
+    // A section code (T13S-R21E-27) breaks nowhere: a hyphen is a line break
+    // to the browser, and half a code is not a code.
+    a.mtrs-code
+        white-space: nowrap
+
+    // Links inside running text are told apart from it by more than colour
+    // (WCAG 1.4.1); navigation, tabs, buttons, tables and boards stay bare.
+    p.is-size-7 a:not(:has(.icon)), .help a:not(:has(.icon)), .sources a:not(:has(.icon)), .data-notes a:not(:has(.icon)), .school-kind a:not(:has(.icon)), .chart-note a:not(:has(.icon))
+        text-decoration: underline
+
+    // Flag tags: Bulma's derived text colours on the orange/amber tints came
+    // out at 3.4-4.4:1. Prop 65 and fumigant text, and IARC's white-on-orange.
+    .tag.is-danger.is-light
+        color: #a84300
+    .tag.is-warning.is-light
+        color: #735c00
+    .tag.is-danger:not(.is-light)
+        background-color: #b94800
     .hook
         // Photo: "Aerial View of Tractor Spraying Field" on Pexels
         // (https://www.pexels.com/photo/37993891/), free to use. Darkened so
@@ -38,7 +56,13 @@ body.pesticides
         .lede
             color: rgba($white, 0.92)
             margin-bottom: 0
-        h1 a
+        // The title is a paragraph, not a heading (the page carries the h1),
+        // set as the h1 it replaced.
+        .explorer-title
+            line-height: 1.125
+            font-weight: 600
+        // `h1 a` is for explorers whose hero title is still an h1.
+        .explorer-title a, h1 a
             font-weight: 700
             text-decoration: none
         .explorer-nav.tabs
@@ -88,7 +112,7 @@ body.pesticides
     .explorer-icon
         --fa-secondary-opacity: 1
         &.is-map
-            --fa-primary-color: #{$primary}
+            --fa-primary-color: #{$blue}
             --fa-secondary-color: #9ed0f5
         &.is-chemicals
             --fa-primary-color: #7b4fb8
@@ -189,7 +213,7 @@ body.pesticides
             padding-left: 0.5rem
             padding-right: 0.5rem
     .explorer-icon.is-scope
-        --fa-primary-color: #{$link}
+        --fa-primary-color: #{$blue}
         --fa-secondary-color: #{$grey-light}
     // The chemicals-of-concern toggle sits with the pickers, with the link to
     // its definition beside it. When it's on it fills with the notices orange
@@ -222,6 +246,12 @@ body.pesticides
     .explorer-scope-help
         color: $grey
         line-height: 1
+        // 24px target (WCAG 2.5.8) around a 1rem icon.
+        display: inline-flex
+        align-items: center
+        justify-content: center
+        min-width: 1.5rem
+        min-height: 1.5rem
         &:hover
             color: $link
 
@@ -245,7 +275,7 @@ body.pesticides
     // The charts (assets/js/pesticides/charts.js draws them with uPlot). The
     // palette lives here as custom properties the script reads.
     .explorer-chart
-        --chart-color: #{$link}
+        --chart-color: #{$blue}
         --chart-grid: #{$grey-lightest}
         --chart-muted: #{$grey}
         --chart-text: #{$text}
@@ -474,7 +504,7 @@ body.pesticides
         margin-right: 0.5rem
     .method-bar-seg, .method-key
         &.is-G
-            background: $link
+            background: $blue
         &.is-A
             background: $warning
         &.is-F
@@ -697,7 +727,7 @@ body.pesticides
                     margin-bottom: 0
 
     .notice-signup
-        border-left: 3px solid $link
+        border-left: 3px solid $blue
         background-color: $grey-lightest
         .notice-signup-logo
             display: block
@@ -765,7 +795,12 @@ body.pesticides
             line-height: 1.35
             li
                 break-inside: avoid
-                padding: 0.2em 0
+                padding: 0
+            // A 24px-tall target (WCAG 2.5.8) for each link, spaced as the
+            // old row padding was.
+            a
+                display: inline-block
+                padding: 0.3rem 0
             &.is-two-column
                 columns: 2
                 column-gap: 1.25rem
@@ -773,11 +808,22 @@ body.pesticides
             max-width: 24rem
             .tags
                 gap: 0.3rem
+                // Links, so they read as links: link colour and an underline
+                // rather than the grey of a label.
                 .tag
                     font-variant-numeric: tabular-nums
+                    background: $white
+                    border: 1px solid $grey-lighter
+                    color: $link
+                    text-decoration: underline
+                    &:hover, &:focus-visible
+                        border-color: $link
 
     .right-now
         border-left: 3px solid $info
+        // Links inside its sentences are underlined, as in other running text.
+        p a
+            text-decoration: underline
 
     .summary-sentence
         @extend .has-text-grey-dark
@@ -790,12 +836,19 @@ body.pesticides
         th .sort-link
             @extend .has-text-grey-dark
             white-space: nowrap
+            // The up/down arrows only say "sortable"; show them on the sorted
+            // column (in the link colour) and when a header is hovered or
+            // focused. opacity, not display, so the column doesn't resize.
             .icon
-                @extend .has-text-grey-light
+                color: $text-grey
+                opacity: 0
+            &:hover .icon, &:focus-visible .icon
+                opacity: 1
             &.is-active
                 @extend .has-text-link
                 .icon
                     @extend .has-text-link
+                    opacity: 1
         tbody td
             vertical-align: middle
         td .tags
@@ -821,9 +874,13 @@ body.pesticides
         .level-item
             min-width: 0
             align-items: flex-start
+        // Sentence case at 0.8rem: Bulma's 11px tracked caps was the smallest
+        // text on the page.
         .heading
             @extend .has-text-grey
-            letter-spacing: 0.02em
+            text-transform: none
+            font-size: 0.8rem
+            letter-spacing: 0
         .title
             @extend .has-text-weight-semibold
             font-variant-numeric: tabular-nums
@@ -914,6 +971,16 @@ body.pesticides
         margin-left: 0.35rem
         color: $grey-light
         font-size: 0.8em
+        // A 24px target (WCAG 2.5.8) around a small icon; the negative
+        // margins keep the row from growing by the padding.
+        display: inline-flex
+        align-items: center
+        justify-content: center
+        min-width: 1.5rem
+        min-height: 1.5rem
+        margin-top: -0.25rem
+        margin-bottom: -0.25rem
+        vertical-align: middle
         &:hover
             color: $link
         // With words in front of it the icon is the affordance, not the
@@ -980,7 +1047,7 @@ body.pesticides
             height: auto
         .card-header
             box-shadow: none
-            border-bottom: 2px solid $primary
+            border-bottom: 2px solid $blue
         .card-header-title
             font-weight: 600
         // The way out of a top-five board, in the header rather than a
@@ -1028,7 +1095,7 @@ body.pesticides
             width: 1%
             color: $grey
         thead th
-            font-size: 0.7rem
+            font-size: 0.75rem
             text-transform: uppercase
             letter-spacing: 0.03em
             color: $grey
@@ -1162,7 +1229,7 @@ body.pesticides
         right: 0
         height: 2px
         z-index: 100
-        background: $primary
+        background: $blue
         transform-origin: 0 50%
         animation: pesticides-progress 1.2s ease-in-out infinite
 

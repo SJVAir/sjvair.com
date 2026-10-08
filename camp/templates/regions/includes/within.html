@@ -23,28 +23,28 @@ rest in place (explorer.js's [data-reveal-toggle]).
         {% if within.communities %}
         <div class="column within-panel" data-reveal-scope>
             <h3 class="within-heading"><span class="icon"><span class="fa-duotone fa-fw fa-city explorer-icon is-chemicals"></span></span> Communities <span class="tag is-light is-rounded">{{ within.communities|length }}</span></h3>
-            <ul class="within-list is-two-column">
+            <ul class="within-list is-two-column" id="within-communities">
                 {% for place in within.communities %}<li{% if forloop.counter > 12 %} class="is-collapsed"{% endif %}><a href="{{ place.url }}{{ scope_qs }}">{{ place.name }}</a> <span class="has-text-grey is-size-7">{{ place.type_label }}</span></li>{% endfor %}
             </ul>
-            {% if within.communities|length > 12 %}<button type="button" class="button is-small is-text within-toggle" data-reveal-toggle aria-expanded="false" data-show-label="Show all {{ within.communities|length }}" data-hide-label="Show fewer">Show all {{ within.communities|length }}</button>{% endif %}
+            {% if within.communities|length > 12 %}<button type="button" class="button is-small is-text within-toggle" data-reveal-toggle aria-expanded="false" aria-controls="within-communities" data-show-label="Show all {{ within.communities|length }}" data-hide-label="Show fewer">Show all {{ within.communities|length }}</button>{% endif %}
         </div>
         {% endif %}
         {% if within.school_districts %}
         <div class="column within-panel" data-reveal-scope>
             <h3 class="within-heading"><span class="icon"><span class="fa-duotone fa-fw fa-school explorer-icon is-commodities"></span></span> School districts <span class="tag is-light is-rounded">{{ within.school_districts|length }}</span></h3>
-            <ul class="within-list is-two-column">
+            <ul class="within-list is-two-column" id="within-school-districts">
                 {% for district in within.school_districts %}<li{% if forloop.counter > 12 %} class="is-collapsed"{% endif %}><a href="{{ district.url }}{{ scope_qs }}">{{ district.name }}</a></li>{% endfor %}
             </ul>
-            {% if within.school_districts|length > 12 %}<button type="button" class="button is-small is-text within-toggle" data-reveal-toggle aria-expanded="false" data-show-label="Show all {{ within.school_districts|length }}" data-hide-label="Show fewer">Show all {{ within.school_districts|length }}</button>{% endif %}
+            {% if within.school_districts|length > 12 %}<button type="button" class="button is-small is-text within-toggle" data-reveal-toggle aria-expanded="false" aria-controls="within-school-districts" data-show-label="Show all {{ within.school_districts|length }}" data-hide-label="Show fewer">Show all {{ within.school_districts|length }}</button>{% endif %}
         </div>
         {% endif %}
         {% if within.zipcodes %}
         <div class="column within-panel is-narrow within-zips" data-reveal-scope>
             <h3 class="within-heading"><span class="icon"><span class="fa-duotone fa-fw fa-envelope explorer-icon is-records"></span></span> ZIP codes <span class="tag is-light is-rounded">{{ within.zipcodes|length }}</span></h3>
-            <div class="tags">
+            <div class="tags" id="within-zipcodes">
                 {% for zip in within.zipcodes %}<a class="tag is-light{% if forloop.counter > 15 %} is-collapsed{% endif %}" href="{{ zip.url }}{{ scope_qs }}">{{ zip.name }}</a>{% endfor %}
             </div>
-            {% if within.zipcodes|length > 15 %}<button type="button" class="button is-small is-text within-toggle" data-reveal-toggle aria-expanded="false" data-show-label="Show all {{ within.zipcodes|length }}" data-hide-label="Show fewer">Show all {{ within.zipcodes|length }}</button>{% endif %}
+            {% if within.zipcodes|length > 15 %}<button type="button" class="button is-small is-text within-toggle" data-reveal-toggle aria-expanded="false" aria-controls="within-zipcodes" data-show-label="Show all {{ within.zipcodes|length }}" data-hide-label="Show fewer">Show all {{ within.zipcodes|length }}</button>{% endif %}
         </div>
         {% endif %}
     </div>

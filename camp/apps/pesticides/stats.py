@@ -243,7 +243,7 @@ def narrow_label(narrow):
 NARROW_CHEMICALS_TITLES = {
     '': 'chemicals',
     NARROW_CONCERN: 'flagged chemicals',
-    NARROW_RESTRICTED: 'restricted materials',
+    NARROW_RESTRICTED: 'chemicals in restricted products',
     NARROW_FUMIGANT: 'fumigants',
     NARROW_AERIAL: 'chemicals applied by air',
 }

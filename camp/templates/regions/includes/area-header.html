@@ -19,7 +19,7 @@ any tab link.
         {% for link in header_links %}&middot; <a href="{{ link.url }}" target="_blank" rel="noopener">{{ link.label }}</a>{% endfor %}
     </p>
     {% if radius_options %}
-    <nav class="radius-switcher" aria-label="Radius">
+    <nav class="radius-switcher" aria-label="Search radius, in miles">
         <div class="buttons has-addons are-small">
             {% for option in radius_options %}
             <a class="button{% if option.current %} is-selected is-primary{% endif %}" href="{{ option.url }}"{% if option.current %} aria-current="page"{% endif %}>{{ option.miles }} mi</a>

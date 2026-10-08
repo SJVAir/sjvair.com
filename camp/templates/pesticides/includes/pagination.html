@@ -4,12 +4,12 @@
     {% if page_obj.has_previous %}
         <a class="pagination-previous" href="{% qs_replace page=page_obj.previous_page_number %}">Previous</a>
     {% else %}
-        <a class="pagination-previous" disabled>Previous</a>
+        <span class="pagination-previous is-disabled" aria-disabled="true">Previous</span>
     {% endif %}
     {% if page_obj.has_next %}
         <a class="pagination-next" href="{% qs_replace page=page_obj.next_page_number %}">Next</a>
     {% else %}
-        <a class="pagination-next" disabled>Next</a>
+        <span class="pagination-next is-disabled" aria-disabled="true">Next</span>
     {% endif %}
     <ul class="pagination-list">
         {% elided_page_range page_obj as pages %}

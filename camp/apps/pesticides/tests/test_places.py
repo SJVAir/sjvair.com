@@ -781,7 +781,7 @@ class PlaceConcernScopeTests(RollupTestMixin, TestCase):
         url = reverse('pesticides:region', kwargs={'sqid': self.fresno.sqid, 'slug': 'fresno'})
         titles = {
             'concern': 'Top flagged chemicals',
-            'restricted': 'Top restricted materials',
+            'restricted': 'Top chemicals in restricted products',
             'fumigant': 'Top fumigants',
             'aerial': 'Top chemicals applied by air',
         }

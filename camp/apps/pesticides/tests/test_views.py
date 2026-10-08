@@ -774,13 +774,26 @@ class HomeTests(RollupTestMixin, TestCase):
         html = self.client.get(self.url).content.decode()
         assert 'id="explorer"' in html
         assert 'hx-boost="true"' in html
-        # Only the body swaps; the hero's tabs refresh out of band. The scope
-        # bar is inside the body, so it swaps with the page it describes.
+        # The body swaps and the hero refreshes out of band (its size and tabs
+        # change per page). The scope bar is inside the body, so it swaps
+        # with the page it describes.
         assert 'hx-target="#explorer-body"' in html
-        assert 'hx-select-oob="#explorer-tabs"' in html
+        assert 'hx-select-oob="#explorer-hero"' in html
         assert 'id="explorer-body"' in html and 'id="explorer-tabs"' in html
         assert html.index('id="explorer-body"') < html.index('class="explorer-scope-pickers"')
         assert 'hx-select="#explorer-body"' in html
+
+    def hero_classes(self, url):
+        html = self.client.get(url).content.decode()
+        tag = re.search(r'<section\b[^>]*\bid="explorer-hero"[^>]*>', html).group(0)
+        return re.search(r'class="([^"]*)"', tag).group(1).split()
+
+    def test_home_renders_the_full_hero(self):
+        assert 'is-compact' not in self.hero_classes(self.url)
+
+    def test_inner_pages_render_the_compact_hero(self):
+        for name in ('pesticides:product-list', 'pesticides:about'):
+            assert 'is-compact' in self.hero_classes(reverse(name))
 
     def test_htmx_request_gets_full_page(self):
         # Boosted requests are ordinary GETs: the server renders the whole
@@ -1141,7 +1154,7 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
     def test_landing_chemicals_board_is_titled_for_each_narrowing(self):
         titles = {
             'concern': 'Most applied flagged chemicals',
-            'restricted': 'Most applied restricted materials',
+            'restricted': 'Most applied chemicals in restricted products',
             'fumigant': 'Most applied fumigants',
             'aerial': 'Top chemicals applied by air',
         }

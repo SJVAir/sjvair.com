@@ -90,14 +90,92 @@
       : button.getAttribute('data-hide-label');
   });
 
+  // The keyboard side of the dropdowns (they are disclosure widgets of plain
+  // links, not ARIA menus): Escape closes the open one and puts focus back on
+  // its trigger, which would otherwise be lost to the body when the menu
+  // hides; ArrowDown on a trigger opens its menu and moves into the list, and
+  // Up/Down walk the links.
+  function menuItems(picker) {
+    return Array.prototype.slice.call(picker.querySelectorAll('.dropdown-menu a[href], .dropdown-menu input:not([type="hidden"]), .dropdown-menu button'));
+  }
   document.addEventListener('keydown', function (evt) {
-    if (evt.key !== 'Escape') return;
-    document.querySelectorAll(DROPDOWNS_OPEN).forEach(function (picker) {
-      picker.classList.remove('is-active');
-      var button = picker.querySelector('.dropdown-trigger .button');
-      if (button) button.setAttribute('aria-expanded', 'false');
-    });
+    if (evt.key === 'Escape') {
+      document.querySelectorAll(DROPDOWNS_OPEN).forEach(function (picker) {
+        var button = picker.querySelector('.dropdown-trigger .button');
+        var focusInside = picker.contains(document.activeElement) || document.activeElement === document.body;
+        picker.classList.remove('is-active');
+        if (button) {
+          button.setAttribute('aria-expanded', 'false');
+          if (focusInside) button.focus();
+        }
+      });
+      return;
+    }
+    if (evt.key !== 'ArrowDown' && evt.key !== 'ArrowUp') return;
+    var trigger = evt.target.closest ? evt.target.closest(DROPDOWN_TRIGGERS) : null;
+    if (trigger && evt.key === 'ArrowDown') {
+      var picker = trigger.closest(DROPDOWNS);
+      if (!picker.classList.contains('is-active')) {
+        document.querySelectorAll(DROPDOWNS_OPEN).forEach(function (other) {
+          other.classList.remove('is-active');
+          var otherButton = other.querySelector('.dropdown-trigger .button');
+          if (otherButton) otherButton.setAttribute('aria-expanded', 'false');
+        });
+        picker.classList.add('is-active');
+        trigger.setAttribute('aria-expanded', 'true');
+      }
+      var first = menuItems(picker)[0];
+      if (first) {
+        evt.preventDefault();
+        first.focus();
+      }
+      return;
+    }
+    var item = evt.target.closest ? evt.target.closest('.dropdown-item') : null;
+    var owner = item ? item.closest(DROPDOWNS) : null;
+    if (!owner) return;
+    var items = menuItems(owner);
+    var index = items.indexOf(item);
+    var next = items[index + (evt.key === 'ArrowDown' ? 1 : -1)];
+    if (next) {
+      evt.preventDefault();
+      next.focus();
+    } else if (evt.key === 'ArrowUp') {
+      evt.preventDefault();
+      owner.querySelector('.dropdown-trigger .button').focus();
+    }
   });
+
+  // A tooltip's bubble is centred on its element and up to 22rem wide, so one
+  // near either edge of the screen would run off it. When the pointer or
+  // focus arrives, anchor the bubble to the near edge instead (the
+  // has-tooltip-end / -start rules in global.sass). Left on the element, so
+  // a resize is corrected the next time it is shown.
+  function placeTooltip(evt) {
+    var el = evt.target && evt.target.closest ? evt.target.closest('[data-tooltip]') : null;
+    if (!el) return;
+    // Side tooltips are placed by the extension, and a class set by hand in
+    // a template is the template's: this only adds and removes its own,
+    // which it records in data-tooltip-auto.
+    if (el.classList.contains('has-tooltip-left') || el.classList.contains('has-tooltip-right')) return;
+    var auto = el.getAttribute('data-tooltip-auto');
+    if (!auto && (el.classList.contains('has-tooltip-end') || el.classList.contains('has-tooltip-start'))) return;
+    var rect = el.getBoundingClientRect();
+    var center = rect.left + rect.width / 2;
+    var viewport = document.documentElement.clientWidth;
+    var half = Math.min(176, (viewport - 16) / 2);
+    var want = center + half > viewport - 8 ? 'end' : (center - half < 8 ? 'start' : '');
+    if (auto === want) return;
+    if (auto) el.classList.remove('has-tooltip-' + auto);
+    if (want) {
+      el.classList.add('has-tooltip-' + want);
+      el.setAttribute('data-tooltip-auto', want);
+    } else {
+      el.removeAttribute('data-tooltip-auto');
+    }
+  }
+  document.addEventListener('mouseover', placeTooltip);
+  document.addEventListener('focusin', placeTooltip);
 
   // Filter forms carry hidden fields that are usually empty; dropping empty
   // values keeps the pushed URL to the parameters that mean something.
@@ -129,11 +207,27 @@
     pathBeforeRequest = window.location.pathname;
   });
 
+  // On a phone the tab row scrolls sideways; keep the current section's tab
+  // in view. Only the row's own scrollLeft moves: scrollIntoView would also
+  // scroll the page up to the hero when a filter swap happens further down.
+  function showActiveTab() {
+    var tab = document.querySelector('#explorer-tabs .is-active a');
+    var row = document.querySelector('#explorer-hero .explorer-nav.tabs');
+    if (!tab || !row) return;
+    var t = tab.getBoundingClientRect();
+    var r = row.getBoundingClientRect();
+    row.scrollLeft += (t.left + t.width / 2) - (r.left + r.width / 2);
+  }
+  showActiveTab();
+  window.addEventListener('load', showActiveTab);
+
   document.body.addEventListener('htmx:afterSwap', function () {
     // hx-push-url has already updated the address by now.
     if (window.location.pathname !== pathBeforeRequest) {
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     }
+    // The out-of-band hero swap has landed: bring its active tab into view.
+    showActiveTab();
     if (!refocusId) return;
     var input = document.getElementById(refocusId);
     refocusId = null;
