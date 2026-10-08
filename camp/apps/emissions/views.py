@@ -149,6 +149,41 @@ def get_filter_region(sqid, types=None):
     )
 
 
+def home_cards(scope):
+    """
+    The home page's row of 4 entry cards, under the stats row: Facilities,
+    Dairies, Oil & gas and Schools, each a count, a one-line sentence and a
+    link into the tab it summarizes.
+    """
+    well_summary = wells.area_summary(areas.ValleyArea())
+    return [
+        {
+            'icon': 'fa-industry-windows', 'icon_class': 'is-facilities', 'title': 'Facilities',
+            'value': stats.totals(scope)['facilities'], 'label': f'facilities in {scope.year}',
+            'sentence': 'Permitted sources CARB tracks, from refineries to gas stations.',
+            'url': reverse('emissions:facility-list') + scope.query(county=None),
+        },
+        {
+            'icon': 'fa-cow', 'icon_class': 'is-dairies', 'title': 'Dairies',
+            'value': dairies.dairy_count(), 'label': 'dairies CARB tracks',
+            'sentence': "Methane and ammonia from the Valley's dairy herds.",
+            'url': reverse('emissions:dairy-list') + scope.query(county=None),
+        },
+        {
+            'icon': 'fa-oil-well', 'icon_class': 'is-wells', 'title': 'Oil & gas',
+            'value': (well_summary or {}).get('active') or 0, 'label': 'active wells',
+            'sentence': f"Plus {(well_summary or {}).get('idle') or 0:,} idle and {(well_summary or {}).get('new') or 0:,} new, on CalGEM's current list.",
+            'url': reverse('emissions:oil-gas') + scope.query(county=None),
+        },
+        {
+            'icon': 'fa-school', 'icon_class': 'is-schools', 'title': 'Schools',
+            'value': schools.valley_count(scope), 'label': 'schools and child care near a facility, well or dairy',
+            'sentence': 'Pick your area to see its schools.',
+            'url': '#find-area',
+        },
+    ]
+
+
 class Home(ScopeMixin, vanilla.TemplateView):
     template_name = 'emissions/home.html'
 
@@ -166,6 +201,7 @@ class Home(ScopeMixin, vanilla.TemplateView):
             facility_board=facility_board(scope),
             sector_board=sector_board(scope, top_sectors),
             by_year=stats.by_year(scope),
+            entry_cards=home_cards(scope),
             find_area_places=find_area_places(),
             find_area_counties=[p for p in find_area_places() if p['type'] == Region.Type.COUNTY],
             find_area_ab617=[p for p in find_area_places() if p['type'] == Region.Type.AB617_COMMUNITY],
@@ -200,49 +236,8 @@ class About(ScopeMixin, vanilla.TemplateView):
         )
 
 
-class FacilityList(ScopeMixin, vanilla.TemplateView):
-    template_name = 'emissions/facility-list.html'
-    section = 'facilities'
-
-    def get(self, request, *args, **kwargs):
-        # ?region= was the list's place filter; a place has its own Facilities tab now.
-        region = get_filter_region(request.GET.get('region'), types=AREA_PAGE_TYPES)
-        if region is not None:
-            query = request.GET.copy()
-            for name in ('region', 'page'):
-                query.pop(name, None)
-            encoded = query.urlencode()
-            return redirect(region.get_emissions_tab_url('facilities') + (f'?{encoded}' if encoded else ''), permanent=True)
-        if request.GET.get('format') == 'csv':
-            return self.csv_response()
-        return super().get(request, *args, **kwargs)
-
-    def get_context_data(self, **kwargs):
-        scope = self.get_scope()
-        filters = list_filters(self.request.GET)
-        places = find_area_places('emissions:region-facilities')
-        page = page_of(stats.facility_table(scope, **filters), self.request.GET.get('page'))
-        return super().get_context_data(
-            rows=stats.with_ranks(page.object_list, stats.ranks(scope)),
-            page_obj=page,
-            is_paginated=page.has_other_pages(),
-            sort=filters['sort'],
-            filters=filters,
-            sector_options=sector_options(),
-            compliance_options=compliance.FILTER_LABELS,
-            # "Find your area", the filter box's first field: a place's own Facilities tab.
-            find_field=True,
-            find_area_places=places,
-            find_area_counties=[p for p in places if p['type'] == Region.Type.COUNTY],
-            find_area_qs=scope.query(county=None),
-            find_near_url=reverse('emissions:near-me-facilities'),
-            maptiler_key=settings.MAPTILER_API_KEY,
-            **kwargs,
-        )
-
-    def csv_response(self):
-        scope = self.get_scope()
-        return facility_csv(scope, stats.facility_table(scope, **list_filters(self.request.GET)), f'facility-emissions-{scope.year}.csv')
+# FacilityList (the top-level Facilities tab) is defined near OilGasPage,
+# below, which it mirrors.
 
 
 def area_geometry(area):
@@ -1060,7 +1055,25 @@ class OilGasTabMixin:
         )
 
 
-class AreaPage(OilGasTabMixin, ScopeMixin, vanilla.TemplateView):
+class FacilitiesTabMixin:
+    """
+    A Facilities tab's filtered, sorted and paged table, an area's (AreaPage)
+    or the whole Valley's (FacilityList, below) -- the parts OilGasTabMixin's
+    oil_gas_context plays for the Oil & gas tab.
+    """
+
+    def facilities_table_context(self, scope, filters):
+        table = stats.facility_table(scope, **filters)
+        page = page_of(table, self.request.GET.get('page'))
+        return dict(
+            page_obj=page, is_paginated=page.has_other_pages(), sort=filters['sort'], filters=filters,
+            sector_options=sector_options(), compliance_options=compliance.FILTER_LABELS,
+            reporting=stats.facility_table(scope).filter(value__gt=0).count(),
+            top_rows=stats.with_ranks(page.object_list, stats.ranks(scope)),
+        )
+
+
+class AreaPage(FacilitiesTabMixin, OilGasTabMixin, ScopeMixin, vanilla.TemplateView):
     """
     What a region page and near-me share: one area's page, one tab of it
     (`tab`, AREA_TABS) -- Overview's totals, map, sectors and trend, or the
@@ -1139,14 +1152,9 @@ class AreaPage(OilGasTabMixin, ScopeMixin, vanilla.TemplateView):
         if tab == 'facilities':
             # The facility list's table, filters, sorts, pages and CSV, for the area.
             filters = self.area_filters()
-            table = stats.facility_table(scope, **filters)
-            page = page_of(table, self.request.GET.get('page'))
-            top_rows = stats.with_ranks(page.object_list, stats.ranks(scope))
-            kwargs.update(
-                page_obj=page, is_paginated=page.has_other_pages(), sort=filters['sort'], filters=filters,
-                sector_options=sector_options(), compliance_options=compliance.FILTER_LABELS,
-                reporting=stats.facility_table(scope).filter(value__gt=0).count(),
-            )
+            table_ctx = self.facilities_table_context(scope, filters)
+            top_rows = table_ctx.pop('top_rows')
+            kwargs.update(table_ctx)
         elif tab == 'oil-gas':
             kwargs.update(self.oil_gas_context(
                 area, scope,
@@ -1613,3 +1621,83 @@ class OilGasPage(OilGasTabMixin, ScopeMixin, vanilla.TemplateView):
             maptiler_key=settings.MAPTILER_API_KEY,
             **kwargs,
         )
+
+
+class FacilityList(FacilitiesTabMixin, ScopeMixin, vanilla.TemplateView):
+    """
+    The top-level Facilities tab: an area's Facilities tab (area-facilities.html)
+    for the whole Valley at once (areas.ValleyArea), with a compact facilities
+    map and a find box into an area's own tab. Mirrors OilGasPage.
+    """
+    template_name = 'emissions/facility-list.html'
+    section = 'facilities'
+
+    def get(self, request, *args, **kwargs):
+        # ?region= was the list's place filter; a place has its own Facilities tab now.
+        region = get_filter_region(request.GET.get('region'), types=AREA_PAGE_TYPES)
+        if region is not None:
+            query = request.GET.copy()
+            for name in ('region', 'page'):
+                query.pop(name, None)
+            encoded = query.urlencode()
+            return redirect(region.get_emissions_tab_url('facilities') + (f'?{encoded}' if encoded else ''), permanent=True)
+        scope = self.get_scope()
+        if scope.county is not None:
+            # A county picked in the scope bar is that county's own tab.
+            return redirect(scope.county.get_emissions_tab_url('facilities') + scope.query(county=None))
+        if request.GET.get('format') == 'csv':
+            return self.csv_response()
+        return super().get(request, *args, **kwargs)
+
+    def tab_query(self, key):
+        return self.get_scope().query(county=None).lstrip('?')
+
+    def area_tab_url(self, key, query):
+        url = reverse('emissions:facility-list')
+        return f'{url}?{query}' if query else url
+
+    def get_context_data(self, **kwargs):
+        scope = self.get_scope()
+        area = areas.ValleyArea()
+        filters = list_filters(self.request.GET)
+        table_ctx = self.facilities_table_context(scope, filters)
+        top_rows = table_ctx.pop('top_rows')
+        totals = stats.totals(scope)
+        total = totals['value'] or 0
+        places = find_area_places('emissions:region-facilities')
+        summary = compliance.area_summary(scope)
+        compliance_line = dict(
+            summary, url=self.area_tab_url('facilities', '&'.join(filter(None, [self.tab_query('facilities'), 'compliance=hpv']))),
+        ) if summary else None
+        top_sectors = reporting_sectors(scope)
+        return super().get_context_data(
+            **table_ctx,
+            top_rows=top_rows,
+            top_columns=uniform_columns(top_rows),
+            area=area,
+            # The shared area-tab skeleton and header (regions/area-tab.html).
+            explorer_base='emissions/base.html', area_crumbs=[], tab_label='Facilities',
+            name='San Joaquin Valley', kind='All covered counties',
+            header_links=[], tabs=[], tab_links=[],
+            totals=totals, total=total, county_region=None, county_share=None,
+            top_sectors=top_sectors, by_year=stats.by_year(scope),
+            compliance_line=compliance_line,
+            toxics_breakdown=stats.toxics_breakdown(scope) if scope.toxics else None,
+            share_unit=scope.pollutant.unit == 'share',
+            map_config=facility_map_config(scope, mode='compact', params=scope.params(county=None)),
+            point_params={}, clear_filters_url=self.area_tab_url('facilities', self.tab_query('facilities')),
+            facilities_tab_url=self.area_tab_url('facilities', self.tab_query('facilities')),
+            scope_qs=scope.query(county=None), scope_params=scope.params(county=None), county_options=[],
+            find_field=True,
+            find_area_places=places,
+            find_area_counties=[p for p in places if p['type'] == Region.Type.COUNTY],
+            find_area_qs=scope.query(county=None),
+            find_near_url=reverse('emissions:near-me-facilities'),
+            maptiler_key=settings.MAPTILER_API_KEY,
+            community_about_url=reverse('emissions:about') + '#calenviroscreen',
+            **kwargs,
+        )
+
+    def csv_response(self):
+        scope = self.get_scope()
+        return facility_csv(scope, stats.facility_table(scope, **list_filters(self.request.GET)), f'facility-emissions-{scope.year}.csv')

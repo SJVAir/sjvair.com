@@ -132,15 +132,27 @@ def schools_near_wells(area):
     """
     The area's schools and child-care centers with a well within 3,200 ft:
     how many, and the SCHOOL_TOP with the most wells (then by name), each
-    {sqid, name, type_label, wells}.
+    {sqid, name, display_name, type_label, run_by_name, run_by_url, wells} --
+    the same shape schools.area_sites() rows carry, so the table can share
+    the Schools tab's name-and-district cell (school-name-cell.html).
     """
+    from camp.apps.regions import schools as region_schools
+
     def compute():
         counts = locations_near_wells()
         if not counts:
             return {'count': 0, 'top': []}
+        districts = region_schools.district_urls(url_method='get_emissions_url')
         rows = [
-            {'sqid': place.sqid, 'name': place.name, 'type_label': str(Location.SHORT_TYPES[place.type]), 'wells': counts[place.pk]}
-            for place in Location.objects.filter(location_q(area), pk__in=list(counts)).order_by('name')
+            {
+                'sqid': place.sqid, 'name': place.name, 'display_name': region_schools.display_name(place, place.name),
+                'type_label': str(Location.SHORT_TYPES[place.type]),
+                'run_by_name': (place.metadata or {}).get('district_name') or '',
+                **region_schools.district_fields(place, districts, url_method='get_emissions_url'),
+                'wells': counts[place.pk],
+            }
+            for place in Location.objects.filter(location_q(area), pk__in=list(counts))
+            .select_related('school_district').order_by('name')
         ]
         rows.sort(key=lambda row: (-row['wells'], row['name']))
         return {'count': len(rows), 'top': rows[:SCHOOL_TOP]}

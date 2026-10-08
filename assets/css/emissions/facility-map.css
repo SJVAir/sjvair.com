@@ -281,6 +281,35 @@
 body.map-page .map-wrap:not(.is-compact):not(.is-expanded) .map-canvas {
   height: calc(100vh - 3.25rem - 4.5rem);
   height: calc(100dvh - 3.25rem - 4.5rem);
-  min-height: 420px;
+  min-height: 480px;
+}
+/* On a phone the navbar and scope bar together leave little room; a fixed
+   viewport share reads better than the desktop subtraction. */
+@media (max-width: 768px) {
+  body.map-page .map-wrap:not(.is-compact):not(.is-expanded) .map-canvas {
+    height: 75vh;
+    height: 75dvh;
+    /* The Valley's box is about as tall as it is wide: a tall portrait map
+       fits its width and shows Nevada and LA above and below it. */
+    max-height: 120vw;
+  }
 }
 
+/* The legend panel (bottom-left) can grow tall with every overlay's key; the
+   core caps a panel at the map's height minus 3.5rem (room for the toolbar
+   row), which isn't enough clearance for the zoom/locate/home column
+   (top-left) on a map shorter than the legend's full content. This map's
+   legend needs more headroom to clear them; body's own overflow-y (the
+   core's .map-panel-body rule) does the scrolling. */
+body.emissions .map-legend-panel {
+  max-height: calc(100% - 13rem);
+}
+
+/* An area tab's map beside its filter column: taller on a desktop, so it
+   isn't a short strip over a blank space beside a tall column, and a wide
+   Valley-scale fit isn't framed out to the coast and Nevada. */
+@media (min-width: 1024px) {
+  body.emissions .tab-filters-row .tab-map .map-wrap.is-compact:not(.is-expanded) .map-canvas {
+    height: 540px;
+  }
+}

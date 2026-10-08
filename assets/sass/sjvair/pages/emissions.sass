@@ -200,6 +200,11 @@ body.emissions
     align-items: center
     gap: 0.4rem
     font-weight: 600
+    // The checkbox itself renders at ~13px; the label is its click target,
+    // so give it room to clear the 24x24 WCAG 2.2 minimum.
+    min-height: 1.5rem
+    padding: 0.25rem 0
+    cursor: pointer
   .legend-wells
     display: flex
     flex-wrap: wrap
@@ -235,8 +240,10 @@ body.emissions
       columns: 2
       column-gap: 1rem
       font-size: $size-7
+      // Tight, but each link still a 24px target (WCAG 2.5.8).
       a
         padding: 0.2rem 0
+        min-height: 1.5rem
   // A card's rows past its first five (rank-card.html), until its View all
   // (explorer.js's [data-reveal-toggle]) reveals them.
   [data-reveal-scope] .is-collapsed:not(.is-revealed)
@@ -358,6 +365,28 @@ body.emissions
       vertical-align: -0.1em
   .facility-regulator a[href^="tel:"]
     white-space: nowrap
+  // Home: the 4 entry cards under the stats row (Facilities, Dairies, Oil &
+  // gas, Schools) -- the whole card is the link.
+  .entry-cards
+    margin-top: 0.5rem
+    .entry-card
+      display: block
+      height: 100%
+      color: $text
+      transition: box-shadow 0.15s ease, transform 0.15s ease
+      &:hover, &:focus
+        box-shadow: 0 0.5em 1em -0.125em rgba(10, 10, 10, 0.15), 0 0 0 1px rgba(10, 10, 10, 0.02)
+        transform: translateY(-1px)
+    .entry-card-icon
+      margin-bottom: 0.25rem
+    .entry-card-value
+      margin: 0.1rem 0 0.35rem
+      .entry-card-label
+        margin-left: 0.3rem
+    .entry-card-sentence
+      font-size: $size-7
+      margin: 0
+
   // Home: "Find your area" and "Find a facility" side by side, the same height.
   .find-row
     .box

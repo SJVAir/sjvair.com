@@ -23,9 +23,9 @@ history of wells in service.
 <div class="wells-block" id="wells">
     {% with s=wells_block.summary %}
     <div class="level is-mobile stat-row box wells-line is-grid-mobile" aria-label="{{ s.active|intcomma }} active · {{ s.idle|intcomma }} idle{% if s.new %} · {{ s.new|intcomma }} new{% endif %} · {{ s.hpz|intcomma }} in a verified health-protection zone (3,200 ft of homes or schools)">
-        <div class="level-item has-text-centered"><div><p class="heading">Active</p><p class="title">{{ s.active|intcomma }}</p><p class="stat-note"></p></div></div>
-        <div class="level-item has-text-centered"><div><p class="heading">Idle</p><p class="title">{{ s.idle|intcomma }}</p><p class="stat-note">can still leak</p></div></div>
-        {% if s.new %}<div class="level-item has-text-centered"><div><p class="heading">New</p><p class="title">{{ s.new|intcomma }}</p><p class="stat-note">permitted, not yet drilled or producing</p></div></div>{% endif %}
+        <div class="level-item has-text-centered"><div><p class="heading">Active wells</p><p class="title">{{ s.active|intcomma }}</p><p class="stat-note"></p></div></div>
+        <div class="level-item has-text-centered"><div><p class="heading">Idle wells</p><p class="title">{{ s.idle|intcomma }}</p><p class="stat-note">can still leak</p></div></div>
+        {% if s.new %}<div class="level-item has-text-centered"><div><p class="heading">New wells</p><p class="title">{{ s.new|intcomma }}</p><p class="stat-note">permitted, not yet drilled or producing</p></div></div>{% endif %}
         <div class="level-item has-text-centered"><div><p class="heading">In a health-protection zone</p><p class="title">{{ s.hpz|intcomma }}</p><p class="stat-note">3,200 ft of homes or schools</p></div></div>
     </div>
     {% endwith %}
@@ -95,6 +95,47 @@ history of wells in service.
 {% endblock %}
 
 {% block tab-table %}
+{% if well_leaders.operators or well_leaders.fields %}
+<div class="columns">
+    <div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='Top operators' rows=well_leaders.operators count_label='Wells' view_all_url=None %}</div>
+    <div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='Top oil fields' rows=well_leaders.fields count_label='Wells' view_all_url=None %}</div>
+</div>
+{% endif %}
+<div class="columns">
+    {% if well_types %}
+    <div class="column is-half-tablet">
+        <div class="card related-card">
+            <header class="card-header"><p class="card-header-title">Wells by type</p></header>
+            <div class="card-content">
+                <table class="table is-fullwidth is-narrow is-striped">
+                    <tbody>{% for row in well_types %}<tr><td class="rank">{{ forloop.counter }}.</td><td>{{ row.label }}</td><td class="has-text-right">{{ row.count|intcomma }}</td></tr>{% endfor %}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    <div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='Oil & gas permit groupings' rows=oil_gas_card view_all_url=oil_gas_facilities_url %}</div>
+</div>
+{% with schools=wells_block.schools %}
+<section class="mb-5" id="schools-near-wells">
+    <h2 class="title is-4">Schools and child care near wells</h2>
+    {% if schools.count %}
+    <p><strong>{{ schools.count|intcomma }}</strong> {% if schools.count == 1 %}school or child-care center here has{% else %}schools and child-care centers here have{% endif %} an active or idle well within 3,200 ft{% if schools.top|length < schools.count %} (the {{ schools.top|length }} with the most wells){% endif %}:</p>
+    <div class="table-container">
+    <table class="table is-fullwidth is-narrow wells-schools is-stacked-mobile">
+        <thead><tr><th>School or child care</th><th>Type</th><th class="has-text-right">Wells within 3,200 ft</th></tr></thead>
+        <tbody>
+        {% for row in schools.top %}<tr><td class="cell-name">{% include 'regions/includes/school-name-cell.html' %}</td><td class="cell-meta">{{ row.type_label }}</td><td class="has-text-right cell-value" data-unit="well{{ row.wells|pluralize }}">{{ row.wells|intcomma }}</td></tr>{% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p>No school or child-care center here has a well within 3,200 ft.</p>
+    {% endif %}
+</section>
+{% endwith %}
+<h2 class="title is-4" id="wells-table">Wells</h2>
+<p class="has-text-grey mb-3">{{ wells_block.summary.active|intcomma }} active, {{ wells_block.summary.idle|intcomma }} idle{% if wells_block.summary.new %} and {{ wells_block.summary.new|intcomma }} new{% endif %} wells &middot; showing {{ page_obj.paginator.count|intcomma }}</p>
 <div class="table-container">
 <table class="table is-fullwidth is-hoverable is-narrow well-table is-stacked-mobile">
     <thead><tr>
@@ -128,45 +169,6 @@ history of wells in service.
 {% endblock %}
 
 {% block tab-related %}
-{% if well_leaders.operators or well_leaders.fields %}
-<div class="columns mt-5">
-    <div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='Top operators' rows=well_leaders.operators count_label='Wells' view_all_url=None %}</div>
-    <div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='Top oil fields' rows=well_leaders.fields count_label='Wells' view_all_url=None %}</div>
-</div>
-{% endif %}
-<div class="columns">
-    {% if well_types %}
-    <div class="column is-half-tablet">
-        <div class="card related-card">
-            <header class="card-header"><p class="card-header-title">Wells by type</p></header>
-            <div class="card-content">
-                <table class="table is-fullwidth is-narrow is-striped">
-                    <tbody>{% for row in well_types %}<tr><td class="rank">{{ forloop.counter }}.</td><td>{{ row.label }}</td><td class="has-text-right">{{ row.count|intcomma }}</td></tr>{% endfor %}</tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    {% endif %}
-    <div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='Oil & gas permit groupings' rows=oil_gas_card view_all_url=oil_gas_facilities_url %}</div>
-</div>
-{% with schools=wells_block.schools %}
-<section class="mt-5" id="schools-near-wells">
-    <h2 class="title is-4">Schools and child care near wells</h2>
-    {% if schools.count %}
-    <p><strong>{{ schools.count|intcomma }}</strong> {% if schools.count == 1 %}school or child-care center here has{% else %}schools and child-care centers here have{% endif %} an active or idle well within 3,200 ft{% if schools.top|length < schools.count %} (the {{ schools.top|length }} with the most wells){% endif %}:</p>
-    <div class="table-container">
-    <table class="table is-fullwidth is-narrow wells-schools is-stacked-mobile">
-        <thead><tr><th>School or child care</th><th>Type</th><th class="has-text-right">Wells within 3,200 ft</th></tr></thead>
-        <tbody>
-        {% for row in schools.top %}<tr><td class="cell-name">{{ row.name }}</td><td class="cell-meta">{{ row.type_label }}</td><td class="has-text-right cell-value" data-unit="well{{ row.wells|pluralize }}">{{ row.wells|intcomma }}</td></tr>{% endfor %}
-        </tbody>
-    </table>
-    </div>
-    {% else %}
-    <p>No school or child-care center here has a well within 3,200 ft.</p>
-    {% endif %}
-</section>
-{% endwith %}
 {% include 'emissions/includes/methane-oil-gas.html' with here=methane_list_here %}
 {% endblock %}
 

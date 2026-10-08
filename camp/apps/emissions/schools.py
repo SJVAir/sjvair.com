@@ -292,6 +292,23 @@ def site_summary(rows):
     }
 
 
+def valley_count(scope):
+    """
+    The home page's Schools card: how many Valley schools and child-care
+    centers have a facility within 1/4 mile, a well within 3,200 ft, or a
+    dairy within 1 mile -- area_sites() filtered the way the Schools tab's
+    "Near something we track" filter does. area_sites() itself isn't cached
+    (it's built fresh per area/scope); the Home page asks for it Valley-wide
+    on every load, so that one count is worth caching on its own.
+    """
+    from camp.apps.emissions import areas
+
+    def compute():
+        rows = area_sites(areas.ValleyArea(), scope)
+        return sum(1 for row in rows if row['quarter'] or row['wells'] or row['dairies'])
+    return cache.get_or_set(f'emissions:v{CACHE_VERSION}:valley-count:{scope.key("home-schools")}', compute, CACHE_TIMEOUT)
+
+
 def sites_geojson(rows):
     """The sites as the facility map's `nearby` dots, each with a line saying what's near it for its popup."""
     features = []
@@ -306,6 +323,8 @@ def sites_geojson(rows):
         features.append({
             'type': 'Feature',
             'geometry': {'type': 'Point', 'coordinates': [round(row['lng'], 5), round(row['lat'], 5)]},
-            'properties': {'name': row['display_name'], 'type_label': row['type_label'], 'summary': ' · '.join(near_it) or 'Nothing we track nearby'},
+            # `kind` matches the locations map's schools point layer (public_school,
+            # private_school, child_care), so the dots and legend can share its colours.
+            'properties': {'name': row['display_name'], 'type_label': row['type_label'], 'kind': row['type'], 'summary': ' · '.join(near_it) or 'Nothing we track nearby'},
         })
     return {'type': 'FeatureCollection', 'features': features}

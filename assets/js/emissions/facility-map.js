@@ -33,6 +33,17 @@
 (function () {
   'use strict';
 
+  // Sets a toolbar dropdown's visible label and keeps its button's
+  // accessible name ("Sector: Power plants") in step: on phones the label
+  // is hidden and the name is all a screen reader has.
+  function setToolbarLabel(dropdown, label) {
+    var text = dropdown.querySelector('.map-toolbar-label');
+    if (text) text.textContent = label;
+    var button = dropdown.querySelector('.dropdown-trigger button');
+    var name = button && button.getAttribute('data-name');
+    if (name) button.setAttribute('aria-label', label === name ? name : name + ': ' + label);
+  }
+
   var M = window.SJVAirMaps;
   if (!M || !M.register) return;
 
@@ -102,6 +113,8 @@
   // Wells are slate, not purple: Carbon Mapper's plume images run blue to
   // purple, and the two blurred together.
   var LOCATION_RADIUS = 5;
+  var LOCATION_EMPTY_RADIUS = 3;
+  var SCHOOLS_MIN_ZOOM = 9;
   var LOCATION_WELL_COLORS = { Active: '#1e293b', Idle: '#64748b', New: '#cbd5e1' };
   var LOCATION_CLUSTER_COLOR = '#334155';
   var POINT_LAYERS = [
@@ -127,8 +140,15 @@
       prop: 'kind',
       shades: [['public_school', 'Public school', '#166534'], ['private_school', 'Private school', '#22c55e'], ['child_care', 'Child care', '#86efac']],
       note: 'CDE\'s schools and CDSS\'s licensed child care.',
+      // About 12,000 points, dominated by child-care dots, bury the other
+      // layers at Valley zoom; off below this zoom, with a legend hint
+      // instead of a checkbox nobody would find useful yet.
+      minzoom: SCHOOLS_MIN_ZOOM,
     },
   ];
+  // The Schools tab's `nearby` dots carry the same `kind` as the locations
+  // map's schools point layer, so they share its colours and legend key.
+  var SCHOOLS_POINT_LAYER = POINT_LAYERS.filter(function (spec) { return spec.key === 'schools'; })[0];
   var CLUSTER_MAX_ZOOM = 11;
   var CLUSTER_RADIUS = 40;
   var WELL_STATUSES = ['Active', 'Idle', 'New'];
@@ -201,6 +221,25 @@
     return M.classes.bins(breaks, RAMP, swatchClass, round);
   }
 
+  // The `nearby` layer's circle-color: the schools point layer's shades by
+  // `kind` (the Schools tab's dots), falling back to NEARBY_COLOR for a
+  // facility page's dots, which carry no `kind`.
+  function nearbyColorMatch() {
+    var match = ['match', ['get', 'kind']];
+    SCHOOLS_POINT_LAYER.shades.forEach(function (shade) { match.push(shade[0], shade[2]); });
+    match.push(NEARBY_COLOR);
+    return match;
+  }
+
+  // The Schools tab's legend key: the same swatches as the locations map's
+  // schools point layer, without its checkbox (the tab's dots are always on).
+  function nearbySchoolsKeyHtml() {
+    return '<p class="legend-title">' + escapeHtml(SCHOOLS_POINT_LAYER.label) + '</p><p class="legend-wells">' +
+      SCHOOLS_POINT_LAYER.shades.map(function (shade) {
+        return '<span class="legend-well"><span class="legend-swatch is-well" style="background: ' + shade[2] + '"></span>' + escapeHtml(shade[1]) + '</span>';
+      }).join('') + '</p>';
+  }
+
   // A fraction (0.234) as the change legend and popup write it: '+23%',
   // '-8%', '0%'.
   function pctRound(value) {
@@ -252,7 +291,10 @@
       var sized = p.value > 0 && max > 0;
       var change = compare ? changeFraction(p.value, p.value_prev) : null;
       var coloured = compare ? change !== null : sized;
-      p._radius = uniform ? LOCATION_RADIUS : (sized ? radiusFor(p.value, max) : MIN_RADIUS);
+      // In locations mode a "none reported" facility (the grey ring) draws
+      // smaller than a reporting one, so it doesn't compete for attention
+      // with the dots that actually carry a value in the marker soup.
+      p._radius = uniform ? (sized ? LOCATION_RADIUS : LOCATION_EMPTY_RADIUS) : (sized ? radiusFor(p.value, max) : MIN_RADIUS);
       p._color = coloured ? ramp[classIndex(compare ? change : p.value, breaks)] : EMPTY_FILL;
       // Each circle's outline is a darker shade of its own fill, so two
       // overlapping circles read as two rather than one half-bordered one.
@@ -372,6 +414,10 @@
       if (path !== null) detail.path = path;
     };
     document.body.addEventListener('htmx:configRequest', this.onConfigRequest);
+    // The schools point layer's "zoom in to see schools" legend note (below
+    // SCHOOLS_MIN_ZOOM) depends on the current zoom, so the legend needs a
+    // redraw as the reader crosses that threshold either way.
+    this.map.on('zoomend', function () { self.shell.updateLegend(); });
     // For debugging from the console: document.querySelector('.facility-map').facilityMap
     this.el.facilityMap = this;
   }
@@ -497,7 +543,7 @@
       match.push(spec.shades[spec.shades.length - 1][2]);
       this.shell.ensureSource('points-' + spec.key);
       this.shell.ensureLayer({
-        id: 'points-' + spec.key, type: 'circle', source: 'points-' + spec.key,
+        id: 'points-' + spec.key, type: 'circle', source: 'points-' + spec.key, minzoom: spec.minzoom || 0,
         paint: { 'circle-radius': LOCATION_RADIUS, 'circle-color': match, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1 },
       });
     }, this);
@@ -511,7 +557,10 @@
     });
     this.shell.ensureLayer({
       id: 'nearby', type: 'circle', source: 'nearby',
-      paint: { 'circle-radius': 5, 'circle-color': NEARBY_COLOR, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5 },
+      // The facility page's dots have no `kind` (NEARBY_COLOR, its fixed
+      // green) -- the Schools tab's do, and take the schools point layer's
+      // public/private/child-care colours instead.
+      paint: { 'circle-radius': 5, 'circle-color': nearbyColorMatch(), 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5 },
     });
     this.shell.ensureLayer({
       id: 'outline-mask', type: 'fill', source: 'outline-mask',
@@ -931,9 +980,11 @@
       (this.wells ? ' checked' : '') + '> Oil &amp; gas wells</label>';
     if (this.wells) {
       var colors = this.wellColors();
+      var clusterColor = this.locations ? LOCATION_CLUSTER_COLOR : CLUSTER_COLOR;
       html += '<p class="legend-wells">' + WELL_STATUSES.map(function (status) {
         return '<span class="legend-well"><span class="legend-swatch is-well" style="background: ' + colors[status] + '"></span>' + status + '</span>';
-      }).join('') + '<span class="legend-well"><span class="legend-swatch is-well is-hpz"></span>Verified health-protection zone</span></p>' +
+      }).join('') + '<span class="legend-well"><span class="legend-swatch is-well is-hpz"></span>Verified health-protection zone</span>' +
+        '<span class="legend-well"><span class="legend-swatch is-well" style="background: ' + clusterColor + '"></span>Cluster, zoomed out: bigger with more wells</span></p>' +
         '<p class="legend-note">' + this.wellsAsOf('Today\'s wells') + ', not by year: CalGEM records, not emissions. Zoom in to split the clusters; click a well for its record.</p>';
     }
     return html + '</div>';
@@ -1011,9 +1062,10 @@
       var html = '<div class="legend-overlay"><label class="legend-toggle"><input type="checkbox" data-points="' + spec.key + '"' +
         (layer.on ? ' checked' : '') + '> ' + escapeHtml(spec.label) + '</label>';
       if (layer.on) {
+        var belowMinZoom = spec.minzoom && self.map && self.map.getZoom() < spec.minzoom;
         html += '<p class="legend-wells">' + spec.shades.map(function (shade) {
           return '<span class="legend-well"><span class="legend-swatch is-well" style="background: ' + shade[2] + '"></span>' + escapeHtml(shade[1]) + '</span>';
-        }).join('') + '</p><p class="legend-note">' + escapeHtml(spec.note) + '</p>';
+        }).join('') + '</p><p class="legend-note">' + (belowMinZoom ? 'Zoom in to see ' + escapeHtml(spec.label.toLowerCase()) + '. ' : '') + escapeHtml(spec.note) + '</p>';
       }
       return html + '</div>';
     }).join('');
@@ -1219,7 +1271,9 @@
       (this.locations ? facilityBins(breaks, undefined, round) : valueKeyHtml(max, breaks, round)) +
       '<p class="legend-empty"><span class="legend-ring"></span>None reported</p>' +
       (share ? '<p class="legend-note">Pounds × OEHHA toxicity, relative to the Valley total. Not a health risk: stack height, weather and distance are ignored.</p>' : '') +
-      (this.data.nearby ? '<p class="legend-note">Green dots: schools and child care within ¼ mile (dashed ring).</p>' : '') +
+      (this.data.nearby ? (this.data.highlight
+        ? '<p class="legend-note">Green dots: schools and child care within ¼ mile (dashed ring).</p>'
+        : nearbySchoolsKeyHtml()) : '') +
       this.overlaysLegendHtml();
   };
 
@@ -1429,8 +1483,7 @@
     var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.facility-map-compare');
     if (dropdown) {
       dropdown.classList.toggle('is-set', !!this.compare);
-      var text = dropdown.querySelector('.map-toolbar-label');
-      if (text) text.textContent = this.compare ? 'vs ' + this.compare : 'Compare';
+      setToolbarLabel(dropdown, this.compare ? 'vs ' + this.compare : 'Compare');
       Array.prototype.forEach.call(dropdown.querySelectorAll('[data-compare]'), function (item) {
         item.classList.toggle('is-active', item.getAttribute('data-compare') === (compare || ''));
       });
@@ -1499,8 +1552,7 @@
   FacilityMap.prototype.markDropdown = function (selector, itemSelector, value, label) {
     var dropdown = this.shell.wrap && this.shell.wrap.querySelector(selector);
     if (!dropdown) return;
-    var text = dropdown.querySelector('.map-toolbar-label');
-    if (text && label) text.textContent = label;
+    if (label) setToolbarLabel(dropdown, label);
     var attribute = itemSelector.slice(1, -1);
     Array.prototype.forEach.call(dropdown.querySelectorAll(itemSelector), function (item) {
       item.classList.toggle('is-active', item.getAttribute(attribute) === value);
@@ -1518,8 +1570,7 @@
     var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.facility-map-sector');
     if (dropdown) {
       dropdown.classList.toggle('is-set', !!sector);
-      var text = dropdown.querySelector('.map-toolbar-label');
-      if (text) text.textContent = label || 'All sectors';
+      setToolbarLabel(dropdown, label || 'All sectors');
       Array.prototype.forEach.call(dropdown.querySelectorAll('[data-sector]'), function (item) {
         item.classList.toggle('is-active', item.getAttribute('data-sector') === (sector || ''));
       });

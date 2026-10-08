@@ -67,10 +67,17 @@ class RegionFilterTests(ListTestCase):
 class FacilityTableLinkTests(ListTestCase):
     def test_city_and_county_link_to_their_region_pages(self):
         fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
-        content = self.client.get(reverse('emissions:facility-list'), {'county': 'fresno'}).content.decode()
-        # Region pages are the area; the list's ?county= doesn't ride along.
+        content = self.client.get(reverse('emissions:facility-list')).content.decode()
         assert f'href="{fresno.get_emissions_url()}"' in content
         assert f'href="{self.plant.city.get_emissions_url()}"' in content
+
+    def test_a_county_in_the_scope_bar_goes_to_its_own_tab(self):
+        # A county picked in the scope bar is that county's own Facilities tab (like OilGasPage), keeping the rest of the scope.
+        fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        response = self.client.get(reverse('emissions:facility-list'), {'county': 'fresno', 'pollutant': 'rog'})
+        assert response.status_code == 302
+        assert response['Location'].startswith(fresno.get_emissions_tab_url('facilities'))
+        assert 'pollutant=rog' in response['Location']
 
 
 class PlaceSearchTests(ListTestCase):
@@ -164,3 +171,12 @@ class FacilityListLayoutTests(ListTestCase):
         names = [label for value, label in labels]
         assert names[-1] == 'Other'
         assert names[:-1] == sorted(names[:-1])
+
+    def test_valley_header_and_map(self):
+        # The top-level Facilities tab reads like OilGasPage's: the whole
+        # Valley as the area, no tab row, a compact map with the facilities layer.
+        content = self.client.get(reverse('emissions:facility-list')).content.decode()
+        assert 'San Joaquin Valley' in content and 'All covered counties' in content
+        assert '<li class="is-active"><a aria-current="page">Facilities</a></li>' in content
+        assert 'class="facility-map' in content
+        assert 'data-main-layer=""' in content or "data-main-layer=''" in content

@@ -374,6 +374,7 @@ def main():
         check(results, 'one live map after the swap', same, str(instance))
 
         driver.get(args.base + '/tools/emissions/facilities/')
+        check(results, 'Facilities tab (the Valley) loads a compact map', wait_loaded(driver))
         link = driver.find_element(By.CSS_SELECTOR, '.facility-table tbody a').get_attribute('href')
         driver.get(link)
         check(results, 'facility page compact map loads', wait_loaded(driver))

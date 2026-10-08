@@ -66,6 +66,24 @@ class HomeTests(ViewTestCase):
     def test_no_context_bar_without_estimates(self):
         assert 'CARB estimates all sources' not in self.get('home').content.decode()
 
+    def test_entry_cards(self):
+        response = self.get('home')
+        cards = response.context['entry_cards']
+        assert [card['title'] for card in cards] == ['Facilities', 'Dairies', 'Oil & gas', 'Schools']
+        facilities, dairies, oil_gas, schools = cards
+        # Facilities: the scope year's count, same as the stat row above the cards.
+        assert facilities['value'] == response.context['totals']['facilities'] > 0
+        assert facilities['url'] == reverse('emissions:facility-list')
+        # Dairies and Oil & gas have no fixture data here, so their counts are 0 -- still present, not errors.
+        assert dairies['value'] == 0
+        assert dairies['url'] == reverse('emissions:dairy-list')
+        assert oil_gas['value'] == 0
+        assert oil_gas['url'] == reverse('emissions:oil-gas')
+        assert schools['url'] == '#find-area'
+        assert isinstance(schools['value'], int)
+        content = response.content.decode()
+        assert 'entry-card' in content and 'Pick your area to see its schools' in content
+
 
 class FacilityListTests(ViewTestCase):
     def test_filters_and_sort(self):

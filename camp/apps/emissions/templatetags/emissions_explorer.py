@@ -120,11 +120,14 @@ def year_change(points, year):
 
 
 @register.inclusion_tag('pesticides/includes/trend-chart.html')
-def emissions_trend_chart(points, pollutant, year=None, title=None, heading=None, height=None):
+def emissions_trend_chart(points, pollutant, year=None, title=None, heading=None, height=None, show_sentence=True):
     """
     The by-year trend, drawn by js/pesticides/charts.js from the payload this
     embeds (same markup and chart type as the pesticides trend). `heading`, if
     given, is an h2 over it that goes when the chart does (no data).
+    `show_sentence=False` (the home page, where the stat row already says
+    the change) still passes `year` so the chart highlights it, but drops
+    the "Down X% from YEAR" caption trend-chart.html would otherwise add.
     """
     rows = sorted(points, key=lambda row: row['year'])
     years = [row['year'] for row in rows]
@@ -151,7 +154,7 @@ def emissions_trend_chart(points, pollutant, year=None, title=None, heading=None
         'has_data': any(values),
         'title': title or default_title,
         'heading': heading,
-        'sentence': _change_sentence(dict(zip(years, values)), year),
+        'sentence': _change_sentence(dict(zip(years, values)), year) if show_sentence else '',
         'first_year': years[0] if years else None,
         'last_year': years[-1] if years else None,
     }
