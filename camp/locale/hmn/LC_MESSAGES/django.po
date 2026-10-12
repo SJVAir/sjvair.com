@@ -1,0 +1,1218 @@
+# SJVAir Hmong message catalog.
+# Entries with an empty msgstr fall back to English.
+msgid ""
+msgstr ""
+"Project-Id-Version: SJVAir\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-08 23:03+0000\n"
+"Language: hmn\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A user with that email address already exists."
+msgstr ""
+
+msgid "A user with that phone number already exists."
+msgstr ""
+
+msgid "Did you mean .com?"
+msgstr ""
+
+msgid "Your password was entered incorrectly. Please try again."
+msgstr ""
+
+msgid ""
+"You have recently been sent a verification code. Please try again in a few "
+"minutes."
+msgstr ""
+
+msgid "Verification code"
+msgstr ""
+
+msgid "Check your phone for a verification text from SJVAir."
+msgstr ""
+
+msgid "Invalid verification code, please try again."
+msgstr ""
+
+msgid "Phone number"
+msgstr ""
+
+msgid "Enter a valid color."
+msgstr ""
+
+msgid "Permissions"
+msgstr ""
+
+msgid "Email or Phone"
+msgstr ""
+
+msgid "You can login with your email address or phone number."
+msgstr ""
+
+msgid ""
+"Please enter a correct email/phone and password. Note that both fields may "
+"be case-sensitive."
+msgstr ""
+
+msgid "This account is inactive."
+msgstr ""
+
+msgid "The two password fields didn't match."
+msgstr ""
+
+msgid "Password"
+msgstr ""
+
+msgid "Password confirmation"
+msgstr ""
+
+msgid "Enter the same password as before, for verification."
+msgstr ""
+
+msgid ""
+"Raw passwords are not stored, so there is no way to see this user's "
+"password, but you can change the password using <a href=\"password/\">this "
+"form</a>."
+msgstr ""
+
+msgid "Full name"
+msgstr ""
+
+msgid "Email address"
+msgstr ""
+
+msgid "SMS blocked by carrier opt-out"
+msgstr ""
+
+msgid "Preferred Language"
+msgstr ""
+
+msgid "Date joined"
+msgstr ""
+
+msgid "active"
+msgstr ""
+
+msgid ""
+"Designates whether this user should be treated as active. Unselect this "
+"instead of deleting accounts."
+msgstr ""
+
+msgid "staff status"
+msgstr ""
+
+msgid "Designates whether the user can log into this admin site."
+msgstr ""
+
+#, python-brace-format
+msgid "SJVAir verification code: {code}"
+msgstr ""
+
+msgid ""
+"SJVAir: Your phone is verified for air quality alerts. Msg frequency varies. "
+"Msg & data rates may apply. Reply STOP to opt out."
+msgstr ""
+
+msgid ""
+"SJVAir: You won't get any more texts from us. To get alerts again, verify "
+"your phone at https://www.sjvair.com/account/"
+msgstr ""
+
+msgid ""
+"SJVAir: To get air quality alerts again, verify your phone at https://"
+"www.sjvair.com/account/"
+msgstr ""
+
+msgid ""
+"Text START to our number to allow texts from SJVAir again, then request a "
+"new code."
+msgstr ""
+
+#, python-brace-format
+msgid ""
+"Text START to {number} to allow texts from SJVAir again, then request a new "
+"code."
+msgstr ""
+
+msgid "Good"
+msgstr ""
+
+msgid "Last notified level"
+msgstr ""
+
+msgid "Last notified at"
+msgstr ""
+
+msgid "Below threshold since"
+msgstr ""
+
+msgid "Queued"
+msgstr ""
+
+msgid "Sent"
+msgstr ""
+
+msgid "Delivered"
+msgstr ""
+
+msgid "Undelivered"
+msgstr ""
+
+msgid "Failed"
+msgstr ""
+
+msgid "Alert"
+msgstr ""
+
+msgid "Reminder"
+msgstr ""
+
+msgid "Kind"
+msgstr ""
+
+msgid "Level"
+msgstr ""
+
+#, python-brace-format
+msgid "SJVAir: Air quality is still {level} ({pollutant}) at {name}."
+msgstr ""
+
+#, python-brace-format
+msgid "SJVAir alert: Air quality is {level} ({pollutant}) at {name}."
+msgstr ""
+
+msgid "Low"
+msgstr ""
+
+msgid "Mild"
+msgstr ""
+
+msgid "Moderate"
+msgstr ""
+
+msgid "High"
+msgstr ""
+
+msgid "Severe"
+msgstr ""
+
+msgid "ZIP Code"
+msgstr ""
+
+msgid "Date"
+msgstr ""
+
+msgid "Score"
+msgstr ""
+
+msgid "Updated At"
+msgstr ""
+
+msgid "CalHeatScore"
+msgstr ""
+
+msgid "CalHeatScore Records"
+msgstr ""
+
+msgid "County code"
+msgstr ""
+
+msgid "Facility ID"
+msgstr ""
+
+msgid "Metadata year"
+msgstr ""
+
+msgid "Name"
+msgstr ""
+
+msgid "SIC code"
+msgstr ""
+
+msgid "Address"
+msgstr ""
+
+msgid "County"
+msgstr ""
+
+msgid "Zipcode"
+msgstr ""
+
+msgid "City"
+msgstr ""
+
+msgid "Point"
+msgstr ""
+
+msgid "Year"
+msgstr ""
+
+msgid "Total organic gases (tons/yr)"
+msgstr ""
+
+msgid "Reactive organic gases (tons/yr)"
+msgstr ""
+
+msgid "Carbon monoxide (tons/yr)"
+msgstr ""
+
+msgid "Nitrogen oxides (tons/yr)"
+msgstr ""
+
+msgid "Sulfur oxides (tons/yr)"
+msgstr ""
+
+msgid "PM2.5 (tons/yr)"
+msgstr ""
+
+msgid "PM10 (tons/yr)"
+msgstr ""
+
+msgid "Total toxics score"
+msgstr ""
+
+msgid "Health risk assessment"
+msgstr ""
+
+msgid "Cancer health index"
+msgstr ""
+
+msgid "Acute health index"
+msgstr ""
+
+msgid "Acetaldehyde (tons/yr)"
+msgstr ""
+
+msgid "Benzene (tons/yr)"
+msgstr ""
+
+msgid "1,3-Butadiene (tons/yr)"
+msgstr ""
+
+msgid "Carbon tetrachloride (tons/yr)"
+msgstr ""
+
+msgid "Chromium hexavalent (tons/yr)"
+msgstr ""
+
+msgid "para-Dichlorobenzene (tons/yr)"
+msgstr ""
+
+msgid "Formaldehyde (tons/yr)"
+msgstr ""
+
+msgid "Methylene chloride (tons/yr)"
+msgstr ""
+
+msgid "Naphthalene (tons/yr)"
+msgstr ""
+
+msgid "Perchloroethylene (tons/yr)"
+msgstr ""
+
+msgid "Tract"
+msgstr ""
+
+msgid "Region"
+msgstr ""
+
+msgid "SB535 Disadvantaged Community"
+msgstr ""
+
+msgid "Pollution Burden"
+msgstr ""
+
+msgid "Population Characteristics"
+msgstr ""
+
+msgid "Demographics"
+msgstr ""
+
+msgid "Top 25% CES overall score"
+msgstr ""
+
+msgid "Top 5% pollution burden (no overall score)"
+msgstr ""
+
+msgid "Carried over from prior DAC designation"
+msgstr ""
+
+msgid "Federally recognized Tribal land"
+msgstr ""
+
+msgid "Total Population"
+msgstr ""
+
+msgid "CES Score"
+msgstr ""
+
+msgid "CES Score Percentile"
+msgstr ""
+
+msgid "SB535 DAC"
+msgstr ""
+
+msgid "DAC Category"
+msgstr ""
+
+msgid "Pollution Burden Score"
+msgstr ""
+
+msgid "Pollution Burden Score (scaled)"
+msgstr ""
+
+msgid "Pollution Burden Percentile"
+msgstr ""
+
+msgid "Ozone"
+msgstr ""
+
+msgid "Ozone Percentile"
+msgstr ""
+
+msgid "PM2.5"
+msgstr ""
+
+msgid "PM2.5 Percentile"
+msgstr ""
+
+msgid "Diesel PM"
+msgstr ""
+
+msgid "Diesel PM Percentile"
+msgstr ""
+
+msgid "Pesticides"
+msgstr ""
+
+msgid "Pesticides Percentile"
+msgstr ""
+
+msgid "Toxic Releases (RSEI)"
+msgstr ""
+
+msgid "Toxic Releases Percentile"
+msgstr ""
+
+msgid "Traffic"
+msgstr ""
+
+msgid "Traffic Percentile"
+msgstr ""
+
+msgid "Drinking Water Contaminants"
+msgstr ""
+
+msgid "Drinking Water Contaminants Percentile"
+msgstr ""
+
+msgid "Hazardous Waste"
+msgstr ""
+
+msgid "Hazardous Waste Percentile"
+msgstr ""
+
+msgid "Lead"
+msgstr ""
+
+msgid "Lead Percentile"
+msgstr ""
+
+msgid "Cleanup Sites"
+msgstr ""
+
+msgid "Cleanup Sites Percentile"
+msgstr ""
+
+msgid "Groundwater Threats"
+msgstr ""
+
+msgid "Groundwater Threats Percentile"
+msgstr ""
+
+msgid "Impaired Water Bodies"
+msgstr ""
+
+msgid "Impaired Water Bodies Percentile"
+msgstr ""
+
+msgid "Solid Waste Sites"
+msgstr ""
+
+msgid "Solid Waste Sites Percentile"
+msgstr ""
+
+msgid "Population Characteristics Score"
+msgstr ""
+
+msgid "Population Characteristics Score (scaled)"
+msgstr ""
+
+msgid "Population Characteristics Percentile"
+msgstr ""
+
+msgid "Asthma"
+msgstr ""
+
+msgid "Asthma Percentile"
+msgstr ""
+
+msgid "Cardiovascular Disease"
+msgstr ""
+
+msgid "Cardiovascular Disease Percentile"
+msgstr ""
+
+msgid "Low Birth Weight"
+msgstr ""
+
+msgid "Low Birth Weight Percentile"
+msgstr ""
+
+msgid "Educational Attainment"
+msgstr ""
+
+msgid "Educational Attainment Percentile"
+msgstr ""
+
+msgid "Linguistic Isolation"
+msgstr ""
+
+msgid "Linguistic Isolation Percentile"
+msgstr ""
+
+msgid "Poverty"
+msgstr ""
+
+msgid "Poverty Percentile"
+msgstr ""
+
+msgid "Unemployment"
+msgstr ""
+
+msgid "Unemployment Percentile"
+msgstr ""
+
+msgid "Housing Burden"
+msgstr ""
+
+msgid "Housing Burden Percentile"
+msgstr ""
+
+msgid "Population Under 10"
+msgstr ""
+
+msgid "Population 10–64"
+msgstr ""
+
+msgid "Population 65+"
+msgstr ""
+
+msgid "Hispanic Population"
+msgstr ""
+
+msgid "White Population"
+msgstr ""
+
+msgid "Black or African American Population"
+msgstr ""
+
+msgid "American Indian and Alaska Native Population"
+msgstr ""
+
+msgid "Asian American and Pacific Islander Population"
+msgstr ""
+
+msgid "Other or Multiple Races Population"
+msgstr ""
+
+msgid "CalEnviroScreen 4.0"
+msgstr ""
+
+msgid "CalEnviroScreen 4.0 Records"
+msgstr ""
+
+msgid "Approximate Location"
+msgstr ""
+
+msgid "CalEnviroScreen Region"
+msgstr ""
+
+msgid "Child's Lead Risk from Housing"
+msgstr ""
+
+msgid "Child's Lead Risk from Housing Percentile"
+msgstr ""
+
+msgid "Small Air Toxic Sites"
+msgstr ""
+
+msgid "Small Air Toxic Sites Percentile"
+msgstr ""
+
+msgid "Diabetes Prevalence"
+msgstr ""
+
+msgid "Diabetes Prevalence Percentile"
+msgstr ""
+
+msgid "Population Under 10 (%)"
+msgstr ""
+
+msgid "Population 10–64 (%)"
+msgstr ""
+
+msgid "Population 65+ (%)"
+msgstr ""
+
+msgid "Hispanic/Latino Population (%)"
+msgstr ""
+
+msgid "White Population (%)"
+msgstr ""
+
+msgid "Black or African American Population (%)"
+msgstr ""
+
+msgid "American Indian and Alaska Native Population (%)"
+msgstr ""
+
+msgid "Asian Population (%)"
+msgstr ""
+
+msgid "Pacific Islander Population (%)"
+msgstr ""
+
+msgid "Other or Multiple Races Population (%)"
+msgstr ""
+
+msgid "CalEnviroScreen 5.0"
+msgstr ""
+
+msgid "CalEnviroScreen 5.0 Records"
+msgstr ""
+
+msgid ""
+"Highly sensitive groups should stay indoors and avoid outdoor activities."
+msgstr ""
+
+msgid "Unhealthy for Sensitive Groups"
+msgstr ""
+
+msgid "Sensitive groups should stay indoors and avoid outdoor activities."
+msgstr ""
+
+msgid "Unhealthy"
+msgstr ""
+
+msgid "Everyone should reduce prolonged or heavy exertion."
+msgstr ""
+
+msgid "Very Unhealthy"
+msgstr ""
+
+msgid "Everyone should avoid prolonged or heavy exertion."
+msgstr ""
+
+msgid "Hazardous"
+msgstr ""
+
+msgid "Everyone should stay indoors and avoid physical outdoor activities."
+msgstr ""
+
+msgid "Very Hazardous"
+msgstr ""
+
+msgid "The processing stage for this entry."
+msgstr ""
+
+msgid "The processor class used to generate this entry."
+msgstr ""
+
+msgid "The calibration record applied to this entry (if applicable)."
+msgstr ""
+
+msgid "Carbon Monoxide"
+msgstr ""
+
+msgid "Carbon Dioxide"
+msgstr ""
+
+msgid "Nitrogen Dioxide"
+msgstr ""
+
+msgid "Sulfur Dioxide"
+msgstr ""
+
+msgid "Sulfur dioxide (ppb)"
+msgstr ""
+
+msgid "Temperature"
+msgstr ""
+
+msgid "Temperature (°F)"
+msgstr ""
+
+msgid "Humidity"
+msgstr ""
+
+msgid "Relative humidity (%)"
+msgstr ""
+
+msgid "Atmospheric Pressure"
+msgstr ""
+
+msgid "Atmospheric pressure (mmHg)"
+msgstr ""
+
+msgid "Dew Point"
+msgstr ""
+
+msgid "Dew point (°F)"
+msgstr ""
+
+msgid "Soil Temperature"
+msgstr ""
+
+msgid "Soil temperature (°F)"
+msgstr ""
+
+msgid "Wind Speed"
+msgstr ""
+
+msgid "Wind speed (mph)"
+msgstr ""
+
+msgid "Wind Direction"
+msgstr ""
+
+msgid "Wind direction (degrees)"
+msgstr ""
+
+msgid "Precipitation"
+msgstr ""
+
+msgid "Precipitation (in)"
+msgstr ""
+
+msgid "Solar Radiation"
+msgstr ""
+
+msgid "Solar radiation (W/m²)"
+msgstr ""
+
+msgid "Net Radiation"
+msgstr ""
+
+msgid "Net radiation (W/m²)"
+msgstr ""
+
+msgid "Vapor Pressure"
+msgstr ""
+
+msgid "Vapor pressure (kPa)"
+msgstr ""
+
+msgid "Reference Evapotranspiration"
+msgstr ""
+
+msgid "ASCE reference evapotranspiration (in)"
+msgstr ""
+
+msgid "Alfalfa Reference Evapotranspiration"
+msgstr ""
+
+msgid "ASCE alfalfa-reference evapotranspiration (in)"
+msgstr ""
+
+msgid "PM2.5 (µg/m³)"
+msgstr ""
+
+msgid "Particulates"
+msgstr ""
+
+msgid "PM1.0"
+msgstr ""
+
+msgid "PM10.0"
+msgstr ""
+
+msgid "Raw"
+msgstr ""
+
+msgid "Corrected"
+msgstr ""
+
+msgid "Cleaned"
+msgstr ""
+
+msgid "Calibrated"
+msgstr ""
+
+msgid "zone name"
+msgstr ""
+
+msgid "forecast date"
+msgstr ""
+
+msgid "issued date"
+msgstr ""
+
+msgid "published at"
+msgstr ""
+
+msgid "AQI value"
+msgstr ""
+
+msgid "AQI category"
+msgstr ""
+
+msgid "pollutant"
+msgstr ""
+
+msgid "burn status"
+msgstr ""
+
+msgid "burn status text"
+msgstr ""
+
+msgid "air alert"
+msgstr ""
+
+msgid "air alert start"
+msgstr ""
+
+msgid "air alert end"
+msgstr ""
+
+msgid "URL"
+msgstr ""
+
+msgid "API Key"
+msgstr ""
+
+msgid "Enabled"
+msgstr ""
+
+msgid "Organization"
+msgstr ""
+
+msgid "Organizations"
+msgstr ""
+
+msgid "Device ID"
+msgstr ""
+
+msgid "Full device identifier, e.g. AQLite-1234"
+msgstr ""
+
+msgid "Federal Equivalent Method"
+msgstr ""
+
+msgid "Federal Reference Method"
+msgstr ""
+
+msgid "Low-Cost Sensor"
+msgstr ""
+
+msgid "Who is currently hosting this device."
+msgstr ""
+
+msgid "Contact or organization name."
+msgstr ""
+
+msgid "sensor ID"
+msgstr ""
+
+msgid "Biopesticide"
+msgstr ""
+
+msgid "Carcinogen"
+msgstr ""
+
+msgid "Cholinesterase Inhibitor"
+msgstr ""
+
+msgid "Developmental Toxin"
+msgstr ""
+
+msgid "Fumigant"
+msgstr ""
+
+msgid "Groundwater Contaminant"
+msgstr ""
+
+msgid "Oil"
+msgstr ""
+
+msgid "Reproductive Toxin"
+msgstr ""
+
+msgid "Toxic Air Contaminant"
+msgstr ""
+
+msgid "Group 1 – Carcinogenic to humans"
+msgstr ""
+
+msgid "Group 2A – Probably carcinogenic to humans"
+msgstr ""
+
+msgid "Group 2B – Possibly carcinogenic to humans"
+msgstr ""
+
+msgid "Group 3 – Not classifiable as to carcinogenicity"
+msgstr ""
+
+msgid "Chemical Code"
+msgstr ""
+
+msgid "CAS Number"
+msgstr ""
+
+msgid "DTXSID"
+msgstr ""
+
+msgid "IARC Group"
+msgstr ""
+
+msgid "Categories"
+msgstr ""
+
+msgid "Commodities"
+msgstr ""
+
+msgid "pesticides.Chemical"
+msgstr ""
+
+msgid "Chemicals"
+msgstr ""
+
+msgid "Site Code"
+msgstr ""
+
+msgid "pesticides.Commodity"
+msgstr ""
+
+msgid "Product Number"
+msgstr ""
+
+msgid "Registration Number"
+msgstr ""
+
+msgid "California Restricted"
+msgstr ""
+
+msgid "pesticides.Product"
+msgstr ""
+
+msgid "Products"
+msgstr ""
+
+msgid "Percent Active"
+msgstr ""
+
+msgid "Aerial"
+msgstr ""
+
+msgid "Fumigation"
+msgstr ""
+
+msgid "Ground"
+msgstr ""
+
+msgid "Other"
+msgstr ""
+
+msgid "Use Number"
+msgstr ""
+
+msgid "MTRS Section"
+msgstr ""
+
+msgid "COMTRS"
+msgstr ""
+
+msgid "Pounds of Chemical Used"
+msgstr ""
+
+msgid "Pounds of Product Used"
+msgstr ""
+
+msgid "Amount of Product Used"
+msgstr ""
+
+msgid "Unit of Measure"
+msgstr ""
+
+msgid "Acres Planted"
+msgstr ""
+
+msgid "Unit Planted"
+msgstr ""
+
+msgid "Acres Treated"
+msgstr ""
+
+msgid "Unit Treated"
+msgstr ""
+
+msgid "Application Count"
+msgstr ""
+
+msgid "Application Date"
+msgstr ""
+
+msgid "Aerial/Ground"
+msgstr ""
+
+msgid "Record ID"
+msgstr ""
+
+msgid "Pesticide Use"
+msgstr ""
+
+msgid "Pesticide Uses"
+msgstr ""
+
+msgid "Application ID"
+msgstr ""
+
+msgid "Scheduled Application"
+msgstr ""
+
+msgid "Treated Amount"
+msgstr ""
+
+msgid "Treated Units"
+msgstr ""
+
+msgid "Application Method"
+msgstr ""
+
+msgid "Pesticide Notice"
+msgstr ""
+
+msgid "Pesticide Notices"
+msgstr ""
+
+msgid "Census Tract"
+msgstr ""
+
+msgid "Census Designated Place"
+msgstr ""
+
+msgid "Congressional District"
+msgstr ""
+
+msgid "State Assembly District"
+msgstr ""
+
+msgid "State Senate District"
+msgstr ""
+
+msgid "School District"
+msgstr ""
+
+msgid "Urban Area"
+msgstr ""
+
+msgid "Land Use"
+msgstr ""
+
+msgid "Protected Area"
+msgstr ""
+
+msgid "Place"
+msgstr ""
+
+msgid "Custom Region"
+msgstr ""
+
+msgid "Administrative / Political"
+msgstr ""
+
+msgid "Census-Based Geography"
+msgstr ""
+
+msgid "Governmental District"
+msgstr ""
+
+msgid "Environmental / Land Context"
+msgstr ""
+
+msgid "Synthetic Community Area"
+msgstr ""
+
+msgid "Agricultural Survey Geography"
+msgstr ""
+
+msgid "Custom"
+msgstr ""
+
+msgid "Hourly"
+msgstr ""
+
+msgid "Daily"
+msgstr ""
+
+msgid "Monthly"
+msgstr ""
+
+msgid "Quarterly"
+msgstr ""
+
+msgid "Seasonal"
+msgstr ""
+
+msgid "Yearly"
+msgstr ""
+
+msgid "resolution"
+msgstr ""
+
+msgid "timestamp"
+msgstr ""
+
+msgid "count"
+msgstr ""
+
+msgid "expected count"
+msgstr ""
+
+msgid "sum"
+msgstr ""
+
+msgid "sum of squares"
+msgstr ""
+
+msgid "t-digest"
+msgstr ""
+
+msgid "minimum"
+msgstr ""
+
+msgid "maximum"
+msgstr ""
+
+msgid "mean"
+msgstr ""
+
+msgid "standard deviation"
+msgstr ""
+
+msgid "25th percentile"
+msgstr ""
+
+msgid "75th percentile"
+msgstr ""
+
+msgid "processor"
+msgstr ""
+
+msgid "is complete"
+msgstr ""
+
+msgid "station count"
+msgstr ""
+
+msgid "weight"
+msgstr ""
+
+msgid "Running"
+msgstr ""
+
+msgid "Paused"
+msgstr ""
+
+msgid "Done"
+msgstr ""
+
+msgid "Idle"
+msgstr ""
+
+msgid "Monitors"
+msgstr ""
+
+msgid "Regions"
+msgstr ""
+
+msgid "state"
+msgstr ""
+
+msgid "phase"
+msgstr ""
+
+msgid "cursor"
+msgstr ""
+
+msgid "chunk start"
+msgstr ""
+
+msgid "chunk days"
+msgstr ""
+
+msgid "range start"
+msgstr ""
+
+msgid "range end"
+msgstr ""
+
+msgid "pending tasks"
+msgstr ""
+
+msgid "batch id"
+msgstr ""
+
+msgid "phase started at"
+msgstr ""
+
+msgid "locked at"
+msgstr ""
+
+msgid "consecutive failures"
+msgstr ""
+
+msgid "last error"
+msgstr ""
+
+msgid "Total Ozone"
+msgstr ""
+
+msgid "Formaldehyde"
+msgstr ""
+
+msgid "Cloud Fraction"
+msgstr ""
+
+msgid "product"
+msgstr ""
+
+msgid "version"
+msgstr ""
+
+msgid "is final"
+msgstr ""
+
+msgid "raster"
+msgstr ""
+
+msgid "preview"
+msgstr ""
+
+msgid "bounds"
+msgstr ""
+
+msgid "English"
+msgstr ""
+
+msgid "Filipino"
+msgstr ""
+
+msgid "Hmong"
+msgstr ""
+
+msgid "Spanish"
+msgstr ""
