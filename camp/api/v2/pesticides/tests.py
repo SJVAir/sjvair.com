@@ -343,7 +343,8 @@ class PesticideUseListTests(TestCase):
             year=2023,
             use_no=1,
             lbs_chemical=500.0,
-            acres_treated=10.0,
+            amount_treated=10.0,
+            unit_treated='A',
             application_date=date(2023, 6, 1),
             aerial_ground='G',
         )
@@ -355,7 +356,7 @@ class PesticideUseListTests(TestCase):
         data = self.client.get(self.url).json()
         item = data['data'][0]
         assert set(item.keys()) == {
-            'id', 'year', 'use_no', 'comtrs', 'lbs_chemical', 'acres_treated',
+            'id', 'year', 'use_no', 'comtrs', 'lbs_chemical', 'acres_treated', 'amount_treated', 'unit_treated',
             'application_date', 'aerial_ground', 'county', 'mtrs',
             'product', 'chemical', 'commodity', 'fume_method',
         }
@@ -426,7 +427,7 @@ class PesticideUseDetailTests(TestCase):
     def test_detail_fields(self):
         item = self.client.get(self.url).json()['data']
         assert set(item.keys()) == {
-            'id', 'year', 'use_no', 'comtrs', 'lbs_chemical', 'acres_treated',
+            'id', 'year', 'use_no', 'comtrs', 'lbs_chemical', 'acres_treated', 'amount_treated', 'unit_treated',
             'application_date', 'aerial_ground', 'county', 'mtrs',
             'product', 'chemical', 'commodity', 'fume_method',
         }
@@ -511,7 +512,8 @@ class PesticideRegionSummaryTests(TestCase):
             year=2023,
             use_no=1,
             lbs_chemical=500.0,
-            acres_treated=10.0,
+            amount_treated=10.0,
+            unit_treated='A',
         )
         self.url = reverse('api:v2:pesticides:region-summary', kwargs={'region_id': self.county.sqid})
 
@@ -537,7 +539,7 @@ class PesticideRegionSummaryTests(TestCase):
 
     def test_aggregates_correctly(self):
         make_use(self.county, chemical=self.chemical, commodity=self.commodity,
-                 year=2023, use_no=2, lbs_chemical=300.0, acres_treated=5.0)
+                 year=2023, use_no=2, lbs_chemical=300.0, amount_treated=5.0, unit_treated='A')
         item = self.client.get(self.url).json()['data'][0]
         assert item['total_lbs'] == 800.0
         assert item['total_acres'] == 15.0

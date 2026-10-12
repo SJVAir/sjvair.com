@@ -26,6 +26,7 @@
             <div class="navbar-start">
                 <a class="navbar-item" href="/alerts/">Text Alerts</a>
                 <a class="navbar-item has-text-weight-medium" href="/app/">Get the App!</a>
+                {% if beta_tools %}
                 <div class="navbar-item has-dropdown is-hoverable">
                     <a class="navbar-link">Data Tools</a>
                     <div class="navbar-dropdown">
@@ -39,6 +40,7 @@
                         </a>
                     </div>
                 </div>
+                {% endif %}
                 <div class="navbar-item has-dropdown is-hoverable">
                     <a class="navbar-link">Resources</a>
                     <div class="navbar-dropdown">
@@ -209,6 +211,7 @@
                         </span>
                         <a href="{% static 'docs/Wildfire-Smoke-Preparedness-2021.pdf' %}">Wildfire Smoke Preparedness</a>
                     </li>
+                    {% if beta_tools %}
                     <li>
                         <span class="fa-li">
                             <span class="fa-regular fa-fw fa-spray-can-sparkles"></span>
@@ -221,6 +224,7 @@
                         </span>
                         <a href="{% url 'emissions:home' %}">Facility Emissions Explorer</a>
                     </li>
+                    {% endif %}
                 </ul>
             </div>
             <div class="column nav is-half-tablet is-one-quarter-desktop">

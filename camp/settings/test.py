@@ -3,6 +3,10 @@ import tempfile
 
 FIXTURE_DIRS = [BASE_DIR.child('fixtures')]
 
+# The explorers' own tests run ungated; camp/utils/tests/test_beta_tools.py
+# turns the gate on to test it.
+BETA_TOOLS_GATE = False
+
 MEDIA_ROOT = tempfile.mkdtemp(prefix='sjvair-test-media-')
 
 # Database

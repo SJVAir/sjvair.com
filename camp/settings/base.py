@@ -56,6 +56,13 @@ BAM_MIRROR_ENABLED = bool(int(env('BAM_MIRROR_ENABLED', 0)))
 
 MONITOR_ACTIVE_WINDOW_DAYS = int(env('MONITOR_ACTIVE_WINDOW_DAYS', '90'))
 
+# The data tools under /tools/ (the pesticides and emissions explorers) are in
+# beta: only users the `beta_tools` waffle flag is on for (the "Beta testers"
+# group, staff, superusers) can see them; everyone else gets a 404 and no nav
+# links. Set BETA_TOOLS_GATE=0 to open them to everyone (tests and local dev).
+# The explorers' data APIs under /api/ aren't gated.
+BETA_TOOLS_GATE = bool(int(env('BETA_TOOLS_GATE', 1)))
+
 MONITOR_HEALTHY_WINDOW_HOURS = int(env('MONITOR_HEALTHY_WINDOW_HOURS', '24'))
 
 MONITOR_HEALTHY_THRESHOLD = float(env('MONITOR_HEALTHY_THRESHOLD', '0.9'))
@@ -160,6 +167,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'camp.utils.middleware.BetaToolsMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'camp.api.middleware.MonitorAccessMiddleware',
@@ -178,6 +186,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'camp.context_processors.settings_context',
+                'camp.context_processors.beta_tools',
             ],
             'libraries': {
                 'sjvair': 'camp.template_tags',
