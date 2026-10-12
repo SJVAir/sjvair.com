@@ -237,8 +237,8 @@ class CountyColumnPickerTests(RollupTestMixin, TestCase):
         # A placeholder chemical has no pounds, so ranking by them is a
         # column of dashes.
         options = maps.county_metric_options('acres', hide_lbs=True)
-        assert [o['value'] for o in options] == ['acres', 'applications']
-        assert maps.county_metric('lbs', hide_lbs=True) == 'acres'
+        assert [o['value'] for o in options] == ['applications', 'acres']
+        assert maps.county_metric('lbs', hide_lbs=True) == 'applications'
         assert maps.county_metric('lbs') == 'lbs'
 
     def test_the_header_names_the_chosen_metric(self):

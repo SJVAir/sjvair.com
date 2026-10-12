@@ -1759,11 +1759,7 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
         return filters
 
     def get_summary_sentence(self, totals):
-        sentence = (
-            f"{totals['records']:,} applications, "
-            f"{totals['lbs']:,.0f} lbs, "
-            f"{totals['acres']:,.0f} acre-treatments"
-        )
+        sentence = f"{totals['records']:,} applications, {totals['lbs']:,.0f} lbs"
         descriptors = []
         label = stats.year_label(self.year, self.all_years)
         if label:
