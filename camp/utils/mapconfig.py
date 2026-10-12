@@ -34,12 +34,18 @@ def covered_bounds():
 
 
 def map_config(container_class, *, data, features, toolbar_template=None, options_template=None,
-               options_ramp=True, legend_template=None, container_id='', compact=False):
+               options_ramp=True, legend_template=None, container_id='', compact=False,
+               toolbar_end_template=None, options_label='Options', options_icon='fa-gear'):
     """
     The dict `maps/includes/map.html` renders as `map`. `data` maps
     data-attribute names (hyphenated, without `data-`) to values; the shared
     keys are filled in unless the caller set them, and every value becomes a
     string (None -> '').
+
+    Opt-in chrome, with defaults that leave a map as it was: `toolbar_end_template`
+    renders in the toolbar's end group, before the options dropdown (the
+    pesticides maps' Shade by control); `options_label` and `options_icon`
+    (a Font Awesome icon name) rename the options dropdown ("Tweaks").
     """
     shared = {
         'maptiler-key': settings.MAPTILER_API_KEY,
@@ -60,6 +66,9 @@ def map_config(container_class, *, data, features, toolbar_template=None, option
         'data': {key: '' if value is None else str(value) for key, value in merged.items()},
         'features': features,
         'toolbar_template': toolbar_template,
+        'toolbar_end_template': toolbar_end_template,
+        'options_label': options_label,
+        'options_icon': options_icon,
         'options_template': options_template,
         # Whether the shared options template (map-options.html) renders its
         # Ramp select alongside Tiles -- off for a map with no colour ramp to

@@ -1,23 +1,15 @@
 /* The pesticides section map's own styles (assets/js/pesticides/section-map.js):
-   the Options menu's controls, the legend body, and the popups. Its chrome
+   the toolbar's Shade by, the Tweaks menu's controls, the legend body, and the popups. Its chrome
    (the canvas box, toolbar, panels, controls, status pill, expanded mode) is
    the shared map chrome, css/maps/map.css. */
 
-/* The Options menu's body (inside its toolbar dropdown). */
+/* The Tweaks menu's body (inside its toolbar dropdown). */
 .section-map-controls {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 0.3rem;
   font-size: 0.85rem;
-}
-
-.section-map-controls .section-map-metric {
-  display: flex;
-  gap: 0.75rem;
-  padding-bottom: 0.3rem;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  align-self: stretch;
 }
 
 .section-map-controls label {
@@ -66,14 +58,6 @@
    #d35400, schools #5a6b7b, child care #1c9099. Child care is teal rather
    than purple because purple is the Chemicals section's colour. The legend
    rows for these are appended by appendMarkerLegend(). */
-
-/* The Options menu's "Show" group label, over the layer checkboxes. */
-.section-map-controls .section-map-group-label {
-  color: #6b6b6b;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-size: 0.7rem;
-}
 
 .section-popup h4,
 .notice-popup h4 {
@@ -285,4 +269,156 @@
 
 .section-popup .notice-group-entry .section-popup-action {
   margin-top: 0.3rem;
+}
+
+/* Shade by, in the toolbar's end group (map-metric.html): a segmented
+   control styled as the toolbar's buttons. The radios are visually hidden but
+   focusable; the checked option fills, and keyboard focus rings the group. */
+.map-toolbar .map-metric {
+  display: inline-flex;
+  align-items: stretch;
+  min-width: 0;
+  height: 33px; /* the toolbar buttons' */
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  font-size: 0.85rem;
+  overflow: hidden;
+}
+
+/* The group's name, as a visible prefix where there's room. */
+.map-toolbar .map-metric-legend {
+  display: flex;
+  align-items: center;
+  float: left; /* a fieldset's legend is laid out outside the flow otherwise */
+  padding: 0 0.6rem;
+  color: #6b6b6b;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.map-toolbar .map-metric-option {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.7rem;
+  border-left: 1px solid rgba(0, 0, 0, 0.12);
+  color: #363636;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.map-toolbar .map-metric-option:hover {
+  background: #f5f5f5;
+}
+
+.map-toolbar .map-metric-option:has(input:checked) {
+  background: #3273dc;
+  color: #fff;
+}
+
+.map-toolbar .map-metric-option:has(input:focus-visible) {
+  outline: 2px solid #1f6fae;
+  outline-offset: -3px;
+}
+
+/* On the checked option's blue fill the blue ring vanishes: ring it white. */
+.map-toolbar .map-metric-option:has(input:checked:focus-visible) {
+  outline-color: #fff;
+}
+
+.map-toolbar .map-metric-option input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+}
+
+.map-toolbar .map-metric-short {
+  display: none;
+}
+
+/* The marker layers' and "All sections" toggles in the legend: the core's
+   .legend-toggle look (a checkbox in a label, 24px tall). Not that class
+   itself, which also folds the legend down to its switches. */
+.section-map-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 24px;
+  cursor: pointer;
+}
+
+.map-legend-panel .section-map-sections-toggle {
+  display: flex;
+  margin-top: 0.15rem;
+  font-size: 0.85rem;
+}
+
+/* A folded legend keeps its switches, as the core keeps .legend-toggle
+   (css/maps/map.css): the marker rows' toggles and All sections stay,
+   the key, the notes and the schools' kinds fold. */
+.map-panel.is-collapsed .map-panel-body:has(.section-map-toggle) {
+  display: block;
+}
+
+.map-panel.is-collapsed .map-panel-body:has(.section-map-toggle) > :not(.section-map-legend, .section-map-sections-toggle),
+.map-panel.is-collapsed .map-panel-body .section-map-legend > li:not(.is-toggle) {
+  display: none;
+}
+
+.map-legend-panel .section-map-legend li.is-kind {
+  padding-left: 1.4rem;
+}
+
+.map-legend-panel .section-map-sections-toggle:has(input:disabled) {
+  color: #6b6b6b;
+  cursor: default;
+}
+
+@media (max-width: 768px) {
+  /* Shade by makes the end group too wide to share a row with the filter
+     buttons: they wrap onto their own row (the end group keeps the right
+     edge) instead of squeezing the filters into a one-button column. */
+  .map-toolbar:has(.map-metric) {
+    flex-wrap: wrap;
+  }
+  .map-toolbar:has(.map-metric) .map-toolbar-filters {
+    flex: 1 1 100%;
+  }
+  /* "Lbs" / "Apps" on a phone; the full words stay as the accessible names. */
+  .map-toolbar .map-metric-legend {
+    /* Visually hidden, not display:none, which would drop the group's name. */
+    position: absolute;
+    float: none;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .map-toolbar .map-metric-full {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .map-toolbar .map-metric-short {
+    display: inline;
+  }
+  .map-toolbar .map-metric-option {
+    padding: 0 0.5rem;
+  }
+  .map-toolbar .map-metric-option:first-of-type {
+    border-left: 0;
+  }
 }

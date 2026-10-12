@@ -970,7 +970,7 @@ def check_notices(page):
     """)
     rows = page.marker_legend()
     # The legend words the layer for the page's mode: past only with ?past=1.
-    label = 'Past notice' if url_param(page, 'past') == '1' else 'Notice of intent'
+    label = 'Past notices' if url_param(page, 'past') == '1' else 'Notices of intent'
     if not any(row.startswith(label) for row in rows):
         problems.append('legend rows %s lack the "%s" row' % (rows, label))
     if not state['dflt'] and url_param(page, 'notices') != '1':
@@ -1035,8 +1035,9 @@ def check_notices(page):
     after = page.instance_js("return { count: (inst.sourceData.notices || {features: []}).features.length, popup: !!inst.popup && inst.popupKey === 'openNoticeId', bounds: inst.loadedNoticeBounds };")
     if after['count'] or after['bounds'] or after['popup']:
         problems.append('toggle off left %d markers, bounds %s, popup %s' % (after['count'], after['bounds'] is not None, after['popup']))
-    if any(row.startswith(('Notice of intent', 'Past notice')) for row in page.marker_legend()):
-        problems.append('legend kept the notices row after toggle off')
+    # The legend row is a toggle and stays listed; off, it's unchecked.
+    if page.js("var box = document.querySelector('.section-map-legend input[name=\"notices\"]'); return !box || box.checked;"):
+        problems.append('the legend\'s notices toggle is missing or still checked after toggle off')
     expected_off = '0' if state['dflt'] else None
     if url_param(page, 'notices') != expected_off:
         problems.append('URL after toggle off: %s (wanted notices=%s)' % (page.driver.current_url, expected_off))

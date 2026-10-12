@@ -76,9 +76,9 @@ class ExplorerMarkupTests(RollupTestMixin, TestCase):
         assert re.search(r'<th class="has-text-right" aria-sort="descending">\s*<a class="sort-link is-active"', html)
         assert 'aria-sort="ascending"' not in html
 
-    def test_map_options_button_is_named(self):
+    def test_map_tweaks_button_is_named(self):
         html = self.client.get(reverse('pesticides:map')).content.decode()
-        assert 'aria-label="Map options"' in html and 'role="dialog"' in html
+        assert 'aria-label="Map tweaks"' in html and 'role="dialog"' in html
         # The toolbar precedes the canvas (and so its attribution) in focus order.
         assert html.index('class="map-toolbar"') < html.index('map-canvas')
 

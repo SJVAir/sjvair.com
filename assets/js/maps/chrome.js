@@ -133,7 +133,7 @@
   }
 
   // What a menu focuses on open: its search box; else, for a panel of
-  // controls (the Options dialog), its first control -- the checked one of a
+  // controls (the Options or Tweaks dialog), its first control -- the checked one of a
   // radio group -- not the last select a query for "select" would find; a
   // menu of plain links takes no focus (the reader arrows or tabs in).
   function firstControl(menu) {
