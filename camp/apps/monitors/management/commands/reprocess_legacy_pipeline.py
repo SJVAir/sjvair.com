@@ -22,7 +22,7 @@ class Command(BaseCommand):
         parser.add_argument('--force', action='store_true',
             help='Replace an existing running/paused job instead of refusing to start a new one')
         parser.add_argument('--chunk-days', dest='chunk_days', type=int, default=1,
-            help='Days per chunk (default: 7)')
+            help='Days per chunk (default: 1)')
 
     def handle(self, *args, **options):
         action = options['action']
