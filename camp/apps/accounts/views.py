@@ -3,15 +3,22 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.tokens import default_token_generator as token_generator
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
+from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import redirect
 from django.urls import reverse_lazy
+from django.utils.decorators import method_decorator
 from django.utils.http import urlsafe_base64_decode
+from django.views import View
+from django.views.decorators.csrf import csrf_exempt
 
 import vanilla
 
+from twilio.twiml.messaging_response import MessagingResponse
+
+from camp.utils.twilio_signature import is_valid_twilio_request
 from camp.utils.views import RedirectViewMixin
 
-from . import forms
+from . import forms, sms_keywords
 from .models import User
 
 
@@ -52,9 +59,6 @@ class ProfileView(LoginRequiredMixin, vanilla.UpdateView):
 
     def form_valid(self, form):
         self.phone_changed = self.object.tracker.has_changed('phone')
-        if self.phone_changed:
-            self.object.phone_verified = False
-        
         return super().form_valid(form)
 
     def get_success_url(self):
@@ -164,3 +168,31 @@ class PasswordResetConfirm(vanilla.FormView):
         return super().form_valid(form)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
+class TwilioInboundSMS(View):
+    '''
+    Twilio forwards every text sent to our number here. Opt-out keywords
+    mark the phone unverified; START clears a Twilio-enforced block.
+    '''
+    def post(self, request, *args, **kwargs):
+        if not is_valid_twilio_request(request):
+            return HttpResponseForbidden()
+
+        reply = MessagingResponse()
+        kind = sms_keywords.classify(request.POST.get('Body', ''))
+        sender = request.POST.get('From', '')
+        user = User.objects.filter(phone=sender).first() if (kind and sender) else None
+
+        if user is not None:
+            if kind == sms_keywords.TWILIO_OPT_OUT_KIND:
+                # Twilio sends its own confirmation for these.
+                user.opt_out_of_sms(blocked=True)
+            elif kind == sms_keywords.OPT_OUT_KIND:
+                user.opt_out_of_sms(blocked=False)
+                reply.message(sms_keywords.get_opt_out_reply(user.language))
+            elif kind == sms_keywords.TWILIO_OPT_IN_KIND:
+                user.clear_sms_block()
+                if not user.phone_verified:
+                    reply.message(sms_keywords.get_opt_in_reply(user.language))
+
+        return HttpResponse(str(reply), content_type='text/xml')

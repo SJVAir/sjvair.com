@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.urls import path, reverse_lazy
 from django.views.generic import RedirectView
 
-from .models import Subscription, Alert
+from .models import Subscription, Alert, AlertUpdate, Notification
 
 
 class SubscriptionInline(admin.TabularInline):
@@ -14,8 +14,9 @@ class SubscriptionInline(admin.TabularInline):
 
 @admin.register(Subscription)
 class SubscriptionAdmin(admin.ModelAdmin):
-    list_display = ['user', 'monitor', 'level']
+    list_display = ['user', 'monitor', 'level', 'last_notified_level', 'last_notified_at']
     list_filter = ['level', 'monitor__county']
+    list_select_related = ['user', 'monitor']
 
     def get_urls(self):
         return [
@@ -37,3 +38,20 @@ class AlertAdmin(admin.ModelAdmin):
 
     def county(self, instance):
         return instance.monitor.county
+
+
+@admin.register(AlertUpdate)
+class AlertUpdateAdmin(admin.ModelAdmin):
+    list_display = ['alert', 'timestamp', 'level']
+    list_filter = ['level']
+    list_select_related = ['alert']
+    raw_id_fields = ['alert']
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = ['user', 'kind', 'level', 'status', 'created', 'sent_at']
+    list_filter = ['status', 'kind']
+    list_select_related = ['user']
+    raw_id_fields = ['alert_update', 'subscription', 'user']
+    readonly_fields = ['created', 'modified']

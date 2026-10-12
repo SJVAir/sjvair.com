@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.contrib.auth.models import AnonymousUser
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
@@ -111,6 +113,37 @@ class EndpointTests(TestCase):
             monitor_id=self.monitor.pk,
             level=PM25.Levels.HAZARDOUS.key,
         ).exists()
+
+    def test_resubscribe_keeps_notification_state(self):
+        subscription = Subscription.objects.create(
+            user=self.user,
+            monitor=self.monitor,
+            level=PM25.Levels.UNHEALTHY.key,
+            last_notified_level=PM25.Levels.UNHEALTHY.key,
+        )
+
+        url = reverse('api:v2:monitors:alerts:subscribe', kwargs={
+            'monitor_id': self.monitor.pk
+        })
+        request = self.factory.post(url, {'level': PM25.Levels.HAZARDOUS.key})
+        request.monitor = self.monitor
+        request.user = self.user
+
+        # A tick texts the subscriber after the endpoint loaded its copy.
+        original_get_object = endpoints.Subscribe.get_object
+
+        def stale_get_object(view):
+            obj = original_get_object(view)
+            Subscription.objects.filter(pk=subscription.pk).update(last_notified_level='hazardous')
+            return obj
+
+        with patch.object(endpoints.Subscribe, 'get_object', stale_get_object):
+            response = subscribe(request, monitor_id=self.monitor.pk)
+
+        assert response.status_code == 200
+        subscription.refresh_from_db()
+        assert subscription.level == PM25.Levels.HAZARDOUS.key
+        assert subscription.last_notified_level == 'hazardous'
 
     def test_unsubscribe(self):
         '''

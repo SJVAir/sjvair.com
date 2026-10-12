@@ -27,6 +27,9 @@ jobs:
           PURPLEAIR_READ_KEY=ci-test-purpleair-read-key
           PURPLEAIR_WRITE_KEY=ci-test-purpleair-write-key
           PURPLEAIR_GROUP_ID=1400
+          TWILIO_ACCOUNT_SID=ci-test-twilio-account-sid
+          TWILIO_AUTH_TOKEN=ci-test-twilio-auth-token
+          TWILIO_PHONE_NUMBERS=+15555550100
           EOF
 
       - name: Build test image

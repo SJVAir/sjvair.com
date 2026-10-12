@@ -1,14 +1,11 @@
-from datetime import timedelta
-
-from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import Avg
 from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import gettext as _
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
+from django_sqids import SqidsField, shuffle_alphabet
 from model_utils import Choices
 from model_utils.models import TimeStampedModel
 
@@ -44,6 +41,12 @@ class Subscription(TimeStampedModel):
 
     level = models.CharField(max_length=25, choices=AQLevel.choices)
 
+    # Notification state (see notifications.get_alert_level). A blank
+    # last_notified_level means the subscription is re-armed.
+    last_notified_level = models.CharField(_('Last notified level'), max_length=25, blank=True)
+    last_notified_at = models.DateTimeField(_('Last notified at'), null=True, blank=True)
+    below_threshold_since = models.DateTimeField(_('Below threshold since'), null=True, blank=True)
+
     class Meta:
         constraints = [
             models.UniqueConstraint(
@@ -61,15 +64,18 @@ class Subscription(TimeStampedModel):
         super().clean()
         self.level = self.level.lower()
 
+    def get_threshold(self):
+        # No alert record exists below Moderate, so a 'good' subscription
+        # behaves as 'moderate'.
+        return max(AQLevel.scale[self.level.upper()], AQLevel.scale.MODERATE, key=lambda level: level.rank)
+
+    def get_last_notified_level(self):
+        if self.last_notified_level:
+            return AQLevel.scale[self.last_notified_level.upper()]
+
 
 class Alert(TimeStampedModel):
-    id = SmallUUIDField(
-        default=uuid_default(),
-        primary_key=True,
-        db_index=True,
-        editable=False,
-        verbose_name='ID'
-    )
+    sqid = SqidsField(alphabet=shuffle_alphabet('alerts.Alert'))
 
     monitor = models.ForeignKey('monitors.Monitor', related_name='alerts', on_delete=models.CASCADE)
     entry_type = EntryTypeField()
@@ -87,6 +93,13 @@ class Alert(TimeStampedModel):
 
     class Meta:
         ordering = ['-start_time']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['monitor', 'entry_type'],
+                condition=models.Q(end_time__isnull=True),
+                name='one_open_alert_per_monitor_entry_type',
+            ),
+        ]
 
     def __str__(self):
         return f'Alert for {self.monitor_id} ({self.entry_type}) @ {self.start_time}'
@@ -95,52 +108,17 @@ class Alert(TimeStampedModel):
     def entry_model(self):
         return EntryTypeField.get_model_map().get(self.entry_type)
 
-    def get_average(self, hours=1):
-        end_time = timezone.now()
-        start_time = end_time - timedelta(hours=hours)
-        return (self.monitor.entries
-            .filter(timestamp__range=(start_time, end_time))
-            .aggregate(average=Avg('pm25'))['average']
-        )
-
-    def create_update(self, level, **kwargs):
-        update = AlertUpdate.objects.create(
+    def create_update(self, level, timestamp=None):
+        return AlertUpdate.objects.create(
             alert_id=self.pk,
             level=level.key,
-            **kwargs,
+            timestamp=timestamp or timezone.now(),
         )
-        self.send_notifications(update.get_level())
-        return update
-
-    def send_notifications(self, level):
-        # If SMS alerts are disbaled, do nothing.
-        if not settings.SEND_SMS_ALERTS:
-            return
-
-        icon = '✅' if level == AQLevel.scale.GOOD else '⚠️'
-        message = '\n'.join([
-            _('{icon} Air Quality Alert for {name} in {county} County').format(
-                icon=icon,
-                name=self.monitor.name,
-                county=self.monitor.county,
-            ),
-            f'{self.entry_model.label}: {level.label}',
-            f'{level.guidance}\n' or '',
-            f'🔗 https://sjvair.com{self.monitor.get_absolute_url()}',
-        ])
-
-        queryset = (Subscription.objects
-            .filter(monitor_id=self.monitor.pk)
-            .select_related('user')
-        )
-
-        for sub in queryset:
-            sub_level = AQLevel.scale[sub.level.upper()]
-            if level >= sub_level:
-                sub.user.send_sms(message)
 
 
 class AlertUpdate(TimeStampedModel):
+    sqid = SqidsField(alphabet=shuffle_alphabet('alerts.AlertUpdate'))
+
     alert = models.ForeignKey('alerts.Alert', related_name='updates', on_delete=models.CASCADE)
     timestamp = models.DateTimeField(default=timezone.now)
     level = models.CharField(max_length=25)
@@ -167,3 +145,47 @@ class AlertUpdate(TimeStampedModel):
         if not self.alert.latest or self.alert.latest.timestamp < self.timestamp:
             self.alert.latest_id = self.pk
             self.alert.save(update_fields=['latest_id'])
+
+
+class Notification(TimeStampedModel):
+    class Status(models.TextChoices):
+        QUEUED = 'queued', _('Queued')
+        SENT = 'sent', _('Sent')
+        DELIVERED = 'delivered', _('Delivered')
+        UNDELIVERED = 'undelivered', _('Undelivered')
+        FAILED = 'failed', _('Failed')
+
+    class Kind(models.TextChoices):
+        ALERT = 'alert', _('Alert')
+        REMINDER = 'reminder', _('Reminder')
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('alerts.Notification'))
+
+    alert_update = models.ForeignKey('alerts.AlertUpdate', related_name='notifications', on_delete=models.CASCADE)
+    subscription = models.ForeignKey('alerts.Subscription', null=True, blank=True, related_name='notifications', on_delete=models.SET_NULL)
+    user = models.ForeignKey('accounts.User', related_name='notifications', on_delete=models.CASCADE)
+
+    kind = models.CharField(_('Kind'), max_length=10, choices=Kind.choices, default=Kind.ALERT)
+    level = models.CharField(_('Level'), max_length=25, blank=True)
+
+    status = models.CharField(max_length=11, choices=Status.choices, default=Status.QUEUED)
+    message = models.TextField()
+    provider_id = models.CharField(max_length=64, blank=True)
+    error = models.TextField(blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created']
+        indexes = [
+            # The status callback looks rows up by Twilio's sid.
+            models.Index(
+                fields=['provider_id'],
+                condition=~models.Q(provider_id=''),
+                name='notification_provider_id_idx',
+            ),
+            # The per-day cap counts a subscription's recent notifications.
+            models.Index(fields=['subscription', 'created'], name='notification_sub_created_idx'),
+        ]
+
+    def __str__(self):
+        return f'Notification for {self.user_id} @ {self.status}'
