@@ -11,7 +11,7 @@ User = get_user_model()
 
 @override_settings(BETA_TOOLS_GATE=True)
 class BetaToolsGateTests(TestCase):
-    """The data tools under /tools/ are for the `beta_tools` flag only (migration pesticides/0020)."""
+    """The data tools under /tools/ are for the `beta_tools` flag only (migration pesticides/0002)."""
     fixtures = ['pesticides-explorer']
 
     def setUp(self):

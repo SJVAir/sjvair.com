@@ -85,8 +85,8 @@ COUNTY_METRICS = {
     'lbs': 'lbs',
     'lbs_per_sqmi': 'lbs per sq mi',
     'lbs_per_used_sqmi': 'lbs per sq mi with use',
-    'acres': 'acre-treatments',
     'applications': 'applications',
+    'acres': 'acre-treatments',
 }
 # What the by-county table's one data column is headed and titled for each
 # metric. The table shows a single column -- the one the map is shaded by --
@@ -96,8 +96,10 @@ COUNTY_METRIC_COLUMNS = {
     'lbs': ('Pounds applied', 'Pounds of active ingredient applied'),
     'lbs_per_sqmi': ('Pounds per square mile', 'Over the whole county, including the ground nobody farms'),
     'lbs_per_used_sqmi': ('Pounds per square mile with use', 'Over only the square miles that reported any use'),
-    'acres': ('Acre-treatments', 'One acre treated once: a field sprayed twice counts twice, so this runs well past the ground a county has'),
     'applications': ('Applications', 'Applications reported'),
+    # Last: it counts field applications only (reports in cubic feet, pounds
+    # or bait stations have no acreage) and reads as land when it isn't.
+    'acres': ('Acre-treatments', 'One acre treated once, field applications only: a field sprayed twice counts twice, so this runs well past the ground a county has'),
 }
 
 
@@ -128,8 +130,8 @@ RATE_DENOMINATORS = {'lbs_per_sqmi': 'area', 'lbs_per_used_sqmi': 'used'}
 def county_metric(value, hide_lbs=False):
     """A `?rank=` value narrowed to a known metric (pounds by default)."""
     if hide_lbs:
-        # Nothing to rank by pounds, so acres leads instead.
-        return value if value in COUNTY_METRICS and value not in LBS_METRICS else 'acres'
+        # Nothing to rank by pounds, so applications lead instead.
+        return value if value in COUNTY_METRICS and value not in LBS_METRICS else 'applications'
     return value if value in COUNTY_METRICS else 'lbs'
 
 

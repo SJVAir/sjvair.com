@@ -29,7 +29,7 @@ def delete_flag(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('pesticides', '0019_amount_treated_generated_acres'),
+        ('pesticides', '0001_initial'),
         ('auth', '0012_alter_user_first_name_max_length'),
         ('waffle', '0004_update_everyone_nullbooleanfield'),
     ]

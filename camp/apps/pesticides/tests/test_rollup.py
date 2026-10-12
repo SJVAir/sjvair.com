@@ -1,4 +1,3 @@
-import importlib
 from unittest import mock
 
 import pytest
@@ -146,12 +145,6 @@ class RebuildTests(TestCase):
         assert calls == ['classify', 2023, 2022]
         assert 'Fumigants: 1 chemicals, 1,234 products (0 not flagged by CDPR)' in out.getvalue()
         assert out.getvalue().index('Fumigants:') < out.getvalue().index('2023:')
-
-    def test_migration_backfills_is_fumigant_from_the_cdpr_flag(self):
-        migration = importlib.import_module('camp.apps.pesticides.migrations.0013_product_is_fumigant').Migration
-        sql = [op.sql for op in migration.operations if op.__class__.__name__ == 'RunSQL']
-        assert sql == ['UPDATE pesticides_product SET is_fumigant = fumigant']
-        assert Product._meta.db_table == 'pesticides_product'
 
     def test_fumigants_only_command_skips_the_rollup(self):
         from camp.apps.pesticides.tests.test_fumigants import add_use, make_telone_products

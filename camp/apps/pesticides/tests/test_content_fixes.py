@@ -94,11 +94,18 @@ class PlaceContentTests(RollupTestMixin, TestCase):
 
     # M23 -----------------------------------------------------------------
 
-    def test_acre_treatments_is_the_one_term(self):
+    def test_acreage_is_out_of_the_headline_stats(self):
+        # Acre-treatments count field applications only and read as land, so
+        # the headline stats are pounds and applications; acreage stays in
+        # the detail tables (by year, by county, the records' own column).
         html = self.client.get(self.fresno.get_pesticides_tab_url('records'), {'year': 2023}).content.decode()
-        assert 'Acre-treatments' in html and 'Acres treated' not in html
+        assert '<p class="heading">Acre-treatments</p>' not in html and 'Acres treated' not in html
+        overview = self.client.get(self.fresno.get_pesticides_tab_url('overview'), {'year': 2023})
+        assert overview.status_code == 200
+        assert '<p class="heading">Applications</p>' in overview.content.decode()
+        assert 'acre-treatments</p>' not in overview.content.decode()
         summary = self.client.get(reverse('pesticides:records'), {'year': 2023}).context['summary_sentence']
-        assert 'acre-treatments' in summary and 'acres treated' not in summary
+        assert 'acre' not in summary
 
     # L7 / M13 ------------------------------------------------------------
 
