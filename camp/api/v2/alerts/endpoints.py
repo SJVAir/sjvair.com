@@ -39,6 +39,17 @@ class Subscribe(generics.UpdateEndpoint):
                 monitor=self.request.monitor
             )
 
+    def form_valid(self, form):
+        # Write only `level` on an existing subscription: a full save would
+        # overwrite notification state a concurrent alert run just updated.
+        subscription = form.save(commit=False)
+        if subscription._state.adding:
+            subscription.save()
+        else:
+            subscription.save(update_fields=['level', 'modified'])
+        self.object = subscription
+        return {'data': self.serialize(subscription)}
+
     def post(self, request, monitor_id):
         return self.put(request, monitor_id)
 
