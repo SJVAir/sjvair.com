@@ -2,7 +2,7 @@ from django.conf import settings
 from waffle import flag_is_active
 
 # The waffle flag (and the group it includes) that data migration
-# pesticides/0020_beta_tools_flag creates. See settings.BETA_TOOLS_GATE.
+# pesticides/0002_beta_tools_flag creates. See settings.BETA_TOOLS_GATE.
 BETA_TOOLS_FLAG = 'beta_tools'
 BETA_TESTERS_GROUP = 'Beta testers'
 BETA_TOOLS_PREFIX = '/tools/'
