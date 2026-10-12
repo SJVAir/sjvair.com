@@ -82,7 +82,12 @@ class PesticideUseSerializer(serializers.Serializer):
         'use_no',
         'comtrs',
         'lbs_chemical',
+        # Acreage (null when CDPR's unit isn't an area), then CDPR's amount
+        # as reported in its unit (A acres, S sq ft, C cu ft, K thousand cu
+        # ft, P lbs, T tons, U misc.).
         'acres_treated',
+        'amount_treated',
+        'unit_treated',
         'application_date',
         'aerial_ground',
         ('county', PesticideRegionSerializer),

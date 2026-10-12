@@ -31,7 +31,7 @@ class RecordsTotalsFromRollupTests(RollupTestMixin, TestCase):
     def setUpTestData(cls):
         super().setUpTestData()  # loads the fixture
         fresno, kern = Region.objects.get(pk=9001), Region.objects.get(pk=9002)
-        base = dict(year=2023, county=fresno, mtrs_id=9101, product_id=1, commodity_id=1, acres_treated=12, aerial_ground='G')
+        base = dict(year=2023, county=fresno, mtrs_id=9101, product_id=1, commodity_id=1, amount_treated=12, unit_treated='A', aerial_ground='G')
         # One report with three ingredients (two chemicals of concern and a
         # plain one): three rows, one record, acres repeated on every row.
         for chemical_id, lbs in ((1, 10), (3, 20), (2, 30)):
@@ -43,17 +43,27 @@ class RecordsTotalsFromRollupTests(RollupTestMixin, TestCase):
         for chemical_id, lbs in ((1, 5), (2, 7)):
             PesticideUse.objects.create(
                 use_no=51, chemical_id=chemical_id, lbs_chemical=lbs, lbs_product=12,
-                application_date='2023-10-01', **{**base, 'product_id': 2, 'commodity_id': 3, 'acres_treated': 3},
+                application_date='2023-10-01', **{**base, 'product_id': 2, 'commodity_id': 3, 'amount_treated': 3},
             )
         # No application date: no date range holds it, the rollup's month 0.
         PesticideUse.objects.create(
             use_no=52, chemical_id=1, lbs_chemical=99, lbs_product=99, application_date=None,
-            **{**base, 'acres_treated': 9},
+            **{**base, 'amount_treated': 9},
         )
         # No chemical, section, product or commodity, and no method reported.
         PesticideUse.objects.create(
             year=2023, use_no=53, county=kern, mtrs=None, product=None, chemical=None, commodity=None,
-            lbs_chemical=None, lbs_product=None, acres_treated=None, application_date='2023-02-01', aerial_ground='',
+            lbs_chemical=None, lbs_product=None, amount_treated=None, application_date='2023-02-01', aerial_ground='',
+        )
+        # Units that aren't acres: square feet convert (87,120 sq ft = 2
+        # acres); cubic feet aren't an area, so count no acreage.
+        PesticideUse.objects.create(
+            use_no=54, chemical_id=1, lbs_chemical=4, lbs_product=4, application_date='2023-11-01',
+            **{**base, 'amount_treated': 87120, 'unit_treated': 'S'},
+        )
+        PesticideUse.objects.create(
+            use_no=55, chemical_id=1, lbs_chemical=241, lbs_product=241, application_date='2023-11-02',
+            **{**base, 'amount_treated': 999908, 'unit_treated': 'C'},
         )
         # A place that holds the Fresno section.
         city = Region.objects.create(name='Fresnoville', slug='fresnoville', type=Region.Type.CITY, external_id='c-9')
@@ -187,3 +197,41 @@ class RecordsTotalsFromRollupTests(RollupTestMixin, TestCase):
         fresno = browser({'county': 'fresno'}).get_totals()
         kern = browser({'county': 'kern'}).get_totals()
         assert valley['applications'] > fresno['applications'] > kern['applications']
+
+
+class RecordsAcreageUnitsTests(RollupTestMixin, TestCase):
+    """CDPR's acre_treated is in whatever unit unit_treated names; only areas count as acres."""
+    fixtures = ['pesticides-explorer']
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        base = dict(year=2023, county_id=9001, mtrs_id=9101, product_id=1, commodity_id=1, chemical_id=1,
+                    lbs_chemical=1, lbs_product=1, application_date='2023-11-01', aerial_ground='G')
+        PesticideUse.objects.create(use_no=60, amount_treated=87120, unit_treated='S', **base)
+        PesticideUse.objects.create(use_no=61, amount_treated=999908, unit_treated='C', **base)
+        # The records page counts its pages off the rollup: rebuild with these rows in.
+        from camp.apps.pesticides import rollup
+        rollup.rebuild_all()
+
+    def setUp(self):
+        super().setUp()
+        cache.clear()
+
+    def test_acres_are_generated_from_area_units_only(self):
+        assert PesticideUse.objects.get(use_no=60).acres_treated == 2.0
+        assert PesticideUse.objects.get(use_no=61).acres_treated is None
+        assert PesticideUse.objects.get(use_no=61).unit_treated_label == 'cu ft'
+
+    def test_sorting_by_acres_uses_acres(self):
+        # Raw values would put the 999,908 cubic feet first.
+        view = browser({'sort': '-acres', 'year': 2023})
+        rows = list(view.get_queryset())
+        assert rows[0].use_no != 61
+        assert rows[-1].use_no == 61
+
+    def test_table_shows_a_non_area_measure_in_its_own_unit(self):
+        response = self.client.get(reverse('pesticides:records'), {'year': 2023, 'sort': '-acres'})
+        content = response.content.decode()
+        assert 'cu ft</span>' in content
+        assert 'title="Not an area: CDPR records this application in cu ft"' in content

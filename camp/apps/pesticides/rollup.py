@@ -33,6 +33,8 @@ REBUILD_SQL = """
 -- rebuild time, so when the lists change (import_prop65, import_carbtac,
 -- import_comptox hazard, import_restricted_materials) narrowed application
 -- counts are exact again after the next full rollup rebuild.
+-- `acres_treated` is the acreage Postgres generates from CDPR's amount and
+-- unit (models.acres_from): NULL for amounts that aren't areas, which SUM skips.
 WITH uses AS (
     SELECT *,
         row_number() OVER (

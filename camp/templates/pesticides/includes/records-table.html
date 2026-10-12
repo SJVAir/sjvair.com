@@ -38,7 +38,8 @@
                     {% else %}—{% endif %}
                 </td>
                 <td class="has-text-right"{% if use.lbs_chemical is not None %} data-unit="lbs"{% endif %}>{{ use.lbs_chemical|lbs }}</td>
-                <td class="has-text-right"{% if use.acres_treated is not None %} data-unit="acres"{% endif %}>{{ use.acres_treated|lbs }}</td>
+                {# CDPR's area in acres; a record measured in another unit (fumigated cubic feet, pounds of harvest, bait stations) shows that measure instead. #}
+                <td class="has-text-right"{% if use.acres_treated is not None %} data-unit="acres">{{ use.acres_treated|lbs }}{% elif use.amount_treated is not None %}><span class="has-text-grey" title="Not an area: CDPR records this application in {{ use.unit_treated_label }}">{{ use.amount_treated|lbs }} {{ use.unit_treated_label }}</span>{% else %}>—{% endif %}</td>
                 <td>{% if use.fume_method %}<span title="{{ use.fume_method.name }}">{{ use.aerial_ground|method_label }} — {{ use.fume_method.short_name }}</span>{% else %}{{ use.aerial_ground|method_label }}{% endif %}</td>
             </tr>
             {% empty %}

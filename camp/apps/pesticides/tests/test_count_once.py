@@ -36,7 +36,7 @@ class CountEachRecordOnceTests(RollupTestMixin, TestCase):
             PesticideUse.objects.create(
                 year=2023, use_no=900, county_id=9001, mtrs_id=9101, product=self.product,
                 chemical=chemical, commodity=self.commodity, lbs_chemical=lbs, lbs_product=100,
-                acres_treated=10, application_date='2023-07-05', aerial_ground='G',
+                amount_treated=10, unit_treated='A', application_date='2023-07-05', aerial_ground='G',
             )
         rollup.rebuild_year(2023)
         cache.clear()
@@ -265,7 +265,7 @@ class NarrowedCountOnceTests(RollupTestMixin, TestCase):
         for chemical, lbs in ((flagged, 20), (low, 30)):
             PesticideUse.objects.create(
                 year=2023, use_no=prodno, county_id=9001, mtrs_id=9101, product=product,
-                chemical=chemical, lbs_chemical=lbs, lbs_product=100, acres_treated=10,
+                chemical=chemical, lbs_chemical=lbs, lbs_product=100, amount_treated=10, unit_treated='A',
                 application_date='2023-07-05', aerial_ground='G',
             )
         rollup.rebuild_year(2023)

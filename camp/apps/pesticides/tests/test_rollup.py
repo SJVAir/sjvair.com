@@ -69,11 +69,32 @@ class RebuildTests(TestCase):
         use.use_no = 99
         use.lbs_chemical = 5
         use.lbs_product = 7
-        use.acres_treated = 1
+        use.amount_treated = 1
         use.save()   # same year, month, county, section, chemical, product, commodity as pk 1
         rollup.rebuild_year(2023)
         row = PesticideUseRollup.objects.get(year=2023, chemical_id=1, commodity_id=1, county_id=9001, month=3)
         assert (row.lbs_chemical, row.lbs_product, row.acres_treated, row.applications) == (105.0, 257.0, 11.0, 2)
+
+    def test_acres_count_area_units_only(self):
+        # Same key as pk 1 (10 acres): square feet convert to acres; cubic
+        # feet, thousand cubic feet, pounds, tons, misc. units and invalid
+        # codes aren't areas and count no acreage, though their pounds do.
+        use = PesticideUse.objects.get(pk=1)
+        for use_no, (amount, unit) in enumerate([
+            (87120, 'S'), (999908, 'C'), (773102, 'K'), (999999, 'P'),
+            (650692, 'T'), (40, 'U'), (5000, '?'), (None, ''),
+        ], start=100):
+            use.pk = None
+            use.use_no = use_no
+            use.amount_treated = amount
+            use.unit_treated = unit
+            use.save()
+        rollup.rebuild_year(2023)
+        row = PesticideUseRollup.objects.get(year=2023, chemical_id=1, commodity_id=1, county_id=9001, month=3)
+        assert row.acres_treated == pytest.approx(12.0)
+        assert row.acres_once == pytest.approx(12.0)
+        assert row.lbs_chemical == 900.0
+        assert row.applications == 9
 
     def test_rebuild_is_idempotent_and_replaces_the_year(self):
         assert rollup.rebuild_year(2023) == 6
@@ -270,7 +291,7 @@ class OncePerRecordTests(TestCase):
 
     def test_acres_once_per_record(self):
         for use in self.multi + [self.single]:
-            PesticideUse.objects.filter(pk=use.pk).update(acres_treated=10)
+            PesticideUse.objects.filter(pk=use.pk).update(amount_treated=10, unit_treated='A')
         rollup.rebuild_year(2023)
         totals = self.rows().aggregate(once=Sum('acres_once'), per_row=Sum('acres_treated'))
         assert totals == {'once': 20.0, 'per_row': 30.0}
