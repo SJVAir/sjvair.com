@@ -1,0 +1,11 @@
+{% load pesticides_explorer %}
+{% comment %}
+A narrowing is on but can't apply to this page: applying it would blank the
+page, so it renders unnarrowed and says so here. `reason` is
+the page's own sentence (see the detail templates' {% block notes %}).
+{% endcomment %}
+<div class="notification is-light placeholder-note">
+    <strong>{{ reason }}</strong>
+    so the {{ narrow_label|lower }} narrowing doesn't apply to this page.
+    <a href="{% qs_replace narrow=None concern=None page=None %}">Show all use</a>.
+</div>

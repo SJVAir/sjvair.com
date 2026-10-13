@@ -1,0 +1,24 @@
+{% load humanize pesticides_explorer %}
+{% if by_fume_method %}
+<div class="method-breakdown fume-breakdown">
+    <h3 class="title is-6 mb-2">How it was fumigated</h3>
+    <div class="table-container">
+    <table class="table is-fullwidth is-narrow is-striped method-table">
+        <thead><tr><th>Technique</th>{% if not hide_lbs %}<th class="has-text-right">Lbs</th>{% endif %}<th class="has-text-right">{% if hide_lbs %}Share of applications{% else %}Share of pounds{% endif %}</th><th class="has-text-right">Applications</th></tr></thead>
+        <tbody>
+        {% for row in by_fume_method %}
+            <tr>
+                <td{% if row.method %} title="{{ row.method.name }}"{% endif %}>
+                    {% if row.method %}{{ row.method.short_name|slash_breaks }}{% if row.method.citation %}<br><span class="is-size-7 has-text-grey">{{ row.method.citation }}</span>{% endif %}{% else %}{{ row.label }}{% endif %}
+                </td>
+                {% if not hide_lbs %}<td class="has-text-right">{{ row.lbs|lbs }}</td>{% endif %}
+                <td class="has-text-right">{% if hide_lbs %}{{ row.app_share|percent }}{% else %}{{ row.share|percent }}{% endif %}</td>
+                <td class="has-text-right">{{ row.applications|default:0|intcomma }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    <p class="is-size-7 has-text-grey">CDPR has required the fumigation method in the San Joaquin Valley since 2008; the number under each cites the regulation (3 CCR) that governs it.</p>
+</div>
+{% endif %}

@@ -53,6 +53,52 @@ def fill_holes(geometry: GEOSGeometry) -> GEOSMultiPolygon:
     return filled
 
 
+# About a metre in degrees at the Valley's latitude.
+GAP_TOLERANCE = 1e-5
+
+
+def close_gaps(geometry: GEOSGeometry, tolerance=GAP_TOLERANCE) -> GEOSGeometry:
+    """
+    A MultiPolygon whose parts sit a hairline apart (a source's digitizing
+    seam: Caltrans' Tulare urban area has an 8.8-acre piece 10 cm off the
+    rest) with those gaps closed, so the parts become one shape and an
+    outline doesn't trace each part's edge side by side. Grown and shrunk
+    back by `tolerance` with mitred joins, so corners stay corners. A
+    geometry with no parts that close comes back as it was.
+    """
+    if geometry.geom_type != 'MultiPolygon' or len(geometry) < 2:
+        return geometry
+    parts = list(geometry)
+    near = any(
+        parts[i].distance(parts[j]) < tolerance
+        for i in range(len(parts)) for j in range(i + 1, len(parts))
+    )
+    if not near:
+        return geometry
+    mitre = 2
+    closed = to_multipolygon(geometry.buffer_with_style(tolerance, join_style=mitre).buffer_with_style(-tolerance, join_style=mitre))
+    # to_multipolygon rebuilds from WKT, which drops the SRID.
+    closed.srid = geometry.srid
+    return closed
+
+
 def has_holes(geometry: GEOSGeometry) -> bool:
     polygons = [geometry] if geometry.geom_type == 'Polygon' else list(geometry)
     return any(polygon.num_interior_rings for polygon in polygons)
+
+
+def _round(value, precision):
+    if isinstance(value, (int, float)):
+        return round(value, precision)
+    return [_round(item, precision) for item in value]
+
+
+def round_coords(geometry, precision=5):
+    """
+    Round a GeoJSON geometry dict's coordinates in place (and return it).
+    Five places is about a meter: plenty for a map outline, and it keeps
+    payloads a fraction of full precision.
+    """
+    if geometry and geometry.get('coordinates') is not None:
+        geometry['coordinates'] = _round(geometry['coordinates'], precision)
+    return geometry

@@ -1,0 +1,6 @@
+{% comment %}
+A schools table's name cell: the school's name, then "type · run-by" under it, the
+run-by linked to its district's page where it has one. Shared by the explorers'
+Schools tabs. Takes `row` (a schools row: display_name, type_label, run_by_name,
+run_by_url) and `scope_qs` (appended to the district link).
+{% endcomment %}{{ row.display_name }}<span class="school-kind">{{ row.type_label }}{% if row.run_by_name %} · {% if row.run_by_url %}<a href="{{ row.run_by_url }}{{ scope_qs }}">{{ row.run_by_name }}</a>{% else %}{{ row.run_by_name }}{% endif %}{% endif %}</span>

@@ -1,0 +1,17 @@
+{% load pesticides_explorer %}
+{% if chemical.is_prop65 %}
+    {% health_note 'prop65' as prop65_note %}
+    <a class="tag has-tooltip-multiline has-tooltip-arrow is-danger is-light" href="{% url 'pesticides:about' %}#prop65" data-tooltip="{{ prop65_note.summary }}">Prop 65</a>
+{% endif %}
+{% if chemical.is_tac %}
+    {% health_note 'carb_tac' as carb_tac_note %}
+    <a class="tag has-tooltip-multiline has-tooltip-arrow is-warning is-light" href="{% url 'pesticides:about' %}#tac" data-tooltip="{{ carb_tac_note.summary }}">CARB TAC</a>
+{% endif %}
+{% if chemical.iarc_group and not hide_iarc %}
+    {% iarc_note chemical as iarc_note %}
+    <a class="tag has-tooltip-multiline has-tooltip-arrow {% if chemical.is_iarc_concern %}is-danger{% else %}is-light{% endif %}" href="{% url 'pesticides:about' %}#iarc" data-tooltip="{{ iarc_note.summary }}">IARC {{ chemical.iarc_group }}</a>
+{% endif %}
+{% if chemical.is_california_restricted %}
+    {% health_note 'california_restricted' as restricted_note %}
+    <a class="tag has-tooltip-multiline has-tooltip-arrow is-warning is-light" href="{% url 'pesticides:about' %}#restricted" data-tooltip="{{ restricted_note.summary }}">Restricted</a>
+{% endif %}

@@ -6,9 +6,16 @@
         "heroku-postbuild": "invoke build"
     },
     "dependencies": {
+        "@creativebulma/bulma-tooltip": "^1.2.0",
+        "@maptiler/sdk": "^4.1.0",
         "@sjvair/web-widget": "^2.0.1",
         "bulma": "^0.9.4",
-        "bulma-list": "^1.2.0"
+        "bulma-list": "^1.2.0",
+        "htmx.org": "^2.0.4",
+        "uplot": "^1.6.32"
     },
-    "packageManager": "yarn@1.22.22"
+    "packageManager": "yarn@1.22.22",
+    "devDependencies": {
+        "esbuild": "^0.28.2"
+    }
 }

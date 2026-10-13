@@ -1,0 +1,231 @@
+# California restricted materials — 3 CCR 6400(e).
+#
+# The regulation names active ingredients; CDPR's PUR chemical table names
+# them differently and splits several into their salts and esters, so each
+# entry lists the PUR chemical names it covers. Every name below was
+# verified to exist in the imported chemical table.
+#
+# Source: California Code of Regulations, Title 3, section 6400(e).
+# CDPR publishes no machine-readable list (its restricted materials page
+# links no file), which is why this is curated here rather than imported.
+entries:
+  - regulation: "1,3-Dichloropropene"
+    chemicals:
+      - "1,3-DICHLOROPROPENE"
+  - regulation: "2,4-dichlorophenoxyacetic acid (2,4-D)"
+    chemicals:
+      - "2,4-D"
+      - "2,4-D, 2-ETHYLHEXYL ESTER"
+      - "2,4-D, ALKANOLAMINE SALTS (ETHANOL AND ISOPROPANOL AMINES)"
+      - "2,4-D, BUTOXY ETHOXY PROPANOL ESTER"
+      - "2,4-D, BUTOXYETHANOL ESTER"
+      - "2,4-D, BUTOXYPROPYL ESTER"
+      - "2,4-D, BUTYL ESTER"
+      - "2,4-D, DIETHANOLAMINE SALT"
+      - "2,4-D, DIETHYLAMINE SALT"
+      - "2,4-D, DIMETHYLAMINE SALT"
+      - "2,4-D, DODECYLAMINE SALT"
+      - "2,4-D, HEPTYLAMINE SALT"
+      - "2,4-D, ISOOCTYL ESTER"
+      - "2,4-D, ISOPROPYL ESTER"
+      - "2,4-D, ISOPROPYLAMINE SALT"
+      - "2,4-D, LITHIUM SALT"
+      - "2,4-D, METHYL ESTER"
+      - "2,4-D, MORPHOLINE SALT"
+      - "2,4-D, N,N-DIMETHYL OLEYL-LINOLEYLAMINE SALT"
+      - "2,4-D, N-OLEYL-1,3-PROPYLENEDIAMINE SALT"
+      - "2,4-D, OCTYL ESTER"
+      - "2,4-D, PROPYL ESTER"
+      - "2,4-D, PROPYLENE GLYCOL BUTYL ETHER ESTER"
+      - "2,4-D, SODIUM SALT"
+      - "2,4-D, TETRADECYLAMINE SALT"
+      - "2,4-D, TRIETHANOLAMINE SALT"
+      - "2,4-D, TRIETHYLAMINE SALT"
+      - "2,4-D, TRIISOPROPANOLAMINE SALT"
+      - "2,4-D, TRIISOPROPYLAMINE SALT"
+  - regulation: "2,4-dichlorophenoxybutyric acid (2,4-DB)"
+    chemicals:
+      - "2,4-DB ACID"
+      - "4-(2,4-DB), BUTOXYETHANOL ESTER"
+      - "4-(2,4-DB), DIMETHYLAMINE SALT"
+      - "4-(2,4-DB), ISOOCTYL ESTER"
+  - regulation: "2,4-dichlorophenoxypropionic acid (2,4-DP)"
+    chemicals:
+      - "2,4-DP, 2-ETHYLHEXYL ESTER"
+      - "2,4-DP, DIETHANOLAMINE SALT"
+      - "2,4-DP, ISOOCTYL ESTER"
+      - "2,4-DP, TRIETHANOLAMINE SALT"
+      - "2,4-DP-P, DIMETHYLAMINE SALT"
+      - "2,4-DP-P, ISOOCTYL ESTER"
+      - "2-(2,4-DP), DIMETHYLAMINE SALT"
+  - regulation: "2-methyl-4-chlorophenoxyacetic acid (MCPA)"
+    chemicals:
+      - "MCPA"
+      - "MCPA, 2-ETHYL HEXYL ESTER"
+      - "MCPA, ALKANOLAMINE SALT"
+      - "MCPA, BUTOXYETHANOL ESTER"
+      - "MCPA, DIMETHYLAMINE SALT"
+      - "MCPA, ISOOCTYL ESTER"
+      - "MCPA, SODIUM SALT"
+      - "MCPA, THIOETHYL ESTER"
+  - regulation: "3-Chloro-p-toluidine hydrochloride"
+    chemicals:
+      - "3-CHLORO-P-TOLUIDINE HYDROCHLORIDE"
+  - regulation: "4-Amino pyridine"
+    chemicals:
+      - "4-AMINOPYRIDINE"
+  - regulation: "Acrolein"
+    chemicals:
+      - "ACROLEIN"
+  - regulation: "Aldicarb"
+    chemicals:
+      - "ALDICARB"
+  - regulation: "Aluminum phosphide"
+    chemicals:
+      - "ALUMINUM PHOSPHIDE"
+  - regulation: "Brodifacoum"
+    chemicals:
+      - "BRODIFACOUM"
+  - regulation: "Bromadiolone"
+    chemicals:
+      - "BROMADIOLONE"
+  - regulation: "Calcium cyanide"
+    chemicals:
+      - "CALCIUM CYANIDE"
+  - regulation: "Carbaryl"
+    chemicals:
+      - "CARBARYL"
+  - regulation: "Carbofuran"
+    chemicals:
+      - "CARBOFURAN"
+  - regulation: "Chloropicrin"
+    chemicals:
+      - "CHLOROPICRIN"
+  - regulation: "Chlorpyrifos"
+    chemicals:
+      - "CHLORPYRIFOS"
+  - regulation: "Dazomet"
+    chemicals:
+      - "DAZOMET"
+  - regulation: "Dicamba"
+    chemicals:
+      - "DICAMBA"
+  - regulation: "Difenacoum"
+    chemicals:
+      - "DIFENACOUM"
+  - regulation: "Difethialone"
+    chemicals:
+      - "DIFETHIALONE"
+  - regulation: "Disulfoton"
+    chemicals:
+      - "DISULFOTON"
+  - regulation: "Endosulfan"
+    chemicals:
+      - "ENDOSULFAN"
+  - regulation: "Ethoprop"
+    chemicals:
+      - "ETHOPROP"
+  - regulation: "Fenamiphos"
+    chemicals:
+      - "FENAMIPHOS"
+  - regulation: "Lindane"
+    chemicals:
+      - "LINDANE"
+  - regulation: "Magnesium Phosphide"
+    chemicals:
+      - "MAGNESIUM PHOSPHIDE"
+  - regulation: "Metam sodium"
+    chemicals:
+      - "METAM-SODIUM"
+  - regulation: "Methamidophos"
+    chemicals:
+      - "METHAMIDOPHOS"
+  - regulation: "Methidathion"
+    chemicals:
+      - "METHIDATHION"
+  - regulation: "Methomyl"
+    chemicals:
+      - "METHOMYL"
+  - regulation: "Methyl bromide"
+    chemicals:
+      - "METHYL BROMIDE"
+  - regulation: "Methyl Iodide"
+    chemicals:
+      - "METHYL IODIDE"
+  - regulation: "Methyl isothiocyanate"
+    chemicals:
+      - "METHYL ISOTHIOCYANATE"
+  - regulation: "Mevinphos"
+    chemicals:
+      - "MEVINPHOS"
+  - regulation: "Molinate"
+    chemicals:
+      - "MOLINATE"
+  - regulation: "Oxydemeton-methyl"
+    chemicals:
+      - "OXYDEMETON-METHYL"
+  - regulation: "Paraquat"
+    chemicals:
+      - "PARAQUAT"
+  - regulation: "Parathion-methyl"
+    chemicals:
+      - "METHYL PARATHION"
+      - "METHYL PARATHION, OTHER RELATED"
+  - regulation: "Phorate"
+    chemicals:
+      - "PHORATE"
+  - regulation: "Phosphine Gas"
+    chemicals:
+      - "PHOSPHINE"
+  - regulation: "Potassium N-methyldithiocarbamate"
+    chemicals:
+      - "POTASSIUM N-METHYLDITHIOCARBAMATE"
+  - regulation: "Propanil"
+    chemicals:
+      - "PROPANIL"
+  - regulation: "Sodium cyanide"
+    chemicals:
+      - "SODIUM CYANIDE"
+  - regulation: "Sodium tetrathiocarbonate"
+    chemicals:
+      - "SODIUM TETRATHIOCARBONATE"
+  - regulation: "Strychnine"
+    chemicals:
+      - "STRYCHNINE"
+  - regulation: "Sulfotepp"
+    chemicals:
+      - "SULFOTEP"
+      - "SULFOTEP, OTHER RELATED"
+  - regulation: "Sulfuryl Fluoride"
+    chemicals:
+      - "SULFURYL FLUORIDE"
+  - regulation: "Thiobencarb"
+    chemicals:
+      - "THIOBENCARB"
+  - regulation: "Tribufos (DEF, Folex)"
+    chemicals:
+      - "S,S,S-TRIBUTYL PHOSPHOROTRITHIOATE"
+  - regulation: "Tributyltin compounds"
+    chemicals:
+      - "BIS(TRIBUTYLTIN) ADIPATE"
+      - "BIS(TRIBUTYLTIN) SALICYLATE"
+      - "BIS(TRIBUTYLTIN) SUCCINATE"
+      - "BIS(TRIBUTYLTIN) SULFONE"
+      - "BIS(TRIBUTYLTIN)SULFIDE"
+      - "POLY (METHYLMETHACRYLATE-CO-TRIBUTYLTIN METHACRYLATE)"
+      - "TRIBUTYLTIN ACETATE"
+      - "TRIBUTYLTIN BENZOATE"
+      - "TRIBUTYLTIN CHLORIDE"
+      - "TRIBUTYLTIN CHLORIDE COMPLEX OF ETHYLENE OXIDE CONDENSATE OF ABIETYLAMINE"
+      - "TRIBUTYLTIN CHLORIDE, MYRISTYLAMINE SALT"
+      - "TRIBUTYLTIN FLUORIDE"
+      - "TRIBUTYLTIN ISOPROPYL SUCCINATE"
+      - "TRIBUTYLTIN LINOLEATE"
+      - "TRIBUTYLTIN METHACRYLATE"
+      - "TRIBUTYLTIN MONOPROPYLENE GLYCOL MALEATE"
+      - "TRIBUTYLTIN NEODECANOATE"
+      - "TRIBUTYLTIN OXIDE"
+      - "TRIBUTYLTIN RESINATE"
+  - regulation: "Zinc phosphide"
+    chemicals:
+      - "ZINC PHOSPHIDE"
