@@ -15,6 +15,12 @@
   font-weight: 600;
   margin-bottom: 0.25rem;
 }
+/* "Facilities NOx (tons/yr)": the pollutant after the checkbox's name. */
+.facility-map-legend .legend-title-detail {
+  font-size: 0.85em;
+  font-weight: 400;
+  color: #7a7a7a;
+}
 .facility-map-legend .legend-sizes {
   display: flex;
   align-items: flex-end;

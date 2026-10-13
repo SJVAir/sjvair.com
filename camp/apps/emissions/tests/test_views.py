@@ -258,6 +258,9 @@ class MapTests(ViewTestCase):
         assert 'class="button map-expand"' in content
         assert 'map-legend-panel' in content
         assert 'class="facility-map-legend"' in content
+        # The options dropdown is named as on the pesticides maps.
+        assert '<span class="map-toolbar-label">Tweaks</span>' in content
+        assert 'fa-flask-gear' in content
 
     def test_map_page_has_the_areas_controls(self):
         content = self.get('map', params={'view': 'areas', 'level': 'tract'}).content.decode()

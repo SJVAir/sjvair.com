@@ -114,7 +114,6 @@
   // purple, and the two blurred together.
   var LOCATION_RADIUS = 5;
   var LOCATION_EMPTY_RADIUS = 3;
-  var SCHOOLS_MIN_ZOOM = 9;
   var LOCATION_WELL_COLORS = { Active: '#1e293b', Idle: '#64748b', New: '#cbd5e1' };
   var LOCATION_CLUSTER_COLOR = '#334155';
   var POINT_LAYERS = [
@@ -140,10 +139,6 @@
       prop: 'kind',
       shades: [['public_school', 'Public school', '#166534'], ['private_school', 'Private school', '#22c55e'], ['child_care', 'Child care', '#86efac']],
       note: 'CDE\'s schools and CDSS\'s licensed child care.',
-      // About 12,000 points, dominated by child-care dots, bury the other
-      // layers at Valley zoom; off below this zoom, with a legend hint
-      // instead of a checkbox nobody would find useful yet.
-      minzoom: SCHOOLS_MIN_ZOOM,
     },
   ];
   // The Schools tab's `nearby` dots carry the same `kind` as the locations
@@ -414,10 +409,6 @@
       if (path !== null) detail.path = path;
     };
     document.body.addEventListener('htmx:configRequest', this.onConfigRequest);
-    // The schools point layer's "zoom in to see schools" legend note (below
-    // SCHOOLS_MIN_ZOOM) depends on the current zoom, so the legend needs a
-    // redraw as the reader crosses that threshold either way.
-    this.map.on('zoomend', function () { self.shell.updateLegend(); });
     // For debugging from the console: document.querySelector('.facility-map').facilityMap
     this.el.facilityMap = this;
   }
@@ -543,7 +534,7 @@
       match.push(spec.shades[spec.shades.length - 1][2]);
       this.shell.ensureSource('points-' + spec.key);
       this.shell.ensureLayer({
-        id: 'points-' + spec.key, type: 'circle', source: 'points-' + spec.key, minzoom: spec.minzoom || 0,
+        id: 'points-' + spec.key, type: 'circle', source: 'points-' + spec.key,
         paint: { 'circle-radius': LOCATION_RADIUS, 'circle-color': match, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1 },
       });
     }, this);
@@ -1002,8 +993,10 @@
 
   // Every overlay row of the legend, in map order: the point layers, the
   // wells, the methane sources.
+  // Dairies, then wells, then schools and child care: the sources together,
+  // the places people are after them.
   FacilityMap.prototype.overlaysLegendHtml = function () {
-    return this.pointsLegendHtml() + this.wellsLegendHtml() + this.methaneLegendHtml();
+    return this.pointsLegendHtml(['dairies']) + this.wellsLegendHtml() + this.pointsLegendHtml(['schools']) + this.methaneLegendHtml();
   };
 
   // Locations mode's point layers (POINT_LAYERS): each fetched once, when on.
@@ -1053,19 +1046,18 @@
     if (layer.on) this.loadPoints();
   };
 
-  // Each point layer's legend row: its checkbox, and while it's on its shades.
-  FacilityMap.prototype.pointsLegendHtml = function () {
+  // Each point layer's legend row (of `keys`): its checkbox, and while it's on its shades.
+  FacilityMap.prototype.pointsLegendHtml = function (keys) {
     var self = this;
-    return POINT_LAYERS.map(function (spec) {
+    return POINT_LAYERS.filter(function (spec) { return keys.indexOf(spec.key) !== -1; }).map(function (spec) {
       var layer = self.points[spec.key];
       if (!layer || !layer.enabled) return '';
       var html = '<div class="legend-overlay"><label class="legend-toggle"><input type="checkbox" data-points="' + spec.key + '"' +
         (layer.on ? ' checked' : '') + '> ' + escapeHtml(spec.label) + '</label>';
       if (layer.on) {
-        var belowMinZoom = spec.minzoom && self.map && self.map.getZoom() < spec.minzoom;
         html += '<p class="legend-wells">' + spec.shades.map(function (shade) {
           return '<span class="legend-well"><span class="legend-swatch is-well" style="background: ' + shade[2] + '"></span>' + escapeHtml(shade[1]) + '</span>';
-        }).join('') + '</p><p class="legend-note">' + (belowMinZoom ? 'Zoom in to see ' + escapeHtml(spec.label.toLowerCase()) + '. ' : '') + escapeHtml(spec.note) + '</p>';
+        }).join('') + '</p><p class="legend-note">' + escapeHtml(spec.note) + '</p>';
       }
       return html + '</div>';
     }).join('');
@@ -1233,7 +1225,10 @@
       return;
     }
     this.renderLegend(body, legend);
-    legend.innerHTML = M.mainLayerToggle(legend.innerHTML, this.mainLayer);
+    // The checkbox says which layer it is, "Facilities", with the pollutant
+    // title after it in small grey.
+    legend.innerHTML = M.mainLayerToggle(legend.innerHTML.replace(/^<p class="legend-title">([\s\S]*?)<\/p>/,
+      '<p class="legend-title">Facilities <small class="legend-title-detail">$1</small></p>'), this.mainLayer);
   };
 
   FacilityMap.prototype.renderLegend = function (body, legend) {
