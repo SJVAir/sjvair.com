@@ -116,7 +116,7 @@
     if (this.collection) { this.host.shell.setSourceData('methane', this.collection); this.host.el.dataset.methaneLoaded = '1'; return; }
     var request = ++this.request;
     this.host.el.dataset.methaneLoaded = '';
-    getJson(this.host.data.methaneUrl)
+    this.host.shell.track(getJson(this.host.data.methaneUrl))
       .then(function (collection) {
         if (request !== self.request || !self.host.map) return;
         self.collection = collection;

@@ -675,7 +675,7 @@
     var ticket = this.shell.ticket();
     this.el.dataset.loaded = '';
     if (this.view === 'facilities') this.shell.setStatus('Loading facilities…');
-    getJson(this.url())
+    this.shell.track(getJson(this.url()))
       .then(function (collection) {
         // A newer request (a sector change, a swap) or a destroy superseded this one.
         if (!self.shell.isCurrent(ticket)) return;
@@ -728,7 +728,7 @@
     var level = this.level;
     this.el.dataset.areasLoaded = '';
     this.shell.setStatus('Loading areas…');
-    Promise.all([this.shapesFor(level), getJson(this.areasUrl())])
+    this.shell.track(Promise.all([this.shapesFor(level), getJson(this.areasUrl())]))
       .then(function (results) {
         if (request !== self.areaRequest || !self.map) return;
         self.areaData = { level: level, shapes: results[0], values: results[1] };
@@ -796,7 +796,7 @@
     this.shell.setSourceData('buffer-line', M.EMPTY);
     this.bufferBounds = null;
     if (this.data.bufferUrl) {
-      getJson(this.data.bufferUrl)
+      this.shell.track(getJson(this.data.bufferUrl))
         .then(function (json) {
           if (request !== self.outlineRequest || !self.map) return;
           // The regions detail endpoint, its boundary widened by ?buffer=.
@@ -819,7 +819,7 @@
       this.showOutline(null);
       return;
     }
-    getJson(this.data.outlineUrl)
+    this.shell.track(getJson(this.data.outlineUrl))
       .then(function (json) {
         if (request !== self.outlineRequest || !self.map) return;
         var boundary = json && json.data && json.data.boundary;
@@ -875,7 +875,7 @@
     }
     var request = ++this.wellsRequest;
     this.el.dataset.wellsLoaded = '';
-    getJson(this.data.wellsUrl)
+    this.shell.track(getJson(this.data.wellsUrl))
       .then(function (packed) {
         if (request !== self.wellsRequest || !self.map) return;
         var collection = wellsCollection(packed);
@@ -1023,7 +1023,7 @@
         return;
       }
       var request = ++layer.request;
-      getJson(layer.url)
+      self.shell.track(getJson(layer.url))
         .then(function (body) {
           if (request !== layer.request || !self.map || self.points[key] !== layer) return;
           layer.collection = layer.spec.parse(body);

@@ -437,7 +437,7 @@
     this.shell.setStatus('Loading dairies…');
     if (this.methane) this.methane.load();
     var shapes = this.shapes ? Promise.resolve(this.shapes) : getJson(this.data.shapesUrl);
-    Promise.all([getJson(this.data.geojsonUrl), shapes, getJson(this.data.countiesUrl)])
+    this.shell.track(Promise.all([getJson(this.data.geojsonUrl), shapes, getJson(this.data.countiesUrl)]))
       .then(function (results) {
         // A newer load (a swap) or a destroy superseded this one.
         if (!self.shell.isCurrent(ticket)) return;
@@ -474,7 +474,7 @@
       this.showOutline(null);
       return;
     }
-    getJson(this.data.outlineUrl)
+    this.shell.track(getJson(this.data.outlineUrl))
       .then(function (json) {
         if (request !== self.outlineRequest || !self.map) return;
         var boundary = json && json.data && json.data.boundary;
