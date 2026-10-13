@@ -78,6 +78,10 @@
     this.expanded = false;
     this.loaded = false;
     this.tickets = 0;
+    // Fetches in flight (track()), and the timer that shows the loading bar.
+    this.pending = 0;
+    this.loadingTimer = null;
+    this.loadingShown = false;
     this.popup = null;
     this.reducedMotion = M.prefersReducedMotion();
     this.tileStyle = M.tileStyle(el);
@@ -320,6 +324,36 @@
     M.chrome.setStatus(this, message);
   };
 
+  // How long a fetch must be outstanding before the loading bar shows, so a
+  // quick pan's refetch doesn't flash it.
+  var LOADING_DELAY_MS = 250;
+
+  // Shows the loading bar while `promise` (a data fetch) is outstanding and
+  // returns it unchanged. Every map module routes its fetches through here.
+  // A rejection (an abort, an error) settles it as surely as a response, so
+  // the bar can't stick on.
+  Shell.prototype.track = function (promise) {
+    var self = this;
+    this.pending += 1;
+    if (!this.loadingShown && !this.loadingTimer) {
+      this.loadingTimer = setTimeout(function () {
+        self.loadingTimer = null;
+        if (self.pending > 0 && self.map) M.chrome.setLoading(self, true);
+      }, LOADING_DELAY_MS);
+    }
+    var settle = function () {
+      self.pending = Math.max(0, self.pending - 1);
+      if (self.pending > 0) return;
+      if (self.loadingTimer) {
+        clearTimeout(self.loadingTimer);
+        self.loadingTimer = null;
+      }
+      M.chrome.setLoading(self, false);
+    };
+    promise.then(settle, settle);
+    return promise;
+  };
+
   Shell.prototype.updateLegend = function () {
     if (this.module.legend && this.legendBodyEl) {
       this.module.legend(this.legendBodyEl);
@@ -516,6 +550,10 @@
     M.chrome.unbindDocument(this);
     this.unbindWheelZoom();
     this.tickets += 1;
+    if (this.loadingTimer) clearTimeout(this.loadingTimer);
+    this.loadingTimer = null;
+    this.pending = 0;
+    M.chrome.setLoading(this, false);
     if (this.module.destroy) this.module.destroy();
     this.map.remove();
     this.map = null;

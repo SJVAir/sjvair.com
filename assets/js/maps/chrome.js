@@ -249,6 +249,28 @@
     if (shell.statusEl) shell.statusEl.textContent = message || '';
   }
 
+  // The loading bar along the map's top edge, on every map with a wrapper:
+  // shown while the map's data is still on its way (shell.track()). Made
+  // here rather than in the template so no map can be without it.
+  function loadingBar(wrap) {
+    if (!wrap.classList.contains('map-wrap')) return null;
+    var bar = wrap.querySelector(':scope > .map-loading');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.className = 'map-loading';
+      bar.setAttribute('aria-hidden', 'true');
+      wrap.appendChild(bar);
+    }
+    return bar;
+  }
+
+  function setLoading(shell, on) {
+    shell.loadingShown = !!on;
+    if (shell.loadingEl) shell.loadingEl.classList.toggle('is-active', !!on);
+    // Screen readers hear it as the map being busy, not as a bar.
+    if (shell.wrap && shell.loadingEl) shell.wrap.setAttribute('aria-busy', on ? 'true' : 'false');
+  }
+
   // -- expanded mode: the map fills the viewport under the site navbar, with
   // the explorer's scope bar pinned above it. Escape or the button brings the
   // page back, and the reader lands where they were. --
@@ -318,6 +340,9 @@
     shell.legendPanelEl = features.legend ? wrap.querySelector('.map-legend-panel') : null;
     shell.legendBodyEl = shell.legendPanelEl ? shell.legendPanelEl.querySelector('.map-panel-body') : null;
     shell.statusEl = features.status ? wrap.querySelector('.map-status') : null;
+    // A new page's wrapper picks up a load already under way.
+    shell.loadingEl = loadingBar(wrap);
+    setLoading(shell, shell.loadingShown);
     if (shell.toolbarEl) {
       shell.toolbarEl.hidden = false;
       bindToolbar(shell);
@@ -429,6 +454,7 @@
     unbindDocument: unbindDocument,
     closeDropdowns: closeDropdowns,
     setStatus: setStatus,
+    setLoading: setLoading,
     fitPanels: fitPanels,
     setExpanded: setExpanded,
     fitBelowNavbar: fitBelowNavbar,

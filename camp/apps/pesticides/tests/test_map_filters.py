@@ -48,3 +48,29 @@ class MapFollowsTableFiltersTests(RollupTestMixin, TestCase):
         assert config['locations_filtered'] == '1' and config['location_ids'] == school.sqid
         config = self.client.get(url, {'schools_q': 'no such school'}).context['map_config']
         assert config['locations_filtered'] == '1' and config['location_ids'] == ''
+
+
+class ScopedMapsDrawEverySectionTests(RollupTestMixin, TestCase):
+    """Townships are for the valley-wide view; a county or place draws its sections."""
+    fixtures = ['pesticides-explorer']
+
+    def config(self, url, params):
+        response = self.client.get(url, params)
+        return response.context['map_config'], response.content.decode()
+
+    def test_a_county_scope_draws_every_section_without_the_toggle(self):
+        for url in (reverse('pesticides:records'), reverse('pesticides:map'), reverse('pesticides:notice-list')):
+            config, html = self.config(url, {'year': 2023, 'county': 'fresno'})
+            assert config['sections_fixed'] == '1' and config['show_all_sections'] == '1', url
+            assert 'name="sections"' not in html, url
+
+    def test_the_valley_keeps_townships_and_the_toggle(self):
+        for url in (reverse('pesticides:records'), reverse('pesticides:map')):
+            config, html = self.config(url, {'year': 2023})
+            assert config['sections_fixed'] == '0' and config['show_all_sections'] == '0', url
+            assert 'name="sections"' in html, url
+
+    def test_records_narrowed_to_a_region_draw_every_section(self):
+        fresno = Region.objects.get(pk=9001)
+        config, _ = self.config(reverse('pesticides:records'), {'year': 2023, 'region': fresno.sqid})
+        assert config['sections_fixed'] == '1'

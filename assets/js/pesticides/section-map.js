@@ -486,18 +486,10 @@
   // An invisible disc under each marker, wide enough for a finger, that
   // takes the marker's hover and click (see addLayers, bindMarkerEvents).
   var MARKER_HIT_RADIUS = 12;
-  // Markers are points, not a grid: further out than this the viewport holds
-  // thousands of them, so the layer stays off and the legend says why.
-  var LOCATIONS_MIN_ZOOM = 9;
-  // Mirrors MAX_BBOX_DEGREES on the locations endpoint. The padded fetch is
-  // twice the viewport span (BBOX_PAD on each side), which at the layer's
-  // minimum zoom on a very wide expanded map can run past the cap and come
-  // back a 400 -- so when it would, the fetch goes out unpadded instead. At
-  // zoom 9 the raw viewport is ~0.0027 degrees per pixel, so ~4 degrees on a
-  // 1441px map (~8 padded, inside the cap) and still under the cap unpadded
-  // on any plausible screen.
+  // Mirrors MAX_BBOX_DEGREES on the locations endpoint: a viewport fetch
+  // (only before the valley's bounds are known, see loadLocations) that
+  // would run past it goes out unpadded instead.
   var LOCATIONS_MAX_BBOX_DEGREES = 12;
-  var LOCATIONS_ZOOM_NOTE = 'Zoom in to see schools and child care.';
   // The notices endpoint refuses (400) a view with more notices than its cap.
   var NOTICES_PAST_CAP_NOTE = 'Too many past notices to map here \u2014 zoom in or pick a month.';
   var NOTICES_CAP_NOTE = 'Too many notices to map here \u2014 zoom in.';
@@ -754,10 +746,10 @@
     this.showLocations = locationsMatch ? locationsMatch[1] === '1' : this.data.showLocations === '1';
     // "All sections": at the township zoom, draw every section in view
     // instead of the township grid (loaded in blocks, see loadAllSections).
-    // Off by default, on where the page says; always on a place's (clipped)
-    // map, which has no toggle for it.
+    // Off by default, on where the page says; always on a map scoped to a
+    // place or county (sectionsFixed), which has no toggle for it.
     var sectionsMatch = /[?&]sections=([01])/.exec(window.location.search || '');
-    this.showAllSections = this.data.clipRegion ? true
+    this.showAllSections = this.data.sectionsFixed === '1' ? true
       : sectionsMatch ? sectionsMatch[1] === '1' : this.data.showAllSections === '1';
     // Only one grid is ever on the map at a time; `level` says which one.
     this.level = 'section';
@@ -1203,19 +1195,15 @@
     });
     // The markers: schools and child care (coloured by type), and over
     // them the notices of intent. Both sit over the grid and outlines and
-    // under the reader's located position. The locations layer hides
-    // itself below the zoom the markers load at (see loadLocations, which
-    // clears the source there too). Under each marker layer is its hit
+    // under the reader's located position. Under each marker layer is its hit
     // disc: invisible, wide enough for a finger, taking the same hover and
     // click as the marker (see bindMarkerEvents).
     this.ensureLayer({
       id: 'locations-hit', type: 'circle', source: 'locations',
-      minzoom: this.data.locationsArea ? 0 : LOCATIONS_MIN_ZOOM,
       paint: { 'circle-radius': MARKER_HIT_RADIUS, 'circle-opacity': 0, 'circle-stroke-width': 0 },
     });
     this.ensureLayer({
       id: 'locations-circle', type: 'circle', source: 'locations',
-      minzoom: this.data.locationsArea ? 0 : LOCATIONS_MIN_ZOOM,
       paint: {
         'circle-radius': LOCATION_MARKER.radius,
         'circle-color': ['match', ['get', 'type'],
@@ -1344,6 +1332,22 @@
       }
     }
 
+    // Scoping to (or away from) a county or place switches "all sections"
+    // with it: a scoped map draws every section, the valley groups them.
+    var sectionsModeChanged = false;
+    if (has('sectionsFixed') || has('showAllSections')) {
+      var wantAll = this.data.sectionsFixed === '1' || this.data.showAllSections === '1';
+      if (wantAll !== this.showAllSections) {
+        this.showAllSections = wantAll;
+        sectionsModeChanged = true;
+        if (wantAll) {
+          this.clearLens();
+        } else {
+          this.clearAllSections();
+        }
+      }
+    }
+
     var locationsDefaultChanged = has('showLocations');
     if (locationsDefaultChanged) {
       this.showLocations = this.data.showLocations === '1';
@@ -1434,11 +1438,14 @@
       var locationFilterChanged = has('locationIds') || has('locationsFiltered');
       if (locationFilterChanged) this.loadedLocationBounds = null;
       if ((locationsDefaultChanged || locationFilterChanged) && this.showLocations) this.loadLocations();
+      if (sectionsModeChanged) {
+        if (this.showAllSections) this.loadAllSections();
+        this.drawNotices();
+      }
       // Same data; the legend/level notes are new elements and need filling.
       this.updateLegend();
       this.restyle();
     }
-    this.updateLocationsNote();
   };
 
   // Lets go of everything once its page is gone: requests in flight are cut
@@ -1465,7 +1472,7 @@
     if (!this.data.countiesUrl) return;
     var self = this;
     var abort = this.startRequest('counties');
-    fetchJson(this.data.countiesUrl, null, abort)
+    this.fetchJson(this.data.countiesUrl, null, abort)
       .then(function (geojson) {
         if (self.countiesAbort !== abort) return;
         self.counties = geojson;
@@ -1525,7 +1532,7 @@
     if (!this.data.outlineUrl) return;
     var self = this;
     var abort = this.startRequest('outline');
-    fetchJson(this.data.outlineUrl, null, abort)
+    this.fetchJson(this.data.outlineUrl, null, abort)
       .then(function (payload) {
         if (self.outlineAbort !== abort) return;
         var region = payload && payload.data;
@@ -1572,7 +1579,7 @@
     if (!this.data.clipUrl) return;
     var self = this;
     var abort = this.startRequest('clip');
-    fetchJson(this.data.clipUrl, null, abort)
+    this.fetchJson(this.data.clipUrl, null, abort)
       .then(function (payload) {
         if (self.clipAbort !== abort) return;
         var region = payload && payload.data;
@@ -1615,6 +1622,13 @@
   };
 
   SectionMap.prototype.setStatus = function (message) { this.shell.setStatus(message); };
+
+  // A data fetch that shows the map's loading bar while it's out (see
+  // Shell.track). The popups' own detail fetches don't use it: the popup
+  // says it's loading where the reader is looking.
+  SectionMap.prototype.fetchJson = function (url, params, abort) {
+    return this.shell.track(fetchJson(url, params, abort));
+  };
 
   SectionMap.prototype.onMetricChange = function (event) {
     this.metric = event.target.value;
@@ -1832,7 +1846,7 @@
     this.setStatus('Loading sections…');
 
     var self = this;
-    fetchJson(this.data.sectionsUrl, params, abort)
+    this.fetchJson(this.data.sectionsUrl, params, abort)
       .then(function (geojson) {
         if (self.gridRequest === request) self.gridRequest = null;
         if (self.gridAbort !== abort) return; // stale response
@@ -1885,7 +1899,7 @@
     this.setStatus('Loading grid…');
 
     var self = this;
-    fetchJson(this.data.townshipsUrl, params, abort)
+    this.fetchJson(this.data.townshipsUrl, params, abort)
       .then(function (geojson) {
         if (self.gridRequest === request) self.gridRequest = null;
         if (self.gridAbort !== abort) return; // stale response
@@ -2114,7 +2128,6 @@
     if (this.levelEl) {
       this.levelEl.textContent = this.allSectionsActive() ? LEVEL_TEXT.allSections : (LEVEL_TEXT[this.level] || '');
     }
-    this.updateLocationsNote();
   };
 
   // -- markers: hover and click --
@@ -2850,7 +2863,7 @@
     // if the filters change meanwhile, onAdopt() swaps in a fresh cache and
     // this one is simply dropped.
     var cache = this.lensCache;
-    fetchJson(this.data.sectionsUrl, params)
+    this.fetchJson(this.data.sectionsUrl, params)
       .then(function (body) {
         if (!body || !body.features) return;
         var byTownship = {};
@@ -3327,7 +3340,7 @@
     Object.assign(params, clipParams(this.data));
 
     var self = this;
-    fetchJson(this.data.noticesUrl, params, abort)
+    this.fetchJson(this.data.noticesUrl, params, abort)
       .then(function (geojson) {
         if (self.noticesRequest === request) self.noticesRequest = null;
         if (self.noticesAbort !== abort) return; // stale response
@@ -3668,7 +3681,6 @@
   SectionMap.prototype.loadLocations = function () {
     if (!this.map || !this.data.locationsUrl || this.pendingFit) return;
     if (this.map.isMoving()) return;
-    this.updateLocationsNote();
     if (!this.showLocations) return;
     // A place's Schools tab: the place's own sites, every one of them, at
     // any zoom -- loaded once, never by the view, so nothing outside the
@@ -3681,7 +3693,7 @@
       new URLSearchParams(this.data.locationsArea).forEach(function (value, key) { areaParams[key] = value; });
       Object.assign(areaParams, clipParams(this.data));
       var me = this;
-      fetchJson(this.data.locationsUrl, areaParams, areaAbort)
+      this.fetchJson(this.data.locationsUrl, areaParams, areaAbort)
         .then(function (geojson) {
           if (me.locationsRequest === areaRequest) me.locationsRequest = null;
           if (me.locationsAbort !== areaAbort || !me.showLocations) return;
@@ -3696,42 +3708,36 @@
         });
       return;
     }
-    // Zoomed out the endpoint's bbox cap would reject the request anyway,
-    // and thousands of dots would say nothing; the legend note explains.
-    if (this.map.getZoom() < LOCATIONS_MIN_ZOOM) {
-      this.loadedLocationBounds = null;
-      this.clearLocations();
-      return;
-    }
-    // Same padded-fetch/skip deal as the grid and the notices, except the
-    // padding is dropped rather than asking for a bbox the endpoint refuses
-    // (see LOCATIONS_MAX_BBOX_DEGREES).
-    // A clipped page asks for the whole clip shape's locations (the endpoint
-    // ignores the bbox there), so once they are loaded a pan has nothing to
-    // fetch, like area mode.
+    // Every map shows its sites at any zoom, all of them loaded at once and
+    // never by the view: a place's (clipped) map asks for the clip shape's
+    // (the endpoint ignores the bbox there), and anywhere else for the
+    // valley's -- under three thousand points, which the GPU draws without
+    // noticing -- so a pan or zoom has nothing to fetch. Until the county
+    // outlines have given the valley's bounds, the view's stands in.
     var clipped = !!this.data.clipRegion;
-    if (clipped) {
-      if (this.loadedLocationBounds === 'clip' || (this.locationsRequest && this.locationsRequest.clip)) return;
+    var whole = clipped ? 'clip' : (this.valleyBounds ? 'valley' : null);
+    if (whole) {
+      if (this.loadedLocationBounds === whole || (this.locationsRequest && this.locationsRequest.whole === whole)) return;
     } else {
       if (this.covers(this.loadedLocationBounds)) return;
       if (this.locationsRequest && this.covers(this.locationsRequest.bounds)) return;
     }
 
     var abort = this.startRequest('locations');
-    var bounds = clipped ? 'clip' : this.fetchBounds();
-    if (!clipped && boundsSpan(bounds) > LOCATIONS_MAX_BBOX_DEGREES) bounds = this.fetchBounds(true);
-    var request = this.locationsRequest = clipped ? { clip: true } : { bounds: bounds };
-    // The county scope goes along: the fetch bbox always overhangs the county
-    // line, and a marker outside it would carry a popup figure from a county
-    // this page isn't showing.
+    var bounds = whole || this.fetchBounds();
+    if (!whole && boundsSpan(bounds) > LOCATIONS_MAX_BBOX_DEGREES) bounds = this.fetchBounds(true);
+    var request = this.locationsRequest = whole ? { whole: whole } : { bounds: bounds };
+    // The county scope goes along: a bbox always overhangs the county line,
+    // and a marker outside it would carry a popup figure from a county this
+    // page isn't showing.
     var params = {
-      bbox: clipped ? '' : bboxParam(bounds),
+      bbox: clipped ? '' : bboxParam(whole === 'valley' ? this.valleyBounds : bounds),
       county: this.data.county,
     };
     Object.assign(params, clipParams(this.data));
 
     var self = this;
-    fetchJson(this.data.locationsUrl, params, abort)
+    this.fetchJson(this.data.locationsUrl, params, abort)
       .then(function (geojson) {
         if (self.locationsRequest === request) self.locationsRequest = null;
         if (self.locationsAbort !== abort) return; // stale response
@@ -3890,22 +3896,6 @@
       (actions ? '<div class="section-popup-actions">' + actions + '</div>' : '') +
       '</div>'
     );
-  };
-
-  // Why the markers aren't there: the toggle is on but the map is zoomed
-  // out past where they load.
-  SectionMap.prototype.updateLocationsNote = function () {
-    var tooFar = !!(this.showLocations && !this.data.locationsArea && this.map && this.map.getZoom() < LOCATIONS_MIN_ZOOM);
-    var note = this.wrapEl ? this.wrapEl.querySelector('.section-map-locations-note') : null;
-    if (note) note.textContent = tooFar ? LOCATIONS_ZOOM_NOTE : '';
-    // The legend it lives in collapses, so say it in the live region too --
-    // otherwise turning the layer on at a wide zoom just does nothing
-    // visible. Only ours to clear: a load in progress owns the line.
-    if (tooFar) {
-      this.setStatus(LOCATIONS_ZOOM_NOTE);
-    } else if (this.statusEl && this.statusEl.textContent === LOCATIONS_ZOOM_NOTE) {
-      this.setStatus('');
-    }
   };
 
   M.register('section', {
