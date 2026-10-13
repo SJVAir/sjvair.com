@@ -10,4 +10,5 @@ only: a place's map always draws every section.
 {% if not map_config.clip_region %}<label class="section-map-toggle section-map-sections-toggle"><input type="checkbox" name="sections"{% if map_config.show_all_sections == '1' %} checked{% endif %}> All sections</label>{% endif %}
 <span class="section-map-locations-note"></span>
 {# What the shading means, on the legend that carries the shades. #}
-{% include 'pesticides/includes/note-help.html' with key='shades' anchor='shades' %}
+{# Opens rightward, over the map: the legend sits at the map's left edge. #}
+{% include 'pesticides/includes/note-help.html' with key='shades' anchor='shades' placement='right' %}
