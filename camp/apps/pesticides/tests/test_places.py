@@ -914,9 +914,17 @@ class SchoolsTabMapTests(RollupTestMixin, TestCase):
         config = self.client.get(fresno.get_pesticides_tab_url('schools')).context['map_config']
         assert config['locations_area'] == f'region={fresno.sqid}'
         assert config['show_all_sections'] == '1' and config['show_locations'] == '1'
-        # Not on the Overview.
+        # The Overview has no schools, but draws every section too.
         overview = self.client.get(fresno.get_pesticides_tab_url('overview')).context['map_config']
-        assert overview['locations_area'] == '' and overview['show_all_sections'] == '0'
+        assert overview['locations_area'] == '' and overview['show_all_sections'] == '1'
+
+    def test_a_place_map_always_draws_every_section_without_the_toggle(self):
+        cache.clear()
+        fresno = Region.objects.get(pk=9001)
+        for tab in ('overview', 'notices', 'records', 'schools'):
+            response = self.client.get(fresno.get_pesticides_tab_url(tab))
+            assert response.context['map_config']['show_all_sections'] == '1', tab
+            assert 'name="sections"' not in response.content.decode(), tab
 
     def test_a_near_me_schools_map_loads_its_circle(self):
         cache.clear()

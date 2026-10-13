@@ -754,9 +754,11 @@
     this.showLocations = locationsMatch ? locationsMatch[1] === '1' : this.data.showLocations === '1';
     // "All sections": at the township zoom, draw every section in view
     // instead of the township grid (loaded in blocks, see loadAllSections).
-    // Off by default, on where the page says (a place's Schools tab).
+    // Off by default, on where the page says; always on a place's (clipped)
+    // map, which has no toggle for it.
     var sectionsMatch = /[?&]sections=([01])/.exec(window.location.search || '');
-    this.showAllSections = sectionsMatch ? sectionsMatch[1] === '1' : this.data.showAllSections === '1';
+    this.showAllSections = this.data.clipRegion ? true
+      : sectionsMatch ? sectionsMatch[1] === '1' : this.data.showAllSections === '1';
     // Only one grid is ever on the map at a time; `level` says which one.
     this.level = 'section';
     this.counties = null;
