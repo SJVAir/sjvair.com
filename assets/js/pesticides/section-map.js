@@ -1319,7 +1319,9 @@
   };
 
   // Keys whose change means the data on the map is different.
-  var DATA_KEYS = ['year', 'chemical', 'product', 'commodity', 'county', 'narrow', 'compare'];
+  // The endpoint URLs count too: a list page's table filters ride on them
+  // (see section_map_config), so a filter change swaps in a new URL.
+  var DATA_KEYS = ['year', 'chemical', 'product', 'commodity', 'county', 'narrow', 'compare', 'sectionsUrl', 'townshipsUrl', 'noticesUrl'];
 
   // An htmx swap handed this map a new container (the shell has moved the
   // map into it, taken its data attributes and bound its chrome): follow
@@ -1428,7 +1430,10 @@
       this.loadLocations();
     } else {
       if (noticesDefaultChanged && this.showNotices) this.loadNotices();
-      if (locationsDefaultChanged && this.showLocations) this.loadLocations();
+      // The Schools tab's filters changed which sites it lists: redraw them.
+      var locationFilterChanged = has('locationIds') || has('locationsFiltered');
+      if (locationFilterChanged) this.loadedLocationBounds = null;
+      if ((locationsDefaultChanged || locationFilterChanged) && this.showLocations) this.loadLocations();
       // Same data; the legend/level notes are new elements and need filling.
       this.updateLegend();
       this.restyle();
@@ -3756,6 +3761,12 @@
   SectionMap.prototype.renderLocations = function (geojson) {
     var reopenId = this.openLocationId;
     var features = ((geojson && geojson.features) || []).filter(function (f) { return f.geometry; });
+    // A Schools tab's table filters: only the sites the table still lists.
+    if (this.data.locationsFiltered === '1') {
+      var keep = {};
+      (this.data.locationIds || '').split(',').forEach(function (id) { if (id) keep[id] = true; });
+      features = features.filter(function (f) { return keep[f.properties.id]; });
+    }
     this.clearHover('locations');
     this.locationById = {};
     for (var i = 0; i < features.length; i++) this.locationById[features[i].properties.id] = features[i];

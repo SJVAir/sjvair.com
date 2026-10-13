@@ -1178,9 +1178,18 @@ def clip_url(sqid, buffer=0):
     return f'{url}?buffer={buffer}' if buffer else url
 
 
-def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None, show_all_sections=False, locations_area=None, notices_url=None, section_notices_extra=None, clip_region=None, buffer=0):
+def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None, show_all_sections=False, locations_area=None, notices_url=None, section_notices_extra=None, clip_region=None, buffer=0, method=None, notice_method=None, location_ids=None):
     year = year or stats.latest_year()
     scope = stats.scope_param(year, all_years, county, concern)
+    # A list page's own table filters, carried on the endpoint URLs so every
+    # request the map makes from them (the grid, the lens, "all sections",
+    # the notices) is narrowed the way the table beside it is: the records'
+    # application method, the notice list's method.
+    grid_query = f"?{urlencode({'method': method})}" if method else ''
+    past_notices = bool(notices_url)
+    notices_url = notices_url or '/api/2.0/pesticides/notices/active/'
+    if notice_method:
+        notices_url += ('&' if '?' in notices_url else '?') + urlencode({'method': notice_method})
     scope_suffix = f'&{scope}' if scope else ''
     config = {
         # Upcoming-notice markers start on where notices are the subject of
@@ -1199,14 +1208,19 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # (region=, or lat/lng/radius): all of a place's, at any zoom, in
         # place of whatever's in view.
         'locations_area': urlencode(locations_area) if locations_area else '',
-        'sections_url': '/api/2.0/pesticides/sections/',
+        # The Schools tab's filters (name, type, district, run by), as the
+        # sites they leave: the map draws only these. Worked out by the
+        # table's own filter (places.schools_panel), so the two can't disagree.
+        'locations_filtered': '1' if location_ids is not None else '0',
+        'location_ids': ','.join(location_ids or ()),
+        'sections_url': '/api/2.0/pesticides/sections/' + grid_query,
         # The covered counties' outlines, from the regions API.
         'counties_url': f"{reverse('api:v2:regions:region-geojson')}?type=county",
-        'townships_url': '/api/2.0/pesticides/townships/',
+        'townships_url': '/api/2.0/pesticides/townships/' + grid_query,
         # The notices layer: the active endpoint, or (notices_url given) the
         # archive's, which the legend and popups word as "past".
-        'notices_url': notices_url or '/api/2.0/pesticides/notices/active/',
-        'notices_past': '1' if notices_url else '0',
+        'notices_url': notices_url,
+        'notices_past': '1' if past_notices else '0',
         'locations_url': '/api/2.0/pesticides/locations/',
         'section_url_pattern': '/api/2.0/pesticides/sections/{id}/',
         'section_page_url': page_url_pattern('pesticides:section-detail'),
@@ -1801,12 +1815,26 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
             all_years=self.all_years,
             show_notices=False,
             concern=self.concern,
+            method=self.form.cleaned_data.get('method') or None,
             **self.get_map_clip(),
         )
 
     def get_map_clip(self):
         """Extra section_map_config arguments; a region's Records tab clips its map."""
         return {}
+
+    def get_map_unfiltered(self):
+        """
+        The table filters the map can't follow, named for the note under it.
+        The map shades from the rollup, which holds months and no fumigation
+        technique, so a date range or a technique narrows only the table.
+        """
+        unfiltered = []
+        if self.get_date_range() != self._default_range():
+            unfiltered.append('dates')
+        if self.form.cleaned_data.get('fume_method'):
+            unfiltered.append('fumigation method')
+        return unfiltered
 
     def get_context_data(self, **kwargs):
         totals = self.get_totals()
@@ -1825,6 +1853,7 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
             sort=self.sort,
             active_filters=self.get_active_filters(),
             map_config=self.get_map_config(),
+            map_unfiltered=self.get_map_unfiltered(),
             county_map=county_map,
             # The entity pickers render the resolved objects; an unresolved
             # sqid has nothing to show, so it stays a plain hidden value.
@@ -2190,6 +2219,7 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
             concern=self.concern,
             notices_url=self.get_notices_url(),
             section_notices_extra=self.get_list_mode_params(),
+            notice_method=self.form.cleaned_data.get('method') or None,
         )
 
     def get_context_data(self, **kwargs):
@@ -2600,6 +2630,7 @@ class AreaNoticesMixin(AreaNarrowedListMixin):
             product=product if product and product is not MISSING else None,
             notices_url=self.get_notices_url(),
             section_notices_extra=self.get_list_mode_params(),
+            notice_method=self.form.cleaned_data.get('method') or None,
             **self.map_clip(),
             **self.area.map_kwargs(),
         )
@@ -2691,6 +2722,7 @@ class AreaSchoolsMixin:
             map_config=section_map_config(
                 year, all_years=all_years, show_locations=True, concern=concern,
                 show_all_sections=True, locations_area=area.locations_area(), **self.map_clip(), **area.map_kwargs(),
+                location_ids=[row['location'].sqid for row in schools['rows']] if schools['is_filtered'] else None,
             ),
             **self.header_context(),
             **self.tab_scope_context(),
