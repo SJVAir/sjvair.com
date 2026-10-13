@@ -137,6 +137,11 @@ def list_filters(get):
     }
 
 
+def filtered_map_params(params, filters):
+    """A map's query with the facility table's filters on it, so the map shows the table's facilities."""
+    return {**params, **{key: filters[key] for key in ('sector', 'q', 'compliance') if filters.get(key)}}
+
+
 def get_filter_region(sqid, types=None):
     """
     The ?region= of a table's region filter, or None for a missing or
@@ -1198,6 +1203,11 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, ScopeMixin, vanilla.TemplateV
         """The Facilities tab's filters: the facility list's, less its region (the page is the area)."""
         return {key: value for key, value in list_filters(self.request.GET).items() if key != 'area'}
 
+    def map_params(self, scope):
+        """The map's query: the scope, and on the Facilities tab its table's filters."""
+        params = scope.params(county=None)
+        return filtered_map_params(params, self.area_filters()) if self.tab == 'facilities' else params
+
     def facilities_csv(self):
         scope = self.area_scope()
         return facility_csv(scope, stats.facility_table(scope, **self.area_filters()), f'facility-emissions-{self.csv_slug()}-{scope.year}.csv')
@@ -1254,7 +1264,7 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, ScopeMixin, vanilla.TemplateV
         elif tab == 'schools':
             # Every school and child-care center in the area with what's near it:
             # the table (filtered, sorted, paged, CSV), the stat row (unfiltered)
-            # and the sites on the map.
+            # and the sites on the map (filtered, as the table is).
             site_filters = schools.site_filters(self.request.GET)
             all_sites = schools.area_sites(area, scope)
             sites = schools.filter_sites(all_sites, **site_filters)
@@ -1273,7 +1283,7 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, ScopeMixin, vanilla.TemplateV
                 site_districts=schools.district_options(all_sites),
                 school_districts=districts, districts_hidden=sum(1 for d in districts if d['is_collapsed']),
             )
-            self.site_geojson = schools.sites_geojson(all_sites)
+            self.site_geojson = schools.sites_geojson(sites)
             top_rows = []
         elif tab == 'overview':
             top_rows = stats.with_ranks(stats.facility_table(scope)[:5], stats.ranks(scope))
@@ -1423,7 +1433,7 @@ class RegionPage(RegionLookupMixin, AreaPage):
         area_params = area_map_params(areas.RegionArea(self.region), buffer)
         level = areas.NEXT_LEVEL.get(self.region.type)
         return facility_map_config(
-            scope, mode='compact', params=scope.params(county=None),
+            scope, mode='compact', params=self.map_params(scope),
             areas_view=map_view(self.request.GET, level, year=scope.year, share=scope.pollutant.unit == 'share') if level and self.tab in AREAS_VIEW_TABS else None,
             outline_url=reverse('api:v2:regions:region-detail', args=[self.region.sqid]),
             # Every layer limited to the region, or a mile or three past it.
@@ -1594,7 +1604,7 @@ class NearMe(NearLookupMixin, AreaPage):
 
     def get_map_config(self, scope):
         return facility_map_config(
-            scope, mode='compact', params=scope.params(county=None),
+            scope, mode='compact', params=self.map_params(scope),
             areas_view=map_view(self.request.GET, Region.Type.TRACT, year=scope.year, share=scope.pollutant.unit == 'share') if self.tab in AREAS_VIEW_TABS else None,
             center=f'{self.near.lat:.4f},{self.near.lng:.4f}', zoom=RADIUS_ZOOMS[self.near.radius],
             radius=self.near.radius,
@@ -1779,7 +1789,7 @@ class FacilityList(FacilitiesTabMixin, ScopeMixin, vanilla.TemplateView):
             compliance_line=compliance_line,
             toxics_breakdown=stats.toxics_breakdown(scope) if scope.toxics else None,
             share_unit=scope.pollutant.unit == 'share',
-            map_config=facility_map_config(scope, mode='compact', params=scope.params(county=None)),
+            map_config=facility_map_config(scope, mode='compact', params=filtered_map_params(scope.params(county=None), filters)),
             point_params={}, clear_filters_url=self.area_tab_url('facilities', self.tab_query('facilities')),
             facilities_tab_url=self.area_tab_url('facilities', self.tab_query('facilities')),
             scope_qs=scope.query(county=None), scope_params=scope.params(county=None), county_options=[],

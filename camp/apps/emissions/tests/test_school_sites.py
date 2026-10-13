@@ -77,6 +77,18 @@ class SchoolsTabTests(SchoolSitesTestCase):
         lines = response.content.decode().strip().splitlines()
         assert lines[0].startswith('name,type,latitude,longitude,facilities_within_1000ft') and len(lines) == 4
 
+    def test_the_map_shows_the_filtered_sites(self):
+        import html
+        import json
+        from camp.apps.emissions.tests.test_views import map_data
+        url = self.fresno.get_emissions_tab_url('schools')
+        def mapped(**params):
+            content = self.client.get(url, {'year': '2024', **params}).content.decode()
+            return {feature['properties']['name'] for feature in json.loads(html.unescape(map_data(content, 'nearby')))['features']}
+        everything = mapped()
+        assert 'CLOSE ELEMENTARY' in everything and len(everything) == 3
+        assert mapped(q='close') == {'CLOSE ELEMENTARY'}
+
     def test_no_tab_without_sites(self):
         content = self.client.get(self.kern.get_emissions_url()).content.decode()
         assert self.kern.get_emissions_tab_url('schools') not in content

@@ -154,6 +154,31 @@ class ComplianceFilterTests(ListTestCase):
         assert 'TEST PLANT' in body and 'TEST CEMENT' not in body
         assert 'epa_tracked,hpv_status' in body.splitlines()[0]
 
+    def test_the_map_follows_the_table_filters(self):
+        from urllib.parse import parse_qs
+        from camp.apps.emissions.models import AirComplianceFacility
+        from camp.apps.emissions.tests.test_views import map_data
+        AirComplianceFacility.objects.create(facility=self.plant, pgm_sys_id='CASJV00006019C0001', name='X', current_hpv='Unaddressed-Local', match_method='parsed')
+        content = self.client.get(reverse('emissions:facility-list'), {'compliance': 'hpv', 'q': 'test'}).content.decode()
+        query = parse_qs(map_data(content, 'query').replace('&amp;', '&'))
+        assert query['compliance'] == ['hpv'] and query['q'] == ['test']
+        # Unfiltered, the map's query carries neither.
+        plain = parse_qs(map_data(self.client.get(reverse('emissions:facility-list')).content.decode(), 'query').replace('&amp;', '&'))
+        assert 'compliance' not in plain and 'q' not in plain
+
+    def test_the_geojson_takes_the_table_filters(self):
+        from camp.apps.emissions.models import AirComplianceFacility
+        AirComplianceFacility.objects.create(facility=self.plant, pgm_sys_id='CASJV00006019C0001', name='X', current_hpv='Unaddressed-Local', match_method='parsed')
+        url = reverse('api:v2:emissions:geojson')
+        def ids(**params):
+            return {feature['properties']['name'] for feature in self.client.get(url, params).json()['features']}
+        everything = ids()
+        assert {'TEST PLANT', 'TEST CEMENT'} <= everything
+        assert ids(compliance='hpv') == {'TEST PLANT'}
+        assert ids(q='cement') == {'TEST CEMENT'}
+        # An unknown compliance value is ignored, as the table ignores it.
+        assert ids(compliance='nope') == everything
+
 
 class FacilityListLayoutTests(ListTestCase):
     def test_filters_sit_in_the_sidebar_with_sectors_a_to_z(self):

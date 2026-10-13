@@ -3,7 +3,7 @@ from dataclasses import replace
 
 from resticus import generics, http
 
-from camp.apps.emissions import stats
+from camp.apps.emissions import compliance, stats
 from camp.apps.emissions.models import Facility
 from camp.apps.regions.models import Region
 from camp.utils.views import CachedEndpointMixin
@@ -18,6 +18,10 @@ class FacilityGeoJSONBase(generics.Endpoint):
         scope = stats.resolve_scope(request.GET)
         sector = request.GET.get('sector')
         sector = sector if sector in Facility.Sector.values else None
+        # The facility table's own filters, so a filtered list's map shows the same facilities.
+        q = (request.GET.get('q') or '').strip() or None
+        compliance_filter = request.GET.get('compliance')
+        compliance_filter = compliance_filter if compliance_filter in compliance.FILTERS else None
         compare = stats.resolve_compare_param(request.GET.get('compare'), scope.year)
         rank_map = stats.ranks(scope)
         prev_by_facility = {}
@@ -31,7 +35,7 @@ class FacilityGeoJSONBase(generics.Endpoint):
                 prev_rows = prev_rows.filter(facility__sector=sector)
             prev_by_facility = dict(prev_rows.values_list('facility_id', 'value'))
         features = []
-        records = stats.facility_table(scope, sector=sector).filter(facility__point__isnull=False)
+        records = stats.facility_table(scope, sector=sector, q=q, compliance=compliance_filter).filter(facility__point__isnull=False)
         # An area page's map: only the facilities inside its (perhaps widened) area.
         shape, _, error = get_shape(request)
         if error:
@@ -80,7 +84,8 @@ class FacilityGeoJSONBase(generics.Endpoint):
 class FacilityGeoJSON(CachedEndpointMixin, FacilityGeoJSONBase):
     """
     Facilities in scope as GeoJSON points, for the explorer map. Parameters:
-    year, county (slug), pollutant, toxics=1, minor=1, sector, and
+    year, county (slug), pollutant, toxics=1, minor=1, sector, the facility
+    table's q (name contains) and compliance (any, hpv), and
     ?compare=<year> (a loaded year other than the scope's, ignored
     otherwise) for that year's value under `value_prev`, alongside the
     current one. `value`/`value_prev` are tons/yr, lbs/yr for one toxic, or
@@ -92,7 +97,7 @@ class FacilityGeoJSON(CachedEndpointMixin, FacilityGeoJSONBase):
     isn't shown even if it reported in the compared year.
     """
     cache_timeout = 60 * 60
-    cache_key_version = 4  # bumped: properties gained display_name
+    cache_key_version = 5  # bumped: q and compliance filters
 
 
 class DistrictListBase(generics.Endpoint):

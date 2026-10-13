@@ -1140,12 +1140,12 @@
 
   FacilityMap.prototype.facilityUrl = function (id) {
     var url = (this.data.facilityUrl || '').replace('{id}', encodeURIComponent(id));
-    var query = this.data.query || '';
-    if (this.data.mode === 'compact') {
-      var params = new URLSearchParams(query);
-      params.delete('minor');
-      query = params.toString();
-    }
+    var params = new URLSearchParams(this.data.query || '');
+    // The list's own filters (name, compliance) narrow the map, not the facility page.
+    params.delete('q');
+    params.delete('compliance');
+    if (this.data.mode === 'compact') params.delete('minor');
+    var query = params.toString();
     return url + (query ? '?' + query : '');
   };
 
@@ -1181,6 +1181,8 @@
     var name = (LEVEL_NAMES[this.level] || '') + p.name;
     var query = new URLSearchParams(this.data.query || '');
     query.delete('sector');
+    query.delete('q');
+    query.delete('compliance');
     var regionUrl = (this.data.regionUrl || '').replace('{id}', encodeURIComponent(p.id));
     var qs = query.toString();
     var line = function (label, value, suffix) {
