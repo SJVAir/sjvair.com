@@ -13,6 +13,8 @@ from .mapareas import get_shape
 
 logger = logging.getLogger(__name__)
 STATUSES = [Well.Status.ACTIVE.value, Well.Status.IDLE.value, Well.Status.NEW.value]
+# The table filters the cached responses are keyed by (bounded values only).
+CACHED_FILTERS = {'status', 'hpz'}
 
 
 class WellGeoJSON(generics.Endpoint):
@@ -38,6 +40,12 @@ class WellGeoJSON(generics.Endpoint):
         # The Oil & gas table's filters, so a filtered table's map shows the same wells.
         filters = {name: value for name, value in wells.table_filters(request.GET).items() if name != 'sort'}
         params = wells.filter_params(filters)
+        if params.keys() - CACHED_FILTERS:
+            # Free text (a name, an operator, a field) isn't a cache key: memcached
+            # rejects spaces and long keys, and every spelling would be its own entry.
+            # Narrowed that far, the query is quick uncached.
+            return HttpResponse(self.payload(shape, filters), content_type='application/json')
+        # Status and HPZ are a handful of fixed values: cached per area as the unfiltered list is.
         key = wells.key('geojson', area_key, *(f'{name}={value}' for name, value in sorted(params.items())))
         packed = cache.get(key)
         if packed is None:

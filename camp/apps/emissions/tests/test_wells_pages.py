@@ -167,6 +167,9 @@ class OilGasTabTests(WellsPagesTestCase):
         assert len(api(region=self.kern.sqid, status='Idle')) == 1
         assert len(api(region=self.kern.sqid, hpz='1')) == 1
         assert api(region=self.kern.sqid, status='nope') == everything
+        # Free text (an operator with spaces) is answered uncached, not keyed.
+        assert len(api(region=self.kern.sqid, operator='TEST OIL LLC')) == 2
+        assert api(region=self.kern.sqid, operator='NOBODY AT ALL') == []
 
     def test_top_operators_and_fields(self):
         self.add_wells()
