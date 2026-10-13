@@ -1,5 +1,5 @@
 <section class="box find-area" id="find" data-maptiler-key="{{ maptiler_key }}" data-near-url="{% url 'pesticides:near-me' %}" data-year="{% if all_years %}all{% else %}{{ year }}{% endif %}">
-    <h2 class="title is-5">Find your area</h2>
+    <h2 class="title is-5">Search by location</h2>
     <div class="field has-addons">
         <div class="control is-expanded has-icons-left">
             <input class="input" type="search" id="find-area-query" placeholder="Search a city, ZIP, county, or address" autocomplete="off" aria-label="Search a city, ZIP, county, or address" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="find-area-results"{% if focus_find %} autofocus{% endif %}>

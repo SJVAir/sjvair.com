@@ -538,7 +538,7 @@ class ExplorerRedirect(vanilla.GenericView):
 FIND_AREA_PLACES_CACHE_KEY = 'pesticides:find-area-places:v3'
 FIND_AREA_PLACES_TTL = 60 * 60 * 24
 
-# Short, human labels for the "Find your area" dropdown. Region.Type's own
+# Short, human labels for the "Search by location" dropdown. Region.Type's own
 # labels read a little long there ("ZIP Code"), and the dropdown shows the
 # type as a trailing tag: "93725 · ZIP". Each community layer (city, urban
 # area, CDP) is listed as-is, labelled: "Fresno · City", "Fresno · Urban area".
