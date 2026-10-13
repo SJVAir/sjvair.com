@@ -25,7 +25,7 @@ and on a county the largest greenhouse-gas reporters.
 {% block tab-map %}{% include 'emissions/includes/facility-map.html' %}{% endblock %}
 
 {% block tab-filters %}
-{# The Valley's tab (FacilityList, `find_field`) leads its filter box with "Find your area", beside the form: Enter there would submit it. #}
+{# The Valley's tab (FacilityList, `find_field`) leads its filter box with "Search by location", beside the form: Enter there would submit it. #}
 <div class="explorer-filters box">
 {% if find_field %}{% include 'emissions/includes/find-field.html' %}{% endif %}
 <form method="get" hx-trigger="submit, change delay:250ms">

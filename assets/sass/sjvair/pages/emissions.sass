@@ -38,8 +38,9 @@ body.emissions
     &.is-areas
       --fa-primary-color: #{$primary}
       --fa-secondary-color: #9ed0f5
+    // The pesticides Chemicals tab's purple, brightened with it for the dark hero.
     &.is-sectors
-      --fa-primary-color: #7b4fb8
+      --fa-primary-color: #9a6ae6
       --fa-secondary-color: #c9a7ff
     &.is-level
       --fa-primary-color: #2e8b57
@@ -60,15 +61,10 @@ body.emissions
     &.is-compare
       --fa-primary-color: #6a3d9a
       --fa-secondary-color: #cab2d6
-    // The About tab's circle-info: a slate circle with a white "i" on the
-    // white active tab (without its own colours both layers were one colour).
-    &.is-about
-      --fa-primary-color: #{$white}
-      --fa-secondary-color: #5a6b7b
-    // The Oil & gas wells section heading (wells-block.html); the pumpjack
-    // brown of the map overlay's Active well colour.
+    // The Oil & gas tab and wells section heading (wells-block.html): the
+    // pumpjack brown, lighter than the map's Active well so it shows on the dark hero.
     &.is-wells
-      --fa-primary-color: #7c2d12
+      --fa-primary-color: #b0602d
       --fa-secondary-color: #d9a679
     // The cow (the Dairies tabs): the size classes' amber-brown. These sat
     // nested under the About rule above, a selector nothing matched, so the
@@ -76,10 +72,6 @@ body.emissions
     &.is-dairies
       --fa-primary-color: #b45309
       --fa-secondary-color: #fcd34d
-  // On the dark hero (inactive tab) it inverts: a white circle, a slate "i".
-  .hook .explorer-nav li:not(.is-active) .explorer-icon.is-about
-    --fa-primary-color: #5a6b7b
-    --fa-secondary-color: rgba(255, 255, 255, 0.92)
   // The scope bar's two toggles, while off (on, they go white on the orange
   // fill): toxics in a warning red, minor sources in a fuel-pump gold.
   .explorer-scope-toggle:not(.is-set) .explorer-icon
@@ -378,11 +370,11 @@ body.emissions
       font-size: $size-7
       margin: 0
 
-  // Home: "Find your area" and "Find a facility" side by side, the same height.
+  // Home: "Search by location" and "Find a facility" side by side, the same height.
   .find-row
     .box
       height: 100%
-    // Styled like the county links in "Find your area" beside it.
+    // Styled like the county links in "Search by location" beside it.
     .find-facility-browse
       margin-top: 0.75rem
       font-size: $size-7

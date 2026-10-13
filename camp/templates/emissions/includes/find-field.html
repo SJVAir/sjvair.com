@@ -1,5 +1,5 @@
 {% comment %}
-"Find your area" as the first field of a top-level tab's filter box
+"Search by location" as the first field of a top-level tab's filter box
 (Facilities, Dairies, Oil & gas): a place or an address takes you to that
 area's own tab for the same thing. The same container the find script
 (pesticides/find-area.js) binds to as find-area.html's box -- `.find-area`
@@ -9,7 +9,7 @@ filters. Context: find_area_places (each with the tab's url), find_near_url,
 find_area_counties (optional jump links), find_area_qs, maptiler_key, year.
 {% endcomment %}
 <div class="field find-area find-field" data-maptiler-key="{{ maptiler_key }}" data-near-url="{{ find_near_url }}" data-year="{{ year }}" data-query="{{ find_area_qs }}">
-    <label class="label" for="find-area-query">Find your area</label>
+    <label class="label" for="find-area-query">Search by location</label>
     <div class="field has-addons mb-1">
         <div class="control is-expanded has-icons-left">
             <input class="input" type="search" id="find-area-query" placeholder="City, ZIP, county or address" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="find-area-results">

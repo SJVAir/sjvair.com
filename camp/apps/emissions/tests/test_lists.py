@@ -160,8 +160,8 @@ class FacilityListLayoutTests(ListTestCase):
         content = self.client.get(reverse('emissions:facility-list')).content.decode()
         form = content[content.index('class="explorer-filters box"'):content.index('</form>')]
         assert 'id="facility-q"' in form and 'id="facility-sector"' in form
-        # "Find your area" leads the box (a place's own Facilities tab); the old place picker is gone.
-        assert form.index('Find your area') < form.index('id="facility-q"') and 'data-kind="region"' not in form
+        # "Search by location" leads the box (a place's own Facilities tab); the old place picker is gone.
+        assert form.index('Search by location') < form.index('id="facility-q"') and 'data-kind="region"' not in form
         assert f'data-near-url="{reverse("emissions:near-me-facilities")}"' in form
         # Scoped to the sector select itself: the facility list also carries
         # a compliance filter select now, whose own options aren't part of

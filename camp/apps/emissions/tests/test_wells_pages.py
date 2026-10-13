@@ -206,7 +206,7 @@ class ValleyOilGasTabTests(WellsPagesTestCase):
         assert table.count('<tr>') == 5  # header + all four wells
         assert 'class="is-active"><a href="/tools/emissions/oil-gas/' in content.replace("is-active\"", 'is-active"')
         box = content[content.index('class="explorer-filters box"'):content.index('</form>', content.index('class="explorer-filters box"'))]
-        assert 'Find your area' in box and self.kern.get_emissions_tab_url('oil-gas') in content
+        assert 'Search by location' in box and self.kern.get_emissions_tab_url('oil-gas') in content
         assert 'Top operators' in content and 'Schools and child care near wells' in content
         response = self.client.get(url, {'format': 'csv'})
         assert response['Content-Type'] == 'text/csv' and len(response.content.decode().strip().splitlines()) == 5
