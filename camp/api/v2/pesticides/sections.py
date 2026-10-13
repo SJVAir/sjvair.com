@@ -106,6 +106,11 @@ def apply_filters(rows, params):
         'commodity': 'commodity__site_code',
         'county': 'county__slug',
     }
+    # The records browser's application method: a rollup code, or `none`
+    # for records that report none.
+    method = params.get('method')
+    if method:
+        rows = rows.filter(method='' if method == 'none' else method)
     for param, lookup in direct_lookups.items():
         value = params.get(param)
         if value:
@@ -119,7 +124,7 @@ def apply_filters(rows, params):
 # What apply_filters() narrows on. A request carrying none of these wants
 # plain section totals, which PesticideSectionTotal already holds; anything
 # here has to go back to the rollup, the only place those dimensions survive.
-SECTION_FILTER_PARAMS = ('month', 'chemical', 'product', 'commodity', 'county')
+SECTION_FILTER_PARAMS = ('month', 'chemical', 'product', 'commodity', 'county', 'method')
 
 
 def section_totals_available(params):
@@ -469,6 +474,9 @@ class ActiveNoticeListBase(generics.Endpoint):
         narrow = stats.resolve_narrow(params)
         if narrow:
             notices = stats.narrow_notices(notices, narrow)
+        # The notice list's method filter (SprayDays' own wording, any case).
+        if params.get('method'):
+            notices = notices.filter(application_method__iexact=params['method'])
         for param, lookup, cast in (
             ('chemical', 'chemicals__chem_code', int),
             ('product', 'products__prodno', int),

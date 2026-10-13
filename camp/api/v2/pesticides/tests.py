@@ -898,6 +898,12 @@ class SectionEndpointTests(TestCase):
         response = self.client.get(self.url, {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 2023, 'commodity': '3001'})
         assert response.json()['features'][0]['properties']['lbs_chemical'] == 120.0
 
+    def test_method_filter(self):
+        # Section 9101's 2023 uses were all applied by ground.
+        bbox = {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 2023}
+        assert self.client.get(self.url, {**bbox, 'method': 'G'}).json()['features'][0]['properties']['lbs_chemical'] == 670.0
+        assert self.client.get(self.url, {**bbox, 'method': 'A'}).json()['features'][0]['properties']['lbs_chemical'] == 0
+
     def test_radius(self):
         response = self.client.get(self.url, {'lat': 35.36, 'lng': -119.04, 'radius': 1, 'year': 2023})
         data = response.json()
@@ -1028,6 +1034,13 @@ class ActiveNoticeEndpointTests(TestCase):
         # No MTRS on the fixture notices, so no section to link.
         assert two['properties']['section'] is None
         assert two['properties']['section_id'] is None
+
+    def test_method_filter_matches_the_notice_list(self):
+        from camp.apps.pesticides.models import PesticideNotice
+        PesticideNotice.objects.filter(pk=2).update(application_method='Aircraft')
+        PesticideNotice.objects.filter(pk=3).update(application_method='Ground')
+        data = self.client.get(self.url, {'method': 'aircraft'}).json()
+        assert {f['properties']['id'] for f in data['features']} == {PesticideNotice.objects.get(pk=2).sqid}
 
     def test_section_id_is_the_mtrs_sqid(self):
         # The map popup links the section name, so the sqid rides along.
