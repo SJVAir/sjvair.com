@@ -1,5 +1,5 @@
 /*
- * "Find your area" block on the Pesticides Explorer landing page.
+ * "Search by location" block on the Pesticides Explorer landing page.
  *
  * One search box over two sources:
  *

@@ -538,7 +538,7 @@ class ExplorerRedirect(vanilla.GenericView):
 FIND_AREA_PLACES_CACHE_KEY = 'pesticides:find-area-places:v3'
 FIND_AREA_PLACES_TTL = 60 * 60 * 24
 
-# Short, human labels for the "Find your area" dropdown. Region.Type's own
+# Short, human labels for the "Search by location" dropdown. Region.Type's own
 # labels read a little long there ("ZIP Code"), and the dropdown shows the
 # type as a trailing tag: "93725 · ZIP". Each community layer (city, urban
 # area, CDP) is listed as-is, labelled: "Fresno · City", "Fresno · Urban area".
@@ -1190,9 +1190,11 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # School and child care markers: on where the schools are the
         # subject of the page (a school district), off everywhere else.
         'show_locations': '1' if show_locations else '0',
-        # "All sections" at the township zoom: off, except where the page
-        # is about individual sites (a place's Schools tab).
-        'show_all_sections': '1' if show_all_sections else '0',
+        # "All sections" at the township zoom: always on a place's map (a
+        # region is small enough to draw every section, so only the
+        # valley-wide maps group them into townships), and where the page
+        # is about individual sites (a near-me Schools tab).
+        'show_all_sections': '1' if show_all_sections or clip_region else '0',
         # The schools to show, as the locations endpoint's area parameters
         # (region=, or lat/lng/radius): all of a place's, at any zoom, in
         # place of whatever's in view.

@@ -6,7 +6,7 @@
 <div class="content">
     <h1 class="title is-4 mb-2">Pesticide use by square mile{% if map_config.year_label %}, {{ map_config.year_label }}{% endif %}</h1>
     {# What the legend doesn't already say (township vs section, the shades). #}
-    <p class="has-text-grey map-intro">Click a square-mile section for its top chemicals. Orange dots are notices of intent scheduled now; the legend's &ldquo;Schools &amp; child care&rdquo; toggle adds schools and child care centers, each with the use reported within about a mile.</p>
+    <p class="has-text-grey map-intro">Zoomed out, each square is a 6 &times; 6 mile township: hover one to see its square-mile sections, or zoom in, and click a section for its top chemicals. Orange dots are notices of intent scheduled now; the legend's &ldquo;Schools &amp; child care&rdquo; toggle adds schools and child care centers, each with the use reported within about a mile.</p>
     {% if no_matches %}
     <p class="notification is-warning is-light">No matches for that filter.</p>
     {% endif %}

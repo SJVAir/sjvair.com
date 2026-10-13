@@ -422,3 +422,9 @@
     border-left: 0;
   }
 }
+
+/* The legend body scrolls (overflow-y), which would clip the "?" tooltip;
+   let it spill out while the tooltip is showing. */
+.map-legend-panel .map-panel-body:has(.note-help:is(:hover, :focus-visible)) {
+  overflow: visible;
+}
