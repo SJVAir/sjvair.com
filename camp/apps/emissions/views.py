@@ -6,11 +6,13 @@ import re
 from urllib.parse import urlencode
 
 from django.conf import settings
+from django.contrib.gis.geos import GEOSGeometry
 from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.http import Http404, HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.utils.safestring import mark_safe
 
 import vanilla
 
@@ -18,11 +20,13 @@ from camp.apps.ces import stats as ces_stats
 from camp.apps.emissions import areas, compliance, dairies, ghg, methane, nei, schools, stats, wells
 from camp.apps.emissions.models import AirComplianceFacility, Facility, SourceImport, Well
 from camp.apps.emissions.pollutants import CRITERIA, PRECURSORS
+from camp.apps.emissions.templatetags import emissions_explorer
+from camp.apps.pesticides import maps as county_maps
 from camp.apps.regions import nearby
 from camp.apps.regions import schools as region_schools
 from camp.apps.regions import shapes
 from camp.apps.regions.models import Location, Region
-from camp.utils import mapconfig
+from camp.utils import mapconfig, mapfigure
 
 # The "In and around <place>" lists (camp.apps.regions.nearby), linked with
 # emissions pages; separate cache namespace from the pesticides explorer's,
@@ -184,6 +188,76 @@ def home_cards(scope):
     ]
 
 
+def county_rows(scope):
+    """
+    The home page's county table: every Valley county, most to least of the
+    scope pollutant (stats.county_breakdown, with the counties that reported
+    none added at the bottom), each with `color`, its fill on the choropleth
+    beside the table -- the table is the map's legend.
+    """
+    rows = stats.county_breakdown(scope)
+    listed = {row['county'].pk for row in rows}
+    rows = rows + [
+        {'county': county, 'facilities': 0, 'value': 0, 'share': None}
+        for county in Region.objects.counties().order_by('name') if county.pk not in listed
+    ]
+    classes = county_maps.quantile_classes({row['county'].pk: row['value'] for row in rows})
+    return [dict(row, color=classes.color_for(row['value'])) for row in rows]
+
+
+def county_map(rows, scope):
+    """
+    The county choropleth beside county_rows(): darker is more of the scope
+    pollutant, each county linking to its emissions page with the scope kept.
+    Drawn the way the pesticides landing's is (camp.utils.mapfigure, hovered
+    together with the table by county-hover.js); None without boundaries.
+    """
+    geometries = county_maps.county_geometries(county_maps.FIGURE_SIMPLIFY_TOLERANCE)
+    if not geometries:
+        return None
+    pollutant = scope.pollutant
+    by_pk = {row['county'].pk: row for row in rows}
+    query = scope.query(county=None)
+    figure = mapfigure.MapFigure(width=600, height=420, padding=10)
+    for pk, geojson in geometries.items():
+        row = by_pk.get(pk)
+        if row is None:
+            continue
+        county = row['county']
+        value = row['value']
+        if value:
+            amount = emissions_explorer.amount(value, pollutant)
+            label = f'{county.name}: {amount}' if pollutant.weighted else f'{county.name}: {amount} {pollutant.unit}'
+        else:
+            label = f'{county.name}: none reported'
+        figure.add(mapfigure.Area(
+            geometry=GEOSGeometry(geojson, srid=4326),
+            fill_color=row['color'],
+            fill_opacity=0.75,
+            border_color='#555',
+            border_width=1,
+            label=label,
+            label_on_hover=True,
+            url=county.get_emissions_url() + query,
+            # Matches the table row's data-county (includes/county-table.html).
+            key=county.sqid,
+        ))
+    return mark_safe(figure.render())
+
+
+def facility_movers(scope):
+    """stats.facility_movers() with each row's display name, link and change as a percent, for includes/movers.html."""
+    movers = stats.facility_movers(scope)
+    if movers is None:
+        return None
+    for group in movers['groups']:
+        for row in group['rows']:
+            row['name'] = row['facility'].display_name
+            row['url'] = row['facility'].get_absolute_url()
+            row['pct'] = None if row['pct'] is None else row['pct'] * 100
+    return movers
+
+
 class Home(ScopeMixin, vanilla.TemplateView):
     template_name = 'emissions/home.html'
 
@@ -191,9 +265,15 @@ class Home(ScopeMixin, vanilla.TemplateView):
         scope = self.get_scope()
         totals = stats.totals(scope)
         top_sectors = reporting_sectors(scope)[:6]
+        counties = county_rows(scope)
         return super().get_context_data(
             totals=totals,
             total=totals['value'],
+            county_rows=counties,
+            county_map=county_map(counties, scope),
+            movers=facility_movers(scope),
+            compliance_line=compliance.area_summary(scope),
+            hpv_url=reverse('emissions:facility-list') + scope.query(compliance='hpv'),
             context_bar=stats.county_context(scope),
             nei_context=nei.context(scope),
             toxics_breakdown=stats.toxics_breakdown(scope) if scope.toxics else None,

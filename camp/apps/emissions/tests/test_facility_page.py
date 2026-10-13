@@ -93,7 +93,7 @@ class HomeSearchTests(TestCase):
         from django.urls import reverse
 
         content = self.client.get(reverse('emissions:home'), {'minor': '1'}).content.decode()
-        row = content[content.index('class="columns find-row"'):]
+        row = content[content.index('class="columns find-row landing-top"'):]
         assert row.index('id="find"') < row.index('class="box find-facility"') < row.index('Top facilities · ')
         # The search keeps the scope, and there's only one facility search on the page.
         assert '<input type="hidden" name="minor" value="1">' in row[:row.index('Top facilities · ')]

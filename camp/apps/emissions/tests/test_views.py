@@ -84,6 +84,44 @@ class HomeTests(ViewTestCase):
         content = response.content.decode()
         assert 'entry-card' in content and 'Pick your area to see its schools' in content
 
+    def test_county_table_and_map(self):
+        response = self.get('home')
+        rows = response.context['county_rows']
+        kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
+        fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        # Most to least NOx, then every other county at the bottom with none.
+        assert [row['county'] for row in rows[:2]] == [kern, fresno]
+        assert rows[0]['value'] == 100 and rows[1]['value'] == 6
+        assert {row['county'] for row in rows} == set(Region.objects.counties())
+        # Darkest for the most; the no-data grey for any county with none.
+        assert rows[0]['color'] != rows[1]['color']
+        assert all(row['value'] == 0 and row['color'] == '#f0f0f0' for row in rows[2:])
+        content = response.content.decode()
+        assert f'data-county="{kern.sqid}"' in content
+        assert f'href="{kern.get_emissions_url()}">Kern</a>' in content
+        assert 'class="county-map"' in content
+
+    def test_county_links_keep_the_scope_but_not_the_county(self):
+        content = self.get('home', params={'year': 2023, 'county': 'fresno'}).content.decode()
+        kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
+        assert f'href="{kern.get_emissions_url()}?year=2023">Kern</a>' in content
+
+    def test_biggest_movers(self):
+        movers = self.get('home').context['movers']
+        assert (movers['year_from'], movers['year_to']) == (2023, 2024)
+        rising, falling = movers['groups']
+        # TEST CEMENT is new to NOx in 2024 (no percentage); TEST PLANT doubled.
+        assert [(row['facility'], row['change'], row['pct']) for row in rising['rows']] == [
+            (self.cement, 100, None), (self.plant, 3, 100),
+        ]
+        assert falling['rows'] == []
+        content = self.get('home').content.decode()
+        assert 'Biggest movers · 2023 to 2024' in content and 'Nothing fell.' in content
+        assert '+100</td>' in content and '>new</td>' in content and '+100%' in content
+
+    def test_no_movers_for_the_first_year(self):
+        assert self.get('home', params={'year': 2023}).context['movers'] is None
+
     def hero_classes(self, url):
         html = self.client.get(url).content.decode()
         tag = re.search(r'<section\b[^>]*\bid="explorer-hero"[^>]*>', html).group(0)

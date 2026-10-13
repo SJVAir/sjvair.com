@@ -59,6 +59,13 @@ def amount(value, pollutant):
 
 
 @register.filter
+def signed_amount(value, pollutant):
+    """amount() with its sign: '+1,456', '−8.2' (the movers board's change column)."""
+    text = amount(abs(value), pollutant)
+    return f'+{text}' if value >= 0 else f'−{text}'
+
+
+@register.filter
 def percent(share):
     if share is None:
         return '—'

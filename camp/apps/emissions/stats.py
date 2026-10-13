@@ -817,3 +817,49 @@ def large_changes(facility, year, *, min_base=0.1):
                 'pct': pct * 100,
             })
     return changes
+
+
+def facility_movers(scope, *, top=5):
+    """
+    The home page's "Biggest movers": the facilities whose scope pollutant
+    rose and fell most from the year before the scope's to the scope's year,
+    as {'year_from', 'year_to', 'groups': [rising, falling]}, each group
+    {'label', 'empty', 'rows'} with rows {'facility', 'change', 'pct'}; None
+    when there's no earlier year. `pct` is None where the earlier value is 0
+    (a facility new to the pollutant). For a weighted measure the change is
+    in shares of the Valley total, each year's against its own total.
+    """
+    years = available_years()
+    if scope.year not in years or years.index(scope.year) == 0:
+        return None
+    year_from = years[years.index(scope.year) - 1]
+    before_scope = Scope(year=year_from, county=scope.county, pollutant=scope.pollutant, minor=scope.minor, area=scope.area)
+
+    def compute():
+        after = {pk: value or 0 for pk, value in values(scope)}
+        before = {pk: value or 0 for pk, value in values(before_scope)}
+        changes = []
+        for pk in after.keys() | before.keys():
+            old, new = before.get(pk, 0), after.get(pk, 0)
+            if new != old:
+                changes.append((pk, new - old, (new - old) / old if old else None))
+        rising = sorted((row for row in changes if row[1] > 0), key=lambda row: -row[1])[:top]
+        falling = sorted((row for row in changes if row[1] < 0), key=lambda row: row[1])[:top]
+        return rising, falling
+
+    rising, falling = cache.get_or_set(scope.key('movers', year_from, top), compute, CACHE_TIMEOUT)
+    facilities = Facility.objects.in_bulk([pk for pk, _, _ in rising + falling])
+
+    def rows(pairs):
+        return [
+            {'facility': facilities[pk], 'change': change, 'pct': pct}
+            for pk, change, pct in pairs if pk in facilities
+        ]
+    return {
+        'year_from': year_from,
+        'year_to': scope.year,
+        'groups': [
+            {'label': 'Rose most', 'empty': 'Nothing rose.', 'rows': rows(rising)},
+            {'label': 'Fell most', 'empty': 'Nothing fell.', 'rows': rows(falling)},
+        ],
+    }

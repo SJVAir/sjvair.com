@@ -1,0 +1,45 @@
+{% load emissions_explorer %}
+{% comment %}
+The facilities whose scope pollutant rose and fell most into the scope year
+(views.facility_movers), as two ranked tables in the pesticides landing's
+movers style. "New" where the earlier year had none, so there is no
+percentage to give.
+{% endcomment %}
+<div class="card leaderboard movers">
+    <header class="card-header">
+        <h2 class="card-header-title">Biggest movers · {{ movers.year_from }} to {{ movers.year_to }}</h2>
+    </header>
+    <div class="card-content">
+        <div class="columns">
+            {% for group in movers.groups %}
+            <div class="column{% if not group.rows %} is-narrow{% endif %}">
+                <p class="heading">{{ group.label }}</p>
+                {% if group.rows %}
+                <div class="table-container">
+                <table class="table is-fullwidth is-narrow is-striped movers-table">
+                    <thead><tr>
+                        <th class="rank"><span class="is-sr-only">Rank</span></th>
+                        <th>Facility</th>
+                        <th class="has-text-right">Change{% if not pollutant.weighted %} ({{ pollutant.unit }}){% endif %}</th>
+                        <th class="has-text-right">%</th>
+                    </tr></thead>
+                    <tbody>
+                    {% for row in group.rows %}
+                        <tr>
+                            <td class="rank">{{ forloop.counter }}.</td>
+                            <td><a href="{{ row.url }}{{ scope_qs }}">{{ row.name }}</a></td>
+                            <td class="has-text-right movers-change">{{ row.change|signed_amount:pollutant }}</td>
+                            <td class="has-text-right movers-pct">{% if row.pct is None %}new{% else %}{{ row.pct|signed_pct }}{% endif %}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+                {% else %}
+                <p class="has-text-grey">{{ group.empty }}</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
