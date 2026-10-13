@@ -13,6 +13,21 @@
     </p>
 </div>
 
+{# Where to go first, above the search; a heading for screen readers only. #}
+<h2 class="is-sr-only">Explore</h2>
+<div class="columns is-multiline entry-cards">
+    {% for card in entry_cards %}
+    <div class="column is-half-tablet is-one-quarter-desktop">
+        <a class="box entry-card" href="{{ card.url }}">
+            <span class="icon is-medium entry-card-icon"><span class="fa-duotone fa-fw {{ card.icon }} explorer-icon {{ card.icon_class }}" aria-hidden="true"></span></span>
+            <p class="title is-5">{{ card.title }}</p>
+            <p class="entry-card-value"><span class="title is-3">{{ card.value|intcomma }}</span> <span class="entry-card-label has-text-grey">{{ card.label }}</span></p>
+            <p class="entry-card-sentence has-text-grey">{{ card.sentence }}</p>
+        </a>
+    </div>
+    {% endfor %}
+</div>
+
 {# The pesticides landing's top: "Search by location" wide, the facility search beside it, the same height. #}
 <div class="columns find-row landing-top">
     <div class="column is-8">{% include 'emissions/includes/find-area.html' %}</div>
@@ -41,21 +56,6 @@
     {% if compliance_line %}
     <div class="level-item has-text-centered"><div><p class="heading">Tracked by EPA</p><p class="title">{{ compliance_line.tracked|intcomma }}</p><p class="stat-note">of {{ compliance_line.facilities|intcomma }} facilities</p></div></div>
     {% endif %}
-</div>
-
-{# Straight after the headline numbers: where to go next, before the detail. #}
-<h2 class="title is-4">Explore</h2>
-<div class="columns is-multiline entry-cards">
-    {% for card in entry_cards %}
-    <div class="column is-half-tablet is-one-quarter-desktop">
-        <a class="box entry-card" href="{{ card.url }}">
-            <span class="icon is-medium entry-card-icon"><span class="fa-duotone fa-fw {{ card.icon }} explorer-icon {{ card.icon_class }}" aria-hidden="true"></span></span>
-            <p class="title is-5">{{ card.title }}</p>
-            <p class="entry-card-value"><span class="title is-3">{{ card.value|intcomma }}</span> <span class="entry-card-label has-text-grey">{{ card.label }}</span></p>
-            <p class="entry-card-sentence has-text-grey">{{ card.sentence }}</p>
-        </a>
-    </div>
-    {% endfor %}
 </div>
 
 {# The counties: the table is the map's legend, hovered together (county-hover.js); the trend under the table. #}
