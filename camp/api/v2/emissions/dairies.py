@@ -53,8 +53,10 @@ class DairyGeoJSONBase(generics.Endpoint):
         # Past it (?buffer=1|3|5 miles): the dairies whose point is in the widened shape.
         widened = get_shape(request)[0] if areas.buffer_param(request.GET) else None
         widened = widened.prepared if widened is not None else None
+        # The Dairies table's name search, so a searched table's map shows the same dairies.
+        q = (request.GET.get('q') or '').strip() or None
         features = []
-        for herd in dairies.table(year, area=None if widened is not None else area):
+        for herd in dairies.table(year, area=None if widened is not None else area, q=q):
             dairy = herd.dairy
             if widened is not None and not widened.contains(dairy.point):
                 continue
@@ -87,10 +89,11 @@ class DairyGeoJSON(DairyCachedEndpointMixin, DairyGeoJSONBase):
     classes' labels and thresholds for a legend. ?year= defaults to CADD's latest.
     ?region=<sqid> or ?lat=&lng=&radius= narrows to the area's dairies only,
     by the region pages' membership rule (RegionArea.dairy_q() / RadiusArea.dairy_q()).
+    ?q= keeps the dairies whose name contains it (the table's search).
     """
     cache_timeout = 60 * 60 * 24
-    # v3 -- a response cached under ?region= before this change was unfiltered.
-    cache_key_version = 3
+    # v4 -- ?q= (the table's name search).
+    cache_key_version = 4
 
 
 class DairyCountiesBase(generics.Endpoint):

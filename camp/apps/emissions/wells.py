@@ -211,9 +211,8 @@ def table_filters(get):
     }
 
 
-def table(area, *, q=None, status=None, operator=None, field=None, hpz=False, sort='-spud'):
-    """The area's wells, filtered and sorted, for the Oil & gas tab's table and CSV."""
-    queryset = Well.objects.filter(well_q(area))
+def filter_wells(queryset, *, q=None, status=None, operator=None, field=None, hpz=False):
+    """`queryset` narrowed by the Oil & gas table's filters (the table, its CSV and the map's wells)."""
     if q:
         queryset = queryset.filter(Q(lease_name__icontains=q) | Q(api__icontains=q))
     if status:
@@ -224,6 +223,20 @@ def table(area, *, q=None, status=None, operator=None, field=None, hpz=False, so
         queryset = queryset.filter(field_name=field)
     if hpz:
         queryset = queryset.filter(in_hpz=Well.HPZ.VERIFIED)
+    return queryset
+
+
+def filter_params(filters):
+    """The table's filters that are set, as query parameters (sort left out): what the map's wells URL carries."""
+    params = {key: filters[key] for key in ('q', 'status', 'operator', 'field') if filters.get(key)}
+    if filters.get('hpz'):
+        params['hpz'] = '1'
+    return params
+
+
+def table(area, *, q=None, status=None, operator=None, field=None, hpz=False, sort='-spud'):
+    """The area's wells, filtered and sorted, for the Oil & gas tab's table and CSV."""
+    queryset = filter_wells(Well.objects.filter(well_q(area)), q=q, status=status, operator=operator, field=field, hpz=hpz)
     sort = sort if sort in TABLE_SORTS else '-spud'
     fields = SORT_FIELDS[sort.lstrip('-')]
     descending = sort.startswith('-')

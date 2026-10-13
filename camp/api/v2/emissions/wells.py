@@ -35,10 +35,13 @@ class WellGeoJSON(generics.Endpoint):
         shape, area_key, error = get_shape(request)
         if error:
             return HttpResponse(json.dumps({'error': error}), status=400, content_type='application/json')
-        key = wells.key('geojson', area_key)
+        # The Oil & gas table's filters, so a filtered table's map shows the same wells.
+        filters = {name: value for name, value in wells.table_filters(request.GET).items() if name != 'sort'}
+        params = wells.filter_params(filters)
+        key = wells.key('geojson', area_key, *(f'{name}={value}' for name, value in sorted(params.items())))
         packed = cache.get(key)
         if packed is None:
-            packed = zlib.compress(self.payload(shape).encode(), 6)
+            packed = zlib.compress(self.payload(shape, filters).encode(), 6)
             try:
                 cache.set(key, packed, self.cache_timeout)
             except Exception as err:
@@ -46,9 +49,11 @@ class WellGeoJSON(generics.Endpoint):
         return HttpResponse(zlib.decompress(packed), content_type='application/json')
 
     @staticmethod
-    def payload(shape=None):
+    def payload(shape=None, filters=None):
         index = {status: i for i, status in enumerate(STATUSES)}
         queryset = Well.objects.only('id', 'status', 'in_hpz', 'point').order_by('pk')
+        if filters:
+            queryset = wells.filter_wells(queryset, **filters)
         if shape is not None:
             queryset = queryset.filter(point__intersects=shape)
         rows = [

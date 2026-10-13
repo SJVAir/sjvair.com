@@ -38,6 +38,19 @@ class DairyPageTestCase(TestCase):
         return response
 
 
+class DairyMapSearchTests(DairyPageTestCase):
+    def test_the_map_follows_the_name_search(self):
+        name = 'BIG DAIRY'
+        content = self.get({'q': name}).content.decode()
+        url = dairy_map_data(content, 'geojson-url').replace('&amp;', '&')
+        assert 'q=' in url
+        names = {feature['properties']['name'] for feature in self.client.get(url).json()['features']}
+        assert names == {name}
+        unfiltered = dairy_map_data(self.get().content.decode(), 'geojson-url').replace('&amp;', '&')
+        assert 'q=' not in unfiltered
+        assert len(self.client.get(unfiltered).json()['features']) > 1
+
+
 class DairyTabScopeTests(DairyPageTestCase):
     def test_a_bare_url_falls_back_quietly(self):
         response = self.get()

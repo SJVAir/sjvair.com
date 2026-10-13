@@ -111,7 +111,7 @@ def csv_response(rows, filename):
     return response
 
 
-def dairy_map_config(scope, view, *, area_params=None, outline_url='', center='', zoom='', radius='', methane=None):
+def dairy_map_config(scope, view, *, area_params=None, outline_url='', center='', zoom='', radius='', methane=None, q=None):
     """
     The data-* attributes of a `.dairy-map` (see assets/js/emissions/dairy-map.js):
     the Dairies tab's, or a dairy area page's with `area_params` (the GeoJSON
@@ -120,12 +120,13 @@ def dairy_map_config(scope, view, *, area_params=None, outline_url='', center=''
     outlined and masked) or `center`/`zoom`/`radius` (near-me's circle). An
     area page has the Dairies view only: no view switch, no Counties.
     `methane` (views.methane_overlay's return, or None) offers the Methane
-    sources (Carbon Mapper) overlay and its initial state.
+    sources (Carbon Mapper) overlay and its initial state. `q` (the table's
+    name search) narrows the points to the dairies the table lists.
     """
     area = area_params is not None
     year_qs = urlencode({'year': scope.year})
     config = {
-        'geojson_url': f"{reverse('api:v2:emissions:dairy-geojson')}?{urlencode({'year': scope.year, **(area_params or {})})}",
+        'geojson_url': f"{reverse('api:v2:emissions:dairy-geojson')}?{urlencode({'year': scope.year, **(area_params or {}), **({'q': q} if q else {})})}",
         'counties_url': f"{reverse('api:v2:emissions:dairy-counties')}?{urlencode({'year': scope.year, 'pollutant': scope.pollutant.key})}",
         'shapes_url': f"{reverse('api:v2:regions:region-geojson')}?type=county&simplify=1",
         'popup_url': reverse('api:v2:emissions:dairy-detail', args=['__id__']).replace('__id__', '{id}') + f'?{year_qs}',
@@ -307,6 +308,7 @@ class DairyList(DairyScopeMixin, vanilla.TemplateView):
             digester_trend=dairies.digester_chart_points(county=scope.county),
             map_config=dairy_map_config(
                 scope, dairy_map_view(self.request.GET), methane=views.methane_overlay(self.request.GET, default=True),
+                q=filters['q'],
             ) if dairies.years() else None,
             find_area_places=places,
             find_area_counties=[p for p in places if p['type'] == Region.Type.COUNTY],
@@ -433,6 +435,7 @@ class RegionDairies(views.RegionLookupMixin, DairyAreaPage):
             scope, dairy_map_view(self.request.GET), area_params={'region': self.region.sqid},
             outline_url=reverse('api:v2:regions:region-detail', args=[self.region.sqid]),
             methane=views.methane_overlay(self.request.GET, default=True),
+            q=search_filters(self.request.GET)['q'],
         )
 
     def csv_name(self, year):
@@ -479,6 +482,7 @@ class NearMeDairies(views.NearLookupMixin, DairyAreaPage):
             center=f'{self.near.lat:.4f},{self.near.lng:.4f}', zoom=views.RADIUS_ZOOMS[self.near.radius],
             radius=self.near.radius,
             methane=views.methane_overlay(self.request.GET, default=True),
+            q=search_filters(self.request.GET)['q'],
         )
 
     def near_params_for_api(self):

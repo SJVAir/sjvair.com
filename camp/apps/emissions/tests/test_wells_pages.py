@@ -43,11 +43,15 @@ class WellsPagesTestCase(TestCase):
 
 class OverlayConfigTests(WellsPagesTestCase):
     def test_wells_overlay_helper(self):
-        assert views.wells_overlay({}) == {'on': False, 'default': False}
-        assert views.wells_overlay({}, default=True) == {'on': True, 'default': True}
-        assert views.wells_overlay({'wells': '1'}) == {'on': True, 'default': False}
-        assert views.wells_overlay({'wells': '0'}, default=True) == {'on': False, 'default': True}
+        assert views.wells_overlay({}) == {'on': False, 'default': False, 'params': {}}
+        assert views.wells_overlay({}, default=True) == {'on': True, 'default': True, 'params': {}}
+        assert views.wells_overlay({'wells': '1'}) == {'on': True, 'default': False, 'params': {}}
+        assert views.wells_overlay({'wells': '0'}, default=True) == {'on': False, 'default': True, 'params': {}}
         assert views.wells_overlay({'wells': 'x'}, default=True)['on'] is True
+        # The Oil & gas pages narrow it to the table's filters; elsewhere they're ignored.
+        get = {'status': 'Idle', 'hpz': '1', 'q': ' ', 'sort': 'api'}
+        assert views.wells_overlay(get, filtered=True)['params'] == {'status': 'Idle', 'hpz': '1'}
+        assert views.wells_overlay(get)['params'] == {}
 
     def test_off_by_default_on_by_request(self):
         for url in (reverse('emissions:map'), self.fresno.get_emissions_url(), reverse('emissions:near-me') + '?lat=36.737&lng=-119.787'):
@@ -149,6 +153,20 @@ class OilGasTabTests(WellsPagesTestCase):
         assert response['Content-Type'] == 'text/csv'
         rows = response.content.decode().strip().splitlines()
         assert rows[0].startswith('api,lease,well_number,status') and len(rows) == 3
+
+    def test_the_map_follows_the_table_filters(self):
+        self.add_wells()
+        content = self.get(self.kern.get_emissions_tab_url('oil-gas'), {'status': 'Idle'})
+        url = map_data(content, 'wells-url').replace('&amp;', '&')
+        assert 'status=Idle' in url and f'region={self.kern.sqid}' in url
+        def api(**params):
+            return [row[0] for row in self.client.get(reverse('api:v2:emissions:wells-geojson'), params).json()['wells']]
+        everything = api(region=self.kern.sqid)
+        assert len(everything) == 2
+        # Cached per filter: the unfiltered response above doesn't answer the filtered one.
+        assert len(api(region=self.kern.sqid, status='Idle')) == 1
+        assert len(api(region=self.kern.sqid, hpz='1')) == 1
+        assert api(region=self.kern.sqid, status='nope') == everything
 
     def test_top_operators_and_fields(self):
         self.add_wells()

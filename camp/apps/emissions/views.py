@@ -578,15 +578,17 @@ def map_view(get, default_level=areas.DEFAULT_LEVEL, year=None, *, share=False):
     }
 
 
-def wells_overlay(get, *, default=False):
+def wells_overlay(get, *, default=False, filtered=False):
     """
     The map's Oil & gas wells overlay: on by default where `default` says
     (an area's Oil & gas tab, the oil-gas sector page), off elsewhere;
-    ?wells=1|0 overrides either way so the state can be shared.
+    ?wells=1|0 overrides either way so the state can be shared. `filtered`
+    (the Oil & gas pages) narrows it to the wells table's filters.
     """
     raw = get.get('wells')
     on = raw == '1' if raw in ('0', '1') else default
-    return {'on': on, 'default': default}
+    params = wells.filter_params(wells.table_filters(get)) if filtered else {}
+    return {'on': on, 'default': default, 'params': params}
 
 
 def is_kern(region):
@@ -631,7 +633,7 @@ def area_tab_layers(get, tab, scope, *, area_params, nearby=None):
     a site).
     """
     if tab == 'oil-gas':
-        return {'main_layer': None, 'wells': wells_overlay(get, default=True), 'methane': methane_overlay(get, default=True)}
+        return {'main_layer': None, 'wells': wells_overlay(get, default=True, filtered=True), 'methane': methane_overlay(get, default=True)}
     if tab == 'facilities':
         return {}
     if tab == 'schools':
@@ -809,7 +811,7 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         # `wells` is set (the map page, region, near-me and sector pages) and
         # never on a facility's own map. `wells` is its initial state, `wells_default`
         # the page's default (the JS writes ?wells= only when they differ).
-        'wells_url': with_query(reverse('api:v2:emissions:wells-geojson'), area_params) if wells else '',
+        'wells_url': with_query(reverse('api:v2:emissions:wells-geojson'), {**(area_params or {}), **wells.get('params', {})}) if wells else '',
         'well_url': reverse('api:v2:emissions:well-detail', args=['__id__']).replace('__id__', '{id}') if wells else '',
         'wells': '1' if wells and wells['on'] else '',
         'wells_default': '1' if wells and wells['default'] else '',
@@ -1713,7 +1715,7 @@ class OilGasPage(OilGasTabMixin, ScopeMixin, vanilla.TemplateView):
             wells_block=wells_block(area, scope, kern=True),
             map_config=facility_map_config(
                 scope, mode='compact', params=scope.params(county=None),
-                wells=wells_overlay(self.request.GET, default=True), main_layer=None,
+                wells=wells_overlay(self.request.GET, default=True, filtered=True), main_layer=None,
                 methane=methane_overlay(self.request.GET, default=True),
             ),
             point_params={}, clear_filters_url=self.area_tab_url('oil-gas', self.tab_query('oil-gas')),
