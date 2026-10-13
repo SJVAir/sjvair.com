@@ -155,7 +155,6 @@ return best;
 
 POPUP = '.maplibregl-popup.section-popup-wrap .section-popup'
 POPUP_CLEAR_EDGE = 10  # maps/chrome.js
-LOCATIONS_ZOOM_NOTE = 'Zoom in to see schools and child care.'
 LEGEND_ROWS = ".section-map-legend li:not(.is-marker)"
 
 
@@ -1061,11 +1060,10 @@ def check_locations(page):
     `?locations=`) and at the layer's zoom they load into the `locations`
     source and render, the legend lists both kinds, and a click opens the
     location popup, which fills in the block figure ("within about a
-    mile") and carries the "District page" pill. Zoomed out past
-    LOCATIONS_MIN_ZOOM the layer stays empty and the legend note and the
-    status line say why -- except on a place's Schools tab (a
-    `locationsArea`), where the place's own sites load once at any zoom, by
-    the area's params rather than a bbox, and no zoom note shows. The Options toggle clears the markers and the
+    mile") and carries the "District page" pill. They load at any zoom: a
+    place's Schools tab (a `locationsArea`) by the area's params rather than
+    a bbox, anywhere else the clip shape's or the valley's sites at once. The
+    legend toggle clears the markers and the
     legend rows and writes `?locations=` against the page default; back on
     reloads them. Ends with the toggle as it found it. Skips itself (after
     the load and toggle steps) where the layer's zoom has no school in
@@ -1083,79 +1081,67 @@ def check_locations(page):
         problems.append('legend rows %s lack the school/child care rows' % rows)
     if not state['dflt'] and url_param(page, 'locations') != '1':
         problems.append('URL lacks locations=1 with the layer on against the default: %s' % page.driver.current_url)
-    too_far = state['zoom'] < 9 and not state['area']
     count = 0
     popup_detail = ''
     skipped = None
-    if too_far:
-        note = page.js("return { note: document.querySelector('.section-map-locations-note').textContent, status: document.querySelector('.map-status').textContent };")
-        if note['note'] != LOCATIONS_ZOOM_NOTE or note['status'] != LOCATIONS_ZOOM_NOTE:
-            problems.append('zoom %.2f: note %r, status %r' % (state['zoom'], note['note'], note['status']))
-        if page.marker_requests('locations') != requests_before or page.source_count('locations'):
-            problems.append('zoom %.2f: the layer loaded anyway' % state['zoom'])
-        popup_detail = 'zoom %.2f is under 9: note shown, nothing fetched' % state['zoom']
+    loaded = page.wait_for('var inst = (function () { %s })(); return !!(inst && inst.loadedLocationBounds);' % JS_INSTANCE, 20)
+    if not loaded:
+        return False, 'locations never loaded (%d request(s))' % page.marker_requests('locations')
+    count = page.source_count('locations')
+    # The source loads a margin around the view: count what's on screen.
+    in_view = page.instance_js("""
+        var b = inst.map.getBounds();
+        return inst.sourceData.locations.features.filter(function (f) { return b.contains(f.geometry.coordinates); }).length;
+    """)
+    if state['area']:
+        bounds = page.instance_js('return inst.loadedLocationBounds')
+        if bounds != 'area':
+            problems.append('area page did not load by area (bounds %r)' % bounds)
+        if not count:
+            problems.append('area page loaded no locations')
+        names = page.js("return performance.getEntriesByType('resource').map(function (r) { return r.name; }).filter(function (n) { return n.indexOf('/pesticides/locations/') !== -1; })")
+        area_keys = set(k for k, _ in parse_qsl(state['area']))
+        for name in names:
+            query = parse_qs(urlparse(name).query)
+            if 'bbox' in query or not area_keys <= set(query):
+                problems.append('locations request %s is not the area request (%s)' % (name, state['area']))
+    if not in_view:
+        skipped = 'no locations in view at zoom %.2f (%d loaded around it)' % (state['zoom'], count)
     else:
-        loaded = page.wait_for('var inst = (function () { %s })(); return !!(inst && inst.loadedLocationBounds);' % JS_INSTANCE, 20)
-        if not loaded:
-            return False, 'locations never loaded (%d request(s))' % page.marker_requests('locations')
-        count = page.source_count('locations')
-        # The source loads a margin around the view: count what's on screen.
-        in_view = page.instance_js("""
-            var b = inst.map.getBounds();
-            return inst.sourceData.locations.features.filter(function (f) { return b.contains(f.geometry.coordinates); }).length;
-        """)
-        if page.js("return document.querySelector('.section-map-locations-note').textContent"):
-            problems.append('zoom note shown at zoom %.2f' % state['zoom'])
-        if state['area']:
-            bounds = page.instance_js('return inst.loadedLocationBounds')
-            if bounds != 'area':
-                problems.append('area page did not load by area (bounds %r)' % bounds)
-            if not count:
-                problems.append('area page loaded no locations')
-            names = page.js("return performance.getEntriesByType('resource').map(function (r) { return r.name; }).filter(function (n) { return n.indexOf('/pesticides/locations/') !== -1; })")
-            area_keys = set(k for k, _ in parse_qsl(state['area']))
-            for name in names:
-                query = parse_qs(urlparse(name).query)
-                if 'bbox' in query or not area_keys <= set(query):
-                    problems.append('locations request %s is not the area request (%s)' % (name, state['area']))
-        if not in_view:
-            skipped = 'no locations in view at zoom %.2f (%d loaded around it)' % (state['zoom'], count)
+        rendered = page.wait_for("var inst = (function () { %s })(); return !!inst && inst.map.queryRenderedFeatures({ layers: ['locations-circle'] }).length > 0;" % JS_INSTANCE, 10)
+        if not rendered:
+            problems.append('%d locations in view, none rendered' % in_view)
+        target = page.pick_point('locations', 'locations-circle')
+        if not target:
+            problems.append('no location on bare canvas to click')
         else:
-            rendered = page.wait_for("var inst = (function () { %s })(); return !!inst && inst.map.queryRenderedFeatures({ layers: ['locations-circle'] }).length > 0;" % JS_INSTANCE, 10)
-            if not rendered:
-                problems.append('%d locations in view, none rendered' % in_view)
-            target = page.pick_point('locations', 'locations-circle')
-            if not target:
-                problems.append('no location on bare canvas to click')
-            else:
-                page.click_map(target['dx'], target['dy'], settle=0.3, instant=True)
-                opened = page.instance_js("var el = document.querySelector(arguments[0]); return { text: el ? el.innerText : '', key: inst.popupKey, id: inst.openLocationId };", POPUP)
-                if opened['key'] != 'openLocationId' or opened['id'] != target['id']:
-                    problems.append('popup state %s/%s for location %s' % (opened['key'], opened['id'], target['id']))
-                if 'Loading nearby use' not in opened['text'] and 'within about a mile' not in opened['text']:
-                    problems.append('location popup opened with %r' % opened['text'][:120])
-                filled = page.wait_for("var el = document.querySelector(arguments[0]); return !!el && el.innerText.indexOf('Loading nearby use') === -1;", 15, POPUP)
-                result = page.instance_js("""
-                    var el = document.querySelector(arguments[0]);
-                    var pills = el ? Array.from(el.querySelectorAll('.section-popup-action')).map(function (a) { return a.textContent.trim(); }) : [];
-                    return { text: el ? el.innerText : '', location: !!(el && el.classList.contains('location-popup')), pills: pills,
-                             district: !!(el && el.querySelector('.section-popup-action[href*="/region/"]')) };
-                """, POPUP)
-                if not filled or 'within about a mile' not in result['text']:
-                    problems.append('block figure never filled in: %r' % result['text'][:120])
-                if not result['location']:
-                    problems.append('popup is not a location popup')
-                if not result['district'] or 'District page' not in result['pills']:
-                    problems.append('no "District page" pill: %s' % result['pills'])
-                popup_detail = 'popup for %s: %s; pills %s' % (target['id'], result['text'].split('\n')[0][:40], result['pills'])
+            page.click_map(target['dx'], target['dy'], settle=0.3, instant=True)
+            opened = page.instance_js("var el = document.querySelector(arguments[0]); return { text: el ? el.innerText : '', key: inst.popupKey, id: inst.openLocationId };", POPUP)
+            if opened['key'] != 'openLocationId' or opened['id'] != target['id']:
+                problems.append('popup state %s/%s for location %s' % (opened['key'], opened['id'], target['id']))
+            if 'Loading nearby use' not in opened['text'] and 'within about a mile' not in opened['text']:
+                problems.append('location popup opened with %r' % opened['text'][:120])
+            filled = page.wait_for("var el = document.querySelector(arguments[0]); return !!el && el.innerText.indexOf('Loading nearby use') === -1;", 15, POPUP)
+            result = page.instance_js("""
+                var el = document.querySelector(arguments[0]);
+                var pills = el ? Array.from(el.querySelectorAll('.section-popup-action')).map(function (a) { return a.textContent.trim(); }) : [];
+                return { text: el ? el.innerText : '', location: !!(el && el.classList.contains('location-popup')), pills: pills,
+                         district: !!(el && el.querySelector('.section-popup-action[href*="/region/"]')) };
+            """, POPUP)
+            if not filled or 'within about a mile' not in result['text']:
+                problems.append('block figure never filled in: %r' % result['text'][:120])
+            if not result['location']:
+                problems.append('popup is not a location popup')
+            if not result['district'] or 'District page' not in result['pills']:
+                problems.append('no "District page" pill: %s' % result['pills'])
+            popup_detail = 'popup for %s: %s; pills %s' % (target['id'], result['text'].split('\n')[0][:40], result['pills'])
     # Off: markers, legend rows, note and popup go; the URL says so.
     page.set_control('input[name="locations"]', False)
     after = page.instance_js("""
         return { count: (inst.sourceData.locations || {features: []}).features.length, popup: !!inst.popup && inst.popupKey === 'openLocationId',
-                 bounds: inst.loadedLocationBounds, note: document.querySelector('.section-map-locations-note').textContent,
-                 status: document.querySelector('.map-status').textContent };
+                 bounds: inst.loadedLocationBounds };
     """)
-    if after['count'] or after['bounds'] or after['popup'] or after['note'] or after['status'] == LOCATIONS_ZOOM_NOTE:
+    if after['count'] or after['bounds'] or after['popup']:
         problems.append('toggle off left %s' % after)
     rows = page.marker_legend()
     if 'School' in rows or 'Child care' in rows:
@@ -1163,17 +1149,11 @@ def check_locations(page):
     expected_off = '0' if state['dflt'] else None
     if url_param(page, 'locations') != expected_off:
         problems.append('URL after toggle off: %s (wanted locations=%s)' % (page.driver.current_url, expected_off))
-    # On again reloads them (or shows the note again).
+    # On again reloads them.
     page.set_control('input[name="locations"]', True)
-    if too_far:
-        if page.js("return document.querySelector('.section-map-locations-note').textContent") != LOCATIONS_ZOOM_NOTE:
-            problems.append('toggle on again: note missing')
-    elif state['area'] and page.js("return document.querySelector('.section-map-locations-note').textContent"):
-        problems.append('toggle on again: zoom note shown on an area page')
-    else:
-        reloaded = page.wait_for('var inst = (function () { %s })(); return !!(inst && inst.loadedLocationBounds);' % JS_INSTANCE, 20)
-        if not reloaded or (count and not page.source_count('locations')):
-            problems.append('toggle on again: loaded=%s, %d markers (had %d)' % (reloaded, page.source_count('locations'), count))
+    reloaded = page.wait_for('var inst = (function () { %s })(); return !!(inst && inst.loadedLocationBounds);' % JS_INSTANCE, 20)
+    if not reloaded or (count and not page.source_count('locations')):
+        problems.append('toggle on again: loaded=%s, %d markers (had %d)' % (reloaded, page.source_count('locations'), count))
     expected_on = None if state['dflt'] else '1'
     if url_param(page, 'locations') != expected_on:
         problems.append('URL after toggle on: %s (wanted locations=%s)' % (page.driver.current_url, expected_on))

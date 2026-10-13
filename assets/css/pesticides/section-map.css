@@ -46,14 +46,6 @@
   color: #6b6b6b;
 }
 
-/* Why the school markers aren't showing (set by updateLocationsNote); empty
-   the rest of the time, so it takes no room. */
-.map-legend-panel .section-map-locations-note:not(:empty) {
-  display: block;
-  margin-top: 0.35rem;
-  color: #6b6b6b;
-}
-
 /* Marker colours live in the script (LOCATION_COLORS, NOTICE_COLOR): notices
    #d35400, schools #5a6b7b, child care #1c9099. Child care is teal rather
    than purple because purple is the Chemicals section's colour. The legend

@@ -1178,13 +1178,14 @@ def clip_url(sqid, buffer=0):
     return f'{url}?buffer={buffer}' if buffer else url
 
 
-def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None, show_all_sections=False, locations_area=None, notices_url=None, section_notices_extra=None, clip_region=None, buffer=0, method=None, notice_method=None, location_ids=None):
+def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None, show_all_sections=False, locations_area=None, notices_url=None, section_notices_extra=None, clip_region=None, buffer=0, method=None, notice_method=None, location_ids=None, place=None):
     year = year or stats.latest_year()
     scope = stats.scope_param(year, all_years, county, concern)
     # A list page's own table filters, carried on the endpoint URLs so every
     # request the map makes from them (the grid, the lens, "all sections",
     # the notices) is narrowed the way the table beside it is: the records'
     # application method, the notice list's method.
+    sections_fixed = bool(clip_region or county or place not in (None, MISSING))
     grid_query = f"?{urlencode({'method': method})}" if method else ''
     past_notices = bool(notices_url)
     notices_url = notices_url or '/api/2.0/pesticides/notices/active/'
@@ -1199,11 +1200,14 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # School and child care markers: on where the schools are the
         # subject of the page (a school district), off everywhere else.
         'show_locations': '1' if show_locations else '0',
-        # "All sections" at the township zoom: always on a place's map (a
-        # region is small enough to draw every section, so only the
-        # valley-wide maps group them into townships), and where the page
-        # is about individual sites (a near-me Schools tab).
-        'show_all_sections': '1' if show_all_sections or clip_region else '0',
+        # "All sections" at the township zoom: always on a map scoped to a
+        # place -- a region's tabs, a county, or a list narrowed to a region
+        # (`place`) -- which is small enough to draw every section, so only
+        # the valley-wide maps group them into townships; and where the page
+        # is about individual sites (a near-me Schools tab). A scoped map has
+        # no toggle for it (`sections_fixed`).
+        'show_all_sections': '1' if show_all_sections or sections_fixed else '0',
+        'sections_fixed': '1' if sections_fixed else '0',
         # The schools to show, as the locations endpoint's area parameters
         # (region=, or lat/lng/radius): all of a place's, at any zoom, in
         # place of whatever's in view.
@@ -1816,6 +1820,7 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
             show_notices=False,
             concern=self.concern,
             method=self.form.cleaned_data.get('method') or None,
+            place=region,
             **self.get_map_clip(),
         )
 
@@ -2220,6 +2225,7 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
             notices_url=self.get_notices_url(),
             section_notices_extra=self.get_list_mode_params(),
             notice_method=self.form.cleaned_data.get('method') or None,
+            place=region,
         )
 
     def get_context_data(self, **kwargs):
