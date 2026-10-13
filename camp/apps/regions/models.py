@@ -134,6 +134,19 @@ class Region(TimeStampedModel):
         name = 'pesticides:region' if tab == 'overview' else f'pesticides:region-{tab}'
         return reverse(name, kwargs={'sqid': self.sqid, 'slug': self.slug})
 
+    def get_emissions_url(self):
+        """This region's page in the emissions explorer."""
+        return reverse('emissions:region', kwargs={'sqid': self.sqid, 'slug': self.slug})
+
+    def get_emissions_dairies_url(self):
+        """This region's dairies page in the emissions explorer."""
+        return reverse('emissions:region-dairies', kwargs={'sqid': self.sqid, 'slug': self.slug})
+
+    def get_emissions_tab_url(self, tab):
+        """One tab of this region's emissions page ('overview', 'facilities', 'dairies', 'oil-gas', 'community')."""
+        name = 'emissions:region' if tab == 'overview' else f'emissions:region-{tab}'
+        return reverse(name, kwargs={'sqid': self.sqid, 'slug': self.slug})
+
     @property
     def monitors(self):
         """

@@ -1,0 +1,241 @@
+epa region code,state,fips state code,tribal name,fips code,county,sector,reporting period,emissions operating type,pollutant code,pollutant desc,pollutant type(s),hap type,total emissions,emissions uom,data set
+09,CA,06,,06031,Kings,Fuel Comb - Comm/Institutional - Natural Gas,A,R,SO2,Sulfur Dioxide,CAP,,8.596165420605,TON,2023NEI
+09,CA,06,,06047,Merced,Gas Stations,A,R,91203,Naphthalene,HAP,HAP-VOC,58.1597504206468,LB,2023NEI
+09,CA,06,,06047,Merced,Agriculture - Fertilizer Application,A,R,NH3,Ammonia,CAP,,1845.014,TON,2023NEI
+09,CA,06,,06029,Kern,Fuel Comb - Comm/Institutional - Natural Gas,A,R,NH3,Ammonia,CAP,,1.0531351024,TON,2023NEI
+09,CA,06,,06029,Kern,Mobile - On-Road Diesel Heavy Duty Vehicles,A,R,NH3,Ammonia,CAP,,31.394215767,TON,2023NEI
+09,CA,06,,06039,Madera,Fires - Wildfires,A,R,NH3,Ammonia,CAP,,3.790494,TON,2023NEI
+09,CA,06,,06029,Kern,Industrial Processes - Pulp & Paper,A,R,NH3,Ammonia,CAP,,.5049578,TON,2023NEI
+09,CA,06,,06047,Merced,Fuel Comb - Comm/Institutional - Natural Gas,A,R,NH3,Ammonia,CAP,,1.4109335,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Fuel Comb - Residential - Natural Gas,A,R,NH3,Ammonia,CAP,,0,TON,2023NEI
+09,CA,06,,06029,Kern,Fuel Comb - Residential - Oil,A,R,NH3,Ammonia,CAP,,.03475239,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Mobile - On-Road non-Diesel Heavy Duty Vehicles,A,R,NH3,Ammonia,CAP,,7.350719047,TON,2023NEI
+09,CA,06,,06039,Madera,Fuel Comb - Electric Generation - Natural Gas,A,R,NH3,Ammonia,CAP,,.24611605,TON,2023NEI
+09,CA,06,,06029,Kern,"Fuel Comb - Industrial Boilers, ICEs - Other",A,R,NH3,Ammonia,CAP,,.565344,TON,2023NEI
+09,CA,06,,06031,Kings,Mobile - On-Road non-Diesel Heavy Duty Vehicles,A,R,NH3,Ammonia,CAP,,1.8251582545,TON,2023NEI
+09,CA,06,,06039,Madera,Industrial Processes - Non-ferrous Metals,A,R,NH3,Ammonia,CAP,,.0000001444068,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Mobile - Non-Road Equipment - Other,A,R,NH3,Ammonia,CAP,,.01537015,TON,2023NEI
+09,CA,06,,06031,Kings,Mobile - On-Road Diesel Light Duty Vehicles,A,R,NH3,Ammonia,CAP,,.46180466,TON,2023NEI
+09,CA,06,,06031,Kings,Mobile - On-Road Diesel Heavy Duty Vehicles,A,R,NH3,Ammonia,CAP,,4.7486217651,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Solvent - Industrial Surface Coating & Solvent Use,A,R,NH3,Ammonia,CAP,,1.4983716646,TON,2023NEI
+09,CA,06,,06019,Fresno,Fuel Comb - Residential - Wood,A,R,NH3,Ammonia,CAP,,28.53872567,TON,2023NEI
+09,CA,06,,06019,Fresno,Mobile - Locomotives,A,R,NH3,Ammonia,CAP,,.52526118,TON,2023NEI
+09,CA,06,,06031,Kings,Miscellaneous Non-Industrial NEC,A,R,NH3,Ammonia,CAP,,.01526808,TON,2023NEI
+09,CA,06,,06031,Kings,Industrial Processes - Non-ferrous Metals,A,R,NH3,Ammonia,CAP,,.002492463,TON,2023NEI
+09,CA,06,,06047,Merced,Fuel Comb - Electric Generation - Biomass,A,R,NH3,Ammonia,CAP,,.8620032,TON,2023NEI
+09,CA,06,,06029,Kern,Mobile - Non-Road Equipment - Gasoline,A,R,NH3,Ammonia,CAP,,1.40374235,TON,2023NEI
+09,CA,06,,06029,Kern,Industrial Processes - Cement Manuf,A,R,NH3,Ammonia,CAP,,18.67069,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Industrial Processes - Chemical Manuf,A,R,NH3,Ammonia,CAP,,103.2272511912,TON,2023NEI
+09,CA,06,,06029,Kern,Mobile - Non-Road Equipment - Diesel,A,R,NH3,Ammonia,CAP,,2.43364175,TON,2023NEI
+09,CA,06,,06031,Kings,Industrial Processes - Storage and Transfer,A,R,NH3,Ammonia,CAP,,.00060946269,TON,2023NEI
+09,CA,06,,06029,Kern,Fires - Wildfires,A,R,NH3,Ammonia,CAP,,41.815373,TON,2023NEI
+09,CA,06,,06107,Tulare,Agriculture - Fertilizer Application,A,R,NH3,Ammonia,CAP,,1453.382,TON,2023NEI
+09,CA,06,,06019,Fresno,Fuel Comb - Electric Generation - Natural Gas,A,R,NH3,Ammonia,CAP,,25.57879952,TON,2023NEI
+09,CA,06,,06031,Kings,Mobile - Non-Road Equipment - Diesel,A,R,NH3,Ammonia,CAP,,1.01940495,TON,2023NEI
+09,CA,06,,06107,Tulare,Fuel Comb - Residential - Oil,A,R,NH3,Ammonia,CAP,,.01494105,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Waste Disposal,A,R,NH3,Ammonia,CAP,,380.664816377249,TON,2023NEI
+09,CA,06,,06019,Fresno,Mobile - Non-Road Equipment - Other,A,R,NH3,Ammonia,CAP,,.0243601,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Waste Disposal,A,R,NH3,Ammonia,CAP,,615.4676529158,TON,2023NEI
+09,CA,06,,06029,Kern,Mobile - Non-Road Equipment - Other,A,R,NH3,Ammonia,CAP,,.01387,TON,2023NEI
+09,CA,06,,06019,Fresno,Fuel Comb - Residential - Natural Gas,A,R,NH3,Ammonia,CAP,,0,TON,2023NEI
+09,CA,06,,06031,Kings,Industrial Processes - Ferrous Metals,A,R,NH3,Ammonia,CAP,,.00014324802,TON,2023NEI
+09,CA,06,,06047,Merced,Fuel Comb - Residential - Wood,A,R,NH3,Ammonia,CAP,,13.363918762,TON,2023NEI
+09,CA,06,,06107,Tulare,Miscellaneous Non-Industrial NEC,A,R,NH3,Ammonia,CAP,,4.666324,TON,2023NEI
+09,CA,06,,06029,Kern,Industrial Processes - Petroleum Refineries,A,R,NH3,Ammonia,CAP,,.005691195556433,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Mobile - On-Road non-Diesel Light Duty Vehicles,A,R,NH3,Ammonia,CAP,,330.62241586,TON,2023NEI
+09,CA,06,,06031,Kings,Mobile - Non-Road Equipment - Gasoline,A,R,NH3,Ammonia,CAP,,.1912746,TON,2023NEI
+09,CA,06,,06029,Kern,Mobile - On-Road Diesel Light Duty Vehicles,A,R,NH3,Ammonia,CAP,,2.9695486,TON,2023NEI
+09,CA,06,,06029,Kern,Miscellaneous Non-Industrial NEC,A,R,NH3,Ammonia,CAP,,3.568592,TON,2023NEI
+09,CA,06,,06039,Madera,Agriculture - Fertilizer Application,A,R,NH3,Ammonia,CAP,,877.8301,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Fuel Comb - Electric Generation - Natural Gas,A,R,NH3,Ammonia,CAP,,13.57800575,TON,2023NEI
+09,CA,06,,06019,Fresno,Agriculture - Livestock Waste,A,R,NH3,Ammonia,CAP,,9784.217144,TON,2023NEI
+09,CA,06,,06107,Tulare,Fires - Prescribed Fires,A,R,NH3,Ammonia,CAP,,36.508707,TON,2023NEI
+09,CA,06,,06031,Kings,Industrial Processes - Chemical Manuf,A,R,NH3,Ammonia,CAP,,260.17120691,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Fires - Agricultural Field Burning,A,R,NH3,Ammonia,CAP,,.942816,TON,2023NEI
+09,CA,06,,06047,Merced,Industrial Processes - NEC,A,R,NH3,Ammonia,CAP,,13.17927365858514,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Mobile - Locomotives,A,R,NH3,Ammonia,CAP,,.312918119,TON,2023NEI
+09,CA,06,,06099,Stanislaus,"Fuel Comb - Industrial Boilers, ICEs - Natural Gas",A,R,NH3,Ammonia,CAP,,1.10670765,TON,2023NEI
+09,CA,06,,06107,Tulare,Waste Disposal,A,R,NH3,Ammonia,CAP,,466.8005578316,TON,2023NEI
+09,CA,06,,06107,Tulare,Mobile - Non-Road Equipment - Gasoline,A,R,NH3,Ammonia,CAP,,.6405823,TON,2023NEI
+09,CA,06,,06019,Fresno,Agriculture - Fertilizer Application,A,R,NH3,Ammonia,CAP,,3806.498,TON,2023NEI
+09,CA,06,,06019,Fresno,Industrial Processes - Oil & Gas Production,A,R,NH3,Ammonia,CAP,,.0000079104,TON,2023NEI
+09,CA,06,,06019,Fresno,Industrial Processes - NEC,A,R,NH3,Ammonia,CAP,,15.30871698858387,TON,2023NEI
+09,CA,06,,06029,Kern,Industrial Processes - Storage and Transfer,A,R,NH3,Ammonia,CAP,,124.9008949323553663,TON,2023NEI
+09,CA,06,,06039,Madera,Mobile - On-Road Diesel Heavy Duty Vehicles,A,R,NH3,Ammonia,CAP,,3.74620553196,TON,2023NEI
+09,CA,06,,06029,Kern,Industrial Processes - Ferrous Metals,A,R,NH3,Ammonia,CAP,,.000036920323,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Industrial Processes - Oil & Gas Production,A,R,NH3,Ammonia,CAP,,0,TON,2023NEI
+09,CA,06,,06029,Kern,Mobile - On-Road non-Diesel Heavy Duty Vehicles,A,R,NH3,Ammonia,CAP,,15.7230181,TON,2023NEI
+09,CA,06,,06047,Merced,"Fuel Comb - Industrial Boilers, ICEs - Natural Gas",A,R,NH3,Ammonia,CAP,,.722887,TON,2023NEI
+09,CA,06,,06031,Kings,"Fuel Comb - Industrial Boilers, ICEs - Oil",A,R,NH3,Ammonia,CAP,,.0001185,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Fuel Comb - Comm/Institutional - Other,A,R,NH3,Ammonia,CAP,,1.587363363162,TON,2023NEI
+09,CA,06,,06031,Kings,Waste Disposal,A,R,NH3,Ammonia,CAP,,98.015991813261,TON,2023NEI
+09,CA,06,,06029,Kern,Fuel Comb - Residential - Wood,A,R,NH3,Ammonia,CAP,,20.19589138,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Industrial Processes - NEC,A,R,NH3,Ammonia,CAP,,19.0382827092566,TON,2023NEI
+09,CA,06,,06039,Madera,Industrial Processes - NEC,A,R,NH3,Ammonia,CAP,,4.15205178087,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Agriculture - Livestock Waste,A,R,NH3,Ammonia,CAP,,4956.39229,TON,2023NEI
+09,CA,06,,06107,Tulare,Industrial Processes - Chemical Manuf,A,R,NH3,Ammonia,CAP,,132.88152732,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Industrial Processes - Non-ferrous Metals,A,R,NH3,Ammonia,CAP,,.000015760086,TON,2023NEI
+09,CA,06,,06019,Fresno,Mobile - On-Road non-Diesel Light Duty Vehicles,A,R,NH3,Ammonia,CAP,,414.25406593,TON,2023NEI
+09,CA,06,,06029,Kern,Fuel Comb - Residential - Natural Gas,A,R,NH3,Ammonia,CAP,,0,TON,2023NEI
+09,CA,06,,06047,Merced,Fires - Agricultural Field Burning,A,R,NH3,Ammonia,CAP,,2.828448,TON,2023NEI
+09,CA,06,,06107,Tulare,Fuel Comb - Comm/Institutional - Other,A,R,NH3,Ammonia,CAP,,.5445219,TON,2023NEI
+09,CA,06,,06019,Fresno,"Fuel Comb - Industrial Boilers, ICEs - Other",A,R,NH3,Ammonia,CAP,,.0650410571039,TON,2023NEI
+09,CA,06,,06047,Merced,Mobile - Locomotives,A,R,NH3,Ammonia,CAP,,.51933295,TON,2023NEI
+09,CA,06,,06029,Kern,Industrial Processes - Chemical Manuf,A,R,NH3,Ammonia,CAP,,372.86306548764,TON,2023NEI
+09,CA,06,,06047,Merced,Agriculture - Livestock Waste,A,R,NH3,Ammonia,CAP,,11768.52675,TON,2023NEI
+09,CA,06,,06039,Madera,Solvent - Industrial Surface Coating & Solvent Use,A,R,NH3,Ammonia,CAP,,.0138185,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Fuel Comb - Residential - Natural Gas,A,R,NH3,Ammonia,CAP,,0,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Fuel Comb - Residential - Oil,A,R,NH3,Ammonia,CAP,,.0164269,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Fuel Comb - Residential - Oil,A,R,NH3,Ammonia,CAP,,.00478774,TON,2023NEI
+09,CA,06,,06107,Tulare,Mobile - On-Road non-Diesel Heavy Duty Vehicles,A,R,NH3,Ammonia,CAP,,5.413701313,TON,2023NEI
+09,CA,06,,06107,Tulare,Solvent - Graphic Arts,A,R,NH3,Ammonia,CAP,,.71253616,TON,2023NEI
+09,CA,06,,06047,Merced,Industrial Processes - Storage and Transfer,A,R,NH3,Ammonia,CAP,,.0050763636978,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Industrial Processes - NEC,A,R,NH3,Ammonia,CAP,,2.12386586208,TON,2023NEI
+09,CA,06,,06031,Kings,Fuel Comb - Residential - Natural Gas,A,R,NH3,Ammonia,CAP,,0,TON,2023NEI
+09,CA,06,,06019,Fresno,Solvent - Graphic Arts,A,R,NH3,Ammonia,CAP,,.6878835,TON,2023NEI
+09,CA,06,,06047,Merced,Mobile - On-Road Diesel Heavy Duty Vehicles,A,R,NH3,Ammonia,CAP,,10.662476708,TON,2023NEI
+09,CA,06,,06047,Merced,Industrial Processes - Chemical Manuf,A,R,NH3,Ammonia,CAP,,194.0943518742,TON,2023NEI
+09,CA,06,,06107,Tulare,Industrial Processes - Storage and Transfer,A,R,NH3,Ammonia,CAP,,.1963077742116,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Industrial Processes - Storage and Transfer,A,R,NH3,Ammonia,CAP,,.0068007602886,TON,2023NEI
+09,CA,06,,06029,Kern,Solvent - Dry Cleaning,A,R,NH3,Ammonia,CAP,,.00000001176366,TON,2023NEI
+09,CA,06,,06029,Kern,Mobile - Locomotives,A,R,NH3,Ammonia,CAP,,1.59597339,TON,2023NEI
+09,CA,06,,06031,Kings,Industrial Processes - NEC,A,R,NH3,Ammonia,CAP,,.0016981541744,TON,2023NEI
+09,CA,06,,06029,Kern,Agriculture - Fertilizer Application,A,R,NH3,Ammonia,CAP,,10255.12,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Mobile - Commercial Marine Vessels,A,R,NH3,Ammonia,CAP,,.148908986889,TON,2023NEI
+09,CA,06,,06019,Fresno,Mobile - Non-Road Equipment - Gasoline,A,R,NH3,Ammonia,CAP,,1.4089475,TON,2023NEI
+09,CA,06,,06031,Kings,Agriculture - Livestock Waste,A,R,NH3,Ammonia,CAP,,7604.618892,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Mobile - On-Road non-Diesel Heavy Duty Vehicles,A,R,NH3,Ammonia,CAP,,5.843522315,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Mobile - On-Road non-Diesel Light Duty Vehicles,A,R,NH3,Ammonia,CAP,,210.92734495,TON,2023NEI
+09,CA,06,,06047,Merced,Mobile - Non-Road Equipment - Gasoline,A,R,NH3,Ammonia,CAP,,.3232732,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Solvent - Graphic Arts,A,R,NH3,Ammonia,CAP,,.1189551,TON,2023NEI
+09,CA,06,,06039,Madera,Miscellaneous Non-Industrial NEC,A,R,NH3,Ammonia,CAP,,2.455115,TON,2023NEI
+09,CA,06,,06047,Merced,Waste Disposal,A,R,NH3,Ammonia,CAP,,229.1071057,TON,2023NEI
+09,CA,06,,06031,Kings,Fuel Comb - Electric Generation - Natural Gas,A,R,NH3,Ammonia,CAP,,.16153045,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Agriculture - Fertilizer Application,A,R,NH3,Ammonia,CAP,,2536.689,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Fuel Comb - Comm/Institutional - Natural Gas,A,R,NH3,Ammonia,CAP,,6.29884457,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Fires - Wildfires,A,R,NH3,Ammonia,CAP,,1.368525,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Miscellaneous Non-Industrial NEC,A,R,NH3,Ammonia,CAP,,.2856763,TON,2023NEI
+09,CA,06,,06047,Merced,Mobile - Non-Road Equipment - Other,A,R,NH3,Ammonia,CAP,,.0050078,TON,2023NEI
+09,CA,06,,06029,Kern,Industrial Processes - NEC,A,R,NH3,Ammonia,CAP,,1.438449148918,TON,2023NEI
+09,CA,06,,06019,Fresno,Industrial Processes - Storage and Transfer,A,R,NH3,Ammonia,CAP,,.0377900910511,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Industrial Processes - Storage and Transfer,A,R,NH3,Ammonia,CAP,,.1021595062932,TON,2023NEI
+09,CA,06,,06107,Tulare,Fuel Comb - Residential - Wood,A,R,NH3,Ammonia,CAP,,30.264200302,TON,2023NEI
+09,CA,06,,06047,Merced,Fires - Wildfires,A,R,NH3,Ammonia,CAP,,4.466101,TON,2023NEI
+09,CA,06,,06019,Fresno,Fuel Comb - Comm/Institutional - Other,A,R,NH3,Ammonia,CAP,,.0216648,TON,2023NEI
+09,CA,06,,06029,Kern,Fires - Prescribed Fires,A,R,NH3,Ammonia,CAP,,1.867412,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Industrial Processes - Pulp & Paper,A,R,NH3,Ammonia,CAP,,.02807415,TON,2023NEI
+09,CA,06,,06019,Fresno,"Fuel Comb - Industrial Boilers, ICEs - Natural Gas",A,R,NH3,Ammonia,CAP,,13.7978053425,TON,2023NEI
+09,CA,06,,06019,Fresno,Fires - Agricultural Field Burning,A,R,NH3,Ammonia,CAP,,.707112,TON,2023NEI
+09,CA,06,,06107,Tulare,Mobile - Non-Road Equipment - Diesel,A,R,NH3,Ammonia,CAP,,2.86130835,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Fuel Comb - Electric Generation - Natural Gas,A,R,NH3,Ammonia,CAP,,30.4326636,TON,2023NEI
+09,CA,06,,06031,Kings,Mobile - Non-Road Equipment - Other,A,R,NH3,Ammonia,CAP,,.00277765,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Fires - Prescribed Fires,A,R,NH3,Ammonia,CAP,,1.058148,TON,2023NEI
+09,CA,06,,06047,Merced,Mobile - On-Road non-Diesel Heavy Duty Vehicles,A,R,NH3,Ammonia,CAP,,3.68899519,TON,2023NEI
+09,CA,06,,06107,Tulare,Mobile - Locomotives,A,R,NH3,Ammonia,CAP,,.395269419,TON,2023NEI
+09,CA,06,,06047,Merced,Mobile - Non-Road Equipment - Diesel,A,R,NH3,Ammonia,CAP,,1.9166259,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Mobile - On-Road Diesel Heavy Duty Vehicles,A,R,NH3,Ammonia,CAP,,6.125128597,TON,2023NEI
+09,CA,06,,06039,Madera,"Fuel Comb - Industrial Boilers, ICEs - Biomass",A,R,NH3,Ammonia,CAP,,2.70052,TON,2023NEI
+09,CA,06,,06039,Madera,Industrial Processes - Oil & Gas Production,A,R,NH3,Ammonia,CAP,,0,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Mobile - Locomotives,A,R,NH3,Ammonia,CAP,,.89116756,TON,2023NEI
+09,CA,06,,06031,Kings,"Fuel Comb - Industrial Boilers, ICEs - Natural Gas",A,R,NH3,Ammonia,CAP,,.81578738,TON,2023NEI
+09,CA,06,,06107,Tulare,Fires - Wildfires,A,R,NH3,Ammonia,CAP,,186.656794,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Fuel Comb - Electric Generation - Other,A,R,NH3,Ammonia,CAP,,15.776109,TON,2023NEI
+09,CA,06,,06031,Kings,Fires - Wildfires,A,R,NH3,Ammonia,CAP,,.003488,TON,2023NEI
+09,CA,06,,06031,Kings,Fuel Comb - Comm/Institutional - Oil,A,R,NH3,Ammonia,CAP,,.0050376,TON,2023NEI
+09,CA,06,,06019,Fresno,Mobile - Non-Road Equipment - Diesel,A,R,NH3,Ammonia,CAP,,3.6484118,TON,2023NEI
+09,CA,06,,06019,Fresno,Industrial Processes - Chemical Manuf,A,R,NH3,Ammonia,CAP,,42.6255995299,TON,2023NEI
+09,CA,06,,06019,Fresno,Waste Disposal,A,R,NH3,Ammonia,CAP,,433.104736234712,TON,2023NEI
+09,CA,06,,06039,Madera,Fuel Comb - Residential - Wood,A,R,NH3,Ammonia,CAP,,10.018722309,TON,2023NEI
+09,CA,06,,06031,Kings,Fires - Agricultural Field Burning,A,R,NH3,Ammonia,CAP,,.471408,TON,2023NEI
+09,CA,06,,06019,Fresno,Fires - Wildfires,A,R,NH3,Ammonia,CAP,,15.781899,TON,2023NEI
+09,CA,06,,06107,Tulare,Mobile - Non-Road Equipment - Other,A,R,NH3,Ammonia,CAP,,.0127458,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Fuel Comb - Residential - Wood,A,R,NH3,Ammonia,CAP,,22.53993783,TON,2023NEI
+09,CA,06,,06039,Madera,Mobile - On-Road non-Diesel Heavy Duty Vehicles,A,R,NH3,Ammonia,CAP,,1.70690704,TON,2023NEI
+09,CA,06,,06047,Merced,Industrial Processes - Non-ferrous Metals,A,R,NH3,Ammonia,CAP,,.000005670659,TON,2023NEI
+09,CA,06,,06031,Kings,Fuel Comb - Residential - Oil,A,R,NH3,Ammonia,CAP,,.00148585,TON,2023NEI
+09,CA,06,,06107,Tulare,Agriculture - Livestock Waste,A,R,NH3,Ammonia,CAP,,19294.560428,TON,2023NEI
+09,CA,06,,06031,Kings,Fuel Comb - Residential - Wood,A,R,NH3,Ammonia,CAP,,3.106309645,TON,2023NEI
+09,CA,06,,06039,Madera,Fuel Comb - Comm/Institutional - Other,A,R,NH3,Ammonia,CAP,,.91639992,TON,2023NEI
+09,CA,06,,06047,Merced,Mobile - On-Road non-Diesel Light Duty Vehicles,A,R,NH3,Ammonia,CAP,,133.85895118,TON,2023NEI
+09,CA,06,,06031,Kings,Mobile - Locomotives,A,R,NH3,Ammonia,CAP,,.2228106,TON,2023NEI
+09,CA,06,,06039,Madera,Agriculture - Livestock Waste,A,R,NH3,Ammonia,CAP,,3331.871591,TON,2023NEI
+09,CA,06,,06039,Madera,Industrial Processes - Storage and Transfer,A,R,NH3,Ammonia,CAP,,.006182967078,TON,2023NEI
+09,CA,06,,06029,Kern,"Fuel Comb - Industrial Boilers, ICEs - Oil",A,R,NH3,Ammonia,CAP,,.0000003522832,TON,2023NEI
+09,CA,06,,06039,Madera,Fuel Comb - Residential - Natural Gas,A,R,NH3,Ammonia,CAP,,0,TON,2023NEI
+09,CA,06,,06047,Merced,Fuel Comb - Residential - Natural Gas,A,R,NH3,Ammonia,CAP,,0,TON,2023NEI
+09,CA,06,,06029,Kern,Fuel Comb - Electric Generation - Other,A,R,NH3,Ammonia,CAP,,1.2683756,TON,2023NEI
+09,CA,06,,06077,San Joaquin,"Fuel Comb - Industrial Boilers, ICEs - Natural Gas",A,R,NH3,Ammonia,CAP,,6.08892473,TON,2023NEI
+09,CA,06,,06031,Kings,Mobile - On-Road non-Diesel Light Duty Vehicles,A,R,NH3,Ammonia,CAP,,67.04811211,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Fires - Prescribed Fires,A,R,NH3,Ammonia,CAP,,24.418216,TON,2023NEI
+09,CA,06,,06019,Fresno,Industrial Processes - Cement Manuf,A,R,NH3,Ammonia,CAP,,.0008245937,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Mobile - Non-Road Equipment - Other,A,R,NH3,Ammonia,CAP,,.0125049,TON,2023NEI
+09,CA,06,,06039,Madera,Fuel Comb - Electric Generation - Other,A,R,NH3,Ammonia,CAP,,.0000129535422,TON,2023NEI
+09,CA,06,,06107,Tulare,Fuel Comb - Comm/Institutional - Natural Gas,A,R,NH3,Ammonia,CAP,,.23095780189,TON,2023NEI
+09,CA,06,,06039,Madera,Mobile - Non-Road Equipment - Gasoline,A,R,NH3,Ammonia,CAP,,.23691055,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Agriculture - Livestock Waste,A,R,NH3,Ammonia,CAP,,8772.59328,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Mobile - On-Road Diesel Heavy Duty Vehicles,A,R,NH3,Ammonia,CAP,,10.652560374,TON,2023NEI
+09,CA,06,,06107,Tulare,Industrial Processes - NEC,A,R,NH3,Ammonia,CAP,,.6625634219779,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Mobile - Non-Road Equipment - Diesel,A,R,NH3,Ammonia,CAP,,2.04302155,TON,2023NEI
+09,CA,06,,06107,Tulare,Mobile - On-Road Diesel Light Duty Vehicles,A,R,NH3,Ammonia,CAP,,1.45284015,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Miscellaneous Non-Industrial NEC,A,R,NH3,Ammonia,CAP,,1.302149,TON,2023NEI
+09,CA,06,,06029,Kern,Fuel Comb - Comm/Institutional - Other,A,R,NH3,Ammonia,CAP,,.000029763719,TON,2023NEI
+09,CA,06,,06047,Merced,Fires - Prescribed Fires,A,R,NH3,Ammonia,CAP,,3.004297,TON,2023NEI
+09,CA,06,,06047,Merced,Fuel Comb - Residential - Oil,A,R,NH3,Ammonia,CAP,,.006768874,TON,2023NEI
+09,CA,06,,06039,Madera,Mobile - Non-Road Equipment - Diesel,A,R,NH3,Ammonia,CAP,,.9467771,TON,2023NEI
+09,CA,06,,06019,Fresno,Mobile - On-Road non-Diesel Heavy Duty Vehicles,A,R,NH3,Ammonia,CAP,,15.528794704,TON,2023NEI
+09,CA,06,,06031,Kings,Industrial Processes - Oil & Gas Production,A,R,NH3,Ammonia,CAP,,.00112,TON,2023NEI
+09,CA,06,,06019,Fresno,Solvent - Degreasing,A,R,NH3,Ammonia,CAP,,.3924788,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Mobile - Non-Road Equipment - Gasoline,A,R,NH3,Ammonia,CAP,,1.18914455,TON,2023NEI
+09,CA,06,,06107,Tulare,"Fuel Comb - Industrial Boilers, ICEs - Natural Gas",A,R,NH3,Ammonia,CAP,,8.412608888,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Mobile - On-Road Diesel Light Duty Vehicles,A,R,NH3,Ammonia,CAP,,1.8677211,TON,2023NEI
+09,CA,06,,06029,Kern,Fuel Comb - Electric Generation - Biomass,A,R,NH3,Ammonia,CAP,,14.87,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Fuel Comb - Comm/Institutional - Other,A,R,NH3,Ammonia,CAP,,.00001538273,TON,2023NEI
+09,CA,06,,06107,Tulare,Fires - Agricultural Field Burning,A,R,NH3,Ammonia,CAP,,1.17852,TON,2023NEI
+09,CA,06,,06047,Merced,Miscellaneous Non-Industrial NEC,A,R,NH3,Ammonia,CAP,,.521208,TON,2023NEI
+09,CA,06,,06019,Fresno,Miscellaneous Non-Industrial NEC,A,R,NH3,Ammonia,CAP,,4.878795,TON,2023NEI
+09,CA,06,,06039,Madera,Industrial Processes - Petroleum Refineries,A,R,NH3,Ammonia,CAP,,.00000000022368,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Fires - Wildfires,A,R,NH3,Ammonia,CAP,,.861286,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Mobile - On-Road Diesel Light Duty Vehicles,A,R,NH3,Ammonia,CAP,,1.6139128,TON,2023NEI
+09,CA,06,,06029,Kern,"Fuel Comb - Industrial Boilers, ICEs - Natural Gas",A,R,NH3,Ammonia,CAP,,23.965436569700016,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Mobile - Non-Road Equipment - Diesel,A,R,NH3,Ammonia,CAP,,1.8331064,TON,2023NEI
+09,CA,06,,06107,Tulare,Industrial Processes - Non-ferrous Metals,A,R,NH3,Ammonia,CAP,,.000006213097,TON,2023NEI
+09,CA,06,,06107,Tulare,Mobile - On-Road Diesel Heavy Duty Vehicles,A,R,NH3,Ammonia,CAP,,5.651005405,TON,2023NEI
+09,CA,06,,06039,Madera,Mobile - Non-Road Equipment - Other,A,R,NH3,Ammonia,CAP,,.00277035,TON,2023NEI
+09,CA,06,,06039,Madera,Fires - Agricultural Field Burning,A,R,NH3,Ammonia,CAP,,.707112,TON,2023NEI
+09,CA,06,,06031,Kings,Solvent - Industrial Surface Coating & Solvent Use,A,R,NH3,Ammonia,CAP,,.000864,TON,2023NEI
+09,CA,06,,06019,Fresno,Mobile - On-Road Diesel Light Duty Vehicles,A,R,NH3,Ammonia,CAP,,2.1394507,TON,2023NEI
+09,CA,06,,06029,Kern,Mobile - On-Road non-Diesel Light Duty Vehicles,A,R,NH3,Ammonia,CAP,,399.33187041,TON,2023NEI
+09,CA,06,,06107,Tulare,Industrial Processes - Oil & Gas Production,A,R,NH3,Ammonia,CAP,,0,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Industrial Processes - Non-ferrous Metals,A,R,NH3,Ammonia,CAP,,.000000354088,TON,2023NEI
+09,CA,06,,06029,Kern,Industrial Processes - Oil & Gas Production,A,R,NH3,Ammonia,CAP,,.243106137083044,TON,2023NEI
+09,CA,06,,06047,Merced,Mobile - On-Road Diesel Light Duty Vehicles,A,R,NH3,Ammonia,CAP,,.95302617,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Fuel Comb - Electric Generation - Oil,A,R,NH3,Ammonia,CAP,,2.39308517,TON,2023NEI
+09,CA,06,,06019,Fresno,Fuel Comb - Electric Generation - Biomass,A,R,NH3,Ammonia,CAP,,3.001332,TON,2023NEI
+09,CA,06,,06029,Kern,Fuel Comb - Electric Generation - Natural Gas,A,R,NH3,Ammonia,CAP,,151.5253989,TON,2023NEI
+09,CA,06,,06047,Merced,Fuel Comb - Comm/Institutional - Other,A,R,NH3,Ammonia,CAP,,.00002115843,TON,2023NEI
+09,CA,06,,06019,Fresno,Fuel Comb - Residential - Oil,A,R,NH3,Ammonia,CAP,,.0450708,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Solvent - Industrial Surface Coating & Solvent Use,A,R,NH3,Ammonia,CAP,,.042337535,TON,2023NEI
+09,CA,06,,06039,Madera,Mobile - On-Road Diesel Light Duty Vehicles,A,R,NH3,Ammonia,CAP,,.62618105,TON,2023NEI
+09,CA,06,,06019,Fresno,Solvent - Industrial Surface Coating & Solvent Use,A,R,NH3,Ammonia,CAP,,1.475208,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Mobile - Non-Road Equipment - Gasoline,A,R,NH3,Ammonia,CAP,,.80838375,TON,2023NEI
+09,CA,06,,06107,Tulare,Fuel Comb - Residential - Natural Gas,A,R,NH3,Ammonia,CAP,,0,TON,2023NEI
+09,CA,06,,06031,Kings,Fuel Comb - Comm/Institutional - Other,A,R,NH3,Ammonia,CAP,,.18567814,TON,2023NEI
+09,CA,06,,06039,Madera,Mobile - Locomotives,A,R,NH3,Ammonia,CAP,,.35906145,TON,2023NEI
+09,CA,06,,06019,Fresno,Mobile - On-Road Diesel Heavy Duty Vehicles,A,R,NH3,Ammonia,CAP,,17.040627079,TON,2023NEI
+09,CA,06,,06019,Fresno,Fires - Prescribed Fires,A,R,NH3,Ammonia,CAP,,92.491477,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Agriculture - Fertilizer Application,A,R,NH3,Ammonia,CAP,,18172.29,TON,2023NEI
+09,CA,06,,06099,Stanislaus,Industrial Processes - Chemical Manuf,A,R,NH3,Ammonia,CAP,,207.034020668,TON,2023NEI
+09,CA,06,,06039,Madera,Fires - Prescribed Fires,A,R,NH3,Ammonia,CAP,,9.618916,TON,2023NEI
+09,CA,06,,06029,Kern,Waste Disposal,A,R,NH3,Ammonia,CAP,,1912.28880585854,TON,2023NEI
+09,CA,06,,06107,Tulare,Mobile - On-Road non-Diesel Light Duty Vehicles,A,R,NH3,Ammonia,CAP,,199.03437236,TON,2023NEI
+09,CA,06,,06039,Madera,Mobile - On-Road non-Diesel Light Duty Vehicles,A,R,NH3,Ammonia,CAP,,73.718017668,TON,2023NEI
+09,CA,06,,06031,Kings,Agriculture - Fertilizer Application,A,R,NH3,Ammonia,CAP,,2656.787,TON,2023NEI
+09,CA,06,,06029,Kern,Agriculture - Livestock Waste,A,R,NH3,Ammonia,CAP,,7149.31431406,TON,2023NEI
+09,CA,06,,06031,Kings,Fuel Comb - Comm/Institutional - Natural Gas,A,R,NH3,Ammonia,CAP,,.42610815,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Fuel Comb - Comm/Institutional - Natural Gas,A,R,NH3,Ammonia,CAP,,.141959082505,TON,2023NEI
+09,CA,06,,06029,Kern,Industrial Processes - Non-ferrous Metals,A,R,NH3,Ammonia,CAP,,.000004099406844,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Fuel Comb - Residential - Wood,A,R,NH3,Ammonia,CAP,,31.55954777,TON,2023NEI
+09,CA,06,,06077,San Joaquin,Industrial Processes - Mining,A,R,NH3,Ammonia,CAP,,.0006138922,TON,2023NEI
+09,CA,06,,06019,Fresno,Industrial Processes - Non-ferrous Metals,A,R,NH3,Ammonia,CAP,,.000001740811,TON,2023NEI
+09,CA,06,,06039,Madera,Fuel Comb - Residential - Oil,A,R,NH3,Ammonia,CAP,,.01073114,TON,2023NEI
+09,CA,06,,06039,Madera,Waste Disposal,A,R,NH3,Ammonia,CAP,,99.4719788058,TON,2023NEI

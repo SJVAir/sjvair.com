@@ -1,0 +1,8 @@
+{% load humanize %}
+<tr>
+    <td>{{ e.date|date:"Y-m-d" }}</td>
+    <td>{{ e.get_kind_display }}</td>
+    <td>{{ e.get_agency_display|default:"—" }}</td>
+    <td>{{ e.action_type }}{% if e.kind == 'hpv' %}{% if e.pollutant %} · {{ e.pollutant }}{% endif %}{% if e.resolved %} · resolved {{ e.resolved|date:"Y-m-d" }}{% else %} · unresolved{% endif %}{% endif %}</td>
+    <td class="has-text-right">{% if e.penalty is not None %}${{ e.penalty|floatformat:"0"|intcomma }}{% else %}—{% endif %}</td>
+</tr>

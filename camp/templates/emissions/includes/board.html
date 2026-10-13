@@ -1,0 +1,30 @@
+{# emissions_explorer last: its percent and signed_pct (whole percents) win over the pesticides ones of the same name. #}
+{% load pesticides_explorer emissions_explorer %}
+{% comment %}
+A home-page top-five card in the pesticides landing's leaderboard style
+(views.facility_board / sector_board rows: label, url, value, series and,
+for sectors, share). The line beside each is its shape by year, drawn
+against its own maximum.
+{% endcomment %}
+<div class="card leaderboard">
+    <header class="card-header">
+        <p class="card-header-title">{{ title }} · {{ year }}</p>
+        <a class="card-header-icon view-all" href="{{ view_all_url }}{{ scope_qs }}">View all</a>
+    </header>
+    <div class="card-content">
+        {% if rows %}
+        <ol class="leaderboard-list">
+            {% for row in rows %}
+            <li>
+                <span class="entry"><a href="{{ row.url }}{{ scope_qs }}">{{ row.label }}</a>{% if row.share is not None %} <span class="has-text-grey is-size-7">{{ row.share|percent }}</span>{% endif %}</span>
+                <span class="spark">{{ row.series|sparkline }}</span>
+                <span class="lbs">{{ row.value|amount:pollutant }}{% if not pollutant.weighted %} {{ pollutant.unit }}{% endif %}</span>
+            </li>
+            {% endfor %}
+        </ol>
+        <p class="leaderboard-note is-hidden-mobile">Lines: {{ pollutant.label }} by year, each against its own peak.</p>
+        {% else %}
+        <p class="has-text-grey">No facilities reported {{ pollutant.label }} in {{ year }}.</p>
+        {% endif %}
+    </div>
+</div>

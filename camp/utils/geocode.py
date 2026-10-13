@@ -181,10 +181,11 @@ def resolve(address, strict=False):
 
 def resolve_batch(addresses, workers=5, strict=False):
     """
-    Geocode a list of address dicts, yielding (address, point) pairs.
-    Census batch runs first; failures fall back to MapTiler concurrently.
-    Results are yielded as they become available — Census hits up front,
-    MapTiler results as each finishes.
+    Geocode a list of address dicts, yielding (address, point, source)
+    triples. Census batch runs first; failures fall back to MapTiler
+    concurrently. Results are yielded as they become available -- Census hits
+    up front, MapTiler results as each finishes. `source` is 'census' or
+    'maptiler', or '' when neither found the address (point is None).
     """
     if not addresses:
         return
@@ -192,8 +193,9 @@ def resolve_batch(addresses, workers=5, strict=False):
     fallbacks = []
     for addr, point in census_batch(addresses):
         if point is not None:
-            yield addr, point
+            yield addr, point, 'census'
         else:
             fallbacks.append(addr)
 
-    yield from maptiler_batch(fallbacks, workers=workers, strict=strict)
+    for addr, point in maptiler_batch(fallbacks, workers=workers, strict=strict):
+        yield addr, point, 'maptiler' if point is not None else ''
