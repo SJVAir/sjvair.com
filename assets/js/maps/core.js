@@ -93,13 +93,15 @@
   // the container's data-style, else dataviz.
   // The Tweaks menu's Clusters experiment (?cluster=): whether clustered
   // point layers (pesticide notices, oil and gas wells) merge when zoomed
-  // out. Auto merges on the valley-wide map and draws every point on a map
-  // scoped to a county or place (Shell.prototype.clustered).
-  var CLUSTER_MODES = [['auto', 'Auto'], ['on', 'On'], ['off', 'Off']];
+  // out. Off (the default) draws every point; Auto merges on the
+  // valley-wide map only, not on a map scoped to a county or place
+  // (Shell.prototype.clustered).
+  var CLUSTER_DEFAULT = 'off';
+  var CLUSTER_MODES = [['off', 'Off'], ['auto', 'Auto'], ['on', 'On']];
 
   function clusterMode() {
     var match = /[?&]cluster=(auto|on|off)(?:&|$)/.exec(window.location.search || '');
-    return match ? match[1] : 'auto';
+    return match ? match[1] : CLUSTER_DEFAULT;
   }
 
   function tileStyle(el) {
@@ -466,6 +468,7 @@
     sampleRamp: sampleRamp,
     styleFor: styleFor,
     tileStyle: tileStyle,
+    CLUSTER_DEFAULT: CLUSTER_DEFAULT,
     CLUSTER_MODES: CLUSTER_MODES,
     clusterMode: clusterMode,
     webglAvailable: webglAvailable,

@@ -452,10 +452,10 @@
     return select;
   };
 
-  // ?cluster= on `url` (a URL object) for the current setting; Auto, the
-  // default, leaves it off.
+  // ?cluster= on `url` (a URL object) for the current setting; the default
+  // (M.CLUSTER_DEFAULT, Off) leaves it out.
   Shell.prototype.writeClusterParam = function (url) {
-    if (this.clusterMode === 'auto') url.searchParams.delete('cluster');
+    if (this.clusterMode === M.CLUSTER_DEFAULT) url.searchParams.delete('cluster');
     else url.searchParams.set('cluster', this.clusterMode);
   };
 
