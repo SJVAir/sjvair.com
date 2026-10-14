@@ -338,7 +338,7 @@ class AreaTabTests(DairyPageTestCase):
         content = self.page(self.fresno.get_emissions_url(), {'year': '2023'})
         assert 'fa-cow explorer-icon is-dairies' in content[content.index('area-tabs'):]
         tabs = tab_links(content)
-        assert [label for label, _, _ in tabs] == ['Overview', 'Facilities', 'Dairies', 'Community']
+        assert [label for label, _, _ in tabs] == ['Overview', 'Facilities', 'Dairies']
         assert tabs[0][2] and not any(current for _, _, current in tabs[1:])
         assert tabs[1][1] == f"{self.fresno.get_emissions_tab_url('facilities')}?year=2023"
         assert tabs[2][1] == f'{self.fresno.get_emissions_dairies_url()}?year=2023'
@@ -365,11 +365,11 @@ class AreaTabTests(DairyPageTestCase):
         point = 'lat=36.7370&lng=-119.7870&radius=1&label=near+Home'
         assert tabs['Facilities'] == f"{reverse('emissions:near-me-facilities')}?{point}&year=2023"
         assert tabs['Dairies'] == f"{reverse('emissions:near-me-dairies')}?{point}&year=2023"
-        assert tabs['Community'] == f"{reverse('emissions:near-me-community')}?{point}&year=2023"
+        assert 'Community' not in tabs
 
     def test_the_dairy_page_shares_the_tab_row(self):
         tabs = tab_links(self.page(self.fresno.get_emissions_dairies_url(), {'year': '2023'}))
-        assert [label for label, _, _ in tabs] == ['Overview', 'Facilities', 'Dairies', 'Community']
+        assert [label for label, _, _ in tabs] == ['Overview', 'Facilities', 'Dairies']
         assert dict((label, current) for label, _, current in tabs)['Dairies']
         assert dict((label, href) for label, href, _ in tabs)['Overview'] == f'{self.fresno.get_emissions_url()}?year=2023&pollutant=rog'
 
@@ -393,7 +393,8 @@ class AreaTabTests(DairyPageTestCase):
 
     def test_each_tab_shows_its_own_content(self):
         overview = self.page(self.fresno.get_emissions_url(), {'year': '2023'})
-        assert 'Top facilities' in overview and 'id="in-and-around"' not in overview
+        # In and around (the old Community tab) closes the Overview.
+        assert 'Top facilities' in overview and overview.index('Top facilities') < overview.index('id="in-and-around"')
         facilities = self.page(self.fresno.get_emissions_tab_url('facilities'), {'year': '2023'})
         # The shared tab layout: stats, map, then the filters on a sortable table with its count and CSV.
         assert '<p class="heading">Facilities in 2023</p>' in facilities and 'Top facilities' not in facilities
@@ -401,8 +402,6 @@ class AreaTabTests(DairyPageTestCase):
         assert facilities.index('facility-map map-canvas') < facilities.index('class="table-filters box"') < facilities.index('facility-table')
         assert 'sort=-value' in facilities or 'sort=value' in facilities
         assert 'class="table-count"' in facilities and 'Download CSV' in facilities
-        community = self.page(self.fresno.get_emissions_tab_url('community'), {'year': '2023'})
-        assert 'id="in-and-around"' in community and 'Top facilities' not in community
 
 
 class DairyChartPageTests(DairyPageTestCase):

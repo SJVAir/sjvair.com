@@ -14,7 +14,7 @@ urlpatterns = [
     path('near/facilities/', views.NearMeFacilities.as_view(), name='near-me-facilities'),
     path('near/oil-gas/', views.NearMeOilGas.as_view(), name='near-me-oil-gas'),
     path('near/schools/', views.NearMeSchools.as_view(), name='near-me-schools'),
-    path('near/community/', views.NearMeCommunity.as_view(), name='near-me-community'),
+    path('near/community/', views.CommunityRedirect.as_view(pattern_name='emissions:near-me'), name='near-me-community'),
     path('region/<str:sqid>/', views.RegionRedirect.as_view(), name='region-redirect'),
     # Before the slugged region page: `region/<sqid>/dairies/` isn't a slug.
     path('region/<str:sqid>/dairies/', dairy_views.RegionDairiesRedirect.as_view(), name='region-dairies-redirect'),
@@ -23,7 +23,7 @@ urlpatterns = [
     path('region/<str:sqid>/<slug:slug>/facilities/', views.RegionFacilities.as_view(), name='region-facilities'),
     path('region/<str:sqid>/<slug:slug>/oil-gas/', views.RegionOilGas.as_view(), name='region-oil-gas'),
     path('region/<str:sqid>/<slug:slug>/schools/', views.RegionSchools.as_view(), name='region-schools'),
-    path('region/<str:sqid>/<slug:slug>/community/', views.RegionCommunity.as_view(), name='region-community'),
+    path('region/<str:sqid>/<slug:slug>/community/', views.CommunityRedirect.as_view(pattern_name='emissions:region'), name='region-community'),
     path('facilities/', views.FacilityList.as_view(), name='facility-list'),
     # Sectors sit under Facilities; ahead of the facility sqid route so 'sectors' isn't read as one.
     path('facilities/sectors/', views.SectorList.as_view(), name='sector-list'),

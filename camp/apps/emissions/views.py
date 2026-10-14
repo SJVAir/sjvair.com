@@ -12,6 +12,7 @@ from django.core.paginator import Paginator
 from django.http import Http404, HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.views.generic import RedirectView
 from django.utils.safestring import mark_safe
 
 import vanilla
@@ -1018,7 +1019,7 @@ def area_header(context):
 
 
 # An emissions tab and the pesticides tab for the same thing; any other opens its Overview.
-PESTICIDES_TABS = {'schools': 'schools', 'community': 'community'}
+PESTICIDES_TABS = {'schools': 'schools'}
 
 
 def pesticides_tab_links(context):
@@ -1046,18 +1047,6 @@ def pesticides_tab_links(context):
     return [{'label': 'Pesticides', 'url': url, 'icon': 'fa-spray-can-sparkles', 'icon_class': 'is-products'}]
 
 
-def with_tract_urls(community):
-    """A CalEnviroScreen summary (ces.stats.tract_summary) with each tract row linking its page here, for regions/includes/community-card.html."""
-    if not community:
-        return community
-    def linked(row):
-        return dict(row, url=row['region'].get_emissions_url()) if row else row
-    return dict(
-        community, highest=linked(community.get('highest')), lowest=linked(community.get('lowest')),
-        containing=linked(community.get('containing')), top=[linked(row) for row in community.get('top') or []],
-    )
-
-
 def area_links(regions):
     """The facility page's "Area" line: each region it counts in, labelled, linking to its page."""
     labels = {Region.Type.ZIPCODE: 'ZIP {}'}
@@ -1081,7 +1070,7 @@ def dairy_page_query(scope, year):
 
 # An area page's tabs, in order. Overview is the page itself; Dairies is its
 # dairy page (dairy_views); the rest are this module's *Facilities, *OilGas
-# and *Community views. A tab shows only where the area has something for it.
+# and *Schools views. A tab shows only where the area has something for it.
 # Each with its Font Awesome icon and explorer-icon colour class, the same
 # as the explorer's own tabs (base.html) and In and around's headings.
 AREA_TABS = (
@@ -1090,15 +1079,14 @@ AREA_TABS = (
     ('dairies', 'Dairies', 'fa-cow', 'is-dairies'),
     ('oil-gas', 'Oil & gas', 'fa-oil-well', 'is-wells'),
     ('schools', 'Schools', 'fa-school', 'is-schools'),
-    ('community', 'Community', 'fa-city', 'is-chemicals'),
 )
 
 
 def area_tabs(view, area, current):
     """
     The tab row for an area page or its dairy page: [{key, label, icon,
-    icon_class, url, current}]. `view` provides area_tab_url(key, query), tab_query(key) and
-    has_community(); the current tab always shows.
+    icon_class, url, current}]. `view` provides area_tab_url(key, query) and
+    tab_query(key); the current tab always shows.
     """
     available = {
         'overview': True,
@@ -1106,7 +1094,6 @@ def area_tabs(view, area, current):
         'dairies': bool(dairies.years()) and bool(dairies.trend(area=area)),
         'oil-gas': wells.area_summary(area) is not None,
         'schools': Location.objects.filter(wells.location_q(area)).exists(),
-        'community': view.has_community(),
     }
     return [
         {'key': key, 'label': label, 'icon': icon, 'icon_class': icon_class,
@@ -1297,16 +1284,10 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, ScopeMixin, vanilla.TemplateV
         else:
             top_rows = []
         top_sectors = reporting_sectors(scope) if tab == 'overview' else []
-        # A region page overrides this with its own "In and around" lists;
+        # A region's Overview ends with its "In and around" lists (RegionPage);
         # a near-me page (a point, not a region) has none.
         kwargs.setdefault('within', None)
         kwargs.setdefault('ghg_table', None)
-        # The Community card (CalEnviroScreen): a summary of the tracts the
-        # area covers, or on a tract page the tract's own row. Subclasses set
-        # them; None hides the card.
-        kwargs.setdefault('community', None)
-        kwargs.setdefault('tract_ces', None)
-        kwargs.setdefault('show_top_tracts', False)
         # The "Oil & gas wells" section (region and near-me pages); a
         # near-me page's own get_context_data sets it, so this default only
         # matters for whichever subclass doesn't.
@@ -1352,16 +1333,10 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, ScopeMixin, vanilla.TemplateV
             county_options=[],
             scope_qs=base.query(county=None),
             scope_params=base.params(county=None),
-            # Year/pollutant/toxics/minor do nothing on the Community tab
-            # (CalEnviroScreen isn't scoped by any of them); every other tab,
-            # including Oil & gas (year and pollutant drive its permit
-            # groupings card and Kern callout), keeps the pickers.
-            scope_pickers=tab != 'community',
             **kwargs,
             community_about_url=reverse('emissions:about') + '#calenviroscreen',
         )
         context.update(area_header(context))
-        context['community'] = with_tract_urls(context['community'])
         return context
 
 
@@ -1401,10 +1376,6 @@ class RegionLookupMixin:
     def area_tab_url(self, key, query):
         url = self.region.get_emissions_tab_url(key)
         return f'{url}?{query}' if query else url
-
-    def has_community(self):
-        """The Community tab: CalEnviroScreen and In and around both need the boundary."""
-        return bool(self.region.boundary_id)
 
     def lookup_region(self, request, sqid, slug):
         """Sets self.region; None when the URL is right, else the redirect. Raises Http404."""
@@ -1455,13 +1426,8 @@ class RegionPage(RegionLookupMixin, AreaPage):
         if region.type == Region.Type.COUNTY:
             # The context bar names `county`; on a county page that's the page's own.
             extra['county'] = region
-        if tab == 'community':
-            if region.type == Region.Type.TRACT:
-                extra['tract_ces'] = ces_stats.tract_record(region)
-            elif region.boundary_id:
-                extra['community'] = ces_stats.tract_summary(region.boundary.geometry)
-                extra['show_top_tracts'] = region.type == Region.Type.COUNTY
-            extra['within'] = region_within(region) if region.boundary_id else None
+        if tab == 'overview' and region.boundary_id:
+            extra['within'] = region_within(region)
         if tab == 'oil-gas':
             extra['wells_block'] = wells_block(areas.RegionArea(region), self.get_scope(), kern=is_kern(region))
         extra['ab617'] = ab617_notice(region)
@@ -1543,16 +1509,13 @@ class NearLookupMixin:
     # AREA_TABS key -> URL name.
     TAB_URLS = {
         'overview': 'emissions:near-me', 'facilities': 'emissions:near-me-facilities', 'dairies': 'emissions:near-me-dairies',
-        'oil-gas': 'emissions:near-me-oil-gas', 'schools': 'emissions:near-me-schools', 'community': 'emissions:near-me-community',
+        'oil-gas': 'emissions:near-me-oil-gas', 'schools': 'emissions:near-me-schools',
     }
 
     def area_tab_url(self, key, query):
         """The tab for the same point: the point's parameters, then the tab's query."""
         point = urlencode(self.near_params())
         return f'{reverse(self.TAB_URLS[key])}?{point}' + (f'&{query}' if query else '')
-
-    def has_community(self):
-        return True
 
     def near_phrase(self):
         """'within 3 miles of <label>' -- lowercase, for use mid-sentence (near_title() capitalizes it for a heading)."""
@@ -1631,7 +1594,6 @@ class NearMe(NearLookupMixin, AreaPage):
             population=None,
             context_bar=None,
             radius_options=self.radius_options(),
-            community=ces_stats.tract_summary(self.near.geometry) if self.tab == 'community' else None,
             wells_block=wells_block(self.near, self.get_scope()) if self.tab == 'oil-gas' else None,
             **kwargs,
         )
@@ -1654,10 +1616,6 @@ class RegionSchools(RegionPage):
     template_name = 'emissions/area-schools.html'
 
 
-class RegionCommunity(RegionPage):
-    tab = 'community'
-
-
 class NearMeFacilities(NearMe):
     tab = 'facilities'
     template_name = 'emissions/area-facilities.html'
@@ -1673,9 +1631,13 @@ class NearMeSchools(NearMe):
     template_name = 'emissions/area-schools.html'
 
 
-class NearMeCommunity(NearMe):
-    tab = 'community'
+class CommunityRedirect(RedirectView):
+    """The old Community tab: its In and around is at the foot of the Overview now."""
+    permanent = True
+    query_string = True
 
+    def get_redirect_url(self, *args, **kwargs):
+        return f'{super().get_redirect_url(*args, **kwargs)}#in-and-around'
 
 
 class OilGasPage(OilGasTabMixin, ScopeMixin, vanilla.TemplateView):

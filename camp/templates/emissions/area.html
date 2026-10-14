@@ -37,9 +37,8 @@
     </div>
 </div>
 
-{% elif tab == 'community' %}
-{% if tract_ces %}{% include 'emissions/includes/tract-ces-card.html' %}{% else %}{% include 'regions/includes/community-card.html' %}{% endif %}
-{% include 'regions/includes/within.html' with within_name=name %}
+{# The places in and around it, at the foot (the old Community tab redirects here). #}
+{% include 'regions/includes/within.html' with within_name=name limit=8 zip_limit=10 %}
 {% endif %}
 
 {% endblock %}

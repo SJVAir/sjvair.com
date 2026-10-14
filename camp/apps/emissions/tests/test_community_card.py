@@ -7,74 +7,7 @@ from camp.apps.emissions.models import Facility
 from camp.apps.emissions.tests.test_areas import make
 from camp.apps.regions.models import Region
 
-# The fixture tracts: 1.01 is -119.8..-119.7 (89.2, DAC, pop 4650); 1.02 is -119.7..-119.6 (51.0, not DAC, pop 3350).
-# TEST PLANT (-119.787, 36.737) is inside 1.01.
-TWO_TRACTS = 'MULTIPOLYGON(((-119.74 36.7, -119.6 36.7, -119.6 36.8, -119.74 36.8, -119.74 36.7)))'
-
-
-class CommunityCardTests(TestCase):
-    fixtures = ['regions.yaml', 'emissions.yaml', 'calenviroscreen.yaml']
-
-    def setUp(self):
-        cache.clear()
-        self.fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
-        self.tract = Region.objects.get(type=Region.Type.TRACT, external_id='06019000101')
-        self.other = Region.objects.get(type=Region.Type.TRACT, external_id='06019000102')
-
-    def get(self, url, params=None):
-        response = self.client.get(url, params or {})
-        assert response.status_code == 200, response.status_code
-        return response.content.decode()
-
-    def card(self, content):
-        assert 'id="community"' in content
-        start = content.index('id="community"')
-        return content[start:content.index('</div>', content.index('</ul>', start))]
-
-    def test_county_card(self):
-        card = self.card(self.get(self.fresno.get_emissions_tab_url('community'), {'year': '2024'}))
-        assert '<strong>58%</strong> of residents live in state-designated disadvantaged communities (SB 535)' in card
-        # Template literals aren't HTML-escaped, so the apostrophe is a plain one.
-        assert "<strong>1 of 2</strong> census tracts are in California's most burdened 25%." in card
-        assert f'<a href="{self.other.get_emissions_url()}">51st</a> to <a href="{self.tract.get_emissions_url()}">89th</a>' in card
-        # A county page lists its highest tracts.
-        assert 'Highest tracts' in card and card.index('Tract 1.01') < card.index('Tract 1.02')
-        # And the page's Community tab is linked from its Overview.
-        assert f'href="{self.fresno.get_emissions_tab_url("community")}' in self.get(self.fresno.get_emissions_url())
-
-    def test_community_card_without_the_top_list(self):
-        place = make(Region.Type.CDP, 'Plantville', TWO_TRACTS)
-        card = self.card(self.get(place.get_emissions_tab_url('community')))
-        assert '1 of 2</strong> census tracts' in card and 'Highest tracts' not in card
-
-    def test_near_me_card(self):
-        # (-119.78, 36.73) is inside tract 1.01 near TEST PLANT, clear of the tract's centroid (-119.75, 36.75):
-        # a 1-mile circle covers ~8% of the tract and neither contains its centroid, so it falls to `containing`;
-        # a 3-mile circle reaches the centroid, so the tract counts. (A 302 here means the point fell outside the
-        # fixture's Fresno County boundary -- nudge it toward TEST PLANT at (-119.787, 36.737), staying off the centroid.)
-        url = reverse('emissions:near-me-community')
-        content = self.get(url, {'lat': '36.73', 'lng': '-119.78', 'radius': '1'})
-        card = content[content.index('id="community"'):]
-        assert f'Inside <a href="{self.tract.get_emissions_url()}">Tract 1.01 · Fresno</a>, at the 89th percentile' in card
-        assert 'SB 535 disadvantaged community' in card
-        content = self.get(url, {'lat': '36.73', 'lng': '-119.78', 'radius': '3'})
-        assert '1 of 1</strong> census tract is in' in content
-
-    def test_tract_page_shows_its_own_scores(self):
-        content = self.get(self.tract.get_emissions_tab_url('community'))
-        card = content[content.index('id="community"'):]
-        assert 'Overall: <strong>89th percentile</strong>' in card
-        assert 'Pollution burden: <strong>83rd percentile</strong>' in card
-        assert 'SB 535 disadvantaged community (Top 25% CES overall score)' in card
-        assert 'https://oehha.ca.gov/calenviroscreen' in card
-        assert 'of residents live' not in card
-
-    def test_no_ces_data_no_card(self):
-        CES5.objects.all().delete()
-        CES4.objects.all().delete()
-        for url in (self.fresno.get_emissions_tab_url('community'), self.tract.get_emissions_tab_url('community')):
-            assert 'id="community"' not in self.get(url)
-        assert 'id="community"' not in self.get(reverse('emissions:near-me-community'), {'lat': '36.73', 'lng': '-119.78'})
+# The fixture tract 1.01 is -119.8..-119.7 (89.2, DAC); TEST PLANT (-119.787, 36.737) is inside it.
 
 
 class FacilityTractLineTests(TestCase):

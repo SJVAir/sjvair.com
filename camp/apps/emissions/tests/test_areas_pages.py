@@ -181,7 +181,7 @@ class WithinSectionTests(TestCase):
     """
     The shared "In and around" include (camp/templates/regions/includes/
     within.html, camp.apps.regions.nearby.regions_within) on emissions'
-    region pages: it must link this explorer, not the pesticides one it's
+    region Overviews: it must link this explorer, not the pesticides one it's
     shared with (M10), and stay off a near-me page (a point, not a region).
     """
     fixtures = ['regions.yaml', 'emissions.yaml']
@@ -197,21 +197,21 @@ class WithinSectionTests(TestCase):
         return match.group(1)
 
     def test_county_page_links_emissions_not_pesticides(self):
-        content = self.client.get(self.fresno.get_emissions_tab_url('community'), {'year': '2024'}).content.decode()
+        content = self.client.get(self.fresno.get_emissions_url(), {'year': '2024'}).content.decode()
         section = self.within_section(content)
         assert 'In Fresno County' in section
         assert '/tools/emissions/region/' in section
         assert '/tools/pesticides/' not in section
 
     def test_community_page_links_emissions_not_pesticides(self):
-        content = self.client.get(self.fresno_city.get_emissions_tab_url('community'), {'year': '2024'}).content.decode()
+        content = self.client.get(self.fresno_city.get_emissions_url(), {'year': '2024'}).content.decode()
         section = self.within_section(content)
         assert '/tools/emissions/region/' in section
         assert '/tools/pesticides/' not in section
 
     def test_near_me_page_has_no_section(self):
         response = self.client.get(
-            reverse('emissions:near-me-community'),
+            reverse('emissions:near-me'),
             {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'label': 'near Fresno', 'year': '2024'},
         )
         content = response.content.decode()
@@ -219,17 +219,40 @@ class WithinSectionTests(TestCase):
 
     def test_a_region_page_lists_an_overlapping_ab617_community(self):
         community = make(Region.Type.AB617_COMMUNITY, 'Shafter', AROUND_PLANT)
-        content = self.client.get(self.fresno_city.get_emissions_tab_url('community'), {'year': '2024'}).content.decode()
+        content = self.client.get(self.fresno_city.get_emissions_url(), {'year': '2024'}).content.decode()
         section = self.within_section(content)
         assert 'Shafter' in section and community.get_emissions_url() in section
         assert 'AB 617' in section
 
     def test_an_ab617_page_lists_the_city_and_county_it_is_in(self):
         community = make(Region.Type.AB617_COMMUNITY, 'Shafter', AROUND_PLANT)
-        content = self.client.get(community.get_emissions_tab_url('community'), {'year': '2024'}).content.decode()
+        content = self.client.get(community.get_emissions_url(), {'year': '2024'}).content.decode()
         section = self.within_section(content)
         assert self.fresno_city.name in section and self.fresno_city.get_emissions_url() in section
         assert self.fresno.name in section and self.fresno.get_emissions_url() in section
+
+
+class CommunityRedirectTests(TestCase):
+    """The Community tab is gone: its addresses go to the Overview's In and around, query kept."""
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def test_a_region_community_tab_redirects(self):
+        fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        response = self.client.get(f"{fresno.get_emissions_url()}community/", {'year': '2024'})
+        assert response.status_code == 301
+        assert response['Location'] == f'{fresno.get_emissions_url()}?year=2024#in-and-around'
+
+    def test_a_near_me_community_tab_redirects(self):
+        response = self.client.get('/tools/emissions/near/community/', {'lat': '36.737', 'lng': '-119.787', 'radius': '1'})
+        assert response.status_code == 301
+        assert response['Location'] == f"{reverse('emissions:near-me')}?lat=36.737&lng=-119.787&radius=1#in-and-around"
+
+    def test_no_community_tab(self):
+        fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        content = self.client.get(fresno.get_emissions_url(), {'year': '2024'}).content.decode()
+        tabs = content[content.index('class="tabs area-tabs"'):]
+        tabs = tabs[:tabs.index('</nav>')]
+        assert '/community/' not in tabs and '>Community<' not in tabs
 
 
 class NearMeTests(TestCase):
@@ -384,8 +407,9 @@ class PesticidesLinkTests(TestCase):
         fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
         content = self.client.get(fresno.get_emissions_url()).content.decode()
         assert f'class="is-cross-link"><a href="{fresno.get_pesticides_url()}"' in content
-        content = self.client.get(fresno.get_emissions_tab_url('community')).content.decode()
-        assert f'href="{fresno.get_pesticides_tab_url("community")}"' in content
+        # A tab with no pesticides counterpart opens its Overview.
+        content = self.client.get(fresno.get_emissions_tab_url('facilities')).content.decode()
+        assert f'class="is-cross-link"><a href="{fresno.get_pesticides_url()}"' in content
 
     def test_a_tract_has_none(self):
         tract = make(Region.Type.TRACT, 'T1', AROUND_PLANT)
