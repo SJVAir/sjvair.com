@@ -23,7 +23,7 @@ from camp.apps.emissions.models import AirComplianceFacility, Facility, SourceIm
 from camp.apps.emissions.pollutants import CRITERIA, PRECURSORS
 from camp.apps.emissions.templatetags import emissions_explorer
 from camp.apps.pesticides import maps as county_maps
-from camp.apps.regions import nearby
+from camp.apps.regions import headers, nearby
 from camp.apps.regions import schools as region_schools
 from camp.apps.regions import shapes
 from camp.apps.regions.models import Location, Region
@@ -634,16 +634,21 @@ def area_tab_layers(get, tab, scope, *, area_params, nearby=None):
     maps only its dataset and what goes with it. The Overview has them all,
     as the main map does (locations_layers), the wells a checkbox away (Kern's
     66,000 are too many to load by default); Facilities, only facilities; Oil
-    & gas, only the wells and methane, both on; Schools, the sites with the
-    facilities, and the wells one checkbox away (both are what it counts near
-    a site).
+    & gas, only the wells and methane, both on; Schools, the sites with what
+    its table counts near them -- the facilities, the dairies and the wells a
+    checkbox away -- in locations mode, as the Overview, so the dairies' orange
+    doesn't meet the wells' own; the sites are its own `nearby` dots, not the
+    schools layer.
     """
     if tab == 'oil-gas':
         return {'main_layer': None, 'wells': wells_overlay(get, default=True, filtered=True), 'methane': methane_overlay(get, default=True)}
     if tab == 'facilities':
         return {}
     if tab == 'schools':
-        return {'wells': wells_overlay(get), 'nearby': nearby}
+        return {
+            'wells': wells_overlay(get), 'nearby': nearby,
+            'locations': {**locations_layers(get, scope, area_params=area_params), 'schools_url': '', 'schools': ''},
+        }
     return {
         'wells': wells_overlay(get), 'methane': methane_overlay(get, default=True),
         'locations': locations_layers(get, scope, area_params=area_params),
@@ -988,32 +993,24 @@ def area_header(context):
     """
     What the shared area-page templates (regions/area-tab.html and
     regions/includes/area-header.html) take beyond the page's own context,
-    from an area page's or its dairy page's context: the grey line under the
-    name (its kind, an AB 617 community's selection year, the county a
-    smaller area sits in, its population), an AB 617 community's links, the
-    breadcrumb before the tab and the explorer's base template.
+    from an area page's or its dairy page's context: the header line and
+    links both explorers share (regions.headers), the breadcrumb before the
+    tab, the explorer's base template and the link to the same place in
+    pesticides.
     """
     region = getattr(context['area'], 'region', None)
-    county = context.get('county_region')
-    ab617 = context.get('ab617')
-    population = context.get('population')
-    in_county = county is not None and county != region
-    kind = [context['kind']]
-    if ab617 and ab617['year']:
-        kind.append(f"selected by CARB in {ab617['year']}")
-    if in_county:
-        kind.append(county.name)
-    if population:
-        kind.append(f'{round(float(population)):,} people')
-    links = []
-    if ab617 and ab617['community_url']:
-        links.append({'label': 'Community page', 'url': ab617['community_url']})
-    if ab617 and ab617['storymaps_url']:
-        links.append({'label': 'CARB story map', 'url': ab617['storymaps_url']})
-    crumbs = [{'label': county.name, 'url': county.get_emissions_url() + context.get('scope_qs', '')}] if in_county else []
+    if region is not None:
+        # The same header as the pesticides explorer's (regions.headers), linking here.
+        header = headers.region_header(
+            region, url_method='get_emissions_tab_url', tab=context.get('tab') or 'overview', scope_qs=context.get('scope_qs', ''),
+        )
+    else:
+        header = {'kind': headers.point_kind(context['area'].radius), 'header_links': [], 'county': None}
+    county = header['county']
+    crumbs = [{'label': county.name, 'url': county.get_emissions_url() + context.get('scope_qs', '')}] if county is not None else []
     crumbs.append({'label': context['title'], 'url': context['overview_url']})
     return {
-        'kind': ' · '.join(kind), 'header_links': links, 'area_crumbs': crumbs, 'explorer_base': 'emissions/base.html',
+        'kind': header['kind'], 'header_links': header['header_links'], 'area_crumbs': crumbs, 'explorer_base': 'emissions/base.html',
         'tab_links': pesticides_tab_links(context),
     }
 

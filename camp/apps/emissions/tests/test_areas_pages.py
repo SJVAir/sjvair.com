@@ -232,6 +232,40 @@ class WithinSectionTests(TestCase):
         assert self.fresno.name in section and self.fresno.get_emissions_url() in section
 
 
+class CounterpartSwitchTests(TestCase):
+    """The header's switch to the same town on its other layer, as the pesticides header has it."""
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def test_a_city_and_its_urban_area_switch_on_the_same_tab(self):
+        city = Region.objects.get(type=Region.Type.CITY, slug='fresno')
+        urban = make(Region.Type.URBAN_AREA, city.name, city.boundary.geometry.wkt)
+        # The scope rides along (the default year doesn't show in it).
+        content = self.client.get(city.get_emissions_tab_url('facilities'), {'pollutant': 'rog'}).content.decode()
+        assert f'class="button is-small is-rounded area-switch" href="{urban.get_emissions_tab_url("facilities")}?pollutant=rog"' in content
+        assert 'Switch to urban area' in content
+        content = self.client.get(urban.get_emissions_url()).content.decode()
+        assert f'href="{city.get_emissions_url()}"' in content and 'Switch to city limits' in content
+
+    def test_no_switch_without_a_match(self):
+        county = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        content = self.client.get(county.get_emissions_url()).content.decode()
+        assert 'area-switch' not in content
+        # And a county's line skips its type: the name already ends in "County".
+        line = content[content.index('class="identifiers has-text-grey">'):]
+        line = line[:line.index('</p>')]
+        assert 'County' not in line.split('>', 1)[1]
+
+
+class SharedHeaderTests(TestCase):
+    """The header line pesticides shares (regions.headers): a near-me page names its radius."""
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def test_near_me_reads_within_its_radius(self):
+        content = self.client.get(reverse('emissions:near-me'), {'lat': '36.737', 'lng': '-119.787', 'radius': '3'}).content.decode()
+        line = content[content.index('class="identifiers has-text-grey">'):]
+        assert 'Within 3 miles' in line[:line.index('</p>')] and 'Near me' not in line[:line.index('</p>')]
+
+
 class CommunityRedirectTests(TestCase):
     """The Community tab is gone: its addresses go to the Overview's In and around, query kept."""
     fixtures = ['regions.yaml', 'emissions.yaml']

@@ -153,3 +153,9 @@ class LocationsMapTests(SchoolSitesTestCase):
         assert map_data(facilities, 'locations') == '' and map_data(facilities, 'schools-url') == ''
         off = self.client.get(reverse('emissions:map'), {'schools': '0'}).content.decode()
         assert map_data(off, 'schools') == ''
+        # The Schools tab maps what its table counts: the dairies on, in the
+        # Overview's colours; its sites are its own dots, not the schools layer.
+        schools_tab = self.client.get(self.fresno.get_emissions_tab_url('schools'), {'year': '2024'}).content.decode()
+        assert map_data(schools_tab, 'locations') == '1' and map_data(schools_tab, 'dairies') == '1'
+        assert f'region={self.fresno.sqid}' in map_data(schools_tab, 'dairies-url')
+        assert map_data(schools_tab, 'schools-url') == '' and map_data(schools_tab, 'nearby')
