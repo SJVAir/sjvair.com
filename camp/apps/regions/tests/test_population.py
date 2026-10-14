@@ -41,9 +41,10 @@ class PopulationTests(TestCase):
             'county': [['B01003_001E', 'state', 'county'], ['1017162', '06', '019']],
             'zipcode': [['B01003_001E', 'zip code tabulation area'], ['52131', '93725']],
             'tract': [['B01003_001E', 'state', 'county', 'tract'], ['4321', '06', '019', '000100']],
+            'place': [['B01003_001E', 'state', 'place'], ['545567', '06', '27000']],
         }
         for geography, expected in (('county', {'06019': 1017162}), ('zipcode', {'93725': 52131}),
-                                    ('tract', {'06019000100': 4321})):
+                                    ('tract', {'06019000100': 4321}), ('place', {'0627000': 545567})):
             with patch('requests.get', return_value=response(rows[geography])) as get:
                 assert population.fetch(geography, 2024) == expected
             assert '/2024/acs/acs5' in get.call_args[0][0]
@@ -87,6 +88,32 @@ class PopulationTests(TestCase):
         assert fresno.metadata['population'] == 1017162
         assert (updated, missing) == (1, 1)
 
+    def test_places_cover_cities_and_cdps(self):
+        city = make(Region.Type.CITY, 'Fresno', '0627000')
+        cdp = make(Region.Type.CDP, 'Biola', '0606714')
+        region_types = population.GEOGRAPHIES['place'][0]
+        updated, missing = population.apply(region_types, {'0627000': 545567, '0606714': 1400})
+        assert (updated, missing) == (2, 0)
+        city.refresh_from_db()
+        cdp.refresh_from_db()
+        assert city.metadata['population'] == 545567 and cdp.metadata['population'] == 1400
+
+    def test_school_districts_merge_three_levels_by_fed_id(self):
+        rows = {
+            'school district (elementary)': [['B01003_001E', 'state', 'school district (elementary)'], ['2500', '06', '01980']],
+            'school district (secondary)': [['B01003_001E', 'state', 'school district (secondary)'], ['9000', '06', '03300']],
+            'school district (unified)': [['B01003_001E', 'state', 'school district (unified)'], ['4000', '06', '02010']],
+        }
+        with patch('requests.get', side_effect=lambda url, params, timeout: response(rows[params['for'][:-2]])):
+            counts = population.fetch_school_districts(2024)
+        assert counts == {'0601980': 2500, '0603300': 9000, '0602010': 4000}
+        district = make(Region.Type.SCHOOL_DISTRICT, 'Alpaugh', '54718030000000')
+        district.metadata = {'fed_id': '0602010'}
+        district.save()
+        updated, missing = population.apply(Region.Type.SCHOOL_DISTRICT, counts, geoid=population.fed_id)
+        district.refresh_from_db()
+        assert (updated, missing) == (1, 0) and district.metadata == {'fed_id': '0602010', 'population': 4000}
+
     def test_retired_tracts_are_skipped(self):
         make(Region.Type.TRACT, 'Old', '06019999999', version='2010')
         updated, missing = population.apply(Region.Type.TRACT, {'06019999999': 10})
@@ -94,9 +121,10 @@ class PopulationTests(TestCase):
 
     def test_command(self):
         make(Region.Type.COUNTY, 'Fresno', '06019')
-        with patch.object(population, 'fetch', return_value={'06019': 5}) as fetch:
+        with patch.object(population, 'fetch', return_value={'06019': 5}) as fetch, \
+                patch.object(population, 'fetch_school_districts', return_value={}) as districts:
             call_command('import_population', '--year', '2023')
-        assert fetch.call_count == 3
+        assert fetch.call_count == 4 and districts.call_count == 1
         assert Region.objects.get(external_id='06019').metadata['population'] == 5
 
     def test_command_raises_command_error_on_missing_key(self):
