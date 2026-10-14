@@ -2,6 +2,8 @@ import time
 from collections import Counter
 from datetime import date
 
+import requests
+
 from django.core.management.base import BaseCommand, CommandError
 
 from camp.apps.emissions import stats
@@ -32,8 +34,14 @@ class Command(BaseCommand):
                 raise CommandError(f'No covered county with slug {options["county"]!r}.')
         start = time.monotonic()
         total = Counter()
+        failed_counties = []
         for county in counties:
-            counts = ghgrp.import_county(year, county, self)
+            try:
+                counts = ghgrp.import_county(year, county, self)
+            except requests.RequestException as err:
+                self.error(f'{county.name}: reporter list not fetched, county skipped: {err}')
+                failed_counties.append(county.slug)
+                continue
             total.update(counts)
             reporters = counts['frs'] + counts['crosswalk'] + counts['auto'] + counts['unmatched']
             self.stdout.write(
@@ -52,5 +60,7 @@ class Command(BaseCommand):
         )
         stats.clear_caches()
         self.stdout.write(f'\nDone. {reporters} reporters, {matched} matched [{time.monotonic() - start:.1f}s]')
+        if failed_counties:
+            raise CommandError(f'Counties not fetched: {", ".join(failed_counties)}; re-run each with --county.')
         if total['failed']:
             raise CommandError(f'{total["failed"]} reporters could not be fetched; re-run for their counties.')
