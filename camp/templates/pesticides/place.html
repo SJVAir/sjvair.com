@@ -3,7 +3,7 @@
 
 {% block title %}Overview · {{ area.page_title }} | {{ block.super }}{% endblock %}
 {% block body-class %}{{ block.super }} place{% endblock %}
-{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">{{ area.page_title }}</a></li>{% endblock %}
+{% block breadcrumb-list %}{% for crumb in area_crumbs|slice:":-1" %}<li><a href="{{ crumb.url }}">{{ crumb.label }}</a></li>{% endfor %}<li class="is-active"><a aria-current="page">{{ area.page_title }}</a></li>{% endblock %}
 
 {% block explorer-content %}
 {% include 'regions/includes/area-header.html' %}
@@ -116,6 +116,8 @@
     {% include 'pesticides/includes/movers.html' with title='Biggest movers' kind='chemicals' %}
 </section>
 {% endif %}
+
+{% include 'regions/includes/within.html' with within_name=name limit=8 zip_limit=10 %}
 
 
 

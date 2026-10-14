@@ -18,6 +18,7 @@ from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.functional import cached_property
+from django.views.generic import RedirectView
 
 import vanilla
 
@@ -31,7 +32,7 @@ from camp.apps.pesticides.models import (
     Product, ProductChemical,
 )
 from camp.apps.regions.models import Location, Region
-from camp.apps.regions import shapes
+from camp.apps.regions import headers, shapes
 from camp.utils import mapconfig
 from camp.utils import mapfigure
 
@@ -2329,8 +2330,9 @@ AREA_TABS = (
     ('notices', 'Notices', 'fa-calendar-clock', 'is-notices'),
     ('records', 'Records', 'fa-table-list', 'is-records'),
     ('schools', 'Schools', 'fa-school', 'is-commodities'),
-    ('community', 'Community', 'fa-city', 'is-chemicals'),
 )
+# A pesticides tab and the emissions tab for the same thing; any other opens its Overview.
+EMISSIONS_TABS = {'schools': 'schools'}
 
 
 class AreaPageMixin:
@@ -2354,6 +2356,10 @@ class AreaPageMixin:
     def area_tab_url(self, key):
         raise NotImplementedError
 
+    def emissions_url(self):
+        """The same place in the emissions explorer, on the matching tab where it has one."""
+        raise NotImplementedError
+
     @cached_property
     def area(self):
         return self.get_area()
@@ -2373,14 +2379,11 @@ class AreaPageMixin:
 
     def available_tabs(self):
         """Which tabs this area has something for; Overview, Notices and Records always do."""
-        from camp.apps.ces import stats as ces_stats
-        model, _ = ces_stats.current_model()
         return {
             'overview': True,
             'notices': True,
             'records': True,
             'schools': self.area.locations().exists(),
-            'community': model is not None or self.area.kind == 'region',
         }
 
     def tabs(self):
@@ -2394,23 +2397,28 @@ class AreaPageMixin:
 
     def header_context(self):
         area = self.area
-        links = []
+        crumbs = []
         if area.kind == 'point':
-            kind = f'Within {area.radius} mile{"" if area.radius == 1 else "s"}'
+            kind, links = headers.point_kind(area.radius), []
         else:
-            kind = area.region.type_label
-            community_url = (area.region.metadata or {}).get('community_url')
-            if community_url:
-                # An AB 617 community's page at the Valley Air District.
-                links.append({'label': 'Community page', 'url': community_url})
+            # The same grey line and links as the emissions header.
+            query = self.scope_query()
+            scope_qs = f'?{query}' if query else ''
+            header = headers.region_header(area.region, url_method='get_pesticides_tab_url', tab=self.tab, scope_qs=scope_qs)
+            kind, links = header['kind'], header['header_links']
+            if header['county'] is not None:
+                crumbs.append({'label': header['county'].name, 'url': header['county'].get_pesticides_url() + scope_qs})
+        crumbs.append({'label': area.page_title, 'url': self.area_tab_url('overview')})
         return {
             'name': area.label,
             'title_name': area.page_title,
             'kind': kind,
             'header_links': links,
             'tabs': self.tabs(),
+            'tab_links': [{'label': 'Emissions', 'url': self.emissions_url(),
+                           'icon': 'fa-industry-windows', 'icon_class': 'is-emissions'}],
             'explorer_base': 'pesticides/base.html',
-            'area_crumbs': [{'label': area.page_title, 'url': self.area_tab_url('overview')}],
+            'area_crumbs': crumbs,
             **self.buffer_context(),
         }
 
@@ -2464,6 +2472,10 @@ class RegionAreaMixin(AreaPageMixin):
         url = self.region.get_pesticides_tab_url(key)
         query = self.scope_query()
         return f'{url}?{query}' if query else url
+
+    def emissions_url(self):
+        # No scope: the two explorers' years don't line up.
+        return self.region.get_emissions_tab_url(EMISSIONS_TABS.get(self.tab, 'overview'))
 
 
 class NearMeAreaMixin(AreaPageMixin):
@@ -2523,6 +2535,13 @@ class NearMeAreaMixin(AreaPageMixin):
         name = 'pesticides:near-me' if key == 'overview' else f'pesticides:near-me-{key}'
         return f'{reverse(name)}?{self.point_query()}'
 
+    def emissions_url(self):
+        tab = EMISSIONS_TABS.get(self.tab)
+        params = {'lat': self.request.GET.get('lat'), 'lng': self.request.GET.get('lng'),
+                  'radius': self.radius, 'label': self.request.GET.get('label') or ''}
+        query = urlencode({key: value for key, value in params.items() if value not in (None, '')})
+        return f"{reverse(f'emissions:near-me-{tab}' if tab else 'emissions:near-me')}?{query}"
+
     def header_context(self):
         context = super().header_context()
         path = self.request.path
@@ -2534,7 +2553,10 @@ class NearMeAreaMixin(AreaPageMixin):
 
 
 class AreaOverviewMixin:
-    """A place page's Overview: its stats, map, notices line, trends and top lists."""
+    """
+    A place page's Overview: its stats, map, notices line, trends and top
+    lists, then the places in and around it.
+    """
     template_name = 'pesticides/place.html'
 
     def get_context_data(self, **kwargs):
@@ -2555,34 +2577,12 @@ class AreaOverviewMixin:
             **context,
             **_place_cards(context, concern, year, all_years),
             **extra,
+            within=places.regions_within(area.region) if area.kind == 'region' else None,
             **self.header_context(),
             **self.tab_scope_context(),
             notices_tab_url=self.area_tab_url('notices'),
             api_docs_url=API_DOCS_URL,
             client_docs_url=CLIENT_DOCS_URL,
-            **kwargs,
-        )
-
-
-class AreaCommunityMixin:
-    """A place page's Community tab: CalEnviroScreen across it, and In and around."""
-    template_name = 'pesticides/area-community.html'
-    tab = 'community'
-
-    def get_context_data(self, **kwargs):
-        from camp.apps.ces import stats as ces_stats
-        area = self.area
-        within = places.regions_within(area.region) if area.kind == 'region' else None
-        return super().get_context_data(
-            section=None,
-            area=area,
-            tab_label='Community',
-            community=ces_stats.tract_summary(area.geometry()),
-            community_about_url=reverse('pesticides:about') + '#calenviroscreen',
-            show_top_tracts=area.kind == 'region' and area.region.type == Region.Type.COUNTY,
-            within=within,
-            **self.header_context(),
-            **self.tab_scope_context(),
             **kwargs,
         )
 
@@ -2768,9 +2768,10 @@ class RegionSchools(RegionAreaMixin, AreaSchoolsMixin, vanilla.TemplateView):
     tab = 'schools'
 
 
-class NearMeCommunity(NearMeAreaMixin, AreaCommunityMixin, vanilla.TemplateView):
-    tab = 'community'
+class CommunityRedirect(RedirectView):
+    """The old Community tab: its In and around is at the foot of Overview now."""
+    permanent = True
+    query_string = True
 
-
-class RegionCommunity(RegionAreaMixin, AreaCommunityMixin, vanilla.TemplateView):
-    tab = 'community'
+    def get_redirect_url(self, *args, **kwargs):
+        return f'{super().get_redirect_url(*args, **kwargs)}#in-and-around'

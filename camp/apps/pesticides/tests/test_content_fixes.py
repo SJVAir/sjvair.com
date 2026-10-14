@@ -55,7 +55,7 @@ class PlaceContentTests(RollupTestMixin, TestCase):
 
     def test_every_place_tab_titles_tab_then_place(self):
         for tab, label in (('overview', 'Overview'), ('notices', 'Notices'), ('records', 'Records'),
-                           ('schools', 'Schools'), ('community', 'Community')):
+                           ('schools', 'Schools')):
             html = self.client.get(self.fresno.get_pesticides_tab_url(tab)).content.decode()
             assert f'<title>{label} · Fresno County | Pesticides | SJVAir</title>' in html, tab
 

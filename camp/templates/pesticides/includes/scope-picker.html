@@ -33,7 +33,9 @@ itself is left out rather than rendering an empty flex box.
                 {# Why the newest year is the newest -- the question the year #}
                 {# list itself raises. #}
                 {% health_note 'pur_lag' as pur_lag_note %}
-                <a class="dropdown-item is-size-7 has-text-grey" href="{% url 'pesticides:about' %}#caveats"
+                {# Multiline and to the left: a one-line tooltip above it ran off #}
+                {# the page and covered the years. #}
+                <a class="dropdown-item is-size-7 has-text-grey has-tooltip-multiline has-tooltip-left has-tooltip-arrow" href="{% url 'pesticides:about' %}#caveats"
                    data-tooltip="{{ pur_lag_note.summary }}">{{ pur_lag_note.title }}</a>
             </div>
         </div>

@@ -191,8 +191,8 @@ class RegionsWithinTests(RollupTestMixin, TestCase):
         assert within['any'] is True
 
     def test_county_page_renders_the_lists(self):
-        # In and around is on a place's Community tab.
-        html = self.client.get(reverse('pesticides:region-community', kwargs={'sqid': self.fresno.sqid, 'slug': 'fresno'})).content.decode()
+        # In and around is at the foot of a place's Overview.
+        html = self.client.get(reverse('pesticides:region', kwargs={'sqid': self.fresno.sqid, 'slug': 'fresno'})).content.decode()
         assert 'In Fresno County' in html and 'Selma Unified' in html and '93662' in html
         assert 'Tehachapi' not in html
 
@@ -842,7 +842,7 @@ class AreaTabTests(RollupTestMixin, TestCase):
         return [tab['key'] for tab in response.context['tabs']]
 
     def test_every_region_tab_renders_under_the_same_header(self):
-        for tab in ('overview', 'notices', 'records', 'community'):
+        for tab in ('overview', 'notices', 'records'):
             response = self.client.get(self.tab_url(tab))
             assert response.status_code == 200, tab
             html = response.content.decode()
@@ -850,7 +850,7 @@ class AreaTabTests(RollupTestMixin, TestCase):
             assert [t['key'] for t in response.context['tabs'] if t['current']] == [tab]
 
     def test_every_near_me_tab_renders_and_keeps_its_point(self):
-        for name in ('near-me', 'near-me-notices', 'near-me-records', 'near-me-schools', 'near-me-community'):
+        for name in ('near-me', 'near-me-notices', 'near-me-records', 'near-me-schools'):
             response = self.client.get(reverse(f'pesticides:{name}'), self.POINT)
             assert response.status_code == 200, name
             html = response.content.decode()
@@ -884,9 +884,9 @@ class AreaTabTests(RollupTestMixin, TestCase):
         assert all('year=2022' in tab['url'] for tab in response.context['tabs'])
 
     def test_a_wrong_slug_redirects_to_the_same_tab(self):
-        url = reverse('pesticides:region-community', kwargs={'sqid': self.fresno.sqid, 'slug': 'nope'})
+        url = reverse('pesticides:region-schools', kwargs={'sqid': self.fresno.sqid, 'slug': 'nope'})
         response = self.client.get(url)
-        assert response.status_code == 301 and response['Location'] == self.tab_url('community')
+        assert response.status_code == 301 and response['Location'] == self.tab_url('schools')
 
     def test_overview_heads_how_it_was_applied_with_its_year(self):
         html = self.client.get(self.tab_url('overview'), {'year': 2023}).content.decode()
