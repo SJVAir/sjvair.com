@@ -766,60 +766,6 @@ body.pesticides
             .notice-signup-logo
                 max-width: 150px
 
-    .within
-        .within-panels
-            +tablet
-                .within-panel + .within-panel
-                    border-left: 1px solid $grey-lighter
-        .within-panel
-            padding: 0.75rem 1.25rem
-        // Past the first dozen, hidden until "Show all" (explorer.js).
-        .is-collapsed:not(.is-revealed)
-            display: none
-        .within-toggle
-            margin-top: 0.25rem
-            padding-left: 0
-            text-decoration: none
-            color: $link
-        .within-heading
-            display: flex
-            align-items: center
-            gap: 0.4rem
-            font-weight: 600
-            margin-bottom: 0.5rem
-            .tag
-                margin-left: 0.25rem
-        .within-list
-            list-style: none
-            margin: 0
-            font-size: $size-7
-            line-height: 1.35
-            li
-                break-inside: avoid
-                padding: 0
-            // A 24px-tall target (WCAG 2.5.8) for each link, spaced as the
-            // old row padding was.
-            a
-                display: inline-block
-                padding: 0.3rem 0
-            &.is-two-column
-                columns: 2
-                column-gap: 1.25rem
-        .within-zips
-            max-width: 24rem
-            .tags
-                gap: 0.3rem
-                // Links, so they read as links: link colour and an underline
-                // rather than the grey of a label.
-                .tag
-                    font-variant-numeric: tabular-nums
-                    background: $white
-                    border: 1px solid $grey-lighter
-                    color: $link
-                    text-decoration: underline
-                    &:hover, &:focus-visible
-                        border-color: $link
-
     .right-now
         border-left: 3px solid $info
         // Links inside its sentences are underlined, as in other running text.
