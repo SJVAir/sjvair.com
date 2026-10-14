@@ -492,10 +492,11 @@
       id: 'districts', type: 'line', source: 'districts',
       paint: { 'line-color': DISTRICT_COLOR, 'line-width': 2, 'line-dasharray': [3, 2] },
     });
-    // Wells: clustered until CLUSTER_MAX_ZOOM; cluster size by count, colour
-    // by its active share; single wells by status, ringed when in a verified HPZ.
+    // Wells: clustered until CLUSTER_MAX_ZOOM (by the Tweaks menu's Clusters
+    // setting, wellsClustered); cluster size by count, colour by its active
+    // share; single wells by status, ringed when in a verified HPZ.
     this.shell.ensureSource('wells', {
-      cluster: true, clusterMaxZoom: CLUSTER_MAX_ZOOM, clusterRadius: CLUSTER_RADIUS,
+      cluster: this.wellsClustered(), clusterMaxZoom: CLUSTER_MAX_ZOOM, clusterRadius: CLUSTER_RADIUS,
       clusterProperties: {
         active: ['+', ['case', ['==', ['get', 's'], 'Active'], 1, 0]],
         hpz: ['+', ['get', 'h']],
@@ -964,6 +965,20 @@
     return lead + ', as of ' + date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
+  // Whether the wells merge into clusters (shell.clustered): on Auto, only on
+  // a Valley-wide map; an area's map (a region or a point's radius, which
+  // carries an area query or an outline) draws every well.
+  FacilityMap.prototype.wellsClustered = function () {
+    return this.shell.clustered(!!(this.data.areaQuery || this.data.outlineUrl));
+  };
+
+  // After a Clusters change or a page swap: the source follows in place, and
+  // the legend's cluster key with it.
+  FacilityMap.prototype.applyClustering = function () {
+    this.shell.setClustered('wells', this.wellsClustered());
+    this.shell.updateLegend();
+  };
+
   // The legend's overlay row: the checkbox, and while it's on the key.
   FacilityMap.prototype.wellsLegendHtml = function () {
     if (!this.wellsEnabled) return '';
@@ -972,11 +987,13 @@
     if (this.wells) {
       var colors = this.wellColors();
       var clusterColor = this.locations ? LOCATION_CLUSTER_COLOR : CLUSTER_COLOR;
+      var clustered = this.wellsClustered();
       html += '<p class="legend-wells">' + WELL_STATUSES.map(function (status) {
         return '<span class="legend-well"><span class="legend-swatch is-well" style="background: ' + colors[status] + '"></span>' + status + '</span>';
       }).join('') + '<span class="legend-well"><span class="legend-swatch is-well is-hpz"></span>Verified health-protection zone</span>' +
-        '<span class="legend-well"><span class="legend-swatch is-well" style="background: ' + clusterColor + '"></span>Cluster, zoomed out: bigger with more wells</span></p>' +
-        '<p class="legend-note">' + this.wellsAsOf('Today\'s wells') + ', not by year: CalGEM records, not emissions. Zoom in to split the clusters; click a well for its record.</p>';
+        (clustered ? '<span class="legend-well"><span class="legend-swatch is-well" style="background: ' + clusterColor + '"></span>Cluster, zoomed out: bigger with more wells</span>' : '') + '</p>' +
+        '<p class="legend-note">' + this.wellsAsOf('Today\'s wells') + ', not by year: CalGEM records, not emissions. ' +
+        (clustered ? 'Zoom in to split the clusters; click' : 'Click') + ' a well for its record.</p>';
     }
     return html + '</div>';
   };
@@ -1361,6 +1378,11 @@
         self.tileStyle = shell.tileStyle;
         self.syncUrl();
       });
+      // Clusters (the shared ?cluster= setting): only where there are wells to merge.
+      shell.bindCluster('select[name="cluster"]', function () {
+        self.applyClustering();
+        self.syncUrl();
+      });
       this.rampSelect = bindChange('select[name="ramp"]', this.onRampChange);
       // Diverging names while Compare is on: a sequential ramp can't grade
       // signed data, and vice versa.
@@ -1427,6 +1449,8 @@
       if (layer.enabled && !layer.on) params.set(key, '0'); else params.delete(key);
     }, this);
     if (this.methane) this.methane.writeState(params);
+    // Clusters: Auto, the default, leaves ?cluster= off (shell.writeClusterParam's rule).
+    if (this.wellsEnabled) this.shell.writeClusterParam({ searchParams: params });
   };
 
   // The address bar follows the view, level and measure (and the sector) so
@@ -1610,6 +1634,8 @@
     this.shell.setSourceData('districts', this.data.districtsUrl || M.EMPTY);
     this.applyView();
     this.applyWells();
+    // A swap between a Valley-wide map and an area's: on Auto, the wells merge or split.
+    this.shell.setClustered('wells', this.wellsClustered());
     this.applyPoints();
     if (this.wells) this.loadWells();
     if (this.methane) this.methane.onAdopt();

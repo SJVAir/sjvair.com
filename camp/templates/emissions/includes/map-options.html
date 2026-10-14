@@ -1,7 +1,11 @@
 <div class="facility-map-options">
-    {# Experiment controls while a basemap (and, unless map.options_ramp is off, a colour ramp) are chosen; the script (facility-map.js / dairy-map.js, via shell.bindTiles) fills the options and applies them live. #}
+    {# Experiment controls while a basemap (and, unless map.options_ramp is off, a colour ramp; with map.options_cluster, whether the wells cluster) are chosen; the script (facility-map.js / dairy-map.js, via shell.bindTiles) fills the options and applies them live. #}
     <label class="facility-map-select">Tiles <select name="tiles"></select></label>
     {% if map.options_ramp %}
     <label class="facility-map-select">Ramp <select name="ramp"></select></label>
+    {% endif %}
+    {% if map.options_cluster %}
+    {# The shared Clusters setting (shell.bindCluster): Auto merges the wells only on a Valley-wide map. #}
+    <label class="facility-map-select">Clusters <select name="cluster"></select></label>
     {% endif %}
 </div>

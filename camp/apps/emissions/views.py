@@ -881,6 +881,8 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         legend_template='emissions/includes/facility-map-legend.html',
         compact=mode == 'compact',
     )
+    # The Tweaks menu's Clusters setting, where there are wells to cluster.
+    config['map']['options_cluster'] = bool(config['wells_url'])
     return config
 
 

@@ -264,3 +264,15 @@ class DistrictLineTests(WellsPagesTestCase):
         for url in (self.kern.get_emissions_url(), self.kern.get_emissions_tab_url('facilities'), self.plant.get_absolute_url(),
                     reverse('emissions:near-me') + '?lat=36.737&lng=-119.787'):
             assert map_data(self.get(url), 'districts-url') == '', url
+
+
+class ClusterSettingTests(TestCase):
+    """The Tweaks menu's Clusters select (the shared ?cluster= setting): only on a map with wells."""
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def test_the_select_shows_where_there_are_wells(self):
+        cache.clear()
+        make_well('0402900001', IN_KERN, Region.objects.get(type=Region.Type.COUNTY, slug='kern'))
+        assert 'name="cluster"' in self.client.get(reverse('emissions:oil-gas')).content.decode()
+        assert 'name="cluster"' not in self.client.get(reverse('emissions:facility-list')).content.decode()
+
