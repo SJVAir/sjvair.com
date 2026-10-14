@@ -1,0 +1,12 @@
+{% comment %}
+The Facilities tab's own header, on its two views (the facility list and the
+sector list): what the page is, where and when, and the switch between them
+at its right. `heading`, `current` ('facilities' or 'sectors'), `header_place`.
+{% endcomment %}
+<div class="facilities-header">
+    <div class="content area-header">
+        <h1 class="mb-1">{{ heading }}</h1>
+        <p class="identifiers has-text-grey">{{ header_place }}{% if year %} &middot; {{ year }}{% endif %} &middot; {{ pollutant.label }}</p>
+    </div>
+    {% include 'emissions/includes/facility-view-switch.html' %}
+</div>

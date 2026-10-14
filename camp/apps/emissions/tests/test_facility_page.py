@@ -22,7 +22,7 @@ class FacilityHeaderTests(TestCase):
         # One grey line, as an area page's: the sector (linking its page), the place, the SIC code.
         line = content[content.index('class="identifiers has-text-grey"'):]
         line = line[:line.index('</p>')]
-        assert 'href="/tools/emissions/sectors/glass/' in line and 'Fresno, Fresno County' in line and 'SIC 3221' in line
+        assert 'href="/tools/emissions/facilities/sectors/glass/' in line and 'Fresno, Fresno County' in line and 'SIC 3221' in line
         # The address as reported, and the regulator's card.
         assert '123 Main St' in content and 'Fresno, CA 93728' in content
         # The county is in Counted in, not repeated in the address.

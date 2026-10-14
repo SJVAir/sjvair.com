@@ -143,6 +143,39 @@ class SectorSortTests(ListTestCase):
         assert 'href="?sort=-share"' in content
 
 
+class SectorsUnderFacilitiesTests(ListTestCase):
+    def test_sectors_live_under_facilities(self):
+        assert reverse('emissions:sector-list') == '/tools/emissions/facilities/sectors/'
+        assert reverse('emissions:sector-detail', args=['glass']) == '/tools/emissions/facilities/sectors/glass/'
+
+    def test_the_old_addresses_redirect_with_their_query(self):
+        response = self.client.get('/tools/emissions/sectors/', {'sort': 'name'})
+        assert response.status_code == 301
+        assert response['Location'] == '/tools/emissions/facilities/sectors/?sort=name'
+        response = self.client.get('/tools/emissions/sectors/glass/')
+        assert response['Location'] == '/tools/emissions/facilities/sectors/glass/'
+
+    def test_no_sectors_tab_and_facilities_is_active(self):
+        for url in (reverse('emissions:sector-list'), reverse('emissions:sector-detail', args=['glass'])):
+            content = self.client.get(url).content.decode()
+            tabs = content.split('id="explorer-tabs"')[1].split('</ul>')[0]
+            assert 'Sectors' not in tabs
+            active = re.search(r'<li class="is-active"><a href="([^"]+)"', tabs)
+            assert active.group(1).startswith(reverse('emissions:facility-list'))
+
+    def test_the_switch_and_breadcrumbs(self):
+        facilities = self.client.get(reverse('emissions:facility-list')).content.decode()
+        sectors = self.client.get(reverse('emissions:sector-list')).content.decode()
+        detail = self.client.get(reverse('emissions:sector-detail', args=['glass'])).content.decode()
+        for content in (facilities, sectors):
+            assert 'facility-view-switch' in content
+        assert re.search(r'is-active"><a href="/tools/emissions/facilities/"[^>]*aria-current="page">By facility', facilities)
+        assert re.search(r'is-active"><a href="/tools/emissions/facilities/sectors/"[^>]*aria-current="page">By sector', sectors)
+        assert '<a href="/tools/emissions/facilities/">Facilities</a>' in sectors
+        assert '<a href="/tools/emissions/facilities/">Facilities</a>' in detail
+        assert '<a href="/tools/emissions/facilities/sectors/">Sectors</a>' in detail
+
+
 class ComplianceFilterTests(ListTestCase):
     def test_list_and_csv_follow_the_filter(self):
         from camp.apps.emissions.models import AirComplianceFacility
@@ -181,13 +214,26 @@ class ComplianceFilterTests(ListTestCase):
 
 
 class FacilityListLayoutTests(ListTestCase):
-    def test_filters_sit_in_the_sidebar_with_sectors_a_to_z(self):
+    def test_a_page_of_25_with_its_count(self):
         content = self.client.get(reverse('emissions:facility-list')).content.decode()
-        form = content[content.index('class="explorer-filters box"'):content.index('</form>')]
-        assert 'id="facility-q"' in form and 'id="facility-sector"' in form
-        # "Search by location" leads the box (a place's own Facilities tab); the old place picker is gone.
-        assert form.index('Search by location') < form.index('id="facility-q"') and 'data-kind="region"' not in form
-        assert f'data-near-url="{reverse("emissions:near-me-facilities")}"' in form
+        total = stats.facility_table(scope()).count()
+        assert re.search(rf'Showing 1&ndash;{min(total, 25)} of {total} facilit', content)
+
+    def test_no_trend_or_sectors_the_overview_has(self):
+        content = self.client.get(reverse('emissions:facility-list')).content.decode()
+        assert 'Over time' not in content and 'Top sectors' not in content and 'sector-table' not in content
+
+    def test_an_unranked_row_shows_a_dash(self):
+        content = self.client.get(reverse('emissions:facility-list')).content.decode()
+        assert '<td class="has-text-right cell-rank">None</td>' not in content
+
+    def test_filters_sit_on_the_table_with_sectors_a_to_z(self):
+        content = self.client.get(reverse('emissions:facility-list')).content.decode()
+        form = content[content.index('class="table-filters box"'):content.index('</form>')]
+        assert 'id="facility-q"' in form and 'id="facility-sector"' in form and 'id="facility-compliance"' in form
+        # Under the map, over the table; "Search by location" is the home page's and the scope bar's.
+        assert content.index('class="facility-map') < content.index('class="table-filters box"') < content.index('facility-table')
+        assert 'Search by location' not in content
         # Scoped to the sector select itself: the facility list also carries
         # a compliance filter select now, whose own options aren't part of
         # this alphabetical-sectors check.
@@ -198,10 +244,13 @@ class FacilityListLayoutTests(ListTestCase):
         assert names[:-1] == sorted(names[:-1])
 
     def test_valley_header_and_map(self):
-        # The top-level Facilities tab reads like OilGasPage's: the whole
-        # Valley as the area, no tab row, a compact map with the facilities layer.
+        # The top-level Facilities tab: its own header (what, where, the By
+        # facility / By sector switch), no tab row, a compact facilities map.
         content = self.client.get(reverse('emissions:facility-list')).content.decode()
-        assert 'San Joaquin Valley' in content and 'All covered counties' in content
+        header = content[content.index('class="facilities-header"'):content.index('class="tab-stats"')]
+        assert '<h1 class="mb-1">Facilities</h1>' in header and 'San Joaquin Valley' in header and 'NOx' in header
+        assert 'facility-view-switch' in header
+        assert '<title>Facilities · San Joaquin Valley' in content
         assert '<li class="is-active"><a aria-current="page">Facilities</a></li>' in content
         assert 'class="facility-map' in content
         assert 'data-main-layer=""' in content or "data-main-layer=''" in content

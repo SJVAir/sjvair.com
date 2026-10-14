@@ -1,10 +1,10 @@
 {% extends 'emissions/base.html' %}
 
 {% block title %}Sectors | {{ block.super }}{% endblock %}
-{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">Sectors</a></li>{% endblock %}
+{% block breadcrumb-list %}<li><a href="{% url 'emissions:facility-list' %}{{ scope_qs }}">Facilities</a></li><li class="is-active"><a aria-current="page">Sectors</a></li>{% endblock %}
 
 {% block explorer-content %}
-<h1 class="is-sr-only">Sectors</h1>
-<p class="mb-4">Facilities grouped by industry, from their Standard Industrial Classification (SIC) codes. {{ pollutant.name }}, {{ year }}.</p>
+{% include 'emissions/includes/facilities-header.html' with heading='Sectors' current='sectors' %}
+<p class="mb-4">Facilities grouped by industry, from their Standard Industrial Classification (SIC) codes.</p>
 {% include 'emissions/includes/sector-rows.html' with show_trend=True show_description=True sortable=True %}
 {% endblock %}

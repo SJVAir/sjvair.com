@@ -51,6 +51,8 @@ def region_within_dairies(region):
 
 
 PAGE_SIZE = 50
+# A Facilities tab's table: a screenful, so its filters and pages stay in reach.
+FACILITY_PAGE_SIZE = 25
 SECTOR_PAGE_ROWS = 25
 METHANE_LIST_ROWS = 25
 # The Areas view forces `measure=total` for a weighted toxics measure (its
@@ -104,9 +106,9 @@ class ScopeMixin:
         return super().get_context_data(**context)
 
 
-def page_of(rows, raw):
+def page_of(rows, raw, size=PAGE_SIZE):
     """
-    A list's page for `?page=` (PAGE_SIZE rows): Paginator.get_page's, except
+    A list's page for `?page=` (`size` rows): Paginator.get_page's, except
     a zero or negative page goes to the first rather than the last, as the
     pesticides explorer's lists do (NearestPageMixin). Junk is page 1, a page
     past the end the last.
@@ -116,7 +118,7 @@ def page_of(rows, raw):
             raw = 1
     except (TypeError, ValueError):
         pass
-    return Paginator(rows, PAGE_SIZE).get_page(raw)
+    return Paginator(rows, size).get_page(raw)
 
 
 def sector_options():
@@ -500,7 +502,7 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
 
 class SectorList(ScopeMixin, vanilla.TemplateView):
     template_name = 'emissions/sector-list.html'
-    section = 'sectors'
+    section = 'facilities'
 
     def get_context_data(self, **kwargs):
         scope = self.get_scope()
@@ -508,12 +510,15 @@ class SectorList(ScopeMixin, vanilla.TemplateView):
         sort = self.request.GET.get('sort')
         sort = sort if sort in stats.SECTOR_SORTS else '-value'
         rows = [dict(row, trend=trends.get(row['sector'], [])) for row in stats.sector_breakdown(scope)]
-        return super().get_context_data(rows=stats.sort_sectors(rows, sort), sort=sort, **kwargs)
+        return super().get_context_data(
+            rows=stats.sort_sectors(rows, sort), sort=sort,
+            header_place=scope.county.name if scope.county else 'San Joaquin Valley', **kwargs,
+        )
 
 
 class SectorDetail(ScopeMixin, vanilla.TemplateView):
     template_name = 'emissions/sector-detail.html'
-    section = 'sectors'
+    section = 'facilities'
 
     def get(self, request, sector):
         if sector not in Facility.Sector.values:
@@ -1161,7 +1166,7 @@ class FacilitiesTabMixin:
 
     def facilities_table_context(self, scope, filters):
         table = stats.facility_table(scope, **filters)
-        page = page_of(table, self.request.GET.get('page'))
+        page = page_of(table, self.request.GET.get('page'), size=FACILITY_PAGE_SIZE)
         return dict(
             page_obj=page, is_paginated=page.has_other_pages(), sort=filters['sort'], filters=filters,
             sector_options=sector_options(), compliance_options=compliance.FILTER_LABELS,
@@ -1291,7 +1296,7 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, ScopeMixin, vanilla.TemplateV
             top_rows = stats.with_ranks(stats.facility_table(scope)[:5], stats.ranks(scope))
         else:
             top_rows = []
-        top_sectors = reporting_sectors(scope) if tab in ('overview', 'facilities') else []
+        top_sectors = reporting_sectors(scope) if tab == 'overview' else []
         # A region page overrides this with its own "In and around" lists;
         # a near-me page (a point, not a region) has none.
         kwargs.setdefault('within', None)
@@ -1771,12 +1776,10 @@ class FacilityList(FacilitiesTabMixin, ScopeMixin, vanilla.TemplateView):
         top_rows = table_ctx.pop('top_rows')
         totals = stats.totals(scope)
         total = totals['value'] or 0
-        places = find_area_places('emissions:region-facilities')
         summary = compliance.area_summary(scope)
         compliance_line = dict(
             summary, url=self.area_tab_url('facilities', '&'.join(filter(None, [self.tab_query('facilities'), 'compliance=hpv']))),
         ) if summary else None
-        top_sectors = reporting_sectors(scope)
         return super().get_context_data(
             **table_ctx,
             top_rows=top_rows,
@@ -1784,10 +1787,10 @@ class FacilityList(FacilitiesTabMixin, ScopeMixin, vanilla.TemplateView):
             area=area,
             # The shared area-tab skeleton and header (regions/area-tab.html).
             explorer_base='emissions/base.html', area_crumbs=[], tab_label='Facilities',
-            name='San Joaquin Valley', kind='All covered counties',
+            name='Facilities', title_name='San Joaquin Valley', header_place='San Joaquin Valley',
             header_links=[], tabs=[], tab_links=[],
             totals=totals, total=total, county_region=None, county_share=None,
-            top_sectors=top_sectors, by_year=stats.by_year(scope),
+            by_year=stats.by_year(scope),
             compliance_line=compliance_line,
             toxics_breakdown=stats.toxics_breakdown(scope) if scope.toxics else None,
             share_unit=scope.pollutant.unit == 'share',
@@ -1795,11 +1798,6 @@ class FacilityList(FacilitiesTabMixin, ScopeMixin, vanilla.TemplateView):
             point_params={}, clear_filters_url=self.area_tab_url('facilities', self.tab_query('facilities')),
             facilities_tab_url=self.area_tab_url('facilities', self.tab_query('facilities')),
             scope_qs=scope.query(county=None), scope_params=scope.params(county=None), county_options=[],
-            find_field=True,
-            find_area_places=places,
-            find_area_counties=[p for p in places if p['type'] == Region.Type.COUNTY],
-            find_area_qs=scope.query(county=None),
-            find_near_url=reverse('emissions:near-me-facilities'),
             maptiler_key=settings.MAPTILER_API_KEY,
             community_about_url=reverse('emissions:about') + '#calenviroscreen',
             **kwargs,

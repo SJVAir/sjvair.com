@@ -4,6 +4,7 @@
 
 {% block title %}{{ sector.label }} | {{ block.super }}{% endblock %}
 {% block breadcrumb-list %}
+<li><a href="{% url 'emissions:facility-list' %}{{ scope_qs }}">Facilities</a></li>
 <li><a href="{% url 'emissions:sector-list' %}{{ scope_qs }}">Sectors</a></li>
 <li class="is-active"><a aria-current="page">{{ sector.label }}</a></li>
 {% endblock %}

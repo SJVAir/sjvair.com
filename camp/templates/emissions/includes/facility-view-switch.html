@@ -1,0 +1,7 @@
+{# Facilities and Sectors share the Facilities tab: the switch in their header (facilities-header.html). `current` is 'facilities' or 'sectors'. #}
+<nav class="tabs is-toggle is-small facility-view-switch" aria-label="View facilities">
+    <ul>
+        <li class="{% if current == 'facilities' %}is-active{% endif %}"><a href="{% url 'emissions:facility-list' %}{{ scope_qs }}"{% if current == 'facilities' %} aria-current="page"{% endif %}>By facility</a></li>
+        <li class="{% if current == 'sectors' %}is-active{% endif %}"><a href="{% url 'emissions:sector-list' %}{{ scope_qs }}"{% if current == 'sectors' %} aria-current="page"{% endif %}>By sector</a></li>
+    </ul>
+</nav>

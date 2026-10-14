@@ -1,4 +1,5 @@
 from django.urls import path
+from django.views.generic import RedirectView
 
 from camp.apps.emissions import dairy_views, views
 
@@ -24,9 +25,13 @@ urlpatterns = [
     path('region/<str:sqid>/<slug:slug>/schools/', views.RegionSchools.as_view(), name='region-schools'),
     path('region/<str:sqid>/<slug:slug>/community/', views.RegionCommunity.as_view(), name='region-community'),
     path('facilities/', views.FacilityList.as_view(), name='facility-list'),
+    # Sectors sit under Facilities; ahead of the facility sqid route so 'sectors' isn't read as one.
+    path('facilities/sectors/', views.SectorList.as_view(), name='sector-list'),
+    path('facilities/sectors/<slug:sector>/', views.SectorDetail.as_view(), name='sector-detail'),
     path('facilities/<str:sqid>/', views.FacilityRedirect.as_view(), name='facility-redirect'),
     path('facilities/<str:sqid>/<slug:slug>/', views.FacilityDetail.as_view(), name='facility-detail'),
-    path('sectors/', views.SectorList.as_view(), name='sector-list'),
-    path('sectors/<slug:sector>/', views.SectorDetail.as_view(), name='sector-detail'),
+    # Sectors' first home, kept for beta links.
+    path('sectors/', RedirectView.as_view(pattern_name='emissions:sector-list', permanent=True, query_string=True)),
+    path('sectors/<slug:sector>/', RedirectView.as_view(pattern_name='emissions:sector-detail', permanent=True, query_string=True)),
     path('dairies/', dairy_views.DairyList.as_view(), name='dairy-list'),
 ]
