@@ -28,7 +28,6 @@ class MethaneSource(models.Model):
     LICENSE = 'Carbon Mapper non-commercial terms, https://carbonmapper.org/terms'
     LICENSE_URL = 'https://carbonmapper.org/terms'
     HOME_URL = 'https://carbonmapper.org'
-    VIEWER_URL = 'https://data.carbonmapper.org/#{lat:.5f},{lng:.5f}'
 
     class Gas(models.TextChoices):
         CH4 = 'CH4', _('Methane')
@@ -101,10 +100,6 @@ class MethaneSource(models.Model):
     def sector_label(self):
         """The sector's name for display, from SECTORS by the stored code."""
         return self.sector_for(self.ipcc_sector)[1]
-
-    @property
-    def viewer_url(self):
-        return self.VIEWER_URL.format(lat=self.point.y, lng=self.point.x)
 
     @property
     def rate_text(self):

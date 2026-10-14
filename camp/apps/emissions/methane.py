@@ -84,7 +84,6 @@ def feature(source, plume=None):
             'rate': source.emission_kg_h, 'unc': source.uncertainty_kg_h, 'rate_text': source.rate_text,
             'persistence': source.persistence, 'obs': source.observations, 'det': source.detections,
             'county': source.county.name,
-            'viewer_url': source.viewer_url,
             'plume': plume_summary(plume),
         },
     }

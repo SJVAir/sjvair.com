@@ -46,7 +46,8 @@ class CollectionTests(MethaneTestCase):
         assert p['rate_text'] == '120 ± 40 kg/h' and p['county'] == 'Fresno County'
         # Beside BIG DAIRY and TEST PLANT, but tied to neither (see MethaneSource).
         assert 'dairy' not in p and 'facility' not in p
-        assert p['viewer_url'] == 'https://data.carbonmapper.org/#36.73600,-119.78600'
+        # No link out: Carbon Mapper's viewer doesn't open a source from a URL.
+        assert 'viewer_url' not in p
         lone = by_name['lone']['properties']
         assert lone['group'] == 'waste'
 
