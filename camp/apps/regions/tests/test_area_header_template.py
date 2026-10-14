@@ -25,3 +25,11 @@ class AreaHeaderTemplateTests(TestCase):
 
     def test_one_tab_and_no_links_has_no_row(self):
         assert 'area-tabs' not in self.render(tabs=TABS[:1])
+
+    def test_an_internal_header_link_stays_in_the_tab(self):
+        html = self.render(header_links=[
+            {'label': 'Fresno urban area', 'url': '/ua/', 'internal': True},
+            {'label': 'Community page', 'url': 'https://example.com/'},
+        ])
+        assert '<a class="button is-small is-rounded area-switch" href="/ua/">' in html and 'Fresno urban area</span></a>' in html
+        assert '<a href="https://example.com/" target="_blank" rel="noopener">Community page</a>' in html

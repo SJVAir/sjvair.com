@@ -5,6 +5,18 @@
 // sideways on a phone rather than wrapping (Bulma's .tabs).
 .area-header
   margin-bottom: 1rem !important
+  // The name with its grey kind line under it, and the same town on
+  // its other layer (city limits <-> urban area) as a small button at the
+  // right. Wraps under the name on a phone.
+  .area-title
+    display: flex
+    flex-wrap: wrap
+    align-items: center
+    gap: 0.5rem 1rem
+  .area-switch
+    margin-left: auto
+    align-self: center
+    text-decoration: none
 .area-tabs
   margin-bottom: 1.5rem
   a

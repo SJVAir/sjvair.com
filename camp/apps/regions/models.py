@@ -130,7 +130,7 @@ class Region(TimeStampedModel):
         return reverse('pesticides:region', kwargs={'sqid': self.sqid, 'slug': self.slug})
 
     def get_pesticides_tab_url(self, tab):
-        """One tab of this region's pesticides page ('overview', 'notices', 'records', 'schools', 'community')."""
+        """One tab of this region's pesticides page ('overview', 'notices', 'records', 'schools')."""
         name = 'pesticides:region' if tab == 'overview' else f'pesticides:region-{tab}'
         return reverse(name, kwargs={'sqid': self.sqid, 'slug': self.slug})
 
@@ -143,7 +143,7 @@ class Region(TimeStampedModel):
         return reverse('emissions:region-dairies', kwargs={'sqid': self.sqid, 'slug': self.slug})
 
     def get_emissions_tab_url(self, tab):
-        """One tab of this region's emissions page ('overview', 'facilities', 'dairies', 'oil-gas', 'community')."""
+        """One tab of this region's emissions page ('overview', 'facilities', 'dairies', 'oil-gas')."""
         name = 'emissions:region' if tab == 'overview' else f'emissions:region-{tab}'
         return reverse(name, kwargs={'sqid': self.sqid, 'slug': self.slug})
 

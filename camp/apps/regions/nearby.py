@@ -77,3 +77,32 @@ def regions_within(region, *, url_method, cache_prefix, ab617=False):
     data = {**groups, 'any': any(groups.values())}
     cache.set(key, data, WITHIN_TTL)
     return data
+
+
+# A town can be mapped twice: as a city or CDP, and as the Census urban area
+# that grows around it. Each points to the other.
+COUNTERPART_TYPES = {
+    Region.Type.CITY: (Region.Type.URBAN_AREA,),
+    Region.Type.CDP: (Region.Type.URBAN_AREA,),
+    Region.Type.URBAN_AREA: (Region.Type.CITY, Region.Type.CDP),
+}
+
+
+def counterpart(region):
+    """
+    The same town on the other community layer: a city's or CDP's urban area
+    of the same name, or an urban area's city (else CDP). Their boundaries
+    must overlap, so a same-named place elsewhere isn't a match. None for any
+    other region type, or with no match.
+    """
+    types = COUNTERPART_TYPES.get(region.type)
+    if not types or not region.boundary_id:
+        return None
+    matches = (
+        Region.objects
+        .filter(name__iexact=region.name, type__in=types, boundary__geometry__intersects=region.boundary.geometry)
+        .exclude(pk=region.pk)
+        .select_related('boundary')
+    )
+    # A city before a CDP when an urban area somehow has both.
+    return min(matches, key=lambda match: types.index(match.type), default=None)

@@ -6,18 +6,26 @@ row. The tabs are links, each its own page, so a tab can be shared and loads
 only what it shows.
 
 Context: `name`; `kind` (the grey line under it); `header_links`, a list of
-{label, url} opened in a new tab; `radius_options` [{miles, url, current}];
+{label, url} opened in a new tab, or with `internal` a small button that
+stays in this one (the same town on its other layer), at the title line's
+right; `radius_options` [{miles, url, current}];
 `tabs` [{key, label, icon, icon_class, url, current}]; `tab_links`
 [{label, url, icon, icon_class}], the same place in another explorer, at the
 row's right end and never current. The row shows with more than one tab or
 any tab link.
 {% endcomment %}
 <div class="content area-header">
+    {# The name with its kind under it, the layer switch at the right. #}
+    <div class="area-title">
+    <div class="area-name">
     <h1 class="mb-1">{{ name }}</h1>
     <p class="identifiers has-text-grey">
         {{ kind }}
-        {% for link in header_links %}&middot; <a href="{{ link.url }}" target="_blank" rel="noopener">{{ link.label }}</a>{% endfor %}
+        {% for link in header_links %}{% if not link.internal %}&middot; <a href="{{ link.url }}" target="_blank" rel="noopener">{{ link.label }}</a>{% endif %}{% endfor %}
     </p>
+    </div>
+    {% for link in header_links %}{% if link.internal %}<a class="button is-small is-rounded area-switch" href="{{ link.url }}"><span class="icon is-small"><span class="fa-regular fa-arrow-right-arrow-left" aria-hidden="true"></span></span><span>{{ link.label }}</span></a>{% endif %}{% endfor %}
+    </div>
     {% if radius_options %}
     <nav class="radius-switcher" aria-label="Search radius, in miles">
         <div class="buttons has-addons are-small">
