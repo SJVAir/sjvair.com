@@ -54,13 +54,19 @@ class OverlayConfigTests(WellsPagesTestCase):
         assert views.wells_overlay(get)['params'] == {}
 
     def test_off_by_default_on_by_request(self):
-        for url in (reverse('emissions:map'), self.fresno.get_emissions_url(), reverse('emissions:near-me') + '?lat=36.737&lng=-119.787'):
+        for url in (self.fresno.get_emissions_url(), reverse('emissions:near-me') + '?lat=36.737&lng=-119.787'):
             content = self.get(url)
             assert map_data(content, 'wells') == '' and map_data(content, 'wells-default') == '', url
             assert map_data(content, 'wells-url').split('?')[0] == reverse('api:v2:emissions:wells-geojson'), url
             assert '{id}' in map_data(content, 'well-url')
-        content = self.get(reverse('emissions:map'), {'wells': '1'})
+        content = self.get(self.fresno.get_emissions_url(), {'wells': '1'})
         assert map_data(content, 'wells') == '1' and map_data(content, 'wells-default') == ''
+
+    def test_on_by_default_on_the_main_map(self):
+        # The Valley map's legend layers all start on, the wells included; ?wells=0 turns them off.
+        content = self.get(reverse('emissions:map'))
+        assert map_data(content, 'wells') == '1' and map_data(content, 'wells-default') == '1'
+        assert map_data(self.get(reverse('emissions:map'), {'wells': '0'}), 'wells') == ''
 
     def test_on_by_default_on_the_oil_gas_tabs(self):
         self.add_wells()

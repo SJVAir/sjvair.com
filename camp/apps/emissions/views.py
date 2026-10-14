@@ -587,7 +587,7 @@ def map_view(get, default_level=areas.DEFAULT_LEVEL, year=None, *, share=False):
 def wells_overlay(get, *, default=False, filtered=False):
     """
     The map's Oil & gas wells overlay: on by default where `default` says
-    (an area's Oil & gas tab, the oil-gas sector page), off elsewhere;
+    (the main map, an area's Oil & gas tab, the oil-gas sector page), off elsewhere;
     ?wells=1|0 overrides either way so the state can be shared. `filtered`
     (the Oil & gas pages) narrows it to the wells table's filters.
     """
@@ -898,8 +898,8 @@ class MapPage(ScopeMixin, vanilla.TemplateView):
             map_config=facility_map_config(
                 scope, sector=sector,
                 areas_view=map_view(self.request.GET, year=scope.year, share=scope.pollutant.unit == 'share'),
-                # Every location, the 66,000 wells a checkbox away.
-                wells=wells_overlay(self.request.GET),
+                # Every layer in the legend starts on, the wells included.
+                wells=wells_overlay(self.request.GET, default=True),
                 methane=methane_overlay(self.request.GET, default=True),
                 locations=locations_layers(self.request.GET, scope),
             ),

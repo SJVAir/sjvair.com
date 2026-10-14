@@ -112,7 +112,10 @@
   // slate (status), dairies orange (EPA size class), schools green (kind).
   // Wells are slate, not purple: Carbon Mapper's plume images run blue to
   // purple, and the two blurred together.
-  var LOCATION_RADIUS = 5;
+  // One marker for every layer's point (facilities, wells, dairies, schools,
+  // methane sources), the pesticides map's: a small dot in a thin white ring.
+  var LOCATION_RADIUS = 4;
+  var LOCATION_STROKE = 1;
   var LOCATION_EMPTY_RADIUS = 3;
   var LOCATION_WELL_COLORS = { Active: '#1e293b', Idle: '#64748b', New: '#cbd5e1' };
   var LOCATION_CLUSTER_COLOR = '#334155';
@@ -514,11 +517,11 @@
     this.shell.ensureLayer({
       id: 'wells', type: 'circle', source: 'wells', filter: ['!', ['has', 'point_count']],
       paint: {
-        'circle-radius': 4,
+        'circle-radius': this.wellRadius(),
         'circle-color': ['match', ['get', 's'], 'Active', this.wellColors().Active, 'Idle', this.wellColors().Idle, 'New', this.wellColors().New, this.wellColors().Idle],
         'circle-opacity': 0.85,
         'circle-stroke-color': ['case', ['==', ['get', 'h'], 1], WELL_HPZ_COLOR, '#ffffff'],
-        'circle-stroke-width': ['case', ['==', ['get', 'h'], 1], 2, 0.5],
+        'circle-stroke-width': this.wellStroke(),
       },
     });
     this.shell.ensureLayer({
@@ -536,7 +539,7 @@
       this.shell.ensureSource('points-' + spec.key);
       this.shell.ensureLayer({
         id: 'points-' + spec.key, type: 'circle', source: 'points-' + spec.key,
-        paint: { 'circle-radius': LOCATION_RADIUS, 'circle-color': match, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1 },
+        paint: { 'circle-radius': LOCATION_RADIUS, 'circle-color': match, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': LOCATION_STROKE },
       });
     }, this);
     // The facility page's schools and child care within 1/4 mile: the ring,
@@ -552,7 +555,7 @@
       // The facility page's dots have no `kind` (NEARBY_COLOR, its fixed
       // green) -- the Schools tab's do, and take the schools point layer's
       // public/private/child-care colours instead.
-      paint: { 'circle-radius': 5, 'circle-color': nearbyColorMatch(), 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5 },
+      paint: { 'circle-radius': LOCATION_RADIUS, 'circle-color': nearbyColorMatch(), 'circle-stroke-color': '#ffffff', 'circle-stroke-width': LOCATION_STROKE },
     });
     this.shell.ensureLayer({
       id: 'outline-mask', type: 'fill', source: 'outline-mask',
@@ -600,7 +603,7 @@
     this.map.setPaintProperty('facilities', 'circle-stroke-color',
       ['case', isHighlight, HIGHLIGHT_COLOR, ['get', '_stroke']]);
     this.map.setPaintProperty('facilities', 'circle-stroke-width',
-      ['case', isHighlight, 3, 1]);
+      ['case', isHighlight, 3, this.locations ? LOCATION_STROKE : 1]);
   };
 
   FacilityMap.prototype.showHighlightPin = function () {
@@ -854,6 +857,8 @@
       var colors = this.wellColors();
       this.map.setPaintProperty('wells', 'circle-color', ['match', ['get', 's'], 'Active', colors.Active, 'Idle', colors.Idle, 'New', colors.New, colors.Idle]);
       this.map.setPaintProperty('wells-clusters', 'circle-color', this.locations ? LOCATION_CLUSTER_COLOR : CLUSTER_COLOR);
+      this.map.setPaintProperty('wells', 'circle-radius', this.wellRadius());
+      this.map.setPaintProperty('wells', 'circle-stroke-width', this.wellStroke());
     }
     if (this.map) {
       ['wells-clusters', 'wells'].forEach(function (id) {
@@ -1001,6 +1006,16 @@
   // The Methane sources (Carbon Mapper) overlay's own legend row (methane-overlay.js).
   FacilityMap.prototype.methaneLegendHtml = function () {
     return this.methane ? this.methane.legendHtml() : '';
+  };
+
+  // A single well's marker: the size every layer's point shares, ringed red
+  // in a verified health-protection zone.
+  FacilityMap.prototype.wellRadius = function () {
+    return LOCATION_RADIUS;
+  };
+
+  FacilityMap.prototype.wellStroke = function () {
+    return ['case', ['==', ['get', 'h'], 1], 2, LOCATION_STROKE];
   };
 
   // The wells' status colours: purple shades on a locations map, else their own.
@@ -1449,7 +1464,7 @@
       if (layer.enabled && !layer.on) params.set(key, '0'); else params.delete(key);
     }, this);
     if (this.methane) this.methane.writeState(params);
-    // Clusters: Auto, the default, leaves ?cluster= off (shell.writeClusterParam's rule).
+    // Clusters: the default (Off) leaves ?cluster= off (shell.writeClusterParam's rule).
     if (this.wellsEnabled) this.shell.writeClusterParam({ searchParams: params });
   };
 

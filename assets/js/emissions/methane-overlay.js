@@ -89,6 +89,7 @@
       map.addLayer({
         id: 'methane', type: 'circle', source: 'methane',
         paint: {
+          // A source without an image: the size every map layer's point shares (facility-map.js).
           'circle-radius': ['case', ['to-boolean', ['get', 'plume']], 11, 4],
           'circle-color': ['match', ['get', 'group'], 'livestock', COLORS.livestock, 'oil-gas', COLORS['oil-gas'], 'waste', COLORS.waste, COLORS.other],
           'circle-opacity': ['case', ['to-boolean', ['get', 'plume']], 0, 0.8],
@@ -244,8 +245,7 @@
         '<dt>Rate</dt><dd>' + escapeHtml(p.rate_text) + '</dd>' +
         '<dt>Seen</dt><dd>' + p.det + ' of ' + p.obs + ' pass' + (p.obs === 1 ? '' : 'es') + '</dd>' +
       '</dl>' +
-      '<div class="methane-plume-panel" data-plume-panel><p class="has-text-grey">Loading plumes…</p></div>' +
-      '<p class="methane-record"><a href="' + escapeHtml(p.viewer_url) + '">Source record →</a></p></div>';
+      '<div class="methane-plume-panel" data-plume-panel><p class="has-text-grey">Loading plumes…</p></div></div>';
     var popup = this.host.shell.placePopup(html, lngLat);
     this.plumes = null;
     this.plumeIndex = 0;

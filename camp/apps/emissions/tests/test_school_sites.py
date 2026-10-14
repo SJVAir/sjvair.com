@@ -146,7 +146,7 @@ class LocationsMapTests(SchoolSitesTestCase):
         from camp.apps.emissions.tests.test_views import map_data
         main = self.client.get(reverse('emissions:map')).content.decode()
         assert map_data(main, 'locations') == '1' and map_data(main, 'schools') == '1' and map_data(main, 'dairies') == '1'
-        assert map_data(main, 'wells') == ''  # the 66,000 wells a checkbox away
+        assert map_data(main, 'wells') == '1' and map_data(main, 'wells-default') == '1'  # every legend layer starts on
         overview = self.client.get(self.fresno.get_emissions_url()).content.decode()
         assert map_data(overview, 'locations') == '1' and f'region={self.fresno.sqid}' in map_data(overview, 'dairies-url')
         facilities = self.client.get(self.fresno.get_emissions_tab_url('facilities')).content.decode()
