@@ -85,6 +85,7 @@
     this.popup = null;
     this.reducedMotion = M.prefersReducedMotion();
     this.tileStyle = M.tileStyle(el);
+    this.clusterMode = M.clusterMode();
 
     var center = M.parseCenter(this.data.center);
     var bounds = center ? null : M.parseBounds(this.data.bounds);
@@ -410,6 +411,52 @@
       if (changed) changed();
     });
     return select;
+  };
+
+  // Whether a clustered layer merges its points, by the Clusters setting:
+  // Auto merges only on an unscoped (valley-wide) map; `scoped` is the
+  // module's say, a county, place or radius map.
+  Shell.prototype.clustered = function (scoped) {
+    if (this.clusterMode === 'on') return true;
+    if (this.clusterMode === 'off') return false;
+    return !scoped;
+  };
+
+  // Turns a clustered GeoJSON source's merging on or off in place (no
+  // reload); ensureSource takes the same `cluster` on the next style load.
+  Shell.prototype.setClustered = function (id, on) {
+    var source = this.map ? this.map.getSource(id) : null;
+    if (source && source.setClusterOptions) source.setClusterOptions({ cluster: on });
+  };
+
+  // The Tweaks menu's Clusters select (M.CLUSTER_MODES): fills it, and on a
+  // change sets clusterMode and calls `changed`, where the module re-applies
+  // setClustered to its own sources and writes ?cluster= to the URL. Called
+  // fresh from onChrome, like bindTiles.
+  Shell.prototype.bindCluster = function (selector, changed) {
+    var self = this;
+    var select = this.wrap ? this.wrap.querySelector(selector) : null;
+    if (!select) return null;
+    select.innerHTML = '';
+    M.CLUSTER_MODES.forEach(function (pair) {
+      var option = document.createElement('option');
+      option.value = pair[0];
+      option.textContent = pair[1];
+      select.appendChild(option);
+    });
+    select.value = this.clusterMode;
+    select.addEventListener('change', function (event) {
+      self.clusterMode = event.target.value;
+      if (changed) changed();
+    });
+    return select;
+  };
+
+  // ?cluster= on `url` (a URL object) for the current setting; Auto, the
+  // default, leaves it off.
+  Shell.prototype.writeClusterParam = function (url) {
+    if (this.clusterMode === 'auto') url.searchParams.delete('cluster');
+    else url.searchParams.set('cluster', this.clusterMode);
   };
 
   // Opens the map's one popup at `lngLat` (closing any other), clear of the

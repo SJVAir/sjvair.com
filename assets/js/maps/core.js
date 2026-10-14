@@ -91,6 +91,17 @@
 
   // The style a map opens with: `?tiles=<id>` (the basemap experiment), else
   // the container's data-style, else dataviz.
+  // The Tweaks menu's Clusters experiment (?cluster=): whether clustered
+  // point layers (pesticide notices, oil and gas wells) merge when zoomed
+  // out. Auto merges on the valley-wide map and draws every point on a map
+  // scoped to a county or place (Shell.prototype.clustered).
+  var CLUSTER_MODES = [['auto', 'Auto'], ['on', 'On'], ['off', 'Off']];
+
+  function clusterMode() {
+    var match = /[?&]cluster=(auto|on|off)(?:&|$)/.exec(window.location.search || '');
+    return match ? match[1] : 'auto';
+  }
+
   function tileStyle(el) {
     var match = /[?&]tiles=([a-z0-9-]+)/.exec(window.location.search || '');
     return match ? match[1] : ((el && el.dataset.style) || 'dataviz');
@@ -455,6 +466,8 @@
     sampleRamp: sampleRamp,
     styleFor: styleFor,
     tileStyle: tileStyle,
+    CLUSTER_MODES: CLUSTER_MODES,
+    clusterMode: clusterMode,
     webglAvailable: webglAvailable,
     showUnavailable: showUnavailable,
     parseCenter: parseCenter,

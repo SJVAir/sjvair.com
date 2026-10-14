@@ -464,6 +464,10 @@
   // on it (SprayDays only places a notice to its square-mile section, so
   // they'd otherwise stack on one point).
   var NOTICE_GROUP_RADIUS = 11;
+  // Until a square-mile section is as wide as a numbered marker, a section's
+  // marker is a small plain dot: the numbers would pile up over the sections
+  // they describe. Township bubbles and clusters keep their numbers.
+  var NOTICE_DOT = { radius: 4, stroke: 1 };
   // At the township level a township's notices share one bubble on its
   // square, carrying how many there are (a section's marker would sit on
   // its neighbours' otherwise); at the section level each section has its
@@ -936,6 +940,10 @@
         self.rampSelect.value = self.rampName;
       };
       this.fillRampOptions();
+      this.shell.bindCluster('select[name="cluster"]', function () {
+        self.applyClustering();
+        self.syncViewParams();
+      });
       var bins = bindChange('select[name="bins"]', this.onBinsChange);
       if (bins) fill(bins, BIN_OPTIONS.map(function (pair) { return [pair[0], pair[1] + ' (' + pair[0] + ')']; }));
 
@@ -1098,7 +1106,7 @@
     this.ensureSource('buffer-outline');
     this.ensureSource('locations');
     this.ensureSource('notices', {
-      cluster: true,
+      cluster: this.noticesClustered(),
       clusterMaxZoom: NOTICE_MERGE.maxZoom,
       clusterRadius: NOTICE_MERGE.radius,
       // Notices, not markers: each marker already stands for several.
@@ -1220,19 +1228,24 @@
       id: 'notices-hit', type: 'circle', source: 'notices',
       paint: { 'circle-radius': MARKER_HIT_RADIUS, 'circle-opacity': 0, 'circle-stroke-width': 0 },
     });
+    // Zoomed out, a section's marker is a dot (NOTICE_DOT); from the zoom
+    // where a numbered marker fits inside its section, the full marker.
+    var isBubble = ['any', ['has', 'point_count'], ['==', ['get', 'kind'], 'township']];
+    var fullRadius = ['case',
+      ['has', 'point_count'], ['case', ['>=', ['get', 'total'], NOTICE_TOWNSHIP.largeFrom], NOTICE_TOWNSHIP.large, NOTICE_TOWNSHIP.small],
+      ['<=', ['get', 'count'], 1], NOTICE_MARKER.radius,
+      ['!=', ['get', 'kind'], 'township'], NOTICE_GROUP_RADIUS,
+      ['>=', ['get', 'count'], NOTICE_TOWNSHIP.largeFrom], NOTICE_TOWNSHIP.large,
+      NOTICE_TOWNSHIP.small];
+    var dotsUntil = this.zoomForSectionPixels(2 * (NOTICE_GROUP_RADIUS + NOTICE_MARKER.stroke));
     this.ensureLayer({
       id: 'notices-circle', type: 'circle', source: 'notices',
       paint: {
-        'circle-radius': ['case',
-          ['has', 'point_count'], ['case', ['>=', ['get', 'total'], NOTICE_TOWNSHIP.largeFrom], NOTICE_TOWNSHIP.large, NOTICE_TOWNSHIP.small],
-          ['<=', ['get', 'count'], 1], NOTICE_MARKER.radius,
-          ['!=', ['get', 'kind'], 'township'], NOTICE_GROUP_RADIUS,
-          ['>=', ['get', 'count'], NOTICE_TOWNSHIP.largeFrom], NOTICE_TOWNSHIP.large,
-          NOTICE_TOWNSHIP.small],
+        'circle-radius': ['step', ['zoom'], ['case', isBubble, fullRadius, NOTICE_DOT.radius], dotsUntil, fullRadius],
         'circle-color': NOTICE_COLOR,
         'circle-opacity': NOTICE_MARKER.opacity,
         'circle-stroke-color': '#fff',
-        'circle-stroke-width': NOTICE_MARKER.stroke,
+        'circle-stroke-width': ['step', ['zoom'], ['case', isBubble, NOTICE_MARKER.stroke, NOTICE_DOT.stroke], dotsUntil, NOTICE_MARKER.stroke],
       },
     });
     // The count, where a marker stands for more than one notice (a
@@ -1249,7 +1262,11 @@
         'text-allow-overlap': true,
         'text-ignore-placement': true,
       },
-      paint: { 'text-color': '#fff' },
+      paint: {
+        'text-color': '#fff',
+        // A dot carries no number (see notices-circle).
+        'text-opacity': ['step', ['zoom'], ['case', isBubble, 1, 0], dotsUntil, 1],
+      },
     });
     this.applyGridPaint();
     // Feature state (hover, the lens hosts) didn't survive a style swap:
@@ -1335,6 +1352,8 @@
     // Scoping to (or away from) a county or place switches "all sections"
     // with it: a scoped map draws every section, the valley groups them.
     var sectionsModeChanged = false;
+    // Auto clustering follows the scope too.
+    if (has('sectionsFixed') || has('radius')) this.applyClustering();
     if (has('sectionsFixed') || has('showAllSections')) {
       var wantAll = this.data.sectionsFixed === '1' || this.data.showAllSections === '1';
       if (wantAll !== this.showAllSections) {
@@ -1639,6 +1658,21 @@
   // The basemap style is part of the map's style, so swapping it rebuilds
   // the style outright (no diff, which would drop our layers without the
   // style.load that puts them back).
+  // Whether notices merge: into township bubbles at the township level
+  // (drawNotices) and into numbered clusters zoomed far out. The Tweaks
+  // menu's Clusters setting, which on Auto merges only on the valley-wide
+  // map -- a county's, place's or radius's few dozen notices read better as
+  // each section's own marker. (A section's notices always share one marker:
+  // they're all pinned to its centre.)
+  SectionMap.prototype.noticesClustered = function () {
+    return this.shell.clustered(this.data.sectionsFixed === '1' || !!parseFloat(this.data.radius));
+  };
+
+  SectionMap.prototype.applyClustering = function () {
+    this.shell.setClustered('notices', this.noticesClustered());
+    this.drawNotices();
+  };
+
   SectionMap.prototype.onTilesChange = function (event) {
     this.tileStyle = event.target.value;
     this.map.setStyle(styleFor(this.tileStyle), { diff: false });
@@ -1723,6 +1757,7 @@
       } else if (this.bins) {
         url.searchParams.delete('bins');
       }
+      this.shell.writeClusterParam(url);
       window.history.replaceState(window.history.state, '', url.toString());
     } catch (err) {
       // A malformed location is nothing to break the map over.
@@ -2209,7 +2244,8 @@
     // sections across the size where the notices split out of their
     // township bubbles, or back.
     map.on('zoomend', function () {
-      if (self.level !== 'township') return;
+      // Unclustered, each section has its own marker at every zoom.
+      if (self.level !== 'township' || !self.noticesClustered()) return;
       var bigEnough = self.sectionPixels() >= NOTICE_SPLIT_MIN_PX;
       var split = bigEnough && !!self.lensFeatures.length;
       var allSplit = bigEnough && self.allSectionsActive();
@@ -3454,12 +3490,21 @@
   SectionMap.prototype.drawNotices = function () {
     var features = this.noticeFeatures || [];
     this.noticeTownshipById = {};
-    if (this.level === 'township') features = this.groupNoticesByTownship(features);
+    // Rolling a township's notices into one bubble is clustering too, so it
+    // follows the Clusters setting; unclustered, each section keeps its own.
+    if (this.level === 'township' && this.noticesClustered()) features = this.groupNoticesByTownship(features);
     this.clearHover('notices');
     this.setSourceData('notices', { type: 'FeatureCollection', features: features });
   };
 
   // How many pixels across a square-mile section is at the current zoom.
+  // The zoom at which a square-mile section is `px` pixels across, at the
+  // map's latitude (the inverse of sectionPixels).
+  SectionMap.prototype.zoomForSectionPixels = function (px) {
+    var lat = this.map.getCenter().lat * Math.PI / 180;
+    return Math.log2(px * 156543.03 * Math.cos(lat) / METERS_PER_MILE);
+  };
+
   SectionMap.prototype.sectionPixels = function () {
     var lat = this.map.getCenter().lat * Math.PI / 180;
     var metersPerPx = 156543.03 * Math.cos(lat) / Math.pow(2, this.map.getZoom());
