@@ -6,14 +6,18 @@ linked to any dairy or facility (see MethaneSource): attributing a plume to
 an operator is for researchers, not a proximity guess.
 
 The catalog endpoint works unauthenticated; when CARBON_MAPPER_API_KEY is
-set, fetch_csv sends it as a bearer token (a higher rate limit, per Carbon
-Mapper's docs). Never log or otherwise surface the key's value.
+set, the requests send it as a bearer token (a higher rate limit, per Carbon
+Mapper's docs). Carbon Mapper's tokens last a week and the import runs
+monthly, so a rejected key (401/403) is dropped for the rest of the run and
+the request retried without it, with a warning (_get). Never log or
+otherwise surface the key's value.
 
 Licence: custom non-commercial terms (MethaneSource.LICENSE). Every import
 records them in SourceImport.notes; the pages carry the attribution.
 """
 import csv
 import io
+import logging
 import math
 import re
 from dataclasses import dataclass
@@ -62,12 +66,31 @@ class CarbonMapperError(Exception):
     pass
 
 
+logger = logging.getLogger(__name__)
+
+# Set once Carbon Mapper rejects the key in this process: the rest of the run goes without it.
+_key_rejected = False
+
+
+def _get(url, params):
+    """
+    GET `url` with the bearer key while it's set and not yet rejected; on a
+    401 or 403 with it, warn (never the key), drop it and try once without.
+    """
+    global _key_rejected
+    key = settings.CARBON_MAPPER_API_KEY
+    if key and not _key_rejected:
+        response = requests.get(url, params=params, headers={'Authorization': f'Bearer {key}'}, timeout=120)
+        if response.status_code not in (401, 403):
+            return response
+        _key_rejected = True
+        logger.warning('Carbon Mapper rejected CARBON_MAPPER_API_KEY (status %s); continuing without it. Renew or unset it.', response.status_code)
+    return requests.get(url, params=params, timeout=120)
+
+
 def fetch_csv():
     """The sources CSV for BBOX (requests repeats `bbox` for each value, as the API expects). The one network call; tests patch it."""
-    headers = {}
-    if settings.CARBON_MAPPER_API_KEY:
-        headers['Authorization'] = f'Bearer {settings.CARBON_MAPPER_API_KEY}'
-    response = requests.get(URL, params={'bbox': list(BBOX)}, headers=headers, timeout=120)
+    response = _get(URL, {'bbox': list(BBOX)})
     response.raise_for_status()
     return response.text
 
@@ -210,20 +233,13 @@ def apply(rows):
     return report
 
 
-def _bearer_headers():
-    headers = {}
-    if settings.CARBON_MAPPER_API_KEY:
-        headers['Authorization'] = f'Bearer {settings.CARBON_MAPPER_API_KEY}'
-    return headers
-
-
 def fetch_plumes_page(limit, offset):
     """One page of the plumes/annotated catalog for BBOX: published, CH4 plumes only. The one listing network call; tests patch it."""
     params = {
         'bbox': list(BBOX), 'plume_gas': MethaneSource.Gas.CH4,
         'status': 'published', 'limit': limit, 'offset': offset,
     }
-    response = requests.get(PLUMES_URL, params=params, headers=_bearer_headers(), timeout=120)
+    response = _get(PLUMES_URL, params)
     response.raise_for_status()
     return response.json()
 

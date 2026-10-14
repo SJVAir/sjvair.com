@@ -386,6 +386,41 @@ class FetchPlumesTests(TestCase):
         assert kwargs['params']['status'] == 'published'
 
 
+class RejectedKeyTests(TestCase):
+    """Carbon Mapper's tokens last a week; a rejected one is dropped and the import goes on without it."""
+
+    def setUp(self):
+        carbonmapper._key_rejected = False
+        self.addCleanup(setattr, carbonmapper, '_key_rejected', False)
+
+    def response(self, status, text='source_name\n'):
+        return type('R', (), {'status_code': status, 'text': text, 'raise_for_status': lambda self: None})()
+
+    def test_a_rejected_key_is_dropped_and_the_request_retried_without_it(self):
+        with patch('camp.apps.emissions.importers.carbonmapper.settings') as mock_settings, \
+                patch('camp.apps.emissions.importers.carbonmapper.requests.get') as mock_get, \
+                self.assertLogs('camp.apps.emissions.importers.carbonmapper', level='WARNING') as logs:
+            mock_settings.CARBON_MAPPER_API_KEY = 'expired-key'
+            mock_get.side_effect = [self.response(401), self.response(200, 'ok')]
+            assert carbonmapper.fetch_csv() == 'ok'
+            first, second = mock_get.call_args_list
+            assert first.kwargs['headers']['Authorization'] == 'Bearer expired-key'
+            assert 'headers' not in second.kwargs
+            # The rest of the run skips the key: one request, no header.
+            mock_get.side_effect = [self.response(200, 'again')]
+            assert carbonmapper.fetch_csv() == 'again'
+            assert 'headers' not in mock_get.call_args.kwargs
+        assert 'expired-key' not in ' '.join(logs.output)
+
+    def test_no_key_no_header(self):
+        with patch('camp.apps.emissions.importers.carbonmapper.settings') as mock_settings, \
+                patch('camp.apps.emissions.importers.carbonmapper.requests.get') as mock_get:
+            mock_settings.CARBON_MAPPER_API_KEY = ''
+            mock_get.return_value = self.response(200, 'ok')
+            assert carbonmapper.fetch_csv() == 'ok'
+        assert mock_get.call_count == 1 and 'headers' not in mock_get.call_args.kwargs
+
+
 class FetchPlumeImageTests(TestCase):
     def test_returns_the_bytes(self):
         session = type('S', (), {})()
