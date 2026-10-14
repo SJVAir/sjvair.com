@@ -976,11 +976,12 @@ class MapPageTests(RollupTestMixin, TestCase):
         html = response.content.decode()
         assert 'data-show-notices="1"' in html
 
-    def test_school_markers_are_off_by_default(self):
+    def test_school_markers_are_on_by_default(self):
+        # The valley map starts with every marker layer on.
         response = self.client.get(self.url)
-        assert response.context['map_config']['show_locations'] == '0'
+        assert response.context['map_config']['show_locations'] == '1'
         html = response.content.decode()
-        assert 'data-show-locations="0"' in html
+        assert 'data-show-locations="1"' in html
         assert 'data-locations-url="/api/2.0/pesticides/locations/"' in html
         # The layer toggles are built by the script, in the legend; the server renders none.
         assert 'name="locations"' not in html

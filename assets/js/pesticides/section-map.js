@@ -464,10 +464,6 @@
   // on it (SprayDays only places a notice to its square-mile section, so
   // they'd otherwise stack on one point).
   var NOTICE_GROUP_RADIUS = 11;
-  // Until a square-mile section is as wide as a numbered marker, a section's
-  // marker is a small plain dot: the numbers would pile up over the sections
-  // they describe. Township bubbles and clusters keep their numbers.
-  var NOTICE_DOT = { radius: 4, stroke: 1 };
   // At the township level a township's notices share one bubble on its
   // square, carrying how many there are (a section's marker would sit on
   // its neighbours' otherwise); at the section level each section has its
@@ -486,7 +482,15 @@
   var NOTICE_COUNT_FALLBACK_FONT = ['Noto Sans Bold'];
   // How many of a section's notices its popup lists before "N more".
   var SECTION_POPUP_NOTICES = 3;
-  var LOCATION_MARKER = { radius: 5, opacity: 0.95, stroke: 1.5 };
+  // One small marker for every point on the map (schools, notice dots, a
+  // lone notice), so the layers read alike.
+  var POINT_MARKER = { radius: 4, stroke: 1 };
+  var LOCATION_MARKER = { radius: POINT_MARKER.radius, opacity: 0.95, stroke: POINT_MARKER.stroke };
+  // Until a square-mile section is as wide as a numbered marker, a section's
+  // marker is a small plain dot: the numbers would pile up over the sections
+  // they describe. Township bubbles and clusters keep their numbers. A dot,
+  // and a lone notice's marker at any zoom, is POINT_MARKER's size.
+  var NOTICE_DOT = POINT_MARKER;
   // An invisible disc under each marker, wide enough for a finger, that
   // takes the marker's hover and click (see addLayers, bindMarkerEvents).
   var MARKER_HIT_RADIUS = 12;
@@ -1233,7 +1237,7 @@
     var isBubble = ['any', ['has', 'point_count'], ['==', ['get', 'kind'], 'township']];
     var fullRadius = ['case',
       ['has', 'point_count'], ['case', ['>=', ['get', 'total'], NOTICE_TOWNSHIP.largeFrom], NOTICE_TOWNSHIP.large, NOTICE_TOWNSHIP.small],
-      ['<=', ['get', 'count'], 1], NOTICE_MARKER.radius,
+      ['<=', ['get', 'count'], 1], NOTICE_DOT.radius,
       ['!=', ['get', 'kind'], 'township'], NOTICE_GROUP_RADIUS,
       ['>=', ['get', 'count'], NOTICE_TOWNSHIP.largeFrom], NOTICE_TOWNSHIP.large,
       NOTICE_TOWNSHIP.small];
@@ -1245,7 +1249,8 @@
         'circle-color': NOTICE_COLOR,
         'circle-opacity': NOTICE_MARKER.opacity,
         'circle-stroke-color': '#fff',
-        'circle-stroke-width': ['step', ['zoom'], ['case', isBubble, NOTICE_MARKER.stroke, NOTICE_DOT.stroke], dotsUntil, NOTICE_MARKER.stroke],
+        'circle-stroke-width': ['step', ['zoom'], ['case', isBubble, NOTICE_MARKER.stroke, NOTICE_DOT.stroke], dotsUntil,
+          ['case', ['all', ['!', isBubble], ['<=', ['get', 'count'], 1]], NOTICE_DOT.stroke, NOTICE_MARKER.stroke]],
       },
     });
     // The count, where a marker stands for more than one notice (a
@@ -1526,8 +1531,9 @@
   // county's outline, or back out to the whole valley when the filter goes.
   SectionMap.prototype.fitCounty = function () {
     if (!this.map || !this.counties) return;
-    // A clipped page frames its clip shape (see loadClip), not a county.
-    if (this.data.clipUrl) { this.settleFit(); return; }
+    // A clipped page frames its clip shape (see loadClip), not a county; a
+    // section, place or point page frames that (data-framed), county or not.
+    if (this.data.clipUrl || this.data.framed === '1') { this.settleFit(); return; }
     var target = this.countyBounds[this.data.county] || null;
     if (target) {
       this.map.fitBounds(target, { padding: 20, animate: !this.reducedMotion });
@@ -1660,10 +1666,10 @@
   // style.load that puts them back).
   // Whether notices merge: into township bubbles at the township level
   // (drawNotices) and into numbered clusters zoomed far out. The Tweaks
-  // menu's Clusters setting, which on Auto merges only on the valley-wide
-  // map -- a county's, place's or radius's few dozen notices read better as
-  // each section's own marker. (A section's notices always share one marker:
-  // they're all pinned to its centre.)
+  // menu's Clusters setting: Off by default (each section's own marker,
+  // a dot until it fits); Auto merges only on the valley-wide map. (A
+  // section's notices always share one marker: they're all pinned to its
+  // centre.)
   SectionMap.prototype.noticesClustered = function () {
     return this.shell.clustered(this.data.sectionsFixed === '1' || !!parseFloat(this.data.radius));
   };
@@ -3585,7 +3591,7 @@
 
   SectionMap.prototype.openNoticePopup = function (feature) {
     var props = feature.properties;
-    var offset = (props.count > 1 ? NOTICE_GROUP_RADIUS : NOTICE_MARKER.radius) + NOTICE_MARKER.stroke;
+    var offset = props.count > 1 ? NOTICE_GROUP_RADIUS + NOTICE_MARKER.stroke : NOTICE_DOT.radius + NOTICE_DOT.stroke;
     this.openPopup(feature.geometry.coordinates, this.noticeGroupPopupHtml(props), 'openNoticeId', props.id, offset);
     this.showNoticeSectionOutline(props);
   };

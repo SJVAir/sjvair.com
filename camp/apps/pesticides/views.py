@@ -271,6 +271,13 @@ def resolve_map_center(*, section=None, region=None, point=None, radius=None, co
     return None, None, None
 
 
+def map_framed(*, section=None, region=None, point=None):
+    """Whether the map frames something of its own (resolve_map_center's section, region or point), so a county filter's fit leaves it be."""
+    return point is not None or any(
+        target not in (None, MISSING) and target.boundary_id for target in (section, region)
+    )
+
+
 class NearestPageMixin:
     """
     A list's paging, the same on every browser: a junk or out-of-range
@@ -1179,7 +1186,7 @@ def clip_url(sqid, buffer=0):
     return f'{url}?buffer={buffer}' if buffer else url
 
 
-def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None, show_all_sections=False, locations_area=None, notices_url=None, section_notices_extra=None, clip_region=None, buffer=0, method=None, notice_method=None, location_ids=None, place=None):
+def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None, show_all_sections=False, locations_area=None, notices_url=None, section_notices_extra=None, clip_region=None, buffer=0, method=None, notice_method=None, location_ids=None, place=None, framed=False):
     year = year or stats.latest_year()
     scope = stats.scope_param(year, all_years, county, concern)
     # A list page's own table filters, carried on the endpoint URLs so every
@@ -1256,6 +1263,9 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # county outlines once they load, so the whole valley is in view at
         # any aspect ratio; the fixed centre/zoom only covers the wait.
         'fit': '' if any((center, zoom, radius, highlight, outline_url)) else 'valley',
+        # The page frames a section, place or point: a county filter's fit
+        # (section-map.js fitCounty) mustn't zoom out over it.
+        'framed': '1' if framed else '0',
         'radius': radius or '',
         'chemical': str(chemical.chem_code) if chemical else '',
         'product': str(product.prodno) if product else '',
@@ -1334,6 +1344,8 @@ class MapPage(vanilla.TemplateView):
             concern=concern,
             compare=compare,
             toolbar=True,
+            # Every marker layer starts on here, schools and child care too.
+            show_locations=True,
         )
 
         filters = []
@@ -1822,6 +1834,7 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
             concern=self.concern,
             method=self.form.cleaned_data.get('method') or None,
             place=region,
+            framed=map_framed(section=section, region=region, point=self.point),
             **self.get_map_clip(),
         )
 
@@ -2227,6 +2240,7 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
             section_notices_extra=self.get_list_mode_params(),
             notice_method=self.form.cleaned_data.get('method') or None,
             place=region,
+            framed=map_framed(section=section, region=region, point=self.point),
         )
 
     def get_context_data(self, **kwargs):

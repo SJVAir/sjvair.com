@@ -74,3 +74,40 @@ class ScopedMapsDrawEverySectionTests(RollupTestMixin, TestCase):
         fresno = Region.objects.get(pk=9001)
         config, _ = self.config(reverse('pesticides:records'), {'year': 2023, 'region': fresno.sqid})
         assert config['sections_fixed'] == '1'
+
+
+class MapFramesItsFocusTests(RollupTestMixin, TestCase):
+    """A section, place or point the page is about frames the map; a county filter alone frames the county."""
+    fixtures = ['pesticides-explorer']
+
+    def config(self, name, **params):
+        return self.client.get(reverse(name), params).context['map_config']
+
+    def test_a_section_with_a_county_keeps_the_section(self):
+        section = Region.objects.get(pk=9101)
+        for name in ('pesticides:notice-list', 'pesticides:records'):
+            config = self.config(name, section=section.sqid, county='fresno', year=2023)
+            assert config['framed'] == '1', name
+            assert config['zoom'] == 13, name
+
+    def test_a_county_alone_frames_the_county(self):
+        for name in ('pesticides:notice-list', 'pesticides:records'):
+            assert self.config(name, county='fresno', year=2023)['framed'] == '0', name
+
+    def test_a_point_frames_itself(self):
+        config = self.config('pesticides:notice-list', lat=36.71, lng=-119.79, radius=3, county='fresno')
+        assert config['framed'] == '1'
+
+
+class ValleyMapLayersTests(RollupTestMixin, TestCase):
+    """The valley map starts with every marker layer on; a list page keeps schools off."""
+    fixtures = ['pesticides-explorer']
+
+    def test_valley_map_shows_schools_and_notices(self):
+        config = self.client.get(reverse('pesticides:map'), {'year': 2023}).context['map_config']
+        assert config['show_locations'] == '1' and config['show_notices'] == '1'
+        assert config['show_all_sections'] == '0'
+
+    def test_records_map_keeps_schools_off(self):
+        config = self.client.get(reverse('pesticides:records'), {'year': 2023}).context['map_config']
+        assert config['show_locations'] == '0'
