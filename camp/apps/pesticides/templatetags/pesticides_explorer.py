@@ -47,7 +47,7 @@ TEXT_SORT_KEYS = ('name', 'city', 'type', 'rank')
 
 
 @register.simple_tag(takes_context=True)
-def sort_link(context, key, label, param='sort'):
+def sort_link(context, key, label, param='sort', note=None):
     """
     Column header link. Clicking the active column flips direction; clicking
     another column sorts descending for numeric-style keys ('lbs', counts) and
@@ -56,6 +56,9 @@ def sort_link(context, key, label, param='sort'):
     `param` is the query-string key the sort lives under, and the context key
     the current sort is read from -- a table with its own sort state on a page
     that already has one (the district page's schools table) prefixes it.
+    `note` goes under the label and its icon, small and in parentheses: a
+    column's distance or unit ("Facilities" over "(1,000 ft)"), so a narrow
+    column wraps there rather than between the label and its icon.
     """
     current = context.get(param) or ''
     active = current.lstrip('-') == key
@@ -68,10 +71,11 @@ def sort_link(context, key, label, param='sort'):
         icon = 'fa-arrow-up-arrow-down'
     href = qs_replace(context, page=None, **{param: target})
     css = 'sort-link is-active' if active else 'sort-link'
-    return format_html(
-        '<a class="{}" href="{}">{} <span class="icon is-small"><span class="fa-regular {}"></span></span></a>',
-        css, href, label, icon,
+    link = format_html(
+        '<a class="{}" href="{}">{} <span class="icon is-small"><span class="fa-regular {}"></span></span>{}</a>',
+        css, href, label, icon, format_html(' <small class="sort-note">({})</small>', note) if note else '',
     )
+    return link
 
 
 @register.simple_tag(takes_context=True)

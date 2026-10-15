@@ -5,8 +5,8 @@
 An area's Schools tab (views.RegionSchools / NearMeSchools) in the shared tab
 skeleton (regions/area-tab.html): the area's schools and child-care centers
 and how many have a permitted facility, an oil or gas well or a dairy near
-them; the facility map with the sites on it, the filters and the school
-districts the area overlaps beside it; and the sites themselves,
+them; the filters and the school districts the area overlaps beside the
+facility map with the sites on it, and under the map the sites themselves,
 filtered, sorted, paged and downloadable, each with what's near it
 (schools.area_sites).
 {% endcomment %}
@@ -25,6 +25,45 @@ filtered, sorted, paged and downloadable, each with what's near it
 {% block tab-map %}
 {% include 'emissions/includes/facility-map.html' %}
 <p class="is-size-7 mt-2">Click a school or child-care center for what's near it.</p>
+{# The sites under the map, beside the filters and districts that narrow them. #}
+<div class="mt-5">
+{# How many match, and the same rows as a CSV, where the eye lands before the table: the other data tables' bar. #}
+{% with total=site_summary.schools|add:site_summary.child_care %}
+<div class="table-toolbar">
+    <p class="table-count">
+        {% if page_obj.paginator.count %}Showing {{ page_obj.start_index|intcomma }}&ndash;{{ page_obj.end_index|intcomma }} of {{ page_obj.paginator.count|intcomma }} site{{ page_obj.paginator.count|pluralize }}{% if sites_filtered %} <span class="has-text-grey">({{ total|intcomma }} in all)</span>{% endif %}{% else %}No schools or child care match{% endif %}
+    </p>
+    {% if page_obj.paginator.count %}<a class="button is-small" href="{% qs_replace format='csv' page=None %}" hx-boost="false" download><span class="icon"><span class="fa-regular fa-fw fa-download" aria-hidden="true"></span></span><span>Download CSV</span></a>{% endif %}
+</div>
+{% endwith %}
+<div class="table-container">
+<table class="table is-fullwidth is-hoverable is-narrow site-table schools-table is-stacked-mobile">
+    <thead><tr>
+        <th {% aria_sort 'name' %}>{% sort_link 'name' 'School or child care' %}</th>
+        <th class="has-text-right" {% aria_sort 'notice' %}>{% sort_link 'notice' 'Facilities' note='1,000 ft' %}</th>
+        <th class="has-text-right" {% aria_sort 'quarter' %}>{% sort_link 'quarter' 'Facilities' note='¼ mile' %}</th>
+        <th class="has-text-right" {% aria_sort 'value' %}>{% if pollutant.weighted %}{% sort_link 'value' 'Share' note='¼ mile' %}{% else %}{% sort_link 'value' pollutant.label note='¼ mile' %}{% endif %}</th>
+        <th class="has-text-right" {% aria_sort 'wells' %}>{% sort_link 'wells' 'Wells' note='3,200 ft' %}</th>
+        <th class="has-text-right" {% aria_sort 'dairies' %}>{% sort_link 'dairies' 'Dairies' note='1 mile' %}</th>
+    </tr></thead>
+    <tbody>
+    {% for row in site_rows %}
+    <tr>
+        <td class="cell-name">{% include 'regions/includes/school-name-cell.html' %}</td>
+        <td class="has-text-right cell-meta{% if not row.notice %} is-none{% endif %}" data-label="Facilities within 1,000 ft">{{ row.notice|intcomma }}</td>
+        <td class="has-text-right cell-meta{% if not row.quarter %} is-none{% endif %}" data-label="Facilities within ¼ mile">{{ row.quarter|intcomma }}</td>
+        <td class="has-text-right cell-meta{% if row.value is None %} is-none{% endif %}" data-label="{% if pollutant.weighted %}Share{% else %}{{ pollutant.label }} ({{ pollutant.unit_label }}){% endif %}, ¼ mile">{% if row.value is None %}—{% else %}{{ row.value|amount:pollutant }}{% endif %}</td>
+        <td class="has-text-right cell-meta{% if not row.wells %} is-none{% endif %}" data-label="Wells within 3,200 ft">{{ row.wells|intcomma }}</td>
+        <td class="has-text-right cell-meta{% if not row.dairies %} is-none{% endif %}" data-label="Dairies within 1 mile">{{ row.dairies|intcomma }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="6">No schools or child care match.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% include 'pesticides/includes/pagination.html' %}
+</div>
 {% endblock %}
 
 {% block tab-filters %}
@@ -74,42 +113,8 @@ filtered, sorted, paged and downloadable, each with what's near it
 
 {% block tab-aside %}{% include 'regions/includes/school-districts-box.html' %}{% endblock %}
 
-{% block tab-table %}
-{% with total=site_summary.schools|add:site_summary.child_care %}
-<p class="summary-sentence mb-3">
-    {{ total|intcomma }} school{{ total|pluralize }} and child care site{{ total|pluralize }}{% if sites_filtered %}
-    · showing {{ site_count|intcomma }}{% endif %}
-</p>
-{% endwith %}
-<div class="table-container">
-<table class="table is-fullwidth is-hoverable is-narrow site-table schools-table is-stacked-mobile">
-    <thead><tr>
-        <th {% aria_sort 'name' %}>{% sort_link 'name' 'School or child care' %}</th>
-        <th class="has-text-right" {% aria_sort 'notice' %}>{% sort_link 'notice' 'Facilities, 1,000 ft' %}</th>
-        <th class="has-text-right" {% aria_sort 'quarter' %}>{% sort_link 'quarter' 'Facilities, ¼ mile' %}</th>
-        <th class="has-text-right" {% aria_sort 'value' %}>{% if pollutant.weighted %}{% sort_link 'value' 'Share, ¼ mile' %}{% else %}{% sort_link 'value' pollutant.label|add:', ¼ mile' %}{% endif %}</th>
-        <th class="has-text-right" {% aria_sort 'wells' %}>{% sort_link 'wells' 'Wells, 3,200 ft' %}</th>
-        <th class="has-text-right" {% aria_sort 'dairies' %}>{% sort_link 'dairies' 'Dairies, 1 mile' %}</th>
-    </tr></thead>
-    <tbody>
-    {% for row in site_rows %}
-    <tr>
-        <td class="cell-name">{% include 'regions/includes/school-name-cell.html' %}</td>
-        <td class="has-text-right cell-meta{% if not row.notice %} is-none{% endif %}" data-label="Facilities within 1,000 ft">{{ row.notice|intcomma }}</td>
-        <td class="has-text-right cell-meta{% if not row.quarter %} is-none{% endif %}" data-label="Facilities within ¼ mile">{{ row.quarter|intcomma }}</td>
-        <td class="has-text-right cell-meta{% if row.value is None %} is-none{% endif %}" data-label="{% if pollutant.weighted %}Share{% else %}{{ pollutant.label }} ({{ pollutant.unit_label }}){% endif %}, ¼ mile">{% if row.value is None %}—{% else %}{{ row.value|amount:pollutant }}{% endif %}</td>
-        <td class="has-text-right cell-meta{% if not row.wells %} is-none{% endif %}" data-label="Wells within 3,200 ft">{{ row.wells|intcomma }}</td>
-        <td class="has-text-right cell-meta{% if not row.dairies %} is-none{% endif %}" data-label="Dairies within 1 mile">{{ row.dairies|intcomma }}</td>
-    </tr>
-    {% empty %}
-    <tr><td colspan="6">No schools or child care match.</td></tr>
-    {% endfor %}
-    </tbody>
-</table>
-</div>
-{% include 'pesticides/includes/pagination.html' %}
-<p class="mt-3"><a href="{% qs_replace format='csv' page=None %}" hx-boost="false" download>Download these sites (CSV)</a></p>
-{% endblock %}
+{# The table sits under the map, in its column (tab-map), not the page's full width. #}
+{% block tab-table %}{% endblock %}
 
 {% block tab-notes %}
 <details class="data-notes">

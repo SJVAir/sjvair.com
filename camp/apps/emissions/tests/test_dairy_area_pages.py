@@ -41,6 +41,23 @@ class DairyAreaTestCase(TestCase):
         return response
 
 
+class BufferTests(DairyAreaTestCase):
+    """A region's dairy map reaches past the boundary on request, as its facility map does (?buffer=)."""
+
+    def test_the_boundary_option(self):
+        map_data = dairy_map_data
+        content = self.get(self.fresno_city, {'year': '2023'}).content.decode()
+        assert 'facility-map-buffer' in content and 'is-set' not in content[content.index('facility-map-buffer') - 60:content.index('facility-map-buffer') + 30]
+        assert map_data(content, 'buffer-url') == ''
+        widened = self.get(self.fresno_city, {'year': '2023', 'buffer': '3'}).content.decode()
+        # The points and the methane overlay reach the widened area; the dashed edge comes from the regions endpoint.
+        assert 'buffer=3' in map_data(widened, 'geojson-url') and 'buffer=3' in map_data(widened, 'buffer-url')
+        assert 'facility-map-buffer is-set' in widened
+        # A near-me page is a circle already: no boundary option.
+        near = self.near({'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'year': '2023'}).content.decode()
+        assert 'facility-map-buffer' not in near
+
+
 class RouteTests(DairyAreaTestCase):
     def test_region_url(self):
         # The fixture's county slug is 'fresno'.

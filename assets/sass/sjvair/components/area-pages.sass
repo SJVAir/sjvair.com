@@ -46,6 +46,9 @@
       flex-wrap: nowrap
     .button
       margin-bottom: 0
+      // Bulma's light buttons drop their border; the current view keeps one, in the link colour, so the pair reads as one control.
+      &.is-selected
+        border-color: $link
   @media screen and (max-width: $tablet - 1px)
     .subview-toggle
       flex-basis: 100%
@@ -117,9 +120,6 @@
         display: none
         &.is-revealed
           display: list-item
-  .school-districts-toggle
-    padding-left: 0
-    margin-top: 0.25rem
 
 // "In and around <place>" (regions/includes/within.html), on both explorers'
 // Overview: the counties, communities, school districts and ZIPs nearby.
@@ -133,9 +133,11 @@
   // Past the first few, hidden until "Show all" (explorer.js).
   .is-collapsed:not(.is-revealed)
     display: none
-  // A text button that lines up with the list: its padding stays (so the
-  // focus box doesn't crowd the words), pulled back by a matching margin.
-  .within-toggle
+// A text button that lines up with the list above it ("Show all" / "Show
+// fewer": In and around's, the school districts box's): its padding stays
+// (so the focus box doesn't crowd the words), pulled back by a matching margin.
+.within, .school-districts-box
+  .within-toggle, .school-districts-toggle
     margin-top: 0.25rem
     margin-left: -0.5em
     padding: 0 0.5em
@@ -187,3 +189,10 @@
         text-decoration: underline
         &:hover, &:focus-visible
           border-color: $link
+
+// A sortable column's note (sort_link's `note`: "(1,000 ft)"), on its own
+// line under the label and its icon, in the header's colour, lighter.
+.sort-link .sort-note
+  display: block
+  font-weight: normal
+  opacity: 0.8

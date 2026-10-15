@@ -20,6 +20,7 @@ from camp.apps.emissions import areas, dairies, nei, stats, views
 from camp.apps.emissions.models import HERD_FIELDS
 from camp.apps.emissions.pollutants import CRITERIA
 from camp.apps.emissions.views import AREA_PAGE_TYPES, ScopeMixin, radius_area, region_page_title, region_title
+from camp.apps.regions import shapes
 from camp.apps.regions.models import Region
 from camp.utils import mapconfig
 
@@ -142,7 +143,8 @@ def csv_response(rows, filename):
     return response
 
 
-def dairy_map_config(scope, view, *, area_params=None, outline_url='', center='', zoom='', radius='', methane=None, q=None):
+def dairy_map_config(scope, view, *, area_params=None, outline_url='', center='', zoom='', radius='', methane=None, q=None,
+                     buffer_options=None):
     """
     The data-* attributes of a `.dairy-map` (see assets/js/emissions/dairy-map.js):
     the Dairies tab's, or a dairy area page's with `area_params` (the GeoJSON
@@ -153,6 +155,8 @@ def dairy_map_config(scope, view, *, area_params=None, outline_url='', center=''
     `methane` (views.methane_overlay's return, or None) offers the Methane
     sources (Carbon Mapper) overlay and its initial state. `q` (the table's
     name search) narrows the points to the dairies the table lists.
+    `buffer_options` (a region page's) offers the map past the boundary, as
+    the facility map does; `area_params` then carries the ?buffer= it reaches.
     """
     area = area_params is not None
     year_qs = urlencode({'year': scope.year})
@@ -179,6 +183,11 @@ def dairy_map_config(scope, view, *, area_params=None, outline_url='', center=''
         'flat_since': dairies.flat_since(dairies.emissions_trend(scope.pollutant)) or '',
         # The region or circle the page is about (dairy region pages, near-me).
         'outline_url': outline_url,
+        # The widened edge to draw, when the map reaches past the region (?buffer=).
+        'buffer_url': views.with_query(reverse('api:v2:regions:region-detail', args=[area_params['region']]), {'buffer': area_params['buffer']})
+        if (area_params or {}).get('buffer') else '',
+        'area_query': urlencode(area_params or {}),
+        'buffer_options': buffer_options or [],
         'center': center,
         'zoom': zoom,
         'radius': radius,
@@ -202,7 +211,7 @@ def dairy_map_config(scope, view, *, area_params=None, outline_url='', center=''
     # The options (and the labels built from them) are for the toolbar
     # template, which reads them off map_config; `sizes` goes to the
     # container as a comma-joined string, same as every other data-* value.
-    template_only = {'view_options', 'measure_options', 'level_options', 'size_options', 'digester_options', 'size_label', 'digester_label'}
+    template_only = {'view_options', 'measure_options', 'level_options', 'size_options', 'digester_options', 'size_label', 'digester_label', 'buffer_options'}
     data = {key.replace('_', '-'): value for key, value in config.items() if key not in template_only}
     # `sizes` is a list above (so the template can test membership); the
     # container wants it the same shape as the `sizes=` URL param.
@@ -486,8 +495,10 @@ class RegionDairies(views.RegionLookupMixin, DairyAreaPage):
         return self.region if self.region.type == Region.Type.COUNTY else None
 
     def get_map_config(self, scope):
+        buffer = areas.buffer_param(self.request.GET)
         return dairy_map_config(
-            scope, dairy_map_view(self.request.GET), area_params={'region': self.region.sqid},
+            scope, dairy_map_view(self.request.GET), area_params=views.area_map_params(areas.RegionArea(self.region), buffer),
+            buffer_options=shapes.buffer_options(self.request, buffer),
             outline_url=reverse('api:v2:regions:region-detail', args=[self.region.sqid]),
             methane=views.methane_overlay(self.request.GET, default=True),
             q=search_filters(self.request.GET)['q'],

@@ -71,6 +71,12 @@ class SchoolsTabTests(SchoolSitesTestCase):
         content = self.client.get(url, {'year': '2024'}).content.decode()
         assert 'site-table' in content and 'CLOSE ELEMENTARY' in content
         assert 'Near a facility · ¼ mile' in content
+        # Under the map, in its column; the count and the CSV button over the table, as on every data table.
+        assert content.index('facility-map map-canvas') < content.index('class="table-toolbar"') < content.index('site-table')
+        assert 'Showing 1&ndash;3 of 3 sites' in content and '<span>Download CSV</span>' in content
+        assert '<small class="sort-note">(1,000 ft)</small>' in content
+        narrowed = self.client.get(url, {'year': '2024', 'q': 'close'}).content.decode()
+        assert 'Showing 1&ndash;1 of 1 site <span class="has-text-grey">(3 in all)</span>' in narrowed
         assert f'href="{url}' in self.client.get(self.fresno.get_emissions_url()).content.decode()
         response = self.client.get(url, {'format': 'csv', 'year': '2024'})
         assert response['Content-Type'] == 'text/csv'

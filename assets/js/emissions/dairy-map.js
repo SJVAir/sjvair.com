@@ -336,6 +336,7 @@
     this.shell.ensureSource('counties');
     this.shell.ensureSource('dairies');
     this.shell.ensureSource('outline');
+    this.shell.ensureSource('buffer-line');
     this.shell.ensureSource('outline-mask');
     this.shell.ensureLayer({
       id: 'counties-fill', type: 'fill', source: 'counties',
@@ -357,6 +358,11 @@
     this.shell.ensureLayer({
       id: 'outline-mask', type: 'fill', source: 'outline-mask',
       paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.55 },
+    });
+    // How far past the region the map reaches (?buffer=): its widened edge, dashed, as on the facility map.
+    this.shell.ensureLayer({
+      id: 'buffer-line', type: 'line', source: 'buffer-line',
+      paint: { 'line-color': OUTLINE_COLOR, 'line-width': 1.5, 'line-dasharray': [3, 3], 'line-opacity': 0.8 },
     });
     this.shell.ensureLayer({
       id: 'outline-line', type: 'line', source: 'outline',
@@ -468,6 +474,21 @@
   DairyMap.prototype.loadOutline = function () {
     var self = this;
     var request = ++this.outlineRequest;
+    // How far past the region the map reaches (?buffer=): its widened edge, framed (facility-map.js's loadOutline).
+    this.shell.setSourceData('buffer-line', M.EMPTY);
+    this.bufferBounds = null;
+    if (this.data.bufferUrl) {
+      this.shell.track(getJson(this.data.bufferUrl))
+        .then(function (json) {
+          if (request !== self.outlineRequest || !self.map) return;
+          var boundary = json && json.data && json.data.boundary;
+          if (!boundary) return;
+          self.shell.setSourceData('buffer-line', { type: 'Feature', properties: {}, geometry: boundary.geometry });
+          self.bufferBounds = M.geometryBounds(boundary.geometry);
+          if (self.bufferBounds) self.map.fitBounds(self.bufferBounds, { padding: 24, duration: 0 });
+        })
+        .catch(function (err) { logError('failed to load the widened edge', err); });
+    }
     var center = M.parseCenter(this.data.center);
     var radius = parseFloat(this.data.radius);
     if (center && radius > 0) {
@@ -514,7 +535,8 @@
     this.shell.setSourceData('outline', { type: 'Feature', properties: {}, geometry: geometry });
     this.shell.setSourceData('outline-mask', maskFor(geometry));
     this.outlineBounds = M.geometryBounds(geometry);
-    if (this.outlineBounds) this.map.fitBounds(this.outlineBounds, { padding: 24, duration: 0 });
+    var frame = this.bufferBounds || this.outlineBounds;
+    if (frame) this.map.fitBounds(frame, { padding: 24, duration: 0 });
   };
 
   DairyMap.prototype.showDairies = function (collection) {
