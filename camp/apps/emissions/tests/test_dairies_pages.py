@@ -500,9 +500,9 @@ class DairyAboutTests(DairyPageTestCase):
         content = self.client.get(reverse('emissions:about')).content.decode()
         assert 'id="dairies"' in content
         assert 'https://www.ecfr.gov/current/title-40/chapter-I/subchapter-D/part-122/subpart-B/section-122.23' in content
-        assert '<li><strong>Large</strong>: 700 or more mature dairy cows, or 1,000 or more other cattle.</li>' in content
-        assert '<li><strong>Medium</strong>: 200–699 mature dairy cows, or 300–999 other cattle.</li>' in content
-        assert '<strong>Small</strong>: Fewer than 200 mature dairy cows and 300 other cattle (at least one head of cattle).' in content
+        assert '<tr><th scope="row">Large</th><td>700 or more mature dairy cows, or 1,000 or more other cattle</td></tr>' in content
+        assert '<tr><th scope="row">Medium</th><td>200–699 mature dairy cows, or 300–999 other cattle</td></tr>' in content
+        assert '<tr><th scope="row">Small</th><td>Fewer than 200 mature dairy cows and 300 other cattle (at least one head of cattle)</td></tr>' in content
         assert 'Feed and silage are left out' in content and '2019' in content and 'reference code' in content
         # The two always-true assertions from the original brief (the tab link
         # is on every page, and "CEPAM 2019" already makes '2019' true) are
@@ -510,7 +510,7 @@ class DairyAboutTests(DairyPageTestCase):
         assert f'<a href="{reverse("emissions:dairy-list")}">Dairies</a> tab covers what the facility inventory barely sees' in content
         # dairy_count is every imported Dairy row (3), not just the ones with a counted herd.
         assert 'locates every dairy CARB tracks, 3 of them in the eight Valley counties.' in content
-        assert "<strong>Coverage grew in 2019.</strong> CADD has herds for 1 Valley dairies in 2018 and 1 in 2019. The two years aren't a like-for-like comparison." in content
+        assert "<summary>Coverage grew in 2019</summary>" in content and "CADD has herds for 1 Valley dairies in 2018 and 1 in 2019. The two years aren't a like-for-like comparison." in content
         assert 'https://ww2.arb.ca.gov/california-dairy-livestock-database-cadd' in content
 
     def test_integrations_list_cadd(self):

@@ -141,7 +141,7 @@ class OverlayConfigTests(MethaneTestCase):
 
     def test_about_has_the_methane_section(self):
         content = self.client.get(reverse('emissions:about')).content.decode()
-        assert '<h2 id="methane">Methane</h2>' in content
+        assert '<section class="about-section" id="methane">' in content
         assert 'Data by Carbon Mapper®' in content and 'https://carbonmapper.org/terms' in content
         assert 'not an annual total' in content and 'Methane is a climate pollutant, not a direct local toxic' in content
 

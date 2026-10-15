@@ -283,7 +283,7 @@ class FacilityNoteTests(WellsPagesTestCase):
 class AboutTests(WellsPagesTestCase):
     def test_about_and_integrations(self):
         content = self.get(reverse('emissions:about'))
-        assert '<h2 id="oil-gas">Oil &amp; gas</h2>' in content
+        assert '<section class="about-section" id="oil-gas">' in content
         assert "Well counts are CalGEM's regulatory records, not emissions." in content or 'Well counts are CalGEM&#x27;s regulatory records' in content
         assert 'No well data has been imported yet.' in content
         assert 'WellSTAR' in self.get('/about/integrations/')

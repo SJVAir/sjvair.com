@@ -218,7 +218,7 @@ class SchoolsCardTests(TestCase):
     def test_about_page_explains_the_distances(self):
         from django.urls import reverse
         content = self.client.get(reverse('emissions:about')).content.decode()
-        assert '<h2 id="schools">' in content
+        assert '<section class="about-section" id="schools">' in content
         assert 'Health &amp; Safety Code 42301.6' in content and 'Education Code 17213' in content
         assert 'Child care covers licensed centers only, not family child-care homes.' in content
 

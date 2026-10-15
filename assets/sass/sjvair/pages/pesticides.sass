@@ -590,29 +590,6 @@ body.pesticides
         .intro .is-size-5
             font-size: $size-6 !important
 
-    // About: a readable measure, with its contents beside it on a desktop.
-    .about-layout
-        .explainer
-            max-width: 46rem
-            h3
-                scroll-margin-top: 5rem
-            h4
-                scroll-margin-top: 5rem
-        +desktop
-            // The text at its measure and the contents right beside it, not
-            // across the empty half of a wide screen.
-            .about-main
-                flex: 0 1 48rem
-            .about-toc
-                order: 2
-                align-self: flex-start
-                position: sticky
-                top: 5rem
-        +touch
-            .about-toc
-                border-bottom: 1px solid $grey-lighter
-                margin-bottom: 1rem
-
     .explorer-filters, .records-filters, .notice-filters
         padding: 1.25rem
         .label

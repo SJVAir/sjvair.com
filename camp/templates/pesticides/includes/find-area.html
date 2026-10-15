@@ -19,7 +19,7 @@
         <p class="find-area-counties find-area-ab617">
             <span class="has-text-grey">AB 617 communities:</span>
             {% for place in find_area_ab617 %}<a href="{{ place.url }}{{ scope_qs }}">{{ place.name }}</a>{% if not forloop.last %}<span class="find-area-sep" aria-hidden="true">·</span><wbr>{% endif %}{% endfor %}
-            {% include 'pesticides/includes/note-help.html' with key='ab617' anchor='ab617' %}
+            {% include 'pesticides/includes/note-help.html' with key='ab617' external=True %}
         </p>
     {% endif %}
     {{ find_area_places|json_script:"find-area-places" }}

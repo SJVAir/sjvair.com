@@ -519,7 +519,7 @@ class GHGPageTests(GHGTestCase):
 
     def test_about_and_integrations(self):
         content = self.client.get(reverse('emissions:about')).content.decode()
-        assert '<h2 id="greenhouse-gases">Greenhouse gases</h2>' in content
+        assert '<section class="about-section" id="greenhouse-gases">' in content
         assert 'No greenhouse-gas data has been imported yet.' in content
         assert 'Greenhouse gases warm the climate' in content
         SourceImport.objects.create(source='ghgrp', version='2023', data_through=date(2023, 12, 31))

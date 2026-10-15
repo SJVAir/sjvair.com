@@ -680,8 +680,6 @@ class About(vanilla.TemplateView):
             section='about',
             **scope,
             years=stats.years_loaded(),
-            api_docs_url=API_DOCS_URL,
-            client_docs_url=CLIENT_DOCS_URL,
             **kwargs,
         )
 

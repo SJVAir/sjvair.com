@@ -34,5 +34,5 @@ class FacilityTractLineTests(TestCase):
 
     def test_about_page(self):
         content = self.client.get(reverse('emissions:about')).content.decode()
-        assert '<h2 id="calenviroscreen">' in content
+        assert '<section class="about-section" id="calenviroscreen">' in content
         assert "SB 535 disadvantaged-community list shown is CalEPA's 2026 draft until it is final" in content

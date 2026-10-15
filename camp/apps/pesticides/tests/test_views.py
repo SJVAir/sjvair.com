@@ -1541,7 +1541,7 @@ class AboutTabTests(TestCase):
         # Where the data comes from doesn't change with the year or county,
         # so the link is bare while every other tab carries the scope.
         html = self.client.get(reverse('pesticides:home'), {'year': 2022, 'county': 'kern'}).content.decode()
-        assert f'href="{reverse("pesticides:about")}" title="About this data"' in html
+        assert f'href="{reverse("pesticides:about")}" title="About the data"' in html
 
 
 class ExplorerLedeTests(RollupTestMixin, TestCase):
@@ -1729,10 +1729,10 @@ class NarrowPlumbingTests(RollupTestMixin, TestCase):
     def test_about_points_the_fumigant_section_at_the_methodology_and_describes_the_options(self):
         html = self.client.get(reverse('pesticides:about')).content.decode()
         fumigant_section = html.split('id="fumigant"')[1].split('id="methodology"')[0]
-        assert 'href="#methodology"' in fumigant_section
+        assert 'href="#fumigant-method"' in fumigant_section
         concern_section = html.split('id="concern"')[1].split('id="fumigant"')[0]
-        assert '<strong>Fumigants</strong>' in concern_section
-        assert '<strong>Applied by air</strong>' in concern_section
+        assert '<th scope="row">Fumigants</th>' in concern_section
+        assert '<th scope="row">Applied by air</th>' in concern_section
 
     def test_flagged_board_is_hidden_under_a_narrowing_that_is_not_flagged_chemicals(self):
         url = reverse('pesticides:home')

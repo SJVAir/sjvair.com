@@ -20,7 +20,7 @@
         <p class="find-area-counties find-area-ab617">
             <span class="has-text-grey">AB 617 communities:</span>
             {% for community in find_area_ab617 %}<a href="{{ community.url }}{{ find_area_qs }}">{{ community.name }}</a>{% if not forloop.last %}<span class="find-area-sep" aria-hidden="true">·</span>{% endif %}{% endfor %}
-            <a class="note-help has-tooltip-multiline has-tooltip-arrow" href="{% url 'emissions:about' %}#ab617" data-tooltip="Communities CARB has selected under AB 617 (2017) for community air monitoring and emissions-reduction plans, run with the Valley Air District." aria-label="AB 617 communities"><span class="fa-regular fa-fw fa-circle-question" aria-hidden="true"></span></a>
+            <a class="note-help has-tooltip-multiline has-tooltip-arrow" href="https://ww2.arb.ca.gov/capp" target="_blank" rel="noopener" data-tooltip="Communities CARB has selected under AB 617 (2017) for community air monitoring and emissions-reduction plans, run with the Valley Air District." aria-label="AB 617 communities"><span class="fa-regular fa-fw fa-circle-question" aria-hidden="true"></span></a>
         </p>
     {% endif %}
     {{ find_area_places|json_script:"find-area-places" }}
