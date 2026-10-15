@@ -1,0 +1,14 @@
+{% extends 'emissions/area-facilities.html' %}
+{% comment %}
+The top-level Facilities tab (views.FacilityList): an area's Facilities tab
+(area-facilities.html) for every covered county at once, under the tab's own
+header (facilities-header.html) in place of an area's.
+{% endcomment %}
+
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">Facilities</a></li>{% endblock %}
+
+{% block explorer-content %}
+{% include 'emissions/includes/facilities-header.html' with heading='Facilities' current='facilities' %}
+{% block tab-body %}{{ block.super }}{% endblock %}
+{% block tab-after %}{{ block.super }}{% endblock %}
+{% endblock %}

@@ -1,0 +1,11 @@
+{% if notes %}
+<details class="what-this-means">
+    <summary>What this means</summary>
+    <dl>
+    {% for note in notes %}
+        <dt>{{ note.title }}</dt>
+        <dd>{{ note.summary }} <a href="{{ note.source_url }}" target="_blank" rel="noopener" class="is-size-7">Source</a></dd>
+    {% endfor %}
+    </dl>
+</details>
+{% endif %}

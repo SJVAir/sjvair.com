@@ -1,0 +1,42 @@
+.map-figure {
+  max-width: 100%;
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: 4px;
+  background: #e5e3df;
+}
+
+/* A figure, not a map to drag: no grab cursor. The script sets a pointer
+   over a linked area. */
+.map-figure .maplibregl-canvas-container.maplibregl-interactive,
+.map-figure .maplibregl-canvas-container.maplibregl-interactive:active {
+  cursor: default;
+}
+
+.map-figure .maplibregl-ctrl-attrib {
+  font-size: 9px;
+}
+
+.map-figure-marker svg {
+  display: block;
+  filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.3));
+}
+
+/* The label look itself (the SDK's popup restyled as a tooltip) is shared:
+   see .map-hover-label in assets/css/maps/map.css. Every figure label also
+   carries the 'map-figure-label' class (assets/js/admin/map-figure.js), kept
+   only as a selector hook for this file's own pages and the smoke script. */
+
+/* Without WebGL the container holds a note instead of a map. */
+.map-figure.is-unavailable {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.map-figure .map-note {
+  margin: 0;
+  font-size: 12px;
+  color: #666;
+  text-align: center;
+}

@@ -1,8 +1,12 @@
+import json
+
 from django import forms
 
-from resticus import generics
+from resticus import generics, http
 
+from camp.apps.regions import shapes
 from camp.apps.regions.models import Region
+from camp.utils.views import CachedEndpointMixin
 
 from .filters import RegionFilter
 from .serializers import RegionListSerializer, RegionSerializer
@@ -41,9 +45,71 @@ class RegionList(RegionMixin, generics.ListEndpoint):
         return qs
 
 
+class RegionGeoJSONBase(RegionList):
+    """
+    The region list's filters, answered as a GeoJSON FeatureCollection for a
+    map to draw: one MultiPolygon feature per region with a boundary, keyed
+    and propertied {id, name, slug, type}, coordinates rounded to ~1 m.
+
+    The get() lives on this un-cached base so CachedEndpointMixin.get() on
+    RegionGeoJSON is the one dispatched to.
+    """
+
+    def get(self, request, *args, **kwargs):
+        # Unfiltered this is every region in the database -- thousands of
+        # square-mile sections among them -- so a type is required.
+        region_type = request.GET.get('type', '').strip()
+        if not region_type:
+            return http.Http400({'error': 'The type parameter is required.'})
+        regions = (
+            self.filter_queryset(self.get_queryset())
+            .exclude(boundary=None).current_vintage().order_by('name')
+        )
+        if request.GET.get('simplify') == '1':
+            if region_type not in shapes.SIMPLIFY_TYPES:
+                return http.Http400({'error': 'simplify=1 is only supported for county, zipcode and tract.'})
+            # The whole type is simplified together (shared borders stay
+            # shared); the filters then pick from it.
+            wanted = set(regions.values_list('sqid', flat=True))
+            features = [f for f in shapes.simplified_features(region_type) if f['id'] in wanted]
+        else:
+            features = [shapes.region_feature(region, shapes.full_geometry(region)) for region in regions]
+        return {'type': 'FeatureCollection', 'features': features}
+
+
+class RegionGeoJSON(CachedEndpointMixin, RegionGeoJSONBase):
+    """Regions as GeoJSON for a map: ?type= (required), plus ?slug=, ?name=, ?within=.
+    ?simplify=1 returns shapes simplified together (for area maps)."""
+    # Boundaries change only when an import runs; ?_cc=1 clears one early.
+    cache_timeout = 60 * 60 * 24
+    cache_key_version = 2
+
+    def is_cacheable(self, response):
+        # simplify=1's per-type shapes are already cached (compressed) by
+        # shapes.simplified_features(); the per-request work above that is
+        # only a set filter, so caching the assembled response here too
+        # would just be a second, redundant copy of the same payload.
+        if self.request.GET.get('simplify') == '1':
+            return False
+        return super().is_cacheable(response)
+
+
 class RegionDetail(RegionMixin, generics.DetailEndpoint):
+    """One region with its boundary. ?buffer=1|3|5 widens the boundary by that many miles."""
     lookup_field = 'sqid'
     lookup_url_kwarg = 'region_id'
+
+    def get(self, request, *args, **kwargs):
+        miles, error = shapes.parse_buffer(request.GET)
+        if error:
+            return http.Http400({'error': error})
+        response = super().get(request, *args, **kwargs)
+        boundary = response['data'].get('boundary')
+        if miles and boundary:
+            shape = shapes.region_shape(self.object, miles)
+            boundary['geometry'] = json.loads(shape.geojson)
+            boundary['bbox'] = list(shape.extent)
+        return response
 
 
 class RegionMetaEndpoint(generics.Endpoint):
@@ -84,9 +150,9 @@ class PlaceSearch(generics.Endpoint):
 
 
 class PlaceLookup(generics.Endpoint):
-    """Resolve a name to the single best-match region. Without ?type, resolves to the
-    containing Place using City/CDP fallback. With ?type=<type>, returns the top match
-    within that type directly."""
+    """Resolve a name to the single best-match region. Without ?type, returns the best
+    match among cities, then CDPs, then urban areas (the first of those types with a
+    match). With ?type=<type>, returns the top match within that type directly."""
 
     form_class = PlaceQueryForm
 

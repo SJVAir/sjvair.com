@@ -87,12 +87,45 @@ def _chem_pks_from_raw(raw_products, chemical_map):
     return pks
 
 
+def company_product(reg_no):
+    """'95290-1-AA' and '95290-1' both -> '95290-1'; PUR appends a distributor suffix."""
+    m = re.match(r'^\s*(\d+)-(\d+)', reg_no or '')
+    return f'{m.group(1)}-{m.group(2)}' if m else ''
+
+
+def build_product_map():
+    """
+    reg number -> pk, keyed on both the full PUR number and its company-product
+    part. A company-product shared by several distributor registrations goes to
+    the registrant's own label (suffix -AA) if there is one, else the lowest
+    prodno; an exact full-number match always wins over it.
+    """
+    from camp.apps.pesticides.models import Product
+
+    full = {}
+    short = {}
+    own_label = set()
+    for pk, reg_number in Product.objects.order_by('prodno').values_list('pk', 'reg_number'):
+        full.setdefault(reg_number, pk)
+        key = company_product(reg_number)
+        if key:
+            if reg_number.endswith('-AA') and key not in own_label:
+                own_label.add(key)
+                short[key] = pk
+            else:
+                short.setdefault(key, pk)
+    return {**short, **full}
+
+
 def _product_pks_from_raw(raw_products, product_map):
     pks = set()
     for p in (raw_products or []):
         reg_no = (p.get('EPARegNo') or '').strip()
-        if reg_no in product_map:
-            pks.add(product_map[reg_no])
+        if not reg_no:
+            continue
+        pk = product_map.get(reg_no) or product_map.get(company_product(reg_no))
+        if pk:
+            pks.add(pk)
     return pks
 
 
@@ -130,7 +163,7 @@ def _upsert_application(app_data, comtrs, mtrs, county_region, lat, lon, chemica
 
 
 def fetch_applications(county_filter=None, stdout=None):
-    from camp.apps.pesticides.models import Chemical, Product
+    from camp.apps.pesticides.models import Chemical
 
     def log(msg, **kwargs):
         if stdout:
@@ -141,7 +174,7 @@ def fetch_applications(county_filter=None, stdout=None):
     client.authenticate()
 
     chemical_map = {c.chem_code: c.pk for c in Chemical.objects.only('id', 'chem_code')}
-    product_map = {p.reg_number: p.pk for p in Product.objects.only('id', 'reg_number')}
+    product_map = build_product_map()
     county_regions = {
         r.metadata['ca_county_code']: r
         for r in Region.objects.filter(

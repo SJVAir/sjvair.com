@@ -1,0 +1,42 @@
+{% load pesticides_explorer %}
+{# The records browser's filters: on the Records page, and on a place page's Records tab. #}
+<form method="GET" class="records-filters box">
+    {% include 'pesticides/includes/scope-hidden.html' %}
+    {{ form.region }}
+    {{ form.section }}
+    {{ form.lat }}
+    {{ form.lng }}
+    {{ form.radius }}
+    {# A near-me place's name rides along, so its Records tab keeps its heading. #}
+    {% if request.GET.label %}<input type="hidden" name="label" value="{{ request.GET.label }}">{% endif %}
+    <div class="field">
+        <label class="label" for="{{ form.start.id_for_label }}">{{ form.start.label }}</label>
+        <div class="control">{{ form.start }}</div>
+        {% for error in form.start.errors %}<p class="help is-danger">{{ error }}</p>{% endfor %}
+    </div>
+    <div class="field">
+        <label class="label" for="{{ form.end.id_for_label }}">{{ form.end.label }}</label>
+        <div class="control">{{ form.end }}</div>
+        {% for error in form.end.errors %}<p class="help is-danger">{{ error }}</p>{% endfor %}
+    </div>
+    <div class="field">
+        <label class="label" for="{{ form.method.id_for_label }}">{{ form.method.label }}</label>
+        <div class="control">
+            <div class="select is-fullwidth">{{ form.method }}</div>
+        </div>
+    </div>
+    <div class="field">
+        <label class="label" for="{{ form.fume_method.id_for_label }}">{{ form.fume_method.label }}</label>
+        <div class="control">
+            <div class="select is-fullwidth">{{ form.fume_method }}</div>
+        </div>
+    </div>
+    {# Entity pickers; this form submits on Apply only. #}
+    {% include 'pesticides/includes/entity-picker.html' with kind='product' label='Product' selected=related.product autosubmit=0 %}
+    {% include 'pesticides/includes/entity-picker.html' with kind='chemical' label='Chemical' selected=related.chemical autosubmit=0 %}
+    {% include 'pesticides/includes/entity-picker.html' with kind='commodity' label='Commodity' selected=related.commodity autosubmit=0 %}
+    <div class="field is-grouped">
+        <div class="control"><button class="button is-link" type="submit">Apply</button></div>
+        <div class="control"><a class="button is-light" href="{{ request.path }}{{ scope_qs }}{% if buffer %}{% if scope_qs %}&amp;{% else %}?{% endif %}buffer={{ buffer }}{% endif %}">Clear</a></div>
+    </div>
+</form>

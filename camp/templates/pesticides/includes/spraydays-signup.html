@@ -1,0 +1,11 @@
+{% load static %}
+{# SprayDays sign-up box, used beside filters (notices, records) and on notice pages. #}
+<div class="box notice-signup{% if extra_class %} {{ extra_class }}{% endif %}">
+    <a href="https://spraydays.cdpr.ca.gov/" target="_blank" rel="noopener" class="notice-signup-logo">
+        <img src="{% static 'img/logo/spraydays-logo.svg' %}" alt="SprayDays California" width="360" height="162">
+    </a>
+    <div class="notice-signup-copy">
+        <p><strong>Sign up with SprayDays</strong> to be told about notices near you. It sends texts or emails for the square mile around an address.</p>
+        <p><a href="https://spraydays.cdpr.ca.gov/" target="_blank" rel="noopener">spraydays.cdpr.ca.gov</a></p>
+    </div>
+</div>

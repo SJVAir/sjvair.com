@@ -1,0 +1,12 @@
+{% comment %}
+Shade by, on every section map: a segmented control in the toolbar's end
+group (rendered by maps/includes/map.html as map.toolbar_end_template). The
+script (section-map.js) binds the radios by name anywhere in the map wrapper.
+On a phone the visible labels shorten ("Lbs" / "Apps"); the full words stay
+as the accessible names.
+{% endcomment %}
+<fieldset class="map-metric">
+    <legend class="map-metric-legend">Shade by</legend>
+    <label class="map-metric-option"><input type="radio" name="metric" value="lbs_chemical"{% if request.GET.metric != 'applications' %} checked{% endif %}><span class="map-metric-full">Pounds</span><span class="map-metric-short" aria-hidden="true">Lbs</span></label>
+    <label class="map-metric-option"><input type="radio" name="metric" value="applications"{% if request.GET.metric == 'applications' %} checked{% endif %}><span class="map-metric-full">Applications</span><span class="map-metric-short" aria-hidden="true">Apps</span></label>
+</fieldset>

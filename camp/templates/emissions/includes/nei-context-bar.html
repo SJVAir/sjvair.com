@@ -1,0 +1,19 @@
+{% load emissions_explorer %}
+{% comment %}
+The all-sources ammonia bar (nei.context) for the NH3 scope, on the home page
+and county pages in place of the CEPAM bar (CARB's county inventory has no
+ammonia). EPA's NEI county estimate by source, with what the scope's permitted
+facilities reported to CARB above it. Context: `nei_context`, `pollutant`, `year`, `county`.
+{% endcomment %}
+<div class="box emissions-context nei-context">
+    <p>Permitted facilities reported about <strong>{{ nei_context.facilities|amount:pollutant }} tons</strong> of ammonia to CARB in {{ year }}.
+       EPA's {{ nei_context.year }} National Emissions Inventory estimates all sources in {% if county %}{{ county.name }}{% else %}these counties{% endif %} emit about
+       <strong>{{ nei_context.total|amount:pollutant }} tons</strong> a year, so permitted facilities are about {{ nei_context.facility_share|percent }} of it; most is livestock and fertilizer.</p>
+    <div class="emissions-context-bar" role="img" aria-label="{% for part in nei_context.parts %}{{ part.label }} {{ part.share|percent }}{% if not forloop.last %}, {% endif %}{% endfor %}">
+        {% for part in nei_context.parts %}{% if part.share %}<span class="segment is-nei-{{ part.key }}" style="width: {{ part.share|width_pct }}" title="{{ part.label }}: {{ part.share|percent }}"></span>{% endif %}{% endfor %}
+    </div>
+    <p class="emissions-legend">
+        {% for part in nei_context.parts %}<span><span class="swatch is-nei-{{ part.key }}"></span>{{ part.label }} {{ part.share|percent }}</span>{% endfor %}
+    </p>
+    <p class="is-size-7"><a href="{% url 'emissions:about' %}#ammonia">Why ammonia matters, and why most of it isn't from permitted facilities</a></p>
+</div>

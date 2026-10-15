@@ -1,0 +1,422 @@
+/* The pesticides section map's own styles (assets/js/pesticides/section-map.js):
+   the toolbar's Shade by, the Tweaks menu's controls, the legend body, and the popups. Its chrome
+   (the canvas box, toolbar, panels, controls, status pill, expanded mode) is
+   the shared map chrome, css/maps/map.css. */
+
+/* The Tweaks menu's body (inside its toolbar dropdown). */
+.section-map-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+}
+
+.section-map-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+}
+
+.section-map-controls .section-map-select {
+  justify-content: space-between;
+  align-self: stretch;
+  gap: 0.6rem;
+}
+
+.section-map-controls .section-map-select select {
+  font-size: 0.8rem;
+  padding: 0.1rem 0.25rem;
+  border: 1px solid #dbdbdb;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.map-wrap .map-legend-panel .section-map-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+}
+
+.map-legend-panel .section-map-level {
+  display: block;
+  margin-top: 0.35rem;
+  color: #6b6b6b;
+}
+
+/* Marker colours live in the script (LOCATION_COLORS, NOTICE_COLOR): notices
+   #d35400, schools #5a6b7b, child care #1c9099. Child care is teal rather
+   than purple because purple is the Chemicals section's colour. The legend
+   rows for these are appended by appendMarkerLegend(). */
+
+.section-popup h4,
+.notice-popup h4 {
+  margin: 0 0 .25rem;
+}
+
+/* Grid popups (section and township): a title, a grey subline, the headline
+   figure, then the top-chemicals list with the amounts right-aligned. */
+.section-popup h4 {
+  margin-bottom: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.section-popup .section-popup-sub {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  color: #6b6b6b;
+}
+
+.section-popup .section-popup-metric {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+}
+
+.section-popup .section-popup-metric strong {
+  font-size: 1.05rem;
+}
+
+/* How the figure moved, beside the scope year's total in a popup. */
+.section-popup .section-popup-change {
+  color: #4a4a4a;
+}
+
+
+/* Names the compared pair once, above the change legend's rows. */
+.map-wrap .map-legend-panel .section-map-legend .legend-caption {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #6b6b6b;
+}
+
+.section-popup .section-popup-label {
+  margin: 0 0 0.15rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6b6b6b;
+}
+
+.section-popup .section-popup-chems {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.section-popup .section-popup-chems li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.15rem 0;
+  border-top: 1px solid #f0f0f0;
+}
+
+.section-popup .section-popup-chems li:first-child {
+  border-top: 0;
+}
+
+.section-popup .section-popup-chems .amount {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: #4a4a4a;
+}
+
+.section-popup .section-popup-note {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #6b6b6b;
+}
+
+/* A section's scheduled notices, edged in the notices orange so the block
+   reads as the same thing as the markers. */
+.section-popup .section-popup-notices {
+  margin: 0.5rem 0 0.6rem;
+  padding: 0.1rem 0 0.1rem 0.6rem;
+  border-left: 3px solid #d35400;
+  font-size: 0.85rem;
+}
+
+.section-popup .section-popup-notice {
+  padding: 0.2rem 0;
+}
+
+.section-popup .section-popup-notice p {
+  margin: 0;
+}
+
+.section-popup .section-popup-notice-chems {
+  color: #4a4a4a;
+}
+
+/* Footer actions: small pill buttons, a link and a button styled alike. */
+.section-popup .section-popup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.7rem;
+}
+
+.section-popup .section-popup-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid #dbdbdb;
+  border-radius: 999px;
+  background: #fff;
+  color: #363636;
+  font: inherit;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.section-popup .section-popup-action:hover {
+  border-color: #b5b5b5;
+  color: #3273dc;
+}
+
+.section-popup .section-popup-action .fa-regular {
+  color: #6b6b6b;
+}
+
+.section-popup .section-popup-action:hover .fa-regular {
+  color: inherit;
+}
+
+.notice-popup h4 .tag {
+  margin-left: 0.35rem;
+  vertical-align: middle;
+  font-size: 0.65rem;
+}
+
+.section-popup .section-popup-label.mt {
+  margin-top: 0.6rem;
+}
+
+.section-popup ul,
+.notice-popup ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.section-popup .is-of-concern::before,
+.notice-popup .is-of-concern::before {
+  content: '\25CF';
+  color: #d35400;
+  margin-right: 0.25rem;
+}
+
+/* The picker's results list drops below its input inside the menu. */
+.map-toolbar .entity-picker {
+  position: relative;
+}
+
+@media (max-width: 768px) {
+  .section-popup .section-popup-action {
+    padding: 0.4rem 0.7rem;
+  }
+}
+
+/* A section with several notices: one popup, a list that scrolls rather
+   than pushing the popup off the map. */
+.section-popup .notice-group-list {
+  max-height: 16rem;
+  overflow-y: auto;
+  margin-top: 0.4rem;
+}
+
+.section-popup .notice-group-entry {
+  padding: 0.45rem 0;
+  border-top: 1px solid #f0f0f0;
+  font-size: 0.85rem;
+}
+
+.section-popup .notice-group-entry:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.section-popup .notice-group-when,
+.section-popup .notice-group-line {
+  margin: 0;
+}
+
+.section-popup .notice-group-line .section-popup-label {
+  display: inline;
+  margin-right: 0.2rem;
+}
+
+.section-popup .notice-group-entry .section-popup-action {
+  margin-top: 0.3rem;
+}
+
+/* Shade by, in the toolbar's end group (map-metric.html): a segmented
+   control styled as the toolbar's buttons. The radios are visually hidden but
+   focusable; the checked option fills, and keyboard focus rings the group. */
+.map-toolbar .map-metric {
+  display: inline-flex;
+  align-items: stretch;
+  min-width: 0;
+  height: 33px; /* the toolbar buttons' */
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  font-size: 0.85rem;
+  overflow: hidden;
+}
+
+/* The group's name, as a visible prefix where there's room. */
+.map-toolbar .map-metric-legend {
+  display: flex;
+  align-items: center;
+  float: left; /* a fieldset's legend is laid out outside the flow otherwise */
+  padding: 0 0.6rem;
+  color: #6b6b6b;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.map-toolbar .map-metric-option {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.7rem;
+  border-left: 1px solid rgba(0, 0, 0, 0.12);
+  color: #363636;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.map-toolbar .map-metric-option:hover {
+  background: #f5f5f5;
+}
+
+.map-toolbar .map-metric-option:has(input:checked) {
+  background: #3273dc;
+  color: #fff;
+}
+
+.map-toolbar .map-metric-option:has(input:focus-visible) {
+  outline: 2px solid #1f6fae;
+  outline-offset: -3px;
+}
+
+/* On the checked option's blue fill the blue ring vanishes: ring it white. */
+.map-toolbar .map-metric-option:has(input:checked:focus-visible) {
+  outline-color: #fff;
+}
+
+.map-toolbar .map-metric-option input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+}
+
+.map-toolbar .map-metric-short {
+  display: none;
+}
+
+/* The marker layers' and "All sections" toggles in the legend: the core's
+   .legend-toggle look (a checkbox in a label, 24px tall). Not that class
+   itself, which also folds the legend down to its switches. */
+.section-map-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 24px;
+  cursor: pointer;
+}
+
+.map-legend-panel .section-map-sections-toggle {
+  display: flex;
+  margin-top: 0.15rem;
+  font-size: 0.85rem;
+}
+
+/* A folded legend keeps its switches, as the core keeps .legend-toggle
+   (css/maps/map.css): the marker rows' toggles and All sections stay,
+   the key, the notes and the schools' kinds fold. */
+.map-panel.is-collapsed .map-panel-body:has(.section-map-toggle) {
+  display: block;
+}
+
+.map-panel.is-collapsed .map-panel-body:has(.section-map-toggle) > :not(.section-map-legend, .section-map-sections-toggle),
+.map-panel.is-collapsed .map-panel-body .section-map-legend > li:not(.is-toggle) {
+  display: none;
+}
+
+.map-legend-panel .section-map-legend li.is-kind {
+  padding-left: 1.4rem;
+}
+
+.map-legend-panel .section-map-sections-toggle:has(input:disabled) {
+  color: #6b6b6b;
+  cursor: default;
+}
+
+@media (max-width: 768px) {
+  /* Shade by makes the end group too wide to share a row with the filter
+     buttons: they wrap onto their own row (the end group keeps the right
+     edge) instead of squeezing the filters into a one-button column. */
+  .map-toolbar:has(.map-metric) {
+    flex-wrap: wrap;
+  }
+  .map-toolbar:has(.map-metric) .map-toolbar-filters {
+    flex: 1 1 100%;
+  }
+  /* "Lbs" / "Apps" on a phone; the full words stay as the accessible names. */
+  .map-toolbar .map-metric-legend {
+    /* Visually hidden, not display:none, which would drop the group's name. */
+    position: absolute;
+    float: none;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .map-toolbar .map-metric-full {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .map-toolbar .map-metric-short {
+    display: inline;
+  }
+  .map-toolbar .map-metric-option {
+    padding: 0 0.5rem;
+  }
+  .map-toolbar .map-metric-option:first-of-type {
+    border-left: 0;
+  }
+}
+
+/* The legend body scrolls (overflow-y), which would clip the "?" tooltip;
+   let it spill out while the tooltip is showing. */
+.map-legend-panel .map-panel-body:has(.note-help:is(:hover, :focus-visible)) {
+  overflow: visible;
+}

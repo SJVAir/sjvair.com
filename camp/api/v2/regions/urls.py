@@ -7,6 +7,8 @@ app_name = 'regions'
 urlpatterns = [
     path('', endpoints.RegionList.as_view(), name='region-list'),
     path('meta/', endpoints.RegionMetaEndpoint.as_view(), name='region-meta'),
+    # Ahead of <region_id>/, which would read 'geojson' as a region id.
+    path('geojson/', endpoints.RegionGeoJSON.as_view(), name='region-geojson'),
     path('places/search/', endpoints.PlaceSearch.as_view(), name='place-search'),
     path('places/lookup/', endpoints.PlaceLookup.as_view(), name='place-lookup'),
     path('<entry_type>/summaries/', include('camp.api.v2.summaries.region_bulk_urls')),

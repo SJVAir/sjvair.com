@@ -1,9 +1,10 @@
+// Custom properties need interpolation, or Sass emits the variable's name.
 @at-root :root
-    --column-gap: $column-gap
-    --gap: $gap
-    --grey-light: $grey-light
-    --size-5: $size-5
-    --navbar-height: $navbar-height
+    --column-gap: #{$column-gap}
+    --gap: #{$gap}
+    --grey-light: #{$grey-light}
+    --size-5: #{$size-5}
+    --navbar-height: #{$navbar-height}
 
 img, .image > img
     &.is-responsive
@@ -77,6 +78,24 @@ body
     background-color: $white-bis
     top: 0 !important
 
+.skip-link
+    position: absolute
+    left: 0.5rem
+    top: -4rem
+    z-index: 1000
+    padding: 0.5rem 1rem
+    background-color: $white
+    color: $black
+    font-weight: 600
+    border-radius: 4px
+    box-shadow: 0 2px 8px rgba($black, 0.35)
+
+    &:focus
+        top: 0.5rem
+
+main.main:focus
+    outline: none
+
 .tag
     &.air
         font-weight: bold
@@ -140,7 +159,7 @@ footer.footer
         @extend .is-size-7
 
     .nav
-        h4
+        h2
             @extend .has-text-white
             @extend .has-text-weight-bold
             @extend .is-size-5
@@ -165,3 +184,48 @@ footer.footer
 
         span[class*="fa-"]
             @extend .has-text-grey-light
+
+// bulma-tooltip underlines every span[data-tooltip] with a dashed border. On a
+// disabled item (a greyed-out dropdown option explaining why it's off) that
+// reads as a divider, so disabled items don't get it.
+span[data-tooltip].is-disabled,
+span[data-tooltip][aria-disabled="true"]
+    border-bottom: none
+
+// bulma-tooltip leaves its bubble (::before) and arrow (::after) laid out,
+// only invisible, so every tooltip on the page still takes up room: a 22rem
+// bubble on an element near the right edge made the document scroll sideways
+// (WCAG reflow) while nobody was hovering. Not laid out at all until the
+// tooltip is shown -- on hover, or keyboard focus, which the extension
+// doesn't cover. The repeated attribute selector outranks the extension's
+// own :not() chains.
+[data-tooltip][data-tooltip][data-tooltip]
+    &::before,
+    &::after
+        display: none
+    &:hover::before,
+    &:hover::after,
+    &:focus-visible::before,
+    &:focus-visible::after,
+    &.has-tooltip-active::before,
+    &.has-tooltip-active::after
+        display: inline-block
+    &:focus-visible::before,
+    &:focus-visible::after
+        opacity: 1
+        visibility: visible
+    // A bubble that would run past the viewport's edge opens inward: from the
+    // element's right edge (-end) or its left (-start). explorer.js sets the
+    // class when the pointer or focus arrives, from where the element is.
+    &.has-tooltip-end::before
+        left: auto
+        right: -0.5rem
+        transform: translate(0, -100%)
+    &.has-tooltip-start::before
+        left: -0.5rem
+        right: auto
+        transform: translate(0, -100%)
+    &.has-tooltip-bottom.has-tooltip-end::before
+        transform: translate(0, 100%)
+    &.has-tooltip-bottom.has-tooltip-start::before
+        transform: translate(0, 100%)

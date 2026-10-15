@@ -1,0 +1,25 @@
+{% load emissions_explorer %}
+{% comment %}
+The home page's counties, most to least of the scope pollutant
+(views.county_rows). The swatch is the county's fill on the map beside it,
+so this table is the map's legend; data-county pairs a row with its county
+for js/pesticides/county-hover.js.
+{% endcomment %}
+<div class="table-container">
+<table class="table is-fullwidth is-narrow is-striped by-county-table">
+    <thead><tr>
+        <th>County</th>
+        <th class="has-text-right">Facilities</th>
+        <th class="has-text-right is-ranked">{{ pollutant.label }}{% if not pollutant.weighted %} ({{ pollutant.unit }}){% endif %}</th>
+    </tr></thead>
+    <tbody>
+    {% for row in county_rows %}
+        <tr data-county="{{ row.county.sqid }}">
+            <td><span class="county-swatch" style="background-color: {{ row.color }};" aria-hidden="true"></span><a href="{{ row.county.get_emissions_url }}{{ find_area_qs }}">{{ row.county.name|cut:" County" }}</a></td>
+            <td class="has-text-right">{{ row.facilities }}</td>
+            <td class="has-text-right">{% if row.value %}{{ row.value|amount:pollutant }}{% else %}—{% endif %}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>

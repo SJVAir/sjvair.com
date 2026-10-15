@@ -1,0 +1,27 @@
+{% load humanize pesticides_explorer %}
+{% if by_method %}
+<div class="method-breakdown">
+    <h3 class="title is-6 mb-2">How it was applied</h3>
+    <div class="method-bar" aria-hidden="true">
+        {% for row in by_method %}{% if row.share or row.app_share %}<span class="method-bar-seg is-{{ row.method|default:'none' }}" style="width: {% if hide_lbs %}{{ row.app_share|css_percent }}{% else %}{{ row.share|css_percent }}{% endif %}" title="{{ row.label }}: {% if hide_lbs %}{{ row.app_share|percent }}{% else %}{{ row.share|percent }}{% endif %}"></span>{% endif %}{% endfor %}
+    </div>
+    <div class="table-container">
+    <table class="table is-fullwidth is-narrow is-striped method-table">
+        <thead><tr><th>Method</th>{% if not hide_lbs %}<th class="has-text-right">Lbs</th>{% endif %}<th class="has-text-right">{% if hide_lbs %}Share of applications{% else %}Share of pounds{% endif %}</th><th class="has-text-right">Applications</th></tr></thead>
+        <tbody>
+        {% for row in by_method %}
+            <tr>
+                <td><span class="method-key is-{{ row.method|default:'none' }}"></span>{{ row.label }}</td>
+                {% if not hide_lbs %}<td class="has-text-right">{{ row.lbs|lbs }}</td>{% endif %}
+                <td class="has-text-right">{% if hide_lbs %}{{ row.app_share|percent }}{% else %}{{ row.share|percent }}{% endif %}</td>
+                <td class="has-text-right">{{ row.applications|default:0|intcomma }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% for row in by_method %}{% if row.method == '' %}
+    <p class="is-size-7 has-text-grey">Not reported is mostly structural, landscape and right-of-way use, which is reported in monthly summaries without a method.</p>
+    {% endif %}{% endfor %}
+</div>
+{% endif %}

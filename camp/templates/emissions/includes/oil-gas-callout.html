@@ -1,0 +1,7 @@
+{% load emissions_explorer %}
+{% comment %}
+What Kern's oil & gas permit groupings report to CARB (wells.kern_callout), on
+Kern County's page and the oil-gas sector page. Context: `callout`.
+{% endcomment %}
+<p class="oil-gas-callout"><strong>Oil &amp; gas facilities reported {{ callout.rog_share|percent }} of Kern's permitted-facility ROG{% if callout.benzene_share is not None %} and {{ callout.benzene_share|percent }} of its benzene{% endif %} in {{ callout.year }}.</strong>
+   <span class="has-text-grey">CARB's oil &amp; gas "facilities" are district permit groupings that can span a whole oil field; their map points aren't well locations.</span></p>

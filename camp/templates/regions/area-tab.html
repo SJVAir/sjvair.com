@@ -1,0 +1,40 @@
+{% extends explorer_base %}
+{% comment %}
+The skeleton an explorer's area data tabs share, so they read alike however
+different their data: under the header and tab row, a stat row; then the
+filters (`tab-filters`) and any other boxes (`tab-aside`) in a column beside
+the map, with the active-filter chips (`active_filters` [{label, clear_url}])
+above it; the table the page's full width under them; then the charts, the
+tab's related sections, and its notes. A tab fills the blocks it has; with
+nothing beside the map the side column hides itself (area-pages.sass) and
+the map takes the row. `tab-body` wraps the lot, for a tab with nothing to
+show to replace in one go.
+
+Context: `explorer_base` (the explorer's base template), `area_crumbs`
+[{label, url}] for the breadcrumb before the tab, `tab_label`, and what
+regions/includes/area-header.html takes. Optional `title_name` replaces `name`
+in the <title>, for an explorer that tells same-named places apart there.
+{% endcomment %}
+
+{% block title %}{{ tab_label }} · {{ title_name|default:name }} | {{ block.super }}{% endblock %}
+{% block breadcrumb-list %}{% for crumb in area_crumbs %}<li><a href="{{ crumb.url }}">{{ crumb.label }}</a></li>{% endfor %}<li class="is-active"><a aria-current="page">{{ tab_label }}</a></li>{% endblock %}
+
+{% block explorer-content %}
+{% include 'regions/includes/area-header.html' %}
+{% block tab-body %}
+{% block tab-notices %}{% endblock %}
+<div class="tab-stats">{% block tab-stats %}{% endblock %}</div>
+<div class="columns tab-filters-row">
+<div class="column is-3-desktop tab-side">{% block tab-filters %}{% endblock %}{% block tab-aside %}{% endblock %}</div>
+<div class="column tab-map">
+{% if active_filters %}<div class="tags">{% for f in active_filters %}<span class="tag is-info is-light is-medium">{{ f.label }} <a class="delete is-small ml-1" href="{{ f.clear_url }}" aria-label="Remove filter"></a></span>{% endfor %}</div>{% endif %}
+{% block tab-map %}{% endblock %}
+</div>
+</div>
+<div class="tab-table mt-4">{% block tab-table %}{% endblock %}</div>
+<div class="tab-charts">{% block tab-charts %}{% endblock %}</div>
+{% block tab-related %}{% endblock %}
+{% block tab-notes %}{% endblock %}
+{% endblock %}
+{% block tab-after %}{% endblock %}
+{% endblock %}
