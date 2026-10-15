@@ -376,7 +376,7 @@ class AreaTabTests(DairyPageTestCase):
     def test_a_near_me_facilities_form_keeps_its_point(self):
         params = {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'year': '2023'}
         content = self.page(reverse('emissions:near-me-facilities'), params)
-        form = content[content.index('class="table-filters box"'):content.index('</form>')]
+        form = content[content.index('class="explorer-filters box"'):content.index('</form>')]
         for name, value in (('lat', '36.7370'), ('lng', '-119.7870'), ('radius', '1')):
             assert f'<input type="hidden" name="{name}" value="{value}">' in form
         # And its CSV.
@@ -396,10 +396,10 @@ class AreaTabTests(DairyPageTestCase):
         # In and around (the old Community tab) closes the Overview.
         assert 'Top facilities' in overview and overview.index('Top facilities') < overview.index('id="in-and-around"')
         facilities = self.page(self.fresno.get_emissions_tab_url('facilities'), {'year': '2023'})
-        # The shared tab layout: stats, map, then the filters on a sortable table with its count and CSV.
+        # The shared tab layout: stats, the filters beside the map, then a sortable table with its count and CSV.
         assert '<p class="heading">Facilities in 2023</p>' in facilities and 'Top facilities' not in facilities
-        assert 'facility-map map-canvas' in facilities and 'class="table-filters box"' in facilities
-        assert facilities.index('facility-map map-canvas') < facilities.index('class="table-filters box"') < facilities.index('facility-table')
+        assert 'facility-map map-canvas' in facilities and 'class="explorer-filters box"' in facilities
+        assert facilities.index('class="explorer-filters box"') < facilities.index('facility-map map-canvas') < facilities.index('facility-table')
         assert 'sort=-value' in facilities or 'sort=value' in facilities
         assert 'class="table-count"' in facilities and 'Download CSV' in facilities
 

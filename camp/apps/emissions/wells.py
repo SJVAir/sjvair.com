@@ -245,13 +245,17 @@ def table(area, *, q=None, status=None, operator=None, field=None, hpz=False, so
 
 
 def filter_options(area):
-    """The area's operators and fields by well count ({'operators': [...], 'fields': [...]}), the most first, for the filters."""
+    """
+    The area's operators and fields for the filters ({'operators': [...],
+    'fields': [...]}): the FILTER_OPTIONS with the most wells, listed A to Z.
+    """
     def compute():
         wells = Well.objects.filter(well_q(area))
-        def ranked(name):
-            return [row[name] for row in wells.exclude(**{name: ''}).values(name).annotate(n=Count('pk')).order_by('-n', name)[:FILTER_OPTIONS]]
-        return {'operators': ranked('operator_name'), 'fields': ranked('field_name')}
-    return cache.get_or_set(key('options', area.key), compute, stats.CACHE_TIMEOUT)
+        def listed(name):
+            names = [row[name] for row in wells.exclude(**{name: ''}).values(name).annotate(n=Count('pk')).order_by('-n', name)[:FILTER_OPTIONS]]
+            return sorted(names, key=str.casefold)
+        return {'operators': listed('operator_name'), 'fields': listed('field_name')}
+    return cache.get_or_set(key('options-az', area.key), compute, stats.CACHE_TIMEOUT)
 
 
 def leaders(area):

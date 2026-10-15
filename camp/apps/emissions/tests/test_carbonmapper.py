@@ -288,6 +288,15 @@ class ApplyPlumesTests(TestCase):
         assert plume.image.read() == SAMPLE_PNG
         assert (report.created, report.matched, report.images_fetched, report.images_failed) == (1, 1, 1, 0)
 
+    def test_the_overlay_shows_the_new_plume_straight_away(self):
+        # The overlay's GeoJSON is cached; the plumes clear it, not only the sources (apply).
+        before = methane.collection()
+        assert next(f for f in before['features'] if f['properties']['id'] == self.source.sqid)['properties']['plume'] is None
+        with patch('camp.apps.emissions.importers.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
+            carbonmapper.apply_plumes([plume_item()])
+        after = methane.collection()
+        assert next(f for f in after['features'] if f['properties']['id'] == self.source.sqid)['properties']['plume']['image_url']
+
     def test_a_far_plume_is_unmatched(self):
         with patch('camp.apps.emissions.importers.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
             report = carbonmapper.apply_plumes([plume_item(plume_id='far', lnglat=OFFSHORE)])

@@ -266,6 +266,33 @@ class SharedHeaderTests(TestCase):
         assert 'Within 3 miles' in line[:line.index('</p>')] and 'Near me' not in line[:line.index('</p>')]
 
 
+class FilterBoxOrderTests(TestCase):
+    """Every map tab's filter box: its search, then Search by location into the same tab elsewhere, then its own filters."""
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def box(self, url):
+        content = self.client.get(url, {'year': '2023'}).content.decode()
+        start = content.index('class="explorer-filters box"')
+        return content, content[start:content.index('</form>', start)]
+
+    def test_an_area_tab_searches_then_finds_a_place(self):
+        fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        content, box = self.box(fresno.get_emissions_tab_url('facilities'))
+        assert box.index('id="facility-q"') < box.index('Search by location') < box.index('id="facility-sector"')
+        assert f'data-near-url="{reverse("emissions:near-me-facilities")}"' in box
+        assert fresno.get_emissions_tab_url('facilities') in content  # the places land on their own Facilities tab
+
+    def test_the_dairy_pages(self):
+        from camp.apps.emissions.tests.test_dairies import make_dairies
+        make_dairies()
+        cache.clear()
+        fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        for url in (reverse('emissions:dairy-list'), fresno.get_emissions_dairies_url()):
+            _, box = self.box(url)
+            assert box.index('id="dairy-q"') < box.index('Search by location'), url
+            assert f'data-near-url="{reverse("emissions:near-me-dairies")}"' in box, url
+
+
 class CommunityRedirectTests(TestCase):
     """The Community tab is gone: its addresses go to the Overview's In and around, query kept."""
     fixtures = ['regions.yaml', 'emissions.yaml']

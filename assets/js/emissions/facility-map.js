@@ -116,7 +116,6 @@
   // methane sources), the pesticides map's: a small dot in a thin white ring.
   var LOCATION_RADIUS = 4;
   var LOCATION_STROKE = 1;
-  var LOCATION_EMPTY_RADIUS = 3;
   var LOCATION_WELL_COLORS = { Active: '#1e293b', Idle: '#64748b', New: '#cbd5e1' };
   var LOCATION_CLUSTER_COLOR = '#334155';
   var POINT_LAYERS = [
@@ -289,10 +288,9 @@
       var sized = p.value > 0 && max > 0;
       var change = compare ? changeFraction(p.value, p.value_prev) : null;
       var coloured = compare ? change !== null : sized;
-      // In locations mode a "none reported" facility (the grey ring) draws
-      // smaller than a reporting one, so it doesn't compete for attention
-      // with the dots that actually carry a value in the marker soup.
-      p._radius = uniform ? (sized ? LOCATION_RADIUS : LOCATION_EMPTY_RADIUS) : (sized ? radiusFor(p.value, max) : MIN_RADIUS);
+      // In locations mode every facility is the one point marker; a "none
+      // reported" one is told apart by its grey, not its size.
+      p._radius = uniform ? LOCATION_RADIUS : (sized ? radiusFor(p.value, max) : MIN_RADIUS);
       p._color = coloured ? ramp[classIndex(compare ? change : p.value, breaks)] : EMPTY_FILL;
       // Each circle's outline is a darker shade of its own fill, so two
       // overlapping circles read as two rather than one half-bordered one.
@@ -397,16 +395,16 @@
     this.noFacilities = this.data.mainLayer === 'none';
     this.mainLayer = !this.noFacilities && this.data.mainLayer !== '0';
     this.methane = window.EmissionsMethaneOverlay ? new window.EmissionsMethaneOverlay(this, { before: 'facilities' }) : null;
-    // The scope bar's links (year, pollutant, toggles) and the near-me radius
-    // buttons were rendered before
-    // the reader switched view, level, measure or sector here, and carry the
-    // page's original values. Rewrite the boosted request's URL (htmx reads
-    // detail.path back after this event) so the next page opens the way the
-    // map is now; defaults are left out.
+    // The scope bar's links (year, pollutant, toggles), the near-me radius
+    // buttons and the filter box were rendered before the reader switched
+    // view, level or measure here, and carry the page's original values.
+    // Rewrite the boosted request's URL (htmx reads detail.path back after
+    // this event) so the next page opens the way the map is now; defaults
+    // are left out.
     this.onConfigRequest = function (event) {
       var detail = event.detail;
       var elt = detail && detail.elt;
-      if (!elt || !elt.closest || !elt.closest('.explorer-scope, .radius-switcher') || typeof detail.path !== 'string') return;
+      if (!elt || !elt.closest || !elt.closest('.explorer-scope, .radius-switcher, .explorer-filters') || typeof detail.path !== 'string') return;
       if (!self.areasEnabled && self.data.mode !== 'full') return;
       var path = M.rewriteQuery(detail.path, self.writeState.bind(self));
       if (path !== null) detail.path = path;
@@ -937,6 +935,13 @@
     if (result && typeof result.then === 'function') result.then(go).catch(function (err) { logError('cluster zoom', err); });
   };
 
+  // A small rounded button to one of a well's CalGEM pages, in a new tab.
+  function wellLink(url, label) {
+    return '<a class="button is-rounded" href="' + escapeHtml(url) + '" target="_blank" rel="noopener"><span>' + escapeHtml(label) + '</span>' +
+      '<span class="icon is-small"><span class="fa-regular fa-arrow-up-right-from-square" aria-hidden="true"></span></span>' +
+      '<span class="is-sr-only"> (opens in a new tab)</span></a>';
+  }
+
   FacilityMap.prototype.openWellPopup = function (feature, lngLat) {
     var self = this;
     var id = feature.properties.id;
@@ -950,7 +955,8 @@
           (well.operator ? '<p>' + escapeHtml(well.operator) + (well.field ? ', ' + escapeHtml(well.field) + ' field' : '') + '</p>' : '') +
           '<p>' + (well.spud_year ? 'Drilled ' + escapeHtml(String(well.spud_year)) + ' · ' : '') + escapeHtml(well.in_hpz || 'HPZ status unknown') + '</p>' +
           '<p class="is-size-7 has-text-grey">' + escapeHtml(self.wellsAsOf('Current status')) + '</p>' +
-          '<p><a href="' + escapeHtml(well.url) + '">CalGEM record →</a></p>' +
+          // The well's two CalGEM pages, as on the wells table (well-links.html).
+          '<div class="buttons are-small well-links">' + wellLink(well.url, 'WellSTAR') + (well.map_url ? wellLink(well.map_url, 'Well Finder') : '') + '</div>' +
           '</div>');
         if (self.shell.panPopupIntoView) self.shell.panPopupIntoView(popup);
       })
@@ -1348,7 +1354,6 @@
     var self = this;
     if (this.shell.legendPanelEl && !this.legendData && !this.areaData) this.shell.legendPanelEl.hidden = true;
     var shell = this.shell;
-    shell.bindControls('[data-sector]', function (item) { self.setSector(item.getAttribute('data-sector'), item.textContent.trim()); });
     shell.bindControls('[data-view]', function (item) { self.setView(item.getAttribute('data-view')); });
     shell.bindControls('[data-level]', function (item) { self.setLevel(item.getAttribute('data-level'), item.textContent.trim()); });
     shell.bindControls('[data-measure]', function (item) { self.setMeasure(item.getAttribute('data-measure'), item.textContent.trim()); });
@@ -1430,9 +1435,8 @@
   };
 
   // Sets the map's state on `params` (a URLSearchParams), defaults left out:
-  // view `facilities`, the page's default level, measure `density`, and no
-  // sector. The sector is only the map's to write on the full map, where the
-  // reader picks it (a sector page's own sector is the page, not a filter).
+  // view `facilities`, the page's default level and measure `density`. Which
+  // facilities (the sector, the search) is the filter box's, never written here.
   FacilityMap.prototype.writeState = function (params) {
     if (this.areasEnabled) {
       var areas = this.view === 'areas';
@@ -1442,10 +1446,6 @@
       // Compare applies to both views (a facility's own circle too), so it's
       // written whenever it's set, not only in Areas.
       if (this.compare) params.set('compare', this.compare); else params.delete('compare');
-    }
-    if (this.data.mode === 'full') {
-      var sector = new URLSearchParams(this.data.query || '').get('sector');
-      if (sector) params.set('sector', sector); else params.delete('sector');
     }
     // The Options menu's experiment controls (basemap style, colour ramp);
     // not page scope, so every map with a toolbar writes these regardless
@@ -1531,7 +1531,7 @@
     // chosen for whichever table is live now.
     if (this.fillRampOptions) this.fillRampOptions();
     // Facilities always shade by the change when it's on; areas only need
-    // the refetch while that view is up (same pattern as setSector) --
+    // the refetch while that view is up (the same guard as a filter change's) --
     // otherwise leave a stale areaData behind for setView('areas') to
     // reuse and refetch itself.
     this.loadFacilities();
@@ -1595,38 +1595,10 @@
     });
   };
 
-  // The sector filter narrows both views without a page swap; the address
-  // bar follows so the view can be shared.
-  FacilityMap.prototype.setSector = function (sector, label) {
-    var params = new URLSearchParams(this.data.query || '');
-    if (sector) params.set('sector', sector); else params.delete('sector');
-    this.data.query = params.toString();
-    this.clearHover();
-    this.syncUrl();
-    var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.facility-map-sector');
-    if (dropdown) {
-      dropdown.classList.toggle('is-set', !!sector);
-      setToolbarLabel(dropdown, label || 'All sectors');
-      Array.prototype.forEach.call(dropdown.querySelectorAll('[data-sector]'), function (item) {
-        item.classList.toggle('is-active', item.getAttribute('data-sector') === (sector || ''));
-      });
-    }
-    this.loadFacilities();
-    if (this.view === 'areas') {
-      this.loadAreas();
-    } else {
-      // A sector change made while off the areas view must not leave a
-      // stale areaData behind: setView('areas') would otherwise reuse it
-      // because the level still matches.
-      this.areaData = null;
-      this.areaRequest++;
-    }
-  };
-
   // A swap brought a new page: drop what belonged to the old one (its
   // popup, the located dot, its area values and outline), take the new
   // page's view, frame it, and reload.
-  FacilityMap.prototype.onAdopt = function () {
+  FacilityMap.prototype.onAdopt = function (changed) {
     this.shell.closePopup();
     // The new page's legend card waits for its own data, as on a first build.
     this.legendData = null;
@@ -1654,8 +1626,14 @@
     this.applyPoints();
     if (this.wells) this.loadWells();
     if (this.methane) this.methane.onAdopt();
-    this.fitted = false;
-    this.shell.frame();
+    // Only the filters changed (a search, a sector): the reader's view stays.
+    // A new place, point or frame reframes.
+    var framing = ['bounds', 'outlineUrl', 'center', 'zoom', 'radius', 'highlight', 'highlightPoint', 'fit'];
+    var reframe = !changed || changed.some(function (key) { return framing.indexOf(key) !== -1; });
+    if (reframe) {
+      this.fitted = false;
+      this.shell.frame();
+    }
     this.showHighlightPin();
     this.applyHighlight();
     this.load();

@@ -116,7 +116,8 @@ class ApplyTests(TestCase):
         assert Well.objects.count() == 4
         idle = Well.objects.get(api='0402900002')
         assert idle.county == self.kern and idle.status == 'Idle' and idle.in_hpz == Well.HPZ.VERIFIED and idle.directional
-        assert idle.label == 'KERN RIVER 002' and idle.calgem_url.endswith('api=0402900002') and idle.sqid
+        assert idle.label == 'KERN RIVER 002' and idle.calgem_url.endswith('/Well/Well/Detail?api=0402900002')
+        assert "API%20IN%20('0402900002')" in idle.well_finder_url and idle.sqid
         assert Well.objects.get(api='0401900004').county == self.fresno
         assert (report.fetched, report.created, report.skipped) == (8, 4, 4)
         stamp = SourceImport.latest('wellstar')

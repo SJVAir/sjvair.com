@@ -422,4 +422,8 @@ def apply_plumes(items):
                 if plume.image:
                     plume.image.delete(save=False)
             report.deleted, _ = stale.delete()
+    # The overlay's GeoJSON carries each source's newest plume image: apply()
+    # cleared it before the plumes landed, so it would serve sources with none.
+    from camp.apps.emissions import methane
+    methane.clear_caches()
     return report

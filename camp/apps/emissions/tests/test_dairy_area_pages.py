@@ -302,7 +302,10 @@ class MapConfigTests(DairyAreaTestCase):
         assert dairy_map_data(content, 'outline-url') == reverse('api:v2:regions:region-detail', args=[self.fresno.sqid])
         assert dairy_map_data(content, 'geojson-url') == f'/api/2.0/emissions/dairies/geojson/?year=2023&amp;region={self.fresno.sqid}'
         assert dairy_map_data(content, 'county') in ('', None)
-        assert 'data-size="large"' in content and 'data-digester="yes"' in content
+        # The size and digester filters are the filter box's, not the map toolbar's.
+        box = content[content.index('class="explorer-filters box"'):content.index('</form>', content.index('class="explorer-filters box"'))]
+        assert 'name="sizes" value="large"' in box and 'name="digester"' in box
+        assert 'data-size="' not in content and 'data-digester="yes"' not in content  # no toolbar controls (the container keeps data-sizes / data-digester)
 
     def test_near_me_map(self):
         content = self.near({'lat': '36.737', 'lng': '-119.787', 'radius': '3', 'year': '2023'}).content.decode()
@@ -318,3 +321,31 @@ class MapConfigTests(DairyAreaTestCase):
         assert config['map']['data']['outline-url'] == '/o/'
         tab = dairy_views.dairy_map_config(scope, dairy_views.dairy_map_view({'view': 'counties'}))
         assert tab['view'] == 'counties' and tab['view_options'] == dairy_views.VIEW_OPTIONS
+
+
+class DairyFilterBoxTests(TestCase):
+    """The size and digester filters narrow the table as well as the map."""
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def setUp(self):
+        from camp.apps.emissions.tests.test_dairies import make_dairies
+        make_dairies()
+        cache.clear()
+
+    def names(self, **params):
+        content = self.client.get(reverse('emissions:dairy-list'), {'year': '2023', **params}).content.decode()
+        return {name for name in ('BIG DAIRY', 'SMALL DAIRY') if name.lower() in content.lower()}
+
+    def test_sizes_and_digester_narrow_the_table(self):
+        assert self.names() == {'BIG DAIRY', 'SMALL DAIRY'}
+        assert self.names(sizes='large') == {'BIG DAIRY'}
+        assert self.names(digester='yes') == {'BIG DAIRY'}
+        assert self.names(digester='no') == {'SMALL DAIRY'}
+
+    def test_the_checkboxes_repeat_sizes(self):
+        from django.http import QueryDict
+        from camp.apps.emissions import dairy_views
+        assert dairy_views.parse_sizes(QueryDict('sizes=large&sizes=small')) == ['small', 'large']
+        assert dairy_views.parse_sizes(QueryDict('sizes=small,large')) == ['small', 'large']
+        assert dairy_views.parse_sizes(QueryDict('')) == ['small', 'medium', 'large']
+

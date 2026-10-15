@@ -151,7 +151,10 @@ class OilGasTabTests(WellsPagesTestCase):
         content = self.get(url, {'year': '2024'})
         table = content[content.index('well-table'):content.index('</table>', content.index('well-table'))]
         assert table.count('<tr>') == 3  # header + Fresno's two wells
-        assert 'class="explorer-filters box"' in content and 'Download these wells (CSV)' in content
+        # The filters beside the map; the count and CSV over the table; each well's CalGEM links in the last column.
+        assert content.index('class="explorer-filters box"') < content.index('facility-map map-canvas') < content.index('well-table')
+        assert 'class="cell-links"' in table and 'Well/Well/Detail?api=' in table and 'target="_blank"' in table
+        assert 'Showing 1&ndash;2 of 2 wells' in content and 'Download CSV' in content
         idle = self.get(url, {'year': '2024', 'status': 'Idle'})
         idle_table = idle[idle.index('well-table'):idle.index('</table>', idle.index('well-table'))]
         assert 'No wells match.' in idle_table
@@ -228,12 +231,15 @@ class ValleyOilGasTabTests(WellsPagesTestCase):
         self.add_wells()
         url = reverse('emissions:oil-gas')
         content = self.get(url, {'year': '2024'})
-        # Every covered county's wells, the explorer tab marked current, and a find box into an area's own tab.
+        # Every covered county's wells, the explorer tab marked current, and the scope bar's
+        # county picker into an area's own tab (no "Search by location" box).
         table = content[content.index('well-table'):content.index('</table>', content.index('well-table'))]
         assert table.count('<tr>') == 5  # header + all four wells
         assert 'class="is-active"><a href="/tools/emissions/oil-gas/' in content.replace("is-active\"", 'is-active"')
+        assert 'data-scope="county"' in content
         box = content[content.index('class="explorer-filters box"'):content.index('</form>', content.index('class="explorer-filters box"'))]
-        assert 'Search by location' in box and self.kern.get_emissions_tab_url('oil-gas') in content
+        assert box.index('id="well-q"') < box.index('Search by location') < box.index('id="well-status"')
+        assert self.kern.get_emissions_tab_url('oil-gas') in content
         assert 'Top operators' in content and 'Schools and child care near wells' in content
         response = self.client.get(url, {'format': 'csv'})
         assert response['Content-Type'] == 'text/csv' and len(response.content.decode().strip().splitlines()) == 5

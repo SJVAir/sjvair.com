@@ -227,13 +227,15 @@ class FacilityListLayoutTests(ListTestCase):
         content = self.client.get(reverse('emissions:facility-list')).content.decode()
         assert '<td class="has-text-right cell-rank">None</td>' not in content
 
-    def test_filters_sit_on_the_table_with_sectors_a_to_z(self):
+    def test_filters_sit_beside_the_map_with_sectors_a_to_z(self):
         content = self.client.get(reverse('emissions:facility-list')).content.decode()
-        form = content[content.index('class="table-filters box"'):content.index('</form>')]
-        assert 'id="facility-q"' in form and 'id="facility-sector"' in form and 'id="facility-compliance"' in form
-        # Under the map, over the table; "Search by location" is the home page's and the scope bar's.
-        assert content.index('class="facility-map') < content.index('class="table-filters box"') < content.index('facility-table')
-        assert 'Search by location' not in content
+        form = content[content.index('class="explorer-filters box"'):content.index('</form>')]
+        # Every map's filters: the search, Search by location, then the tab's own.
+        assert form.index('id="facility-q"') < form.index('Search by location') < form.index('id="facility-sector"') < form.index('id="facility-compliance"')
+        assert 'form="facility-filters"' in form and 'id="facility-filters"' in form
+        assert content.index('class="explorer-filters box"') < content.index('class="facility-map') < content.index('facility-table')
+        # The county picker stays in the scope bar: it opens a county's own Facilities tab.
+        assert 'data-scope="county"' in content
         # Scoped to the sector select itself: the facility list also carries
         # a compliance filter select now, whose own options aren't part of
         # this alphabetical-sectors check.

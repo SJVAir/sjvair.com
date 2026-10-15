@@ -5,10 +5,10 @@
 An area's Oil & gas tab (views.RegionOilGas / NearMeOilGas) in the shared
 tab skeleton (regions/area-tab.html): CalGEM's wells here by status and how many are
 in a verified health protection zone, with the snapshot caveat (and Kern's
-callout); the map with the wells on; the wells themselves, filtered, sorted,
-paged and downloadable; the wells drilled by year; the operators and oil
-fields with the most wells (each a link filtering the table) and the types; and the
-schools near wells, the area's oil & gas permit groupings and the methane
+callout); the map with the wells on, the filters beside it; the wells themselves,
+sorted, paged and downloadable, each with its CalGEM links; the operators and oil
+fields with the most wells (each a link filtering the table) and the types; the
+schools near wells; the wells drilled by year; the area's oil & gas permit groupings and the methane
 observed at oil & gas sites. CalGEM's list is today's: nothing here is a
 history of wells in service.
 {% endcomment %}
@@ -45,21 +45,21 @@ history of wells in service.
 {% block tab-map %}{% include 'emissions/includes/facility-map.html' %}{% endblock %}
 
 {% block tab-filters %}
-{# The Valley's tab (OilGasPage, `find_field`) leads its filter box with "Search by location", beside the form: Enter there would submit it. #}
+{# Beside the map, as on the Dairies tab and the pesticides maps: the filters narrow the map and the table under it. #}
 <div class="explorer-filters box">
-{% if find_field %}{% include 'emissions/includes/find-field.html' %}{% endif %}
-<form method="get" hx-trigger="submit, change delay:250ms">
+<div class="field">
+    <label class="label" for="well-q">Search</label>
+    <div class="control has-icons-left">
+        <input class="input" type="search" id="well-q" name="q" value="{{ filters.q|default:'' }}" placeholder="Lease or API number"
+            hx-get="{{ request.path }}" hx-include="#well-filters" form="well-filters" hx-trigger="keyup changed delay:500ms, search">
+        <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
+    </div>
+</div>
+{% if find_field %}{% include 'regions/includes/find-field.html' %}{% endif %}
+<form method="get" id="well-filters" hx-trigger="submit, change delay:250ms">
     {% for key, value in point_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
     {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
     <input type="hidden" name="sort" value="{{ sort }}">
-    <div class="field">
-        <label class="label" for="well-q">Search</label>
-        <div class="control has-icons-left">
-            <input class="input" type="search" id="well-q" name="q" value="{{ filters.q|default:'' }}" placeholder="Lease or API number"
-                hx-get="{{ request.path }}" hx-include="closest form" hx-trigger="keyup changed delay:500ms, search">
-            <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
-        </div>
-    </div>
     <div class="field">
         <label class="label" for="well-status">Status</label>
         <div class="control"><div class="select is-fullwidth"><select id="well-status" name="status">
@@ -95,6 +95,43 @@ history of wells in service.
 {% endblock %}
 
 {% block tab-table %}
+{# How many match, and the same rows as a CSV, where the eye lands before the table. #}
+<div class="table-toolbar">
+    <p class="table-count">
+        {% if page_obj.paginator.count %}Showing {{ page_obj.start_index|intcomma }}&ndash;{{ page_obj.end_index|intcomma }} of {{ page_obj.paginator.count|intcomma }} well{{ page_obj.paginator.count|pluralize }}{% else %}No wells match{% endif %}
+    </p>
+    {% if page_obj.paginator.count %}<a class="button is-small" href="{% qs_replace format='csv' page=None %}" hx-boost="false" download><span class="icon"><span class="fa-regular fa-fw fa-download" aria-hidden="true"></span></span><span>Download CSV</span></a>{% endif %}
+</div>
+<div class="table-container">
+<table class="table is-fullwidth is-hoverable is-narrow well-table is-stacked-mobile">
+    <thead><tr>
+        <th {% aria_sort 'label' %}>{% sort_link 'label' 'Well' %}</th>
+        <th {% aria_sort 'operator' %}>{% sort_link 'operator' 'Operator' %}</th>
+        <th {% aria_sort 'field' %}>{% sort_link 'field' 'Field' %}</th>
+        <th {% aria_sort 'status' %}>{% sort_link 'status' 'Status' %}</th>
+        <th {% aria_sort 'spud' %}>{% sort_link 'spud' 'Drilled' %}</th>
+        <th><span class="is-sr-only">CalGEM links</span></th>
+    </tr></thead>
+    <tbody>
+    {% for well in well_rows %}
+    <tr>
+        <td class="cell-name">{{ well.label }}{% if well.in_hpz == 'Verified HPZ' %} <span class="tag is-warning is-light" title="In a verified health-protection zone (3,200 ft of homes or schools)">HPZ</span>{% endif %}<br><span class="has-text-grey is-size-7">{{ well.well_type_label }} &middot; API {{ well.api }}</span></td>
+        <td class="cell-meta">{{ well.operator_name }}</td>
+        <td class="cell-meta">{{ well.field_name }}</td>
+        <td class="cell-meta" data-label="Status">{{ well.get_status_display }}</td>
+        <td class="cell-meta{% if not well.spud_date %} is-none{% endif %}" data-label="Drilled">{{ well.spud_date.year|default:"—" }}</td>
+        <td class="cell-links">{% include 'emissions/includes/well-links.html' %}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="6">No wells match.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% include 'pesticides/includes/pagination.html' %}
+
+{# Who and where, then what's near them: under the table they summarize. #}
+<div class="mt-5">
 {% if well_leaders.operators or well_leaders.fields %}
 <div class="columns">
     <div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='Top operators' rows=well_leaders.operators count_label='Wells' view_all_url=None %}</div>
@@ -134,34 +171,7 @@ history of wells in service.
     {% endif %}
 </section>
 {% endwith %}
-<h2 class="title is-4" id="wells-table">Wells</h2>
-<p class="has-text-grey mb-3">{{ wells_block.summary.active|intcomma }} active, {{ wells_block.summary.idle|intcomma }} idle{% if wells_block.summary.new %} and {{ wells_block.summary.new|intcomma }} new{% endif %} wells &middot; showing {{ page_obj.paginator.count|intcomma }}</p>
-<div class="table-container">
-<table class="table is-fullwidth is-hoverable is-narrow well-table is-stacked-mobile">
-    <thead><tr>
-        <th {% aria_sort 'label' %}>{% sort_link 'label' 'Well' %}</th>
-        <th {% aria_sort 'operator' %}>{% sort_link 'operator' 'Operator' %}</th>
-        <th {% aria_sort 'field' %}>{% sort_link 'field' 'Field' %}</th>
-        <th {% aria_sort 'status' %}>{% sort_link 'status' 'Status' %}</th>
-        <th {% aria_sort 'spud' %}>{% sort_link 'spud' 'Drilled' %}</th>
-    </tr></thead>
-    <tbody>
-    {% for well in well_rows %}
-    <tr>
-        <td class="cell-name"><a href="{{ well.calgem_url }}">{{ well.label }}</a>{% if well.in_hpz == 'Verified HPZ' %} <span class="tag is-warning is-light" title="In a verified health-protection zone (3,200 ft of homes or schools)">HPZ</span>{% endif %}<br><span class="has-text-grey is-size-7">{{ well.well_type_label }}</span></td>
-        <td class="cell-meta">{{ well.operator_name }}</td>
-        <td class="cell-meta">{{ well.field_name }}</td>
-        <td class="cell-meta" data-label="Status">{{ well.get_status_display }}</td>
-        <td class="cell-meta{% if not well.spud_date %} is-none{% endif %}" data-label="Drilled">{{ well.spud_date.year|default:"—" }}</td>
-    </tr>
-    {% empty %}
-    <tr><td colspan="5">No wells match.</td></tr>
-    {% endfor %}
-    </tbody>
-</table>
 </div>
-{% include 'pesticides/includes/pagination.html' %}
-<p class="mt-3"><a href="{% qs_replace format='csv' page=None %}" hx-boost="false" download>Download these wells (CSV)</a></p>
 {% endblock %}
 
 {% block tab-charts %}

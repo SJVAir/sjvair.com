@@ -518,7 +518,9 @@ class WellEndpointTests(TestCase):
         assert body == {
             'id': self.idle.sqid, 'api': '0402900002', 'label': 'TEST LEASE 02', 'lease_name': 'TEST LEASE', 'well_number': '02',
             'status': 'Idle', 'well_type': 'Oil & Gas', 'operator': 'TEST OIL LLC', 'field': 'Test Field', 'county': 'Kern County',
-            'spud_year': None, 'in_hpz': 'Verified HPZ', 'directional': True, 'url': self.idle.calgem_url,
+            'spud_year': None, 'in_hpz': 'Verified HPZ', 'directional': True,
+            'url': 'https://wellstar-public.conservation.ca.gov/Well/Well/Detail?api=0402900002',
+            'map_url': self.idle.well_finder_url,
         }
         assert self.client.get(reverse('api:v2:emissions:well-detail', args=[self.active.sqid])).json()['spud_year'] == 2015
         assert self.client.get(reverse('api:v2:emissions:well-detail', args=['nope'])).status_code == 404

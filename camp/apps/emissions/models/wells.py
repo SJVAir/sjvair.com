@@ -55,4 +55,10 @@ class Well(models.Model):
 
     @property
     def calgem_url(self):
-        return f'https://wellstar-public.conservation.ca.gov/WellSearch/Details?api={self.api}'
+        """The well's WellSTAR record (by way of WellSTAR's one-click public entry, which keeps the address)."""
+        return f'https://wellstar-public.conservation.ca.gov/Well/Well/Detail?api={self.api}'
+
+    @property
+    def well_finder_url(self):
+        """The well selected and zoomed to on CalGEM's Well Finder map."""
+        return f"https://maps.conservation.ca.gov/calgem/findwells/#data_s=where%3AdataSource_2-Well-0%3AAPI%20IN%20('{self.api}')&zoom_to_selection=true"

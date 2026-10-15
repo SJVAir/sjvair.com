@@ -52,8 +52,8 @@ def region_within_dairies(region):
 
 
 PAGE_SIZE = 50
-# A Facilities tab's table: a screenful, so its filters and pages stay in reach.
-FACILITY_PAGE_SIZE = 25
+# A Facilities or Oil & gas tab's table: a screenful, so its filters and pages stay in reach.
+TAB_PAGE_SIZE = 25
 SECTOR_PAGE_ROWS = 25
 METHANE_LIST_ROWS = 25
 # The Areas view forces `measure=total` for a weighted toxics measure (its
@@ -892,18 +892,31 @@ class MapPage(ScopeMixin, vanilla.TemplateView):
 
     def get_context_data(self, **kwargs):
         scope = self.get_scope()
+        # The filter box's (search, then Search by location, then the sector):
+        # which facilities; the toolbar keeps how the map draws them.
         sector = self.request.GET.get('sector')
         sector = sector if sector in Facility.Sector.values else None
+        q = (self.request.GET.get('q') or '').strip() or None
+        # A county in the scope bar: the map opens on it, outlined, and every
+        # layer (not only the facilities, which the scope already narrows) is its.
+        county = scope.county if scope.county is not None and scope.county.boundary_id else None
+        area_params = area_map_params(areas.RegionArea(county)) if county is not None else None
         return super().get_context_data(
             map_config=facility_map_config(
-                scope, sector=sector,
+                scope, sector=sector, params=filtered_map_params(scope.params(), {'q': q}),
                 areas_view=map_view(self.request.GET, year=scope.year, share=scope.pollutant.unit == 'share'),
                 # Every layer in the legend starts on, the wells included.
                 wells=wells_overlay(self.request.GET, default=True),
                 methane=methane_overlay(self.request.GET, default=True),
-                locations=locations_layers(self.request.GET, scope),
+                locations=locations_layers(self.request.GET, scope, area_params=area_params),
+                area_params=area_params,
+                outline_url=reverse('api:v2:regions:region-detail', args=[county.sqid]) if county is not None else '',
+                bounds=','.join(f'{value:.4f}' for value in county.boundary.geometry.extent) if county is not None else None,
             ),
             sector_options=sector_options(),
+            filters={'q': q, 'sector': sector},
+            clear_filters_url=reverse('emissions:map') + scope.query(),
+            **find_field_context('map', scope.query(county=None)),
             **kwargs,
         )
 
@@ -950,6 +963,35 @@ def find_area_places(url_name='emissions:region'):
             'url': reverse(url_name, kwargs={'sqid': sqid, 'slug': slug}),
         } for sqid, slug, name, region_type in regions]
     return cache.get_or_set(f'{FIND_AREA_PLACES_KEY}:{url_name}', compute, stats.CACHE_TIMEOUT)
+
+
+# Each map tab's "Search by location" (find-field.html) lands on the same tab:
+# a region's page for it, or near-me's.
+FIND_FIELD_TABS = {
+    'map': ('emissions:region', 'emissions:near-me'),
+    'facilities': ('emissions:region-facilities', 'emissions:near-me-facilities'),
+    'oil-gas': ('emissions:region-oil-gas', 'emissions:near-me-oil-gas'),
+    'schools': ('emissions:region-schools', 'emissions:near-me-schools'),
+    'dairies': ('emissions:region-dairies', 'emissions:near-me-dairies'),
+}
+
+
+def find_field_context(tab, query):
+    """
+    What find-field.html takes, for every map tab's filter box (search, then
+    Search by location, then the tab's own filters): its places, county jump
+    links, near-me URL and the scope `query` the links carry.
+    """
+    region_url, near_url = FIND_FIELD_TABS[tab]
+    places = find_area_places(region_url)
+    return {
+        'find_field': True,
+        'find_area_places': places,
+        'find_area_counties': [p for p in places if p['type'] == Region.Type.COUNTY],
+        'find_area_qs': query,
+        'find_near_url': reverse(near_url),
+        'maptiler_key': settings.MAPTILER_API_KEY,
+    }
 
 
 def region_title(region):
@@ -1125,7 +1167,7 @@ class OilGasTabMixin:
 
     def oil_gas_context(self, area, scope, *, facilities_url):
         well_filters = wells.table_filters(self.request.GET)
-        well_page = page_of(wells.table(area, **well_filters), self.request.GET.get('page'))
+        well_page = page_of(wells.table(area, **well_filters), self.request.GET.get('page'), size=TAB_PAGE_SIZE)
         return dict(
             page_obj=well_page, is_paginated=well_page.has_other_pages(), well_rows=well_page.object_list,
             sort=well_filters['sort'], filters=well_filters, well_options=wells.filter_options(area),
@@ -1152,7 +1194,7 @@ class FacilitiesTabMixin:
 
     def facilities_table_context(self, scope, filters):
         table = stats.facility_table(scope, **filters)
-        page = page_of(table, self.request.GET.get('page'), size=FACILITY_PAGE_SIZE)
+        page = page_of(table, self.request.GET.get('page'), size=TAB_PAGE_SIZE)
         return dict(
             page_obj=page, is_paginated=page.has_other_pages(), sort=filters['sort'], filters=filters,
             sector_options=sector_options(), compliance_options=compliance.FILTER_LABELS,
@@ -1332,6 +1374,7 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, ScopeMixin, vanilla.TemplateV
             county_options=[],
             scope_qs=base.query(county=None),
             scope_params=base.params(county=None),
+            **(find_field_context(tab, base.query(county=None)) if tab in FIND_FIELD_TABS else {}),
             **kwargs,
             community_about_url=reverse('emissions:about') + '#calenviroscreen',
         )
@@ -1668,8 +1711,6 @@ class OilGasPage(OilGasTabMixin, ScopeMixin, vanilla.TemplateView):
     def get_context_data(self, **kwargs):
         scope = self.get_scope()
         area = areas.ValleyArea()
-        places = find_area_places('emissions:region-oil-gas')
-        with_wells = set(Well.objects.values_list('county__name', flat=True).distinct())
         sector_url = reverse('emissions:sector-detail', args=[Facility.Sector.OIL_GAS]) + scope.query(county=None)
         return super().get_context_data(
             **self.oil_gas_context(area, scope, facilities_url=sector_url),
@@ -1685,13 +1726,9 @@ class OilGasPage(OilGasTabMixin, ScopeMixin, vanilla.TemplateView):
                 methane=methane_overlay(self.request.GET, default=True),
             ),
             point_params={}, clear_filters_url=self.area_tab_url('oil-gas', self.tab_query('oil-gas')),
-            scope_qs=scope.query(county=None), scope_params=scope.params(county=None), county_options=[],
-            find_field=True,
-            find_area_places=places,
-            find_area_counties=[p for p in places if p['type'] == Region.Type.COUNTY and p['name'] in with_wells],
-            find_area_qs=scope.query(county=None),
-            find_near_url=reverse('emissions:near-me-oil-gas'),
-            maptiler_key=settings.MAPTILER_API_KEY,
+            # The scope bar keeps its county picker: a county opens that county's own tab (get()).
+            scope_qs=scope.query(county=None), scope_params=scope.params(county=None),
+            **find_field_context('oil-gas', scope.query(county=None)),
             **kwargs,
         )
 
@@ -1758,8 +1795,9 @@ class FacilityList(FacilitiesTabMixin, ScopeMixin, vanilla.TemplateView):
             map_config=facility_map_config(scope, mode='compact', params=filtered_map_params(scope.params(county=None), filters)),
             point_params={}, clear_filters_url=self.area_tab_url('facilities', self.tab_query('facilities')),
             facilities_tab_url=self.area_tab_url('facilities', self.tab_query('facilities')),
-            scope_qs=scope.query(county=None), scope_params=scope.params(county=None), county_options=[],
-            maptiler_key=settings.MAPTILER_API_KEY,
+            # The scope bar keeps its county picker: a county opens that county's own tab (get()).
+            scope_qs=scope.query(county=None), scope_params=scope.params(county=None),
+            **find_field_context('facilities', scope.query(county=None)),
             community_about_url=reverse('emissions:about') + '#calenviroscreen',
             **kwargs,
         )

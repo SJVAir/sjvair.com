@@ -1,0 +1,18 @@
+{% comment %}
+The dairy filter box's own fields after the search and Search by location
+(dairy-list.html, dairy-area.html): the EPA size classes and the digester
+choice. They narrow the map and the table alike (dairy_views.search_filters).
+All three sizes ticked, or none, is every dairy.
+{% endcomment %}
+<fieldset class="field">
+    <legend class="label">EPA size class</legend>
+    {% for value, label in size_options %}
+    <label class="checkbox mr-3"><input type="checkbox" name="sizes" value="{{ value }}"{% if not filters.sizes or value in filters.sizes %} checked{% endif %}> {{ label }}</label>
+    {% endfor %}
+</fieldset>
+<div class="field">
+    <label class="label" for="dairy-digester">Digester</label>
+    <div class="control"><div class="select is-fullwidth"><select id="dairy-digester" name="digester">
+        {% for value, label in digester_options %}<option value="{{ value }}"{% if filters.digester == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select></div></div>
+</div>

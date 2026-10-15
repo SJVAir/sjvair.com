@@ -28,18 +28,20 @@ filtered, sorted, paged and downloadable, each with what's near it
 {% endblock %}
 
 {% block tab-filters %}
-<form method="get" class="explorer-filters box" hx-trigger="submit, change delay:250ms">
+<div class="explorer-filters box">
+<div class="field">
+    <label class="label" for="site-q">Search</label>
+    <div class="control has-icons-left">
+        <input class="input" type="search" id="site-q" name="q" value="{{ filters.q|default:'' }}" placeholder="School or center name"
+            hx-get="{{ request.path }}" hx-include="#site-filters" form="site-filters" hx-trigger="keyup changed delay:500ms, search">
+        <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
+    </div>
+</div>
+{% if find_field %}{% include 'regions/includes/find-field.html' %}{% endif %}
+<form method="get" id="site-filters" hx-trigger="submit, change delay:250ms">
     {% for key, value in point_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
     {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
     <input type="hidden" name="sort" value="{{ sort }}">
-    <div class="field">
-        <label class="label" for="site-q">Search</label>
-        <div class="control has-icons-left">
-            <input class="input" type="search" id="site-q" name="q" value="{{ filters.q|default:'' }}" placeholder="School or center name"
-                hx-get="{{ request.path }}" hx-include="closest form" hx-trigger="keyup changed delay:500ms, search">
-            <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
-        </div>
-    </div>
     <div class="field">
         <label class="label" for="site-type">Type</label>
         <div class="control"><div class="select is-fullwidth"><select id="site-type" name="type">
@@ -63,6 +65,7 @@ filtered, sorted, paged and downloadable, each with what's near it
     {# Every field applies itself as it changes; there's nothing to Apply. #}
     {% if sites_filtered %}<p class="filters-clear"><a href="{{ clear_filters_url }}">Clear filters</a></p>{% endif %}
 </form>
+</div>
 {% endblock %}
 
 {% block tab-aside %}{% include 'regions/includes/school-districts-box.html' %}{% endblock %}

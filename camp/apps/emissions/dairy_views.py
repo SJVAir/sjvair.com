@@ -39,11 +39,33 @@ DIGESTER_OPTIONS = (('', 'All dairies'), ('yes', 'With a digester'), ('no', 'Wit
 DIGESTER_VALUES = frozenset(value for value, label in DIGESTER_OPTIONS if value)
 
 
+def parse_sizes(get):
+    """
+    The EPA size classes picked, in SIZE_OPTIONS order: `sizes` absent means
+    all three; present, exactly what's listed (the filter box's checkboxes
+    repeat it, a shared link may join them with commas), unknown values
+    dropped -- so a link can name none of them.
+    """
+    if 'sizes' not in get:
+        return [value for value, label in SIZE_OPTIONS]
+    raws = get.getlist('sizes') if hasattr(get, 'getlist') else [get['sizes']]
+    picked = {token for raw in raws for token in (raw or '').split(',')}
+    return [value for value, label in SIZE_OPTIONS if value in picked]
+
+
 def search_filters(get):
-    """The table's own filters, validated: a name search and the sort."""
+    """
+    The filter box's filters, validated, which narrow the map and the table
+    alike: a name search, the EPA size classes (None for all three) and a
+    digester choice; and the table's sort.
+    """
     sort = get.get('sort')
+    sizes = parse_sizes(get)
+    digester = get.get('digester')
     return {
         'q': (get.get('q') or '').strip() or None,
+        'sizes': None if len(sizes) == len(SIZE_OPTIONS) else sizes,
+        'digester': digester if digester in DIGESTER_VALUES else '',
         'sort': sort if sort in dairies.TABLE_SORTS else dairies.DEFAULT_SORT,
     }
 
@@ -76,8 +98,7 @@ def dairy_map_view(get):
     """
     view = get.get('view')
     measure = get.get('measure')
-    raw_sizes = get.get('sizes')
-    sizes = SIZE_VALUES if raw_sizes is None else {value for value in raw_sizes.split(',') if value in SIZE_VALUES}
+    sizes = set(parse_sizes(get))
     digester = get.get('digester')
     return {
         'view': view if view in dairies.VIEWS else dairies.DEFAULT_VIEW,
@@ -291,10 +312,6 @@ class DairyList(DairyScopeMixin, vanilla.TemplateView):
         scope = self.get_scope()
         filters = search_filters(self.request.GET)
         page = views.page_of(dairies.table(scope.year, county=scope.county, **filters), self.request.GET.get('page'))
-        # The find box: every page type's dairy page, and the county jump
-        # links; the links carry the scope less the county (the page is the
-        # county), the same as the home page's.
-        places = views.find_area_places('emissions:region-dairies')
         return super().get_context_data(
             summary=dairies.summary(scope.year, county=scope.county),
             rows=page.object_list,
@@ -310,11 +327,10 @@ class DairyList(DairyScopeMixin, vanilla.TemplateView):
                 scope, dairy_map_view(self.request.GET), methane=views.methane_overlay(self.request.GET, default=True),
                 q=filters['q'],
             ) if dairies.years() else None,
-            find_area_places=places,
-            find_area_counties=[p for p in places if p['type'] == Region.Type.COUNTY],
-            find_area_qs=scope.query(county=None),
-            find_near_url=reverse('emissions:near-me-dairies'),
-            maptiler_key=settings.MAPTILER_API_KEY,
+            # Search by location: every page type's dairy page, the county jump
+            # links carrying the scope less the county, as the home page's.
+            **views.find_field_context('dairies', scope.query(county=None)),
+            size_options=SIZE_OPTIONS, digester_options=DIGESTER_OPTIONS,
             **kwargs,
         )
 
@@ -403,6 +419,8 @@ class DairyAreaPage(DairyScopeMixin, vanilla.TemplateView):
             overview_url=self.area_tab_url('overview', self.tab_query('overview')),
             # The page is the area: no county picker.
             county_options=[],
+            **views.find_field_context('dairies', scope.query(county=None)),
+            size_options=SIZE_OPTIONS, digester_options=DIGESTER_OPTIONS,
             **kwargs,
         )
         context.update(views.area_header(context))

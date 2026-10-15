@@ -468,20 +468,6 @@ body.emissions
       margin-bottom: 0
       a
         font-weight: 600
-  // A Facilities tab's filters, a row on the table they narrow.
-  .table-filters
-    padding: 1rem 1.25rem
-    margin-bottom: 1rem
-    .columns
-      margin-bottom: -0.75rem
-    .field
-      margin-bottom: 0
-    .label
-      font-size: $size-7
-      text-transform: uppercase
-      letter-spacing: 0.04em
-      color: $grey
-      margin-bottom: 0.35rem
   // How many rows match, and the CSV, over the table.
   .table-toolbar
     display: flex
@@ -492,3 +478,16 @@ body.emissions
     margin-bottom: 0.5rem
     .table-count
       color: $grey-dark
+  // A well's WellSTAR and Well Finder buttons (well-links.html, the map's well popup):
+  // on one line in the wells table's last column.
+  .well-links
+    margin: 0.35rem 0 0
+    .button
+      margin-bottom: 0
+  .well-table .cell-links
+    white-space: nowrap
+    vertical-align: middle
+    .well-links
+      margin: 0
+      flex-wrap: nowrap
+

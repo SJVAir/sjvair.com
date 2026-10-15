@@ -232,10 +232,12 @@ def summary(year, *, county=None, area=None):
     return cache.get_or_set(key('summary', year, _where(county, area)), compute, stats.CACHE_TIMEOUT)
 
 
-def table(year, *, county=None, area=None, q=None, sort=DEFAULT_SORT):
+def table(year, *, county=None, area=None, q=None, sizes=None, digester='', sort=DEFAULT_SORT):
     """
     The year's counted herds with their dairies, `digester` and
-    `digester_since` annotated, in a TABLE_SORTS order.
+    `digester_since` annotated, in a TABLE_SORTS order; narrowed to a name
+    (`q`), EPA size classes (`sizes`, None for all) and digester ('yes',
+    'no' or '' for either), as the map is.
     """
     operating = _operating(year) if year is not None else Digester.objects.none()
     queryset = (
@@ -248,6 +250,10 @@ def table(year, *, county=None, area=None, q=None, sort=DEFAULT_SORT):
     )
     if q:
         queryset = queryset.filter(dairy__name__icontains=q)
+    if sizes is not None:
+        queryset = queryset.filter(size_class__in=sizes)
+    if digester in ('yes', 'no'):
+        queryset = queryset.filter(digester=digester == 'yes')
     sort = sort if sort in TABLE_SORTS else DEFAULT_SORT
     expression = {
         'name': Lower('dairy__name'),

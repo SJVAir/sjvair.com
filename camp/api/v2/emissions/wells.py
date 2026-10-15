@@ -98,4 +98,5 @@ class WellDetail(generics.Endpoint):
             'in_hpz': well.in_hpz,
             'directional': well.directional,
             'url': well.calgem_url,
+            'map_url': well.well_finder_url,
         }

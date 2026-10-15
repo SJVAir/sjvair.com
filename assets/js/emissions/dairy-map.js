@@ -66,7 +66,8 @@
   // The Counties view's default measure (dairies.DEFAULT_MEASURE), left out of the URL.
   var DEFAULT_MEASURE = 'mature_cows';
   var COUNTY_COLOR = '#1f2d3d';
-  var MIN_RADIUS = 3;
+  // The smallest herd is the main map's point marker (facility-map.js's LOCATION_RADIUS).
+  var MIN_RADIUS = 4;
   var MAX_RADIUS = 22;
   // Circle areas are scaled to this many head, the same in every year and
   // county, so sizes compare; the few larger herds are drawn at the largest
@@ -142,14 +143,6 @@
   function parseSizes(value) {
     var tokens = (value == null ? SIZE_VALUES.join(',') : value).split(',');
     return SIZE_VALUES.filter(function (v) { return tokens.indexOf(v) !== -1; });
-  }
-
-  // The size dropdown's button label: 'All sizes', 'No sizes', or the chosen
-  // classes' labels, smallest first ('Medium, Large').
-  function sizesLabel(sizes) {
-    if (sizes.length === SIZE_VALUES.length) return 'All sizes';
-    if (!sizes.length) return 'No sizes';
-    return sizes.map(function (v) { return SIZE_LABELS[v]; }).join(', ');
   }
 
   // Five classes up to `max` on round steps (1, 2, 2.5 or 5 times a power of
@@ -737,8 +730,6 @@
     if (this.shell.legendPanelEl && !this.dairies) this.shell.legendPanelEl.hidden = true;
     this.shell.bindControls('[data-view]', function (item) { self.setView(item.getAttribute('data-view')); });
     this.shell.bindControls('[data-measure]', function (item) { self.setMeasure(item.getAttribute('data-measure'), item.textContent.trim()); });
-    this.shell.bindControls('[data-digester]', function (item) { self.setDigester(item.getAttribute('data-digester'), item.textContent.trim()); });
-    this.bindSizeCheckboxes();
     this.shell.bindTiles('select[name="tiles"]', function () { self.syncUrl(); });
     this.applyView();
     if (this.methane) this.methane.bind(this.shell.legendBodyEl);
@@ -751,35 +742,18 @@
     }
   };
 
-  // The size dropdown's checkboxes: bindControls always closes its dropdown
-  // and takes over the click, which suits an item that replaces the whole
-  // choice (view, measure, digester) but not one of three independent
-  // toggles -- so this binds `change` directly, once per checkbox (an adopt
-  // re-runs onChrome over the new page's chrome, same as bindControls).
-  // A click inside the menu never reaches the document (chrome.js), so
-  // ticking a box doesn't close the dropdown.
-  DairyMap.prototype.bindSizeCheckboxes = function () {
-    var self = this;
-    Array.prototype.forEach.call(this.shell.controls('[data-size]'), function (input) {
-      if (input.getAttribute('data-bound')) return;
-      input.setAttribute('data-bound', '1');
-      input.addEventListener('change', function () { self.onSizeChange(); });
-    });
-  };
-
   DairyMap.prototype.onDropdownOpen = function () {
     this.shell.closePopup();
   };
 
   // The map's state on `params` (a URLSearchParams), defaults left out: view
-  // `dairies`, measure `emissions` (written only in Counties), all three
-  // sizes, no digester choice, and the page's own basemap style.
+  // `dairies`, measure `emissions` (written only in Counties), and the page's
+  // own basemap style. The size and digester filters are the filter box's:
+  // they come in with the page (readState) and the URL keeps them as is.
   DairyMap.prototype.writeState = function (params) {
     var counties = this.view === 'counties';
     if (counties) params.set('view', 'counties'); else params.delete('view');
     if (counties && this.measure !== DEFAULT_MEASURE) params.set('measure', this.measure); else params.delete('measure');
-    if (this.sizes.length === SIZE_VALUES.length) params.delete('sizes'); else params.set('sizes', this.sizes.join(','));
-    if (this.digester) params.set('digester', this.digester); else params.delete('digester');
     // The Options menu's Tiles experiment (shell.bindTiles); not page scope,
     // so it's written regardless of view.
     if (this.shell.tileStyle && this.shell.tileStyle !== this.defaultTileStyle) params.set('tiles', this.shell.tileStyle); else params.delete('tiles');
@@ -811,41 +785,6 @@
     }
     this.syncUrl();
     this.showCounties();
-  };
-
-  // The size checkboxes changed: read what's ticked (canonical order),
-  // update the button and its `is-set`, re-filter the layer, and clear a
-  // hovered dairy the new filter drops (its ring wouldn't draw anyway --
-  // this also drops the stale feature-state so a re-hover starts clean).
-  DairyMap.prototype.onSizeChange = function () {
-    var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.dairy-map-sizes');
-    var checked = dropdown ? Array.prototype.filter.call(dropdown.querySelectorAll('[data-size]'), function (input) { return input.checked; }) : [];
-    this.sizes = SIZE_VALUES.filter(function (value) {
-      return checked.some(function (input) { return input.getAttribute('data-size') === value; });
-    });
-    if (dropdown) {
-      dropdown.classList.toggle('is-set', this.sizes.length !== SIZE_VALUES.length);
-      setToolbarLabel(dropdown, sizesLabel(this.sizes));
-    }
-    this.dairyHover.clear();
-    this.applyFilters();
-    this.syncUrl();
-    this.shell.updateLegend();
-  };
-
-  DairyMap.prototype.setDigester = function (digester, label) {
-    this.digester = digester === 'yes' || digester === 'no' ? digester : '';
-    var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.dairy-map-digester');
-    if (dropdown) {
-      dropdown.classList.toggle('is-set', !!this.digester);
-      if (label) setToolbarLabel(dropdown, label);
-      Array.prototype.forEach.call(dropdown.querySelectorAll('[data-digester]'), function (item) {
-        item.classList.toggle('is-active', item.getAttribute('data-digester') === (digester || ''));
-      });
-    }
-    this.dairyHover.clear();
-    this.applyFilters();
-    this.syncUrl();
   };
 
   // A swap brought a new page. Only the table changed (a sort, a page, a

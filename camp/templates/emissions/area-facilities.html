@@ -4,8 +4,8 @@
 {% comment %}
 An area's Facilities tab (views.RegionFacilities / NearMeFacilities) in the
 shared tab skeleton (regions/area-tab.html): how many facilities and how many are
-tracked by EPA, the facility map, the facility list's filters, count and
-sortable table with its CSV (the area fixed by the page), and on a county the
+tracked by EPA, the facility map with the list's filters beside it, the
+count and sortable table with its CSV (the area fixed by the page), and on a county the
 largest greenhouse-gas reporters.
 {% endcomment %}
 
@@ -24,44 +24,47 @@ largest greenhouse-gas reporters.
 
 {% block tab-map %}{% include 'emissions/includes/facility-map.html' %}{% endblock %}
 
-{% block tab-table %}
-{# The table's filters sit on it, not beside the map: they narrow the table and its map, and nothing in the side column leaves the map a short strip. #}
-<form class="table-filters box" method="get" hx-trigger="submit, change delay:250ms">
+{% block tab-filters %}
+{# Beside the map, as on the Dairies tab and the pesticides maps: the filters narrow the map and the table under it. #}
+<div class="explorer-filters box">
+<div class="field">
+    <label class="label" for="facility-q">Search</label>
+    <div class="control has-icons-left">
+        <input class="input" type="search" id="facility-q" name="q" value="{{ filters.q|default:'' }}" placeholder="Facility name"
+            hx-get="{{ request.path }}" hx-include="#facility-filters" form="facility-filters" hx-trigger="keyup changed delay:500ms, search">
+        <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
+    </div>
+</div>
+{% if find_field %}{% include 'regions/includes/find-field.html' %}{% endif %}
+<form method="get" id="facility-filters" hx-trigger="submit, change delay:250ms">
     {% for key, value in point_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
     {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
     <input type="hidden" name="sort" value="{{ sort }}">
-    <div class="columns is-variable is-3 is-multiline">
-        <div class="column is-12-tablet is-4-desktop field">
-            <label class="label" for="facility-q">Search</label>
-            <div class="control has-icons-left">
-                <input class="input" type="search" id="facility-q" name="q" value="{{ filters.q|default:'' }}" placeholder="Facility name"
-                    hx-get="{{ request.path }}" hx-include="closest form" hx-trigger="keyup changed delay:500ms, search">
-                <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
-            </div>
-        </div>
-        <div class="column is-6-tablet is-4-desktop field">
-            <label class="label" for="facility-sector">Sector</label>
-            <div class="control"><div class="select is-fullwidth"><select id="facility-sector" name="sector">
-                <option value="">All sectors</option>
-                {% for value, label in sector_options %}<option value="{{ value }}"{% if filters.sector == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
-            </select></div></div>
-        </div>
-        <div class="column is-6-tablet is-4-desktop field">
-            <label class="label" for="facility-compliance">EPA compliance
-                <a class="note-help has-tooltip-multiline has-tooltip-arrow" href="{% url 'emissions:about' %}#compliance" data-tooltip="EPA tracks about 660 of the largest sources. What this covers." aria-label="What EPA compliance covers"><span class="fa-regular fa-fw fa-circle-question" aria-hidden="true"></span></a>
-            </label>
-            <div class="control"><div class="select is-fullwidth"><select id="facility-compliance" name="compliance">
-                {% for value, label in compliance_options %}<option value="{{ value }}"{% if filters.compliance == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
-            </select></div></div>
-        </div>
+    <div class="field">
+        <label class="label" for="facility-sector">Sector</label>
+        <div class="control"><div class="select is-fullwidth"><select id="facility-sector" name="sector">
+            <option value="">All sectors</option>
+            {% for value, label in sector_options %}<option value="{{ value }}"{% if filters.sector == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></div></div>
     </div>
+    <div class="field">
+        <label class="label" for="facility-compliance">EPA compliance</label>
+        <div class="control"><div class="select is-fullwidth"><select id="facility-compliance" name="compliance">
+            {% for value, label in compliance_options %}<option value="{{ value }}"{% if filters.compliance == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></div></div>
+        <p class="help">About 660 large sources; <a href="{% url 'emissions:about' %}#compliance">what this covers</a>.</p>
+    </div>
+    {# Every field applies itself as it changes; there's nothing to Apply. #}
+    {% if filters.q or filters.sector or filters.compliance %}<p class="filters-clear"><a href="{{ clear_filters_url }}">Clear filters</a></p>{% endif %}
 </form>
+</div>
+{% endblock %}
 
-{# How many match, and the same rows as a CSV, where the eye lands before the table. Every field applies itself as it changes; there's nothing to Apply. #}
+{% block tab-table %}
+{# How many match, and the same rows as a CSV, where the eye lands before the table. #}
 <div class="table-toolbar">
     <p class="table-count">
         {% if page_obj.paginator.count %}Showing {{ page_obj.start_index|intcomma }}&ndash;{{ page_obj.end_index|intcomma }} of {{ page_obj.paginator.count|intcomma }} facilit{{ page_obj.paginator.count|pluralize:"y,ies" }}{% else %}No facilities match{% endif %}
-        {% if filters.q or filters.sector or filters.compliance %}&middot; <a class="filters-clear" href="{{ clear_filters_url }}">Clear filters</a>{% endif %}
     </p>
     {% if page_obj.paginator.count %}<a class="button is-small" href="{% qs_replace format='csv' page=None %}" hx-boost="false" download><span class="icon"><span class="fa-regular fa-fw fa-download" aria-hidden="true"></span></span><span>Download CSV</span></a>{% endif %}
 </div>

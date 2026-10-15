@@ -289,9 +289,13 @@ class MapTests(ViewTestCase):
         assert 'class="facility-map map-canvas"' in content
         assert 'data-mode="full"' in content
         assert '/api/2.0/emissions/facilities/geojson/' in content
-        assert 'class="dropdown-item is-active" data-sector="glass"' in content
-        assert '<span class="map-toolbar-label">Glass manufacturing</span>' in content
-        # The core's chrome: the sector filter, expand button and legend card.
+        # Which facilities is the filter box's: search, Search by location, then the sector.
+        box = content[content.index('class="explorer-filters box"'):content.index('</form>', content.index('class="explorer-filters box"'))]
+        assert box.index('id="map-q"') < box.index('Search by location') < box.index('id="map-sector"')
+        assert '<option value="glass" selected>' in box
+        assert 'sector=glass' in content  # the map's data query
+        assert 'data-sector=' not in content  # no sector dropdown in the toolbar
+        # The core's chrome: the toolbar, expand button and legend card.
         assert 'class="map-toolbar-filters"' in content
         assert 'class="button map-expand"' in content
         assert 'map-legend-panel' in content
@@ -299,6 +303,10 @@ class MapTests(ViewTestCase):
         # The options dropdown is named as on the pesticides maps.
         assert '<span class="map-toolbar-label">Tweaks</span>' in content
         assert 'fa-flask-gear' in content
+
+    def test_map_page_search_narrows_the_facilities(self):
+        content = self.get('map', params={'q': 'cement'}).content.decode()
+        assert 'q=cement' in content and 'value="cement"' in content
 
     def test_map_page_has_the_areas_controls(self):
         content = self.get('map', params={'view': 'areas', 'level': 'tract'}).content.decode()

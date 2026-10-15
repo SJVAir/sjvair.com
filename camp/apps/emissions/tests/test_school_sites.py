@@ -141,6 +141,16 @@ class LocationsMapTests(SchoolSitesTestCase):
         sites = {row[4]: row for row in body['sites']}
         assert body['types'][sites['QUARTER CARE'][3]] == 'child_care' and len(sites['CLOSE ELEMENTARY']) == 5
 
+    def test_the_main_map_opens_on_a_scope_county(self):
+        from django.urls import reverse
+        from camp.apps.emissions.tests.test_views import map_data
+        content = self.client.get(reverse('emissions:map'), {'county': 'fresno'}).content.decode()
+        assert map_data(content, 'outline-url') == reverse('api:v2:regions:region-detail', args=[self.fresno.sqid])
+        assert map_data(content, 'bounds') == ','.join(f'{v:.4f}' for v in self.fresno.boundary.geometry.extent)
+        assert f'region={self.fresno.sqid}' in map_data(content, 'dairies-url')
+        valley = self.client.get(reverse('emissions:map')).content.decode()
+        assert map_data(valley, 'outline-url') == '' and 'region=' not in map_data(valley, 'dairies-url')
+
     def test_which_maps_are_locations_maps(self):
         from django.urls import reverse
         from camp.apps.emissions.tests.test_views import map_data

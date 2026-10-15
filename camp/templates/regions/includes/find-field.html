@@ -1,7 +1,8 @@
 {% comment %}
-"Search by location" as the first field of a top-level tab's filter box
-(Facilities, Dairies, Oil & gas): a place or an address takes you to that
-area's own tab for the same thing. The same container the find script
+"Search by location" in every explorer map's filter box (both explorers'
+maps and tabs), after the general search and before the tab's own filters:
+a place or an address takes you to that area's own page for the same thing
+(emissions.views.find_field_context, pesticides.views.find_field_context). The same container the find script
 (pesticides/find-area.js) binds to as find-area.html's box -- `.find-area`
 with its data-* and the four ids -- so nothing else changes. It sits beside
 the filter <form>, not in it: Enter in the search would otherwise submit the
