@@ -87,3 +87,50 @@ class FetchEntriesTests(TestCase):
             )
 
         assert mock_data.call_count == 2
+
+
+class ImportAirNowDataCommandTests(TestCase):
+    def _call(self, *args):
+        from datetime import datetime, timezone as dt_timezone
+        from io import StringIO
+        from django.core.management import call_command
+
+        with patch('camp.apps.monitors.airnow.management.commands.import_airnow_data.import_airnow_data') as task:
+            call_command('import_airnow_data', *args, stdout=StringIO())
+        return task.call_local
+
+    def test_no_options_keeps_default_window(self):
+        call_local = self._call()
+        call_local.assert_called_once_with(start_date=None, end_date=None)
+
+    def test_start_and_end_are_passed_through_as_utc(self):
+        from datetime import datetime, timezone as dt_timezone
+
+        call_local = self._call('--start', '2026-07-24', '--end', '2026-08-12T06:00')
+        call_local.assert_called_once_with(
+            start_date=datetime(2026, 7, 24, tzinfo=dt_timezone.utc),
+            end_date=datetime(2026, 8, 12, 6, tzinfo=dt_timezone.utc),
+        )
+
+    def test_offset_is_respected(self):
+        from datetime import datetime, timedelta, timezone as dt_timezone
+
+        call_local = self._call('--start', '2026-07-24T00:00-07:00')
+        start = call_local.call_args.kwargs['start_date']
+        assert start == datetime(2026, 7, 24, 7, tzinfo=dt_timezone.utc)
+        assert call_local.call_args.kwargs['end_date'] is None
+
+    def test_rejects_start_after_end(self):
+        import pytest
+        from django.core.management.base import CommandError
+
+        with pytest.raises(CommandError):
+            self._call('--start', '2026-08-12', '--end', '2026-07-24')
+
+    def test_rejects_invalid_timestamp(self):
+        import pytest
+        from django.core.management.base import CommandError
+
+        with pytest.raises(CommandError):
+            self._call('--start', 'yesterday')
+
