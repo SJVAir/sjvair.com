@@ -69,7 +69,7 @@ class AssignSectorsTests(TestCase):
         assert '1 facilities updated' in out.getvalue()
 
 
-class OilGasMethaneListTests(TestCase):
+class OilGasMethaneLinkTests(TestCase):
     fixtures = ['regions.yaml', 'emissions.yaml']
 
     def setUp(self):
@@ -81,16 +81,16 @@ class OilGasMethaneListTests(TestCase):
         Facility.objects.filter(name='TEST GAS STATION').update(point_source=Facility.PointSource.CARB, sector=Facility.Sector.OIL_GAS)
         carbonmapper.apply([row(name='og', lnglat=AT_GAS_STATION, sector='1B2', rate='500', unc='150')])
 
-    def test_the_oil_gas_tab_lists_sources(self):
-        # The list moved from the sector page to the top-level Oil & gas tab.
+    def test_the_oil_gas_tab_links_its_sources(self):
+        # The list moved to the Methane tab; Oil & gas counts them and links there.
         from camp.apps.emissions.tests.test_wells import make_well
         from camp.apps.regions.models import Region
         make_well('0402900001', (-119.02, 35.37), Region.objects.get(type=Region.Type.COUNTY, slug='kern'))
         content = self.client.get(reverse('emissions:oil-gas')).content.decode()
-        assert 'Methane sources observed at oil &amp; gas sites' in content
-        listing = content[content.index('id="methane"'):]
-        listing = listing[:listing.index('</table>')]
-        assert '500 ± 150 kg/h' in listing and 'Kern' in listing
-        # Shown by its own location, not tied to the station beside it.
-        assert '35.3730, -119.0180' in listing and 'TEST GAS STATION' not in listing
-        assert 'Methane sources observed' not in self.client.get(reverse('emissions:sector-detail', args=['oil-gas'])).content.decode()
+        line = content[content.index('id="methane"'):content.index('</p>', content.index('id="methane"'))]
+        assert 'href="/tools/emissions/methane/?sector=oil-gas">1 oil &amp; gas methane source' in line
+        assert 'TEST GAS STATION' not in line and '<table' not in line
+        # Shown on the Methane tab by its own location, not tied to the station beside it.
+        table = self.client.get(reverse('emissions:methane-table'), {'sector': 'oil-gas'}).content.decode()
+        assert '500 ± 150 kg/h' in table and '35.3730, -119.0180' in table and 'TEST GAS STATION' not in table
+        assert 'id="methane"' not in self.client.get(reverse('emissions:sector-detail', args=['oil-gas'])).content.decode()

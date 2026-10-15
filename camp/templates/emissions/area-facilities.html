@@ -3,18 +3,26 @@
 {% load humanize pesticides_explorer emissions_explorer %}
 {% comment %}
 An area's Facilities tab (views.RegionFacilities / NearMeFacilities) in the
-shared tab skeleton (regions/area-tab.html): how many facilities and how many are
-tracked by EPA, the facility map with the list's filters beside it, the
-count and sortable table with its CSV (the area fixed by the page), and on a county the
-largest greenhouse-gas reporters.
+shared tab skeleton (regions/area-tab.html), in two views with the same
+filters. Summary: how many facilities and how many are tracked by EPA, the
+facility map with the filters beside it, the largest facilities and the
+total by sector, all under the filters; on a county, the largest
+greenhouse-gas reporters. Table: the count and sortable table with its CSV
+(the area fixed by the page).
 {% endcomment %}
 
 {% block tab-stats %}
 <div class="level is-mobile stat-row box is-grid-mobile" id="facilities">
+    {% if filtered_totals %}
+    {# Under the filters: what matches, and nothing compared with the unfiltered whole. #}
+    <div class="level-item has-text-centered"><div><p class="heading">Matching facilities in {{ year }}</p><p class="title">{{ filtered_totals.facilities|intcomma }}</p><p class="stat-note">{{ filtered_totals.reporting|intcomma }} reported {{ pollutant.label }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">{% if pollutant.weighted %}Their share of the Valley's {{ pollutant.label|lower }} toxics{% else %}Their {{ pollutant.name }}{% endif %}</p><p class="title">{{ filtered_totals.total|amount:pollutant }}{% if not pollutant.weighted %} <span class="is-size-5">{{ pollutant.unit_label }}</span>{% endif %}</p><p class="stat-note">of {{ total|amount:pollutant }}{% if not pollutant.weighted %} {{ pollutant.unit_label }}{% endif %} from every facility here</p></div></div>
+    {% else %}
     <div class="level-item has-text-centered"><div><p class="heading">Facilities in {{ year }}</p><p class="title">{{ totals.facilities|intcomma }}</p><p class="stat-note">{{ reporting|intcomma }} reported {{ pollutant.label }}</p></div></div>
     <div class="level-item has-text-centered"><div><p class="heading">{% if pollutant.weighted %}Share of the Valley's {{ pollutant.label|lower }} toxics{% else %}{{ pollutant.name }}{% endif %}</p><p class="title">{{ total|amount:pollutant }}{% if not pollutant.weighted %} <span class="is-size-5">{{ pollutant.unit_label }}</span>{% endif %}</p><p class="stat-note">{{ by_year|year_change:year }}</p></div></div>
     {% if county_share is not None and county_region != area.region %}
     <div class="level-item has-text-centered"><div><p class="heading">Share of {{ county_region.name }}</p><p class="title">{{ county_share|percent }}</p><p class="stat-note">of its facilities' {{ pollutant.label }}</p></div></div>
+    {% endif %}
     {% endif %}
     {% if compliance_line %}
     <div class="level-item has-text-centered"><div><p class="heading">Tracked by EPA</p><p class="title">{{ compliance_line.tracked|intcomma }}</p><p class="stat-note"><a href="{{ compliance_line.url }}">{{ compliance_line.unaddressed|intcomma }} with an unaddressed violation</a></p></div></div>
@@ -25,7 +33,7 @@ largest greenhouse-gas reporters.
 {% block tab-map %}{% include 'emissions/includes/facility-map.html' %}{% endblock %}
 
 {% block tab-filters %}
-{# Beside the map, as on the Dairies tab and the pesticides maps: the filters narrow the map and the table under it. #}
+{# Beside the map on the Summary and the table on the Table: the same filters narrow both. #}
 <div class="explorer-filters box">
 <div class="field">
     <label class="label" for="facility-q">Search</label>
@@ -72,7 +80,13 @@ largest greenhouse-gas reporters.
 {% include 'pesticides/includes/pagination.html' %}
 {% endblock %}
 
-{# No trend or sectors here: the Overview (and the Valley's home page) has both, and neither follows the table's filters. #}
+{% block tab-charts %}
+{# The largest facilities and the total by sector, under the filters; the trend stays on the Overview, which has no filters. #}
+<div class="columns mt-5">
+    <div class="column is-half-tablet">{% for v in subviews %}{% if v.key == 'table' %}{% include 'emissions/includes/rank-card.html' with title='Largest facilities' rows=facility_card view_all_url=v.url %}{% endif %}{% endfor %}</div>
+    {% if sector_card %}<div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='By sector' rows=sector_card view_all_url=None %}</div>{% endif %}
+</div>
+{% endblock %}
 
 {% block tab-related %}
 {% if ghg_table.rows %}{% include 'emissions/includes/ghg-table.html' %}{% endif %}

@@ -8,7 +8,9 @@ above it; the table the page's full width under them; then the charts, the
 tab's related sections, and its notes. A tab fills the blocks it has; with
 nothing beside the map the side column hides itself (area-pages.sass) and
 the map takes the row. `tab-body` wraps the lot, for a tab with nothing to
-show to replace in one go.
+show to replace in one go. A data tab split in two (`subview`, with its
+`subviews` switch under the tab row) shows on its Summary everything but the
+table, and on its Table only the filters beside the table and the notes.
 
 Context: `explorer_base` (the explorer's base template), `area_crumbs`
 [{label, url}] for the breadcrumb before the tab, `tab_label`, and what
@@ -21,19 +23,27 @@ in the <title>, for an explorer that tells same-named places apart there.
 
 {% block explorer-content %}
 {% include 'regions/includes/area-header.html' %}
+{# A top-level tab (no area tab row to carry the toggle) has the switch as its own row of tabs. #}
+{% if subviews and tabs|length < 2 %}{% include 'regions/includes/subview-tabs.html' %}{% endif %}
 {% block tab-body %}
 {% block tab-notices %}{% endblock %}
-<div class="tab-stats">{% block tab-stats %}{% endblock %}</div>
+{% if subview != 'table' %}<div class="tab-stats">{% block tab-stats %}{% endblock %}</div>{% endif %}
+{# Each block once: on a Table the filters' row holds the table where the map would be; elsewhere the table follows the row (none on a Summary). #}
 <div class="columns tab-filters-row">
 <div class="column is-3-desktop tab-side">{% block tab-filters %}{% endblock %}{% block tab-aside %}{% endblock %}</div>
-<div class="column tab-map">
+{% if subview == 'table' %}<div class="column tab-table">{% else %}<div class="column tab-map">
 {% if active_filters %}<div class="tags">{% for f in active_filters %}<span class="tag is-info is-light is-medium">{{ f.label }} <a class="delete is-small ml-1" href="{{ f.clear_url }}" aria-label="Remove filter"></a></span>{% endfor %}</div>{% endif %}
 {% block tab-map %}{% endblock %}
 </div>
 </div>
-<div class="tab-table mt-4">{% block tab-table %}{% endblock %}</div>
+<div class="tab-table mt-4">{% endif %}
+{% if subview != 'summary' %}{% block tab-table %}{% endblock %}{% endif %}
+</div>
+{% if subview == 'table' %}</div>{% endif %}
+{% if subview != 'table' %}
 <div class="tab-charts">{% block tab-charts %}{% endblock %}</div>
 {% block tab-related %}{% endblock %}
+{% endif %}
 {% block tab-notes %}{% endblock %}
 {% endblock %}
 {% block tab-after %}{% endblock %}

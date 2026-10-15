@@ -8,7 +8,7 @@ header (facilities-header.html) in place of an area's.
 {% block breadcrumb-list %}<li class="is-active"><a aria-current="page">Facilities</a></li>{% endblock %}
 
 {% block explorer-content %}
-{% include 'emissions/includes/facilities-header.html' with heading='Facilities' current='facilities' %}
+{% include 'emissions/includes/facilities-header.html' with heading='Facilities' %}
 {% block tab-body %}{{ block.super }}{% endblock %}
 {% block tab-after %}{{ block.super }}{% endblock %}
 {% endblock %}

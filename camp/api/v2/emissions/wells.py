@@ -14,7 +14,7 @@ from .mapareas import get_shape
 logger = logging.getLogger(__name__)
 STATUSES = [Well.Status.ACTIVE.value, Well.Status.IDLE.value, Well.Status.NEW.value]
 # The table filters the cached responses are keyed by (bounded values only).
-CACHED_FILTERS = {'status', 'hpz'}
+CACHED_FILTERS = wells.CACHED_PARAMS
 
 
 class WellGeoJSON(generics.Endpoint):
@@ -45,7 +45,7 @@ class WellGeoJSON(generics.Endpoint):
             # rejects spaces and long keys, and every spelling would be its own entry.
             # Narrowed that far, the query is quick uncached.
             return HttpResponse(self.payload(shape, filters), content_type='application/json')
-        # Status and HPZ are a handful of fixed values: cached per area as the unfiltered list is.
+        # Status, type and HPZ are a handful of fixed values: cached per area as the unfiltered list is.
         key = wells.key('geojson', area_key, *(f'{name}={value}' for name, value in sorted(params.items())))
         packed = cache.get(key)
         if packed is None:
@@ -79,7 +79,7 @@ class WellGeoJSON(generics.Endpoint):
 class WellAreas(generics.Endpoint):
     """
     Wells per area for the Oil & gas map's Areas view: ?level= (county,
-    zipcode, tract; required) and the table's filters (status, hpz, q,
+    zipcode, tract; required) and the table's filters (status, type, hpz, q,
     operator, field). `{"level", "unit": "wells", "areas": [{id, wells,
     active, hpz, per_sq_mi, hpz_share}]}`, only areas with a well; shapes
     come from /api/2.0/regions/geojson/?type=<level>&simplify=1, joined on

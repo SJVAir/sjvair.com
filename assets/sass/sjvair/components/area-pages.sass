@@ -13,17 +13,60 @@
     flex-wrap: wrap
     align-items: center
     gap: 0.5rem 1rem
-  .area-switch
+  // The other layer's switch and the other explorer's link, at the title line's right.
+  .area-title-links
     margin-left: auto
     align-self: center
-    text-decoration: none
+    display: flex
+    flex-wrap: wrap
+    gap: 0.5rem
+    &:empty
+      display: none
+    .button
+      text-decoration: none
+// The tab row, with a data tab's Summary | Table toggle at its right end
+// (subview-toggle.html) on the same underline; on a phone the toggle drops
+// under the row (which scrolls sideways) rather than scrolling off with it.
+.area-tabs-row
+  display: flex
+  flex-wrap: wrap
+  align-items: stretch
+  margin-bottom: 1.5rem
+  .area-tabs
+    flex: 1 1 auto
+    min-width: 0
+    margin-bottom: 0 !important
+  .subview-toggle
+    display: flex
+    align-items: center
+    padding-left: 1rem
+    border-bottom: 1px solid $border
+    .buttons
+      margin-bottom: 0
+      flex-wrap: nowrap
+    .button
+      margin-bottom: 0
+  @media screen and (max-width: $tablet - 1px)
+    .subview-toggle
+      flex-basis: 100%
+      padding: 0.5rem 0 0
+      border-bottom: none
 .area-tabs
   margin-bottom: 1.5rem
   a
     font-weight: 600
-  // The same place in another explorer, at the row's right end.
-  .is-cross-link
-    margin-left: auto
+
+// A data tab's Summary | Table switch (subview-tabs.html): the tab row's
+// style, a size down, its icons in the link colour.
+.subview-tabs
+  margin-bottom: 1.5rem
+  font-size: $size-6
+  a
+    font-weight: 600
+  .icon
+    color: $grey
+  .is-active .icon
+    color: $link
 
 // A gap between a data tab's stat row and its map.
 .tab-stats > :last-child

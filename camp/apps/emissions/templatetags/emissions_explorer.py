@@ -387,7 +387,7 @@ def context_share_chart(points, pollutant, year=None, heading=None, height=None)
 @register.inclusion_tag('pesticides/includes/trend-chart.html')
 def well_spud_chart(points, total=None, heading=None):
     """
-    Today's wells by the year drilling began (wells.spud_by_year), a line of
+    Current wells by the year drilling began (wells.spud_by_year), a line of
     whole counts: the one history CalGEM's snapshot carries. Nothing without one.
     """
     rows = sorted(points, key=lambda row: row['year'])
@@ -409,7 +409,7 @@ def well_spud_chart(points, total=None, heading=None):
         },
         'has_data': any(row['value'] for row in rows),
         'heading': heading,
-        'title': "Today's wells by the year drilling began",
+        'title': 'Current wells by the year drilling began',
         'sentence': '',
         'note': note,
         'first_year': years[0] if years else None,

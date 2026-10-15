@@ -467,14 +467,14 @@ class PesticidesLinkTests(TestCase):
     def test_region_tabs_link_their_pesticides_page(self):
         fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
         content = self.client.get(fresno.get_emissions_url()).content.decode()
-        assert f'class="is-cross-link"><a href="{fresno.get_pesticides_url()}"' in content
+        assert f'area-cross-link" href="{fresno.get_pesticides_url()}"' in content
         # A tab with no pesticides counterpart opens its Overview.
         content = self.client.get(fresno.get_emissions_tab_url('facilities')).content.decode()
-        assert f'class="is-cross-link"><a href="{fresno.get_pesticides_url()}"' in content
+        assert f'area-cross-link" href="{fresno.get_pesticides_url()}"' in content
 
     def test_a_tract_has_none(self):
         tract = make(Region.Type.TRACT, 'T1', AROUND_PLANT)
-        assert 'is-cross-link' not in self.client.get(tract.get_emissions_url()).content.decode()
+        assert 'area-cross-link' not in self.client.get(tract.get_emissions_url()).content.decode()
 
     def test_near_me_keeps_the_point(self):
         content = self.client.get(reverse('emissions:near-me'), {'lat': '36.737', 'lng': '-119.787', 'radius': '3', 'label': 'Home'}).content.decode()

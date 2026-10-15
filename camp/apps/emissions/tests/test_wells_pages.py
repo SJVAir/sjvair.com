@@ -102,11 +102,52 @@ class WellsBlockTests(WellsPagesTestCase):
         content = self.get(self.fresno.get_emissions_tab_url('oil-gas'), {'year': '2024'})
         block = content[content.index('id="wells"'):]
         assert '2 active · 0 idle · 0 in a verified health-protection zone (3,200 ft of homes or schools)' in block
-        assert '<strong>1</strong> school or child-care center here has an active or idle well within 3,200 ft' in block
+        # A card: how many, the most wells first, View all on the area's Schools tab narrowed to sites near a well.
+        card = block[block.index('id="schools-near-wells"'):]
+        assert '<strong>1</strong> has an active or idle well within 3,200 ft.' in card
         # The name cell is the Schools tab's own (school-name-cell.html): the school's name, then its type/district line.
-        assert re.search(r'PLANT ELEMENTARY<span class="school-kind">Public school[^<]*</span></td><td class="cell-meta">Public school</td><td[^>]*data-unit="wells">2</td>', block)
+        assert re.search(r'PLANT ELEMENTARY<span class="school-kind">Public school[^<]*</span></td><td class="has-text-right">2</td>', card)
+        assert re.search(rf'href="{self.fresno.get_emissions_tab_url("schools")}\?[^"]*near=wells">View all', card)
+        near = self.get(self.fresno.get_emissions_tab_url('schools'), {'year': '2024', 'near': 'wells'})
+        assert '<option value="wells" selected>' in near and 'PLANT ELEMENTARY' in near
         assert 'Oil &amp; gas facilities reported' not in block  # the Kern sentence is Kern's
         assert 'href="/tools/emissions/about/#oil-gas"' in block
+
+    def test_the_type_filter_groups_calgems_types(self):
+        from django.db.models import Q
+        self.add_wells()
+        # Kern's two from add_wells: one Oil & Gas (OG), one Cyclic Steam (SC); an observation well besides.
+        from camp.apps.emissions.models import Well
+        Well.objects.filter(api='0402900001').update(well_type='OG')
+        Well.objects.filter(api='0402900002').update(well_type='SC', well_type_label='Cyclic Steam')
+        make_well('0402900003', (-119.02, 35.371), self.kern, well_type='OB', well_type_label='Observation')
+        kern = Well.objects.filter(county=self.kern)
+        assert set(kern.filter(wells.type_q(['producing'])).values_list('api', flat=True)) == {'0402900001'}
+        assert set(kern.filter(wells.type_q(['injecting'])).values_list('api', flat=True)) == {'0402900002'}
+        # Other is everything the first three don't list.
+        assert set(kern.filter(wells.type_q(['other'])).values_list('api', flat=True)) == {'0402900003'}
+        assert wells.table_filters(QueryDict('type=other&type=producing'))['types'] == ['producing', 'other']
+        assert wells.table_filters(QueryDict('type=' + '&type='.join(wells.TYPE_VALUES)))['types'] is None
+        url = self.kern.get_emissions_tab_url('oil-gas')
+        summary = self.get(url, {'type': 'injecting'})
+        assert '<p class="heading">Idle wells</p><p class="title">1</p>' in summary and '<p class="heading">Active wells</p><p class="title">0</p>' in summary
+        assert 'type=injecting' in map_data(summary, 'wells-url').replace('&amp;', '&')
+        assert summary.count('type="checkbox" name="type"') == 4 and 'name="type" value="producing">' in summary
+        table = self.get(url + 'table/', {'type': ['producing', 'other']})
+        assert 'Showing 1&ndash;2 of 2 wells' in table
+        api = self.client.get(reverse('api:v2:emissions:wells-geojson'), {'region': self.kern.sqid, 'type': 'injecting'}).json()
+        assert len(api['wells']) == 1
+
+    def test_one_child_care_centers_licenses_are_one_row(self):
+        from camp.apps.regions.models import Location
+        rows = [
+            {'name': 'CHILD LIFE', 'type': Location.Type.CHILD_CARE, 'lat': 35.41, 'lng': -118.965, 'wells': 29},
+            {'name': 'Child Life', 'type': Location.Type.CHILD_CARE, 'lat': 35.4005, 'lng': -118.965, 'wells': 3},  # ~1 km away
+            {'name': 'CHILD LIFE', 'type': Location.Type.CHILD_CARE, 'lat': 35.4103, 'lng': -118.9656, 'wells': 30},  # ~60 m
+            {'name': 'CHILD LIFE', 'type': Location.Type.PRIVATE_SCHOOL, 'lat': 35.41, 'lng': -118.965, 'wells': 29},
+        ]
+        merged = wells.merge_licenses(rows)
+        assert [(row['wells'], row['licenses']) for row in merged] == [(30, 2), (3, 1), (29, 1)]
 
     def test_the_snapshot_caveat_names_the_year(self):
         self.add_wells()
@@ -150,14 +191,15 @@ class OilGasTabTests(WellsPagesTestCase):
 
     def test_the_wells_table_filters_and_csv(self):
         self.add_wells()
-        url = self.fresno.get_emissions_tab_url('oil-gas')
+        url = self.fresno.get_emissions_tab_url('oil-gas') + 'table/'
         content = self.get(url, {'year': '2024'})
         table = content[content.index('well-table'):content.index('</table>', content.index('well-table'))]
         assert table.count('<tr>') == 3  # header + Fresno's two wells
-        # The filters beside the map; the count and CSV over the table; each well's CalGEM links in the last column.
-        assert content.index('class="explorer-filters box"') < content.index('facility-map map-canvas') < content.index('well-table')
+        # The Table: the filters beside it, no map; the count and CSV over it; each well's CalGEM links in the last column.
+        assert content.index('class="explorer-filters box"') < content.index('well-table') and 'map-canvas' not in content
         assert 'class="cell-links"' in table and 'Well/Well/Detail?api=' in table and 'target="_blank"' in table
         assert 'Showing 1&ndash;2 of 2 wells' in content and 'Download CSV' in content
+        assert 'Top operators' not in content and 'Drilled by year' not in content
         idle = self.get(url, {'year': '2024', 'status': 'Idle'})
         idle_table = idle[idle.index('well-table'):idle.index('</table>', idle.index('well-table'))]
         assert 'No wells match.' in idle_table
@@ -172,6 +214,24 @@ class OilGasTabTests(WellsPagesTestCase):
         assert response['Content-Type'] == 'text/csv'
         rows = response.content.decode().strip().splitlines()
         assert rows[0].startswith('api,lease,well_number,status') and len(rows) == 3
+
+    def test_summary_and_table_share_the_filters(self):
+        self.add_wells()
+        summary_url = self.kern.get_emissions_tab_url('oil-gas')
+        summary = self.get(summary_url, {'status': 'Idle', 'page': '2'})
+        # The Summary: the map and what sums it up, no table; the switch to the Table keeps the filters, not the page.
+        assert 'map-canvas' in summary and 'well-table' not in summary and 'Download CSV' not in summary
+        switch = summary[summary.index('subview-toggle'):summary.index('</nav>', summary.index('subview-toggle'))]
+        assert f'href="{summary_url}table/?status=Idle"' in switch and 'aria-current="page"><span class="icon is-small"><span class="fa-duotone fa-fw fa-chart-pie"' in switch
+        # Its stats and cards follow the filters: one idle well of Kern's two.
+        stats = summary[summary.index('wells-line'):summary.index('</div>\n    \n', summary.index('wells-line'))]
+        assert '<p class="heading">Idle wells</p><p class="title">1</p>' in stats and '<p class="heading">Active wells</p><p class="title">0</p>' in stats
+        assert 'No wells match these filters.' in self.get(summary_url, {'operator': 'NOBODY'})
+        table = self.get(summary_url + 'table/', {'status': 'Idle'})
+        assert f'href="{summary_url}?status=Idle"' in table and 'Search by location' in table
+        # Clearing the filters stays on the Table.
+        clear = table[table.index('filters-clear'):table.index('</p>', table.index('filters-clear'))]
+        assert f'href="{summary_url}table/' in clear
 
     def test_the_map_follows_the_table_filters(self):
         self.add_wells()
@@ -199,10 +259,11 @@ class OilGasTabTests(WellsPagesTestCase):
         self.add_wells()
         make_well('0401900011', NEAR_PLANT, self.fresno, operator_name='OTHER OIL CO', field_name='Other Field')
         content = self.get(self.fresno.get_emissions_tab_url('oil-gas'), {'year': '2024'})
+        # On the Summary, under the filters; each a link narrowing the page to it, the rest of the query kept.
         card = content[content.index('Top operators'):content.index('</table>', content.index('Top operators'))]
         # The most wells first, each linking the tab's table filtered to it.
         assert card.index('TEST OIL LLC') < card.index('OTHER OIL CO')
-        assert 'oil-gas/?operator=OTHER+OIL+CO"' in card
+        assert 'oil-gas/?year=2024&amp;operator=OTHER+OIL+CO"' in card
         assert '<td class="has-text-right">2</td>' in card
         fields = content[content.index('Top oil fields'):content.index('</table>', content.index('Top oil fields'))]
         assert 'field=Other+Field' in fields
@@ -245,17 +306,19 @@ class ValleyOilGasTabTests(WellsPagesTestCase):
     def test_the_valley_tab(self):
         self.add_wells()
         url = reverse('emissions:oil-gas')
-        content = self.get(url, {'year': '2024'})
+        content = self.get(url + 'table/', {'year': '2024'})
         # Every covered county's wells, the explorer tab marked current, and the scope bar's
-        # county picker into an area's own tab (no "Search by location" box).
+        # county picker into an area's own tab.
         table = content[content.index('well-table'):content.index('</table>', content.index('well-table'))]
         assert table.count('<tr>') == 5  # header + all four wells
         assert 'class="is-active"><a href="/tools/emissions/oil-gas/' in content.replace("is-active\"", 'is-active"')
         assert 'data-scope="county"' in content
         box = content[content.index('class="explorer-filters box"'):content.index('</form>', content.index('class="explorer-filters box"'))]
         assert box.index('id="well-q"') < box.index('Search by location') < box.index('name="status"')
-        assert self.kern.get_emissions_tab_url('oil-gas') in content
-        assert 'Top operators' in content and 'Schools and child care near wells' in content
+        # Search by location lands on a place's Table from here.
+        assert self.kern.get_emissions_tab_url('oil-gas') + 'table/' in content
+        summary = self.get(url, {'year': '2024'})
+        assert 'Top operators' in summary and 'Schools and child care near wells' in summary and 'well-table' not in summary
         response = self.client.get(url, {'format': 'csv'})
         assert response['Content-Type'] == 'text/csv' and len(response.content.decode().strip().splitlines()) == 5
 

@@ -77,13 +77,36 @@ def location_q(area):
     return Q(point__intersects=area.region.boundary.geometry)
 
 
-def area_summary(area):
+def area_wells(area, filters=None):
+    """The area's wells narrowed by the Oil & gas table's filters (table_filters, less sort), if any."""
+    return filter_wells(Well.objects.filter(well_q(area)), **{name: value for name, value in (filters or {}).items() if name != 'sort'})
+
+
+# The filters with a handful of fixed values, cached per value; free text runs uncached.
+CACHED_PARAMS = {'status', 'type', 'hpz'}
+
+
+def filtered_cache(name, area, filters, compute):
+    """
+    `compute()` cached per area and per the table's fixed-value filters
+    (status, type, hpz), as area_values is; free text (a name, an operator, a
+    field) runs uncached -- narrowed that far it's quick, and every spelling
+    would be its own entry.
+    """
+    params = filter_params(filters or {})
+    if params.keys() - CACHED_PARAMS:
+        return compute()
+    return cache.get_or_set(key(name, area.key, *(f'{param}={params[param]}' for param in sorted(params))), compute, stats.CACHE_TIMEOUT)
+
+
+def area_summary(area, filters=None):
     """
     Wells in the area by status, and how many CalGEM has verified as inside
     a health protection zone; None when there are none (the line is hidden).
+    `filters` (the table's) narrows it, for an Oil & gas Summary's stat row.
     """
     def compute():
-        row = Well.objects.filter(well_q(area)).aggregate(
+        row = area_wells(area, filters).aggregate(
             total=Count('pk'),
             active=Count('pk', filter=Q(status=Well.Status.ACTIVE)),
             idle=Count('pk', filter=Q(status=Well.Status.IDLE)),
@@ -91,7 +114,7 @@ def area_summary(area):
             hpz=Count('pk', filter=Q(in_hpz=Well.HPZ.VERIFIED)),
         )
         return row if row['total'] else None
-    return cache.get_or_set(key('area', area.key), compute, stats.CACHE_TIMEOUT)
+    return filtered_cache('area', area, filters, compute)
 
 
 def _bbox(point, miles):
@@ -128,13 +151,52 @@ def locations_near_wells():
     return cache.get_or_set(key('near-schools'), compute, stats.CACHE_TIMEOUT)
 
 
+# Child-care licenses at one place: the state licenses a day care center and a
+# school-age center (or an infant room and a preschool) separately, at the same
+# address under the same name. Within this many metres they're one place.
+SAME_PLACE_METERS = 150
+
+
+def merge_licenses(rows):
+    """
+    `rows` ({name, type, lat, lng, wells, ...}) with child-care licenses of
+    the same name within SAME_PLACE_METERS merged into one row: the most
+    wells any of them has, and `licenses`, how many it stands for (1 for
+    everything else). A school and a child-care center on one site stay two.
+    """
+    merged = []
+    for row in rows:
+        row = dict(row, licenses=1)
+        if row['type'] == Location.Type.CHILD_CARE:
+            name = row['name'].strip().casefold()
+            for kept in merged:
+                if kept['type'] == row['type'] and kept['name'].strip().casefold() == name and _meters(kept, row) <= SAME_PLACE_METERS:
+                    kept['licenses'] += 1
+                    kept['wells'] = max(kept['wells'], row['wells'])
+                    break
+            else:
+                merged.append(row)
+        else:
+            merged.append(row)
+    return merged
+
+
+def _meters(a, b):
+    """The distance between two rows' lat/lng, near enough for a few hundred metres (equirectangular)."""
+    dy = (a['lat'] - b['lat']) * MILES_PER_DEGREE
+    dx = (a['lng'] - b['lng']) * MILES_PER_DEGREE * math.cos(math.radians((a['lat'] + b['lat']) / 2))
+    return math.hypot(dx, dy) * 1609.344
+
+
 def schools_near_wells(area):
     """
     The area's schools and child-care centers with a well within 3,200 ft:
     how many, and the SCHOOL_TOP with the most wells (then by name), each
-    {sqid, name, display_name, type_label, run_by_name, run_by_url, wells} --
-    the same shape schools.area_sites() rows carry, so the table can share
-    the Schools tab's name-and-district cell (school-name-cell.html).
+    {sqid, name, display_name, type, type_label, run_by_name, run_by_url,
+    lat, lng, wells, licenses} -- the shape schools.area_sites() rows carry,
+    so the card can share the Schools tab's name-and-district cell
+    (school-name-cell.html). One child-care center's several licenses are
+    one row (merge_licenses).
     """
     from camp.apps.regions import schools as region_schools
 
@@ -146,7 +208,8 @@ def schools_near_wells(area):
         rows = [
             {
                 'sqid': place.sqid, 'name': place.name, 'display_name': region_schools.display_name(place, place.name),
-                'type_label': str(Location.SHORT_TYPES[place.type]),
+                'type': place.type, 'type_label': str(Location.SHORT_TYPES[place.type]),
+                'lat': place.point.y, 'lng': place.point.x,
                 'run_by_name': (place.metadata or {}).get('district_name') or '',
                 **region_schools.district_fields(place, districts, url_method='get_emissions_url'),
                 'wells': counts[place.pk],
@@ -154,9 +217,10 @@ def schools_near_wells(area):
             for place in Location.objects.filter(location_q(area), pk__in=list(counts))
             .select_related('school_district').order_by('name')
         ]
+        rows = merge_licenses(rows)
         rows.sort(key=lambda row: (-row['wells'], row['name']))
         return {'count': len(rows), 'top': rows[:SCHOOL_TOP]}
-    return cache.get_or_set(key('schools', area.key), compute, stats.CACHE_TIMEOUT)
+    return cache.get_or_set(key('schools-v2', area.key), compute, stats.CACHE_TIMEOUT)
 
 
 def kern_callout(year):
@@ -196,19 +260,49 @@ FILTER_OPTIONS = 40
 LEADERS = 10
 
 
+# The Type filter: CalGEM's 18 well types (well_type, its code) in four
+# groups by what a well does. `other` is every code the first three don't
+# list (observation, core and dry holes, water source, multi-purpose,
+# stratigraphic, unknown), so a new code lands somewhere.
+TYPE_GROUPS = (
+    ('producing', 'Producing oil or gas', ('OG', 'DG')),
+    ('injecting', 'Injecting to push oil out', ('SC', 'SF', 'WF', 'PM', 'AI')),
+    ('disposal', 'Disposal & gas storage', ('WD', 'GD', 'GS', 'INJ')),
+    ('other', 'Monitoring & other', None),
+)
+TYPE_VALUES = [value for value, label, codes in TYPE_GROUPS]
+TYPE_OPTIONS = [(value, label) for value, label, codes in TYPE_GROUPS]
+
+
+def _ticked(get, name, values):
+    """The `values` ticked under `name` (repeated, or the map URL's comma-joined form), in their order; None when all or none are."""
+    raw = get.getlist(name) if hasattr(get, 'getlist') else [get.get(name) or '']
+    chosen = {value for item in raw for value in item.split(',')}
+    ticked = [value for value in values if value in chosen]
+    return ticked if 0 < len(ticked) < len(values) else None
+
+
+def type_q(groups):
+    """The wells in the type `groups` (TYPE_GROUPS values)."""
+    listed = [code for value, label, codes in TYPE_GROUPS if codes for code in codes]
+    q = Q(pk__in=[])
+    for value, label, codes in TYPE_GROUPS:
+        if value in groups:
+            q |= Q(well_type__in=codes) if codes else ~Q(well_type__in=listed)
+    return q
+
+
 def table_filters(get):
     """
-    The wells table's filters from a query string, validated: q, status (a
-    list, from ticked boxes or the map URL's comma-joined form; None when
-    all or none are ticked), operator, field, hpz (a flag) and sort.
+    The wells table's filters from a query string, validated: q, status and
+    types (lists, from ticked boxes or the map URL's comma-joined form; None
+    when all or none are ticked), operator, field, hpz (a flag) and sort.
     """
-    raw = get.getlist('status') if hasattr(get, 'getlist') else [get.get('status') or '']
-    chosen = {value for item in raw for value in item.split(',')}
-    status = [value for value in Well.Status.values if value in chosen]
     sort = get.get('sort')
     return {
         'q': (get.get('q') or '').strip() or None,
-        'status': status if 0 < len(status) < len(Well.Status.values) else None,
+        'status': _ticked(get, 'status', Well.Status.values),
+        'types': _ticked(get, 'type', TYPE_VALUES),
         'operator': (get.get('operator') or '').strip() or None,
         'field': (get.get('field') or '').strip() or None,
         'hpz': get.get('hpz') == '1',
@@ -217,12 +311,14 @@ def table_filters(get):
     }
 
 
-def filter_wells(queryset, *, q=None, status=None, operator=None, field=None, hpz=False):
+def filter_wells(queryset, *, q=None, status=None, types=None, operator=None, field=None, hpz=False):
     """`queryset` narrowed by the Oil & gas table's filters (the table, its CSV and the map's wells)."""
     if q:
         queryset = queryset.filter(Q(lease_name__icontains=q) | Q(api__icontains=q))
     if status:
         queryset = queryset.filter(status__in=status)
+    if types:
+        queryset = queryset.filter(type_q(types))
     if operator:
         queryset = queryset.filter(operator_name=operator)
     if field:
@@ -237,14 +333,16 @@ def filter_params(filters):
     params = {key: filters[key] for key in ('q', 'operator', 'field') if filters.get(key)}
     if filters.get('status'):
         params['status'] = ','.join(filters['status'])
+    if filters.get('types'):
+        params['type'] = ','.join(filters['types'])
     if filters.get('hpz'):
         params['hpz'] = '1'
     return params
 
 
-def table(area, *, q=None, status=None, operator=None, field=None, hpz=False, sort='-spud'):
+def table(area, *, q=None, status=None, types=None, operator=None, field=None, hpz=False, sort='-spud'):
     """The area's wells, filtered and sorted, for the Oil & gas tab's table and CSV."""
-    queryset = filter_wells(Well.objects.filter(well_q(area)), q=q, status=status, operator=operator, field=field, hpz=hpz)
+    queryset = filter_wells(Well.objects.filter(well_q(area)), q=q, status=status, types=types, operator=operator, field=field, hpz=hpz)
     sort = sort if sort in TABLE_SORTS else '-spud'
     fields = SORT_FIELDS[sort.lstrip('-')]
     descending = sort.startswith('-')
@@ -266,46 +364,47 @@ def filter_options(area):
     return cache.get_or_set(key('options-az', area.key), compute, stats.CACHE_TIMEOUT)
 
 
-def leaders(area):
+def leaders(area, filters=None):
     """
     The area's operators and oil fields with the most wells, ten each and the
     most first: {'operators': [{'label', 'count'}], 'fields': [...]}, for the
-    Oil & gas tab's cards.
+    Oil & gas Summary's cards, under the table's `filters`.
     """
     def compute():
-        wells = Well.objects.filter(well_q(area))
+        wells = area_wells(area, filters)
         def ranked(name):
             rows = wells.exclude(**{name: ''}).values(name).annotate(n=Count('pk')).order_by('-n', name)[:LEADERS]
             return [{'label': row[name], 'count': row['n']} for row in rows]
         return {'operators': ranked('operator_name'), 'fields': ranked('field_name')}
-    return cache.get_or_set(key('leaders', area.key), compute, stats.CACHE_TIMEOUT)
+    return filtered_cache('leaders', area, filters, compute)
 
 
-def spud_by_year(area):
+def spud_by_year(area, filters=None):
     """
-    The area's current wells by the year they were spudded (drilling began):
-    [{'year', 'value'}]. CalGEM's list is today's snapshot, so this isn't a
-    history of wells in service -- wells plugged since aren't in it -- but the
-    spud year is the one date it carries for every well.
+    The area's current wells by the year they were spudded (drilling began),
+    under the table's `filters`: [{'year', 'value'}]. CalGEM's list is a
+    current snapshot, so this isn't a history of wells in service -- wells
+    plugged since aren't in it -- but the spud year is the one date it
+    carries for every well.
     """
     def compute():
         rows = (
-            Well.objects.filter(well_q(area), spud_date__isnull=False)
+            area_wells(area, filters).filter(spud_date__isnull=False)
             .annotate(year=ExtractYear('spud_date')).values('year').annotate(n=Count('pk')).order_by('year')
         )
         return [{'year': row['year'], 'value': row['n']} for row in rows]
-    return cache.get_or_set(key('spud', area.key), compute, stats.CACHE_TIMEOUT)
+    return filtered_cache('spud', area, filters, compute)
 
 
-def by_type(area):
-    """The area's wells by well type (oil & gas, water injection, steam flood ...), the most first: [{'label', 'count'}], top 6."""
+def by_type(area, filters=None):
+    """The area's wells by well type (oil & gas, water injection, steam flood ...) under the table's `filters`, the most first: [{'label', 'count'}], top 6."""
     def compute():
         rows = (
-            Well.objects.filter(well_q(area)).exclude(well_type_label='')
+            area_wells(area, filters).exclude(well_type_label='')
             .values('well_type_label').annotate(n=Count('pk')).order_by('-n')[:6]
         )
         return [{'label': row['well_type_label'], 'count': row['n']} for row in rows]
-    return cache.get_or_set(key('types', area.key), compute, stats.CACHE_TIMEOUT)
+    return filtered_cache('types', area, filters, compute)
 
 
 # The Oil & gas map's Areas view: what it can shade each area by, and the
@@ -324,12 +423,12 @@ class _Count(Subquery):
 def area_values(level, filters=None):
     """
     The wells per area of `level` (areas.LEVELS) for the Areas view, under
-    the table's filters (status, hpz; the free-text ones aren't cached):
+    the table's filters (status, type, hpz; the free-text ones aren't cached):
     {'level', 'unit': 'wells', 'areas': [{id, wells, active, hpz,
     per_sq_mi, hpz_share}]}, only areas with a well. Counties by the well's
     county; ZIP codes and tracts by the area its point falls in.
     """
-    filters = {key: value for key, value in (filters or {}).items() if key in ('q', 'status', 'operator', 'field', 'hpz') and value}
+    filters = {key: value for key, value in (filters or {}).items() if key in ('q', 'status', 'types', 'operator', 'field', 'hpz') and value}
 
     def compute():
         wells = filter_wells(Well.objects.all(), **filters)
@@ -361,7 +460,7 @@ def area_values(level, filters=None):
         result.sort(key=lambda area: area['id'])
         return {'level': level, 'unit': 'wells', 'areas': result}
 
-    if filters.keys() - {'status', 'hpz'}:
+    if filter_params(filters).keys() - CACHED_PARAMS:
         return compute()
     params = filter_params(filters)
     return cache.get_or_set(key('areas', level, *(f'{name}={params[name]}' for name in sorted(params))), compute, stats.CACHE_TIMEOUT)

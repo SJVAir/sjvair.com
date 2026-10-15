@@ -60,7 +60,11 @@ filtered, sorted, paged and downloadable, each with what's near it
     </div>
     {% endif %}
     <div class="field">
-        <label class="checkbox"><input type="checkbox" name="near" value="1"{% if filters.near %} checked{% endif %}> With a facility, well or dairy near</label>
+        <label class="label" for="site-near">Near</label>
+        <div class="control"><div class="select is-fullwidth"><select id="site-near" name="near">
+            <option value="">Anything or nothing</option>
+            {% for value, label in site_near_options %}<option value="{{ value }}"{% if filters.near == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></div></div>
     </div>
     {# Every field applies itself as it changes; there's nothing to Apply. #}
     {% if sites_filtered %}<p class="filters-clear"><a href="{{ clear_filters_url }}">Clear filters</a></p>{% endif %}

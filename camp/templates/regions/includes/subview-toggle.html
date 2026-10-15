@@ -1,0 +1,13 @@
+{% comment %}
+A data tab's Summary | Table switch on an area page (emissions.views.SUBVIEWS),
+a small toggle at the right end of the area's tab row (area-header.html), so
+the page has one row of tabs: the map and what sums it up, or the table with
+its CSV, the filters kept either way. A page without a tab row (an
+explorer's top-level tab) has subview-tabs.html under its header instead.
+`subviews` [{label, icon, url, current}].
+{% endcomment %}
+<nav class="subview-toggle" aria-label="View">
+    <div class="buttons has-addons are-small">
+        {% for v in subviews %}<a class="button{% if v.current %} is-selected is-link is-light{% endif %}" href="{{ v.url }}"{% if v.current %} aria-current="page"{% endif %}><span class="icon is-small"><span class="fa-duotone fa-fw {{ v.icon }}" aria-hidden="true"></span></span><span>{{ v.label }}</span></a>{% endfor %}
+    </div>
+</nav>

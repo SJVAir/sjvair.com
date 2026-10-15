@@ -1,14 +1,16 @@
 """
 The read side of Carbon Mapper's methane sources (carbonmapper.py writes
 them): the GeoJSON our maps draw, the plumes behind a source, the oil &
-gas list. No source is tied to a dairy or facility (see MethaneSource). Everything is cached a day under a generation number that
+gas counts and the Methane tab. No source is tied to a dairy or facility (see MethaneSource). Everything is cached a day under a generation number that
 import_carbon_mapper bumps (clear_caches), the dairies pattern. The data is
 Carbon Mapper's, under its non-commercial terms: every dict leaving this
 module that reaches a page carries MethaneSource.ATTRIBUTION.
 """
+import datetime
 import time
 
 from django.core.cache import cache
+from django.db.models import Max, Min, Q
 
 from camp.apps.emissions.models import MethanePlume, MethaneSource, SourceImport
 
@@ -148,14 +150,119 @@ def source_plumes(source):
     return cache.get_or_set(key('plumes', source.pk), compute, CACHE_TIMEOUT)
 
 
-def oil_gas_sources():
-    """Every oil & gas source (Carbon Mapper's sector), by county then rate."""
+# The Methane tab (views.MethanePage / RegionMethane / NearMeMethane): every
+# source in an area, narrowed by Carbon Mapper's sector groups, as a table and
+# a summary. A source is shown by its own location and Carbon Mapper's sector,
+# never tied to a facility, dairy, well or operator (see MethaneSource).
+
+# The sector filter's choices: MethaneSource.Group, in this order, as the page names them.
+GROUP_OPTIONS = (
+    (MethaneSource.Group.OIL_GAS, 'Oil & gas'),
+    (MethaneSource.Group.LIVESTOCK, 'Dairies & livestock'),
+    # The name MethaneSource.SECTORS gives both waste codes, so the filter and the rows agree.
+    (MethaneSource.Group.WASTE, 'Waste, water & recycling'),
+    (MethaneSource.Group.OTHER, 'Other'),
+)
+GROUP_VALUES = [value for value, label in GROUP_OPTIONS]
+TABLE_SORTS = ('rate', '-rate', 'sector', '-sector', 'county', '-county', 'seen', '-seen', 'last', '-last')
+DEFAULT_SORT = '-rate'
+
+
+def table_filters(get):
+    """
+    The Methane tab's filters from a query string, validated: `groups` (the
+    ticked sector groups, from repeated ?sector= or the map URL's
+    comma-joined form; None when all or none are ticked) and the table's sort.
+    """
+    raw = get.getlist('sector') if hasattr(get, 'getlist') else [get.get('sector') or '']
+    chosen = {value for item in raw for value in item.split(',')}
+    groups = [value for value in GROUP_VALUES if value in chosen]
+    sort = get.get('sort')
+    return {
+        'groups': groups if 0 < len(groups) < len(GROUP_VALUES) else None,
+        'sort': sort if sort in TABLE_SORTS else DEFAULT_SORT,
+    }
+
+
+def filter_params(filters):
+    """The filters that are set, as the map's GeoJSON URL carries them."""
+    return {'sector': ','.join(filters['groups'])} if filters.get('groups') else {}
+
+
+def area_q(area):
+    """The sources in an area (an areas.RegionArea, RadiusArea or ValleyArea), by point."""
+    from camp.apps.emissions import areas
+    if isinstance(area, areas.ValleyArea):
+        return Q()
+    if isinstance(area, areas.RadiusArea):
+        return area._within('point')
+    return Q(point__intersects=area.region.boundary.geometry)
+
+
+def has_sources(area):
+    """Whether the area has any CH4 source: its Methane tab shows only where it does."""
+    return enabled() and sources().filter(area_q(area)).exists()
+
+
+def plume_dates():
+    """{source pk: {'first', 'last'}}: the dates of each source's first and newest plume. Cached under the generation."""
     def compute():
-        codes = [code for code, (group, label) in MethaneSource.SECTORS.items() if group == MethaneSource.Group.OIL_GAS]
-        rows = []
-        for source in sources():
-            if any(source.ipcc_sector.startswith(code) for code in codes):
-                rows.append({'source': source, 'county': source.county})
-        rows.sort(key=lambda r: (r['county'].name, -(r['source'].emission_kg_h or 0), r['source'].source_name))
-        return rows
-    return cache.get_or_set(key('oil-gas'), compute, CACHE_TIMEOUT)
+        rows = (
+            MethanePlume.objects.filter(source__isnull=False).values('source')
+            .annotate(first=Min('observed_at'), last=Max('observed_at'))
+        )
+        return {row['source']: {'first': row['first'].date(), 'last': row['last'].date()} for row in rows}
+    return cache.get_or_set(key('plume-dates'), compute, CACHE_TIMEOUT)
+
+
+def area_rows(area, *, groups=None, sort=DEFAULT_SORT):
+    """
+    The area's sources in the sector `groups` (None for all), sorted
+    (TABLE_SORTS): [{'source', 'group', 'sector', 'county', 'first', 'last'}].
+    A few hundred Valley-wide, so filtered and sorted here.
+    """
+    dates = plume_dates()
+    rows = []
+    for source in sources().filter(area_q(area)):
+        group, sector = MethaneSource.sector_for(source.ipcc_sector)
+        if groups is not None and group not in groups:
+            continue
+        seen = dates.get(source.pk, {})
+        rows.append({'source': source, 'group': group, 'sector': sector, 'county': source.county,
+                     'first': seen.get('first'), 'last': seen.get('last')})
+    sort = sort if sort in TABLE_SORTS else DEFAULT_SORT
+    keys = {
+        'rate': lambda row: row['source'].emission_kg_h or 0,
+        'sector': lambda row: row['sector'],
+        'county': lambda row: row['county'].name,
+        'seen': lambda row: row['source'].detections,
+        'last': lambda row: row['last'] or datetime.date.min,
+    }
+    rows.sort(key=lambda row: row['source'].source_name)
+    rows.sort(key=keys[sort.lstrip('-')], reverse=sort.startswith('-'))
+    return rows
+
+
+def area_summary(rows):
+    """
+    A Methane Summary from area_rows(): how many sources, the passes that saw
+    a plume and the passes overhead, the newest plume's date, the sources by
+    sector group (the most first) and the five with the highest rate.
+    """
+    labels = dict(GROUP_OPTIONS)
+    counts = {}
+    for row in rows:
+        counts[row['group']] = counts.get(row['group'], 0) + 1
+    dated = [row['last'] for row in rows if row['last']]
+    rated = sorted((row for row in rows if row['source'].emission_kg_h is not None), key=lambda row: -row['source'].emission_kg_h)
+    return {
+        'sources': len(rows),
+        'detections': sum(row['source'].detections for row in rows),
+        'observations': sum(row['source'].observations for row in rows),
+        'last': max(dated) if dated else None,
+        'by_group': [
+            {'group': group, 'label': labels[group], 'count': counts[group]}
+            for group in GROUP_VALUES if counts.get(group)
+        ],
+        'largest': rated[:5],
+    }

@@ -72,6 +72,10 @@ body.emissions
     &.is-dairies
       --fa-primary-color: #b45309
       --fa-secondary-color: #fcd34d
+    // Methane (the Methane tabs): a plume's slate violet, the methane overlay's cool end.
+    &.is-methane
+      --fa-primary-color: #6d5bd0
+      --fa-secondary-color: #c4b5fd
   // The scope bar's two toggles, while off (on, they go white on the orange
   // fill): toxics in a warning red, minor sources in a fuel-pump gold.
   .explorer-scope-toggle:not(.is-set) .explorer-icon
@@ -434,21 +438,11 @@ body.emissions
         content: attr(data-label) ": "
         color: $grey
   // The Facilities tab's header (facilities-header.html): the title and its
-  // place line, with the By facility / By sector switch at its right; under
-  // it on a phone.
+  // place line, its Summary | Table | Sectors row close under it.
   .facilities-header
-    display: flex
-    flex-wrap: wrap
-    align-items: center
-    justify-content: space-between
-    gap: 0.75rem 1.5rem
-    margin-bottom: 1.5rem
+    margin-bottom: 0.75rem
     .area-header
       margin-bottom: 0 !important
-    .facility-view-switch
-      margin-bottom: 0
-      a
-        font-weight: 600
   // How many rows match, and the CSV, over the table.
   .table-toolbar
     display: flex

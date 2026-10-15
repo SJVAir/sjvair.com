@@ -1,7 +1,8 @@
 {% comment %}
-The Facilities tab's own header, on its two views (the facility list and the
-sector list): what the page is, where and when, and the switch between them
-at its right. `heading`, `current` ('facilities' or 'sectors'), `header_place`.
+The Facilities tab's own header, on the facility list's Summary and Table and
+the sector list: what the page is, where and when, then the row between them
+(views.facilities_subviews, in the area tabs' style). `heading`, `header_place`,
+`subviews`.
 {% endcomment %}
 <div class="facilities-header">
     {# The place header's one line (regions/includes/area-header.html): the title, its place beside it. #}
@@ -11,5 +12,5 @@ at its right. `heading`, `current` ('facilities' or 'sectors'), `header_place`.
         <p class="identifiers has-text-grey">{{ header_place }}{% if year %} &middot; {{ year }}{% endif %} &middot; {{ pollutant.label }}</p>
         </div>
     </div>
-    {% include 'emissions/includes/facility-view-switch.html' %}
 </div>
+{% include 'regions/includes/subview-tabs.html' %}

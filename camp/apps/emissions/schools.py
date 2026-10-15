@@ -195,15 +195,29 @@ def site_index():
     return cache.get_or_set(cache_key, compute, CACHE_TIMEOUT)
 
 
+# The Schools tab's "Near" choices: anything it counts, or an oil or gas well
+# alone (the Oil & gas tab's schools-near-wells card links here with it).
+NEAR_OPTIONS = (
+    ('1', 'A facility, well or dairy'),
+    ('wells', 'An oil or gas well (3,200 ft)'),
+)
+
+
 def site_filters(get):
-    """The Schools tab's filters from a query string, validated: q, type ('school' or 'child-care'), district (a sqid), near (a flag) and sort."""
+    """
+    The Schools tab's filters from a query string, validated: q, type
+    ('school' or 'child-care'), district (a sqid), near (NEAR_OPTIONS: '1'
+    for a facility, well or dairy, 'wells' for an oil or gas well; '' for
+    either way) and sort.
+    """
     kind = get.get('type')
     sort = get.get('sort')
+    near = get.get('near')
     return {
         'q': (get.get('q') or '').strip() or None,
         'type': kind if kind in SITE_TYPES else None,
         'district': (get.get('district') or '').strip() or None,
-        'near': get.get('near') == '1',
+        'near': near if near in dict(NEAR_OPTIONS) else '',
         'sort': sort if sort in SITE_SORTS else '-quarter',
     }
 
@@ -255,15 +269,17 @@ def area_sites(area, scope, **filters):
     return filter_sites(rows, **filters)
 
 
-def filter_sites(rows, *, q=None, type=None, district=None, near=False, sort='-quarter'):
-    """area_sites() rows narrowed (name, type, the district a site is filed under, anything near) and sorted."""
+def filter_sites(rows, *, q=None, type=None, district=None, near='', sort='-quarter'):
+    """area_sites() rows narrowed (name, type, the district a site is filed under, what's near: NEAR_OPTIONS) and sorted."""
     if q:
         rows = [row for row in rows if q.lower() in row['name'].lower()]
     if type:
         rows = [row for row in rows if row['type'] in SITE_TYPES[type]]
     if district:
         rows = [row for row in rows if row['district_sqid'] == district]
-    if near:
+    if near == 'wells':
+        rows = [row for row in rows if row['wells']]
+    elif near:
         rows = [row for row in rows if row['quarter'] or row['wells'] or row['dairies']]
     # By name within ties; a site with nothing to sort by (no reported value) goes last either way.
     field = sort.lstrip('-')

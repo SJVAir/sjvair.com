@@ -1,0 +1,144 @@
+{% extends 'regions/area-tab.html' %}
+{# emissions_explorer last: its percent and signed_pct (whole percents) win over the pesticides ones of the same name. #}
+{% load humanize pesticides_explorer emissions_explorer %}
+{% comment %}
+An area's Methane tab (views.RegionMethane / NearMeMethane) in the shared
+tab skeleton (regions/area-tab.html), in two views with the same filter,
+Carbon Mapper's sector groups. Summary: the sources, the passes that saw a
+plume and the newest one, with what the data is and isn't; the map of the
+sources and their newest plumes; the sources by sector and the five highest
+rates. Table: every source, sorted and paged. No download: Carbon Mapper's
+terms keep its data on our own pages. A source is shown by its own location
+and Carbon Mapper's sector, never tied to a facility, dairy, well or
+operator (see MethaneSource). The Valley's Methane tab (methane.html) is
+this page for every covered county.
+{% endcomment %}
+
+{% block tab-body %}
+{% if not methane_stamp %}
+<p class="has-text-grey">No methane data has been imported yet.</p>
+{% else %}{{ block.super }}{% endif %}
+{% endblock %}
+
+{% block tab-stats %}
+{% with s=methane_summary %}
+<div class="level is-mobile stat-row box is-grid-mobile">
+    <div class="level-item has-text-centered"><div><p class="heading">Methane sources</p><p class="title">{{ s.sources|intcomma }}</p><p class="stat-note">{% if filters.groups %}in the sectors ticked{% else %}seen by Carbon Mapper{% endif %}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Passes that saw a plume</p><p class="title">{{ s.detections|intcomma }}</p><p class="stat-note">of {{ s.observations|intcomma }} passes overhead</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Newest plume</p><p class="title">{% if s.last %}{{ s.last|date:"M Y" }}{% else %}&mdash;{% endif %}</p><p class="stat-note">data as of {{ methane_stamp.imported_at|date:"N j, Y" }}</p></div></div>
+</div>
+{% endwith %}
+<div class="notification is-warning is-light">
+    <p><strong>Snapshots, not annual totals.</strong> Each rate is Carbon Mapper's estimate from one aircraft or satellite pass, with wide uncertainty. A place with no source hasn't been shown to be clean: it may not have been flown over, or its plume was too faint to see. Sectors are Carbon Mapper's reading of the imagery; no source here is tied to a facility, dairy, well or operator.</p>
+</div>
+{% endblock %}
+
+{% block tab-map %}
+{% include 'emissions/includes/facility-map.html' %}
+<p class="is-size-7 mt-2">Each mark is a methane source, drawn with its newest plume. Click one for Carbon Mapper's rate estimate and its other passes. <a href="{% url 'emissions:about' %}#methane">About the methane data</a>.</p>
+{% endblock %}
+
+{% block tab-filters %}
+{# Beside the map on the Summary and the table on the Table: the same filter narrows both. No search: a source has no name, only a place. #}
+<div class="explorer-filters box">
+{% if find_field %}{% include 'regions/includes/find-field.html' %}{% endif %}
+<form method="get" id="methane-filters" hx-trigger="submit, change delay:250ms">
+    {% for key, value in point_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+    {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+    <input type="hidden" name="sort" value="{{ sort }}">
+    {# Ticked together they're every source; untick to leave a sector out. #}
+    <fieldset class="field">
+        <legend class="label">Sector</legend>
+        {% for value, label in group_options %}
+        <label class="checkbox is-block mb-1"><input type="checkbox" name="sector" value="{{ value }}"{% if not filters.groups or value in filters.groups %} checked{% endif %}> {{ label }}</label>
+        {% endfor %}
+        <p class="help">Carbon Mapper's sector, read from the imagery.</p>
+    </fieldset>
+    {# Every field applies itself as it changes; there's nothing to Apply. #}
+    {% if filters.groups %}<p class="filters-clear"><a href="{{ clear_filters_url }}">Clear filters</a></p>{% endif %}
+</form>
+</div>
+{% endblock %}
+
+{% block tab-table %}
+<div class="table-toolbar">
+    <p class="table-count">
+        {% if page_obj.paginator.count %}Showing {{ page_obj.start_index|intcomma }}&ndash;{{ page_obj.end_index|intcomma }} of {{ page_obj.paginator.count|intcomma }} source{{ page_obj.paginator.count|pluralize }}{% else %}No sources match{% endif %}
+    </p>
+    {# No CSV: Carbon Mapper's terms keep its data on our pages. #}
+    <a class="button is-small" href="https://data.carbonmapper.org" target="_blank" rel="noopener"><span>Carbon Mapper's data portal</span><span class="icon"><span class="fa-regular fa-fw fa-arrow-up-right-from-square" aria-hidden="true"></span></span></a>
+</div>
+<div class="table-container">
+<table class="table is-fullwidth is-hoverable is-narrow methane-table is-stacked-mobile">
+    <thead><tr>
+        <th {% aria_sort 'sector' %}>{% sort_link 'sector' 'Sector' %}</th>
+        {# A county's own page drops the County column. #}
+        {% if not area.region or area.region.type != 'county' %}<th {% aria_sort 'county' %}>{% sort_link 'county' 'County' %}</th>{% endif %}
+        <th class="has-text-right" {% aria_sort 'rate' %} title="Carbon Mapper's estimate, from its passes">{% sort_link 'rate' 'Rate' %}</th>
+        <th class="has-text-right" {% aria_sort 'seen' %}>{% sort_link 'seen' 'Passes with a plume' %}</th>
+        <th>First plume</th>
+        <th {% aria_sort 'last' %}>{% sort_link 'last' 'Newest plume' %}</th>
+        <th>Location</th>
+    </tr></thead>
+    <tbody>
+    {% for row in methane_rows %}
+    <tr>
+        <td class="cell-name">{{ row.sector }}</td>
+        {% if not area.region or area.region.type != 'county' %}<td class="cell-meta" data-label="County">{{ row.county.short_name }}</td>{% endif %}
+        <td class="has-text-right cell-value" data-label="Rate">{{ row.source.rate_text }}</td>
+        <td class="has-text-right" data-label="Passes with a plume">{{ row.source.detections|intcomma }} of {{ row.source.observations|intcomma }}</td>
+        <td class="cell-meta{% if not row.first %} is-none{% endif %}" data-label="First plume">{{ row.first|date:"M Y"|default:"—" }}</td>
+        <td class="cell-meta{% if not row.last %} is-none{% endif %}" data-label="Newest plume">{{ row.last|date:"M Y"|default:"—" }}</td>
+        <td class="cell-meta has-text-grey" data-label="Location">{{ row.source.point.y|floatformat:4 }}, {{ row.source.point.x|floatformat:4 }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="7">No sources match.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% include 'pesticides/includes/pagination.html' %}
+{% endblock %}
+
+{% block tab-charts %}
+{% with s=methane_summary %}
+{% if s.sources %}
+<div class="columns mt-5">
+    <div class="column is-half-tablet">
+        <div class="card related-card">
+            <header class="card-header"><p class="card-header-title">Sources by sector</p></header>
+            <div class="card-content">
+                <table class="table is-fullwidth is-narrow is-striped">
+                    <thead><tr><th class="rank"><span class="is-sr-only">Rank</span></th><th>Sector</th><th class="has-text-right">Sources</th></tr></thead>
+                    <tbody>{% for row in s.by_group %}<tr><td class="rank">{{ forloop.counter }}.</td><td><a href="{{ row.url }}">{{ row.label }}</a></td><td class="has-text-right">{{ row.count|intcomma }}</td></tr>{% endfor %}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="column is-half-tablet">
+        <div class="card related-card">
+            <header class="card-header"><p class="card-header-title">Highest estimated rates</p>{% for v in subviews %}{% if v.key == 'table' %}<a class="card-header-icon view-all" href="{{ v.url }}">View all</a>{% endif %}{% endfor %}</header>
+            <div class="card-content">
+                <table class="table is-fullwidth is-narrow is-striped">
+                    <thead><tr><th class="rank"><span class="is-sr-only">Rank</span></th><th>Sector</th><th class="has-text-right">Rate</th><th class="has-text-right">Newest plume</th></tr></thead>
+                    <tbody>{% for row in s.largest %}<tr><td class="rank">{{ forloop.counter }}.</td><td>{{ row.sector }}{% if not area.region or area.region.type != 'county' %} <span class="has-text-grey is-size-7">{{ row.county.short_name }}</span>{% endif %}</td><td class="has-text-right">{{ row.source.rate_text }}</td><td class="has-text-right">{{ row.last|date:"M Y"|default:"—" }}</td></tr>{% endfor %}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endwith %}
+{% endblock %}
+
+{% block tab-notes %}
+<details class="data-notes">
+    <summary>What this is, and isn't</summary>
+    <ul>
+        <li><strong>Carbon Mapper's methane sources:</strong> spots where its aircraft and satellites saw methane plumes, some on repeat passes, since 2016.</li>
+        <li><strong>Rates are snapshots.</strong> An instantaneous estimate with wide uncertainty, not a yearly total.</li>
+        <li><strong>No plume isn't clean.</strong> A place may not have been flown over, or its plume was too faint to see.</li>
+        <li><strong>Not tied to anyone.</strong> The sector is Carbon Mapper's reading of the imagery; which operator a source belongs to isn't something we infer. <a href="{% url 'emissions:about' %}#methane">More on methane</a></li>
+    </ul>
+</details>
+{% endblock %}

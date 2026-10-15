@@ -3,10 +3,13 @@
 {% load humanize pesticides_explorer emissions_explorer %}
 {% comment %}
 An area's Dairies tab (dairy_views.DairyAreaPage), a region's or a near-me
-point's, in the shared tab skeleton (regions/area-tab.html): the Dairies tab's
-tiles, map, table and charts scoped to the area, and "In and around" linking
-other areas' dairy pages. County pages add CARB's county estimate (a tile
-and a chart) and hide the table's County column.
+point's, in the shared tab skeleton (regions/area-tab.html), in two views
+with the same filters: the Summary's tiles, map and charts (the herd and
+digester charts under the filters; CARB's county estimate the county's), and
+the Table's dairies, sorted, paged and downloadable; "In and around" linking
+other areas' dairy pages under both. County pages add CARB's county estimate
+(a tile and a chart) and hide the table's County column. The Valley's
+Dairies tab (dairy-list.html) is this page for every covered county.
 {% endcomment %}
 
 {% block tab-body %}
@@ -29,7 +32,7 @@ and a chart) and hide the table's County column.
 {% include 'maps/includes/map.html' with map=map_config.map %}
 <p class="is-size-7 mt-2">Each circle is a dairy in CARB's dairy database (CADD), sized by its mature dairy cows (other cattle where it has none) and coloured by its EPA size class; the Digester filter shows the dairies that ran an anaerobic digester in {{ year }}. <a href="{% url 'emissions:about' %}#dairies">About the dairy data</a>.</p>
 {% if coverage_note %}<p class="is-size-7 has-text-grey dairy-coverage-note">CADD tracked fewer dairies before {{ coverage_year }}, so totals for {{ year }} aren't a like-for-like comparison with later years.</p>{% endif %}
-<noscript><p>The map needs JavaScript; the table below lists the same dairies.</p></noscript>
+<noscript><p>The map needs JavaScript; the Table lists the same dairies.</p></noscript>
 {% endblock %}
 
 {% block tab-filters %}
@@ -54,9 +57,16 @@ and a chart) and hide the table's County column.
 {% endblock %}
 
 {% block tab-table %}
-{% include 'emissions/includes/dairy-table.html' with sortable=True zoom=True %}
+{# How many match, and the same rows as a CSV, where the eye lands before the table. #}
+<div class="table-toolbar">
+    <p class="table-count">
+        {% if page_obj.paginator.count %}Showing {{ page_obj.start_index|intcomma }}&ndash;{{ page_obj.end_index|intcomma }} of {{ page_obj.paginator.count|intcomma }} dair{{ page_obj.paginator.count|pluralize:"y,ies" }}{% else %}No dairies match{% endif %}
+    </p>
+    {% if page_obj.paginator.count %}<a class="button is-small" href="{% qs_replace format='csv' page=None %}" hx-boost="false" download><span class="icon"><span class="fa-regular fa-fw fa-download" aria-hidden="true"></span></span><span>Download CSV</span></a>{% endif %}
+</div>
+{# No map on the Table, so a name doesn't zoom one. #}
+{% include 'emissions/includes/dairy-table.html' with sortable=True %}
 {% include 'pesticides/includes/pagination.html' %}
-<p class="mt-3"><a href="{% qs_replace format='csv' page=None %}" hx-boost="false" download>Download these dairies (CSV)</a></p>
 {% endblock %}
 
 {% block tab-charts %}{% if has_history %}{% include 'emissions/includes/dairy-charts.html' with chart_place=county_region.name %}{% endif %}{% endblock %}

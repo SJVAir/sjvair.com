@@ -210,15 +210,54 @@ def _operating(year):
     return Digester.objects.operating_in(year).filter(dairy=OuterRef('dairy'))
 
 
-def summary(year, *, county=None, area=None):
+def _operating_that_year():
+    """The digesters operating at the outer herd's dairy in the herd's own year (Digester.operating_in, per row)."""
+    return Digester.objects.filter(dairy=OuterRef('dairy')).filter(
+        Q(operational_year__isnull=True) | Q(operational_year__lte=OuterRef('year')),
+        Q(shutdown_year__isnull=True) | Q(shutdown_year__gt=OuterRef('year')),
+    )
+
+
+def narrow(queryset, *, q=None, sizes=None, digester='', **ignored):
+    """
+    Herds narrowed by the Dairies filter box (dairy_views.search_filters, its
+    sort ignored): a name, EPA size classes (None for all) and whether the
+    dairy ran a digester that year ('yes', 'no', '' for either).
+    """
+    if q:
+        queryset = queryset.filter(dairy__name__icontains=q)
+    if sizes is not None:
+        queryset = queryset.filter(size_class__in=sizes)
+    if digester in ('yes', 'no'):
+        running = Exists(_operating_that_year())
+        queryset = queryset.filter(running if digester == 'yes' else ~running)
+    return queryset
+
+
+def _cached(name, where, filters, compute):
+    """
+    `compute()` cached under `name` and `where`, and the filter box's size
+    classes and digester choice; a name search runs uncached (every spelling
+    would be its own entry, and narrowed that far it's quick).
+    """
+    filters = filters or {}
+    if filters.get('q'):
+        return compute()
+    sizes = filters.get('sizes')
+    parts = [f"sizes={','.join(sorted(sizes))}" if sizes is not None else '', f"digester={filters.get('digester') or ''}"]
+    return cache.get_or_set(key(name, where, *parts), compute, stats.CACHE_TIMEOUT)
+
+
+def summary(year, *, county=None, area=None, filters=None):
     """
     The year's counted dairies and how many are Large CAFOs; their milk cows,
     mature dairy cows and all cattle (mature dairy cows plus other cattle);
     how many ran a digester; milk cows as a share of all cattle and
-    digesters as a share of the dairies.
+    digesters as a share of the dairies. `filters` (the filter box's) narrows
+    it, for a Dairies Summary.
     """
     def compute():
-        queryset = herds(year, county=county, area=area)
+        queryset = narrow(herds(year, county=county, area=area), **(filters or {}))
         row = queryset.aggregate(
             dairies=Count('pk'), mature_cows=Sum('mature_cows'), other_cattle=Sum('other_cattle'),
             milk_cows=Sum('milk_cows'), large=Count('pk', filter=Q(size_class=SizeClass.LARGE)),
@@ -235,7 +274,7 @@ def summary(year, *, county=None, area=None):
             'digesters': digesters,
             'digester_share': digesters / row['dairies'] if row['dairies'] else None,
         }
-    return cache.get_or_set(key('summary', year, _where(county, area)), compute, stats.CACHE_TIMEOUT)
+    return _cached('summary', f'{year}:{_where(county, area)}', filters, compute)
 
 
 def table(year, *, county=None, area=None, q=None, sizes=None, digester='', sort=DEFAULT_SORT):
@@ -271,10 +310,10 @@ def table(year, *, county=None, area=None, q=None, sizes=None, digester='', sort
     return queryset.order_by(ordered, Lower('dairy__name'))
 
 
-def trend(*, county=None, area=None):
-    """Counted dairies, mature dairy cows and other cattle for every CADD year."""
+def trend(*, county=None, area=None, filters=None):
+    """Counted dairies, mature dairy cows and other cattle for every CADD year, under the filter box's `filters`."""
     def compute():
-        queryset = DairyHerd.objects.filter(COUNTED)
+        queryset = narrow(DairyHerd.objects.filter(COUNTED), **(filters or {}))
         if county is not None:
             queryset = queryset.filter(dairy__county=county)
         if area is not None:
@@ -290,7 +329,7 @@ def trend(*, county=None, area=None):
             'mature_cows': row['mature_cows'] or 0,
             'other_cattle': row['other_cattle'] or 0,
         } for row in rows]
-    return cache.get_or_set(key('trend', _where(county, area)), compute, stats.CACHE_TIMEOUT)
+    return _cached('trend', _where(county, area), filters, compute)
 
 
 def cepam_rows(counties):
@@ -363,33 +402,30 @@ def flat_since(points):
     return since if since < rows[-1]['year'] else None
 
 
-def digester_trend(*, county=None, area=None):
+def digester_trend(*, county=None, area=None, filters=None):
     """
     For every CADD year, the counted dairies that ran a digester that year
-    (Digester.operating_in: an unknown start year counts as operating).
+    (Digester.operating_in: an unknown start year counts as operating),
+    under the filter box's `filters`.
     """
     def compute():
-        queryset = DairyHerd.objects.filter(COUNTED)
+        queryset = narrow(DairyHerd.objects.filter(COUNTED), **(filters or {}))
         if county is not None:
             queryset = queryset.filter(dairy__county=county)
         if area is not None:
             queryset = queryset.filter(area.dairy_q())
-        operating = Digester.objects.filter(dairy=OuterRef('dairy')).filter(
-            Q(operational_year__isnull=True) | Q(operational_year__lte=OuterRef('year')),
-            Q(shutdown_year__isnull=True) | Q(shutdown_year__gt=OuterRef('year')),
-        )
         rows = (
-            queryset.annotate(digester=Exists(operating))
+            queryset.annotate(digester=Exists(_operating_that_year()))
             .values('year').annotate(digesters=Count('pk', filter=Q(digester=True)))
             .order_by('year')
         )
         return [{'year': row['year'], 'digesters': row['digesters']} for row in rows]
-    return cache.get_or_set(key('digester-trend', _where(county, area)), compute, stats.CACHE_TIMEOUT)
+    return _cached('digester-trend', _where(county, area), filters, compute)
 
 
-def digester_chart_points(*, county=None, area=None):
+def digester_chart_points(*, county=None, area=None, filters=None):
     """digester_trend(), or [] when no year had a digester (so there's no chart)."""
-    rows = digester_trend(county=county, area=area)
+    rows = digester_trend(county=county, area=area, filters=filters)
     return rows if any(row['digesters'] for row in rows) else []
 
 

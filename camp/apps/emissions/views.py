@@ -55,7 +55,6 @@ PAGE_SIZE = 50
 # A Facilities or Oil & gas tab's table: a screenful, so its filters and pages stay in reach.
 TAB_PAGE_SIZE = 25
 SECTOR_PAGE_ROWS = 25
-METHANE_LIST_ROWS = 25
 # The Areas view forces `measure=total` for a weighted toxics measure (its
 # density and per-resident measures have no meaning for a share); the
 # toolbar shows why with this tooltip instead of hiding the options.
@@ -67,6 +66,9 @@ class ScopeMixin:
 
     section = None
     hide_scope = False
+    # A data tab's two views (SUBVIEWS): 'summary' or, on its table/ route,
+    # 'table'. None on a page without the split.
+    subview = None
 
     def get_scope(self):
         if not hasattr(self, '_scope'):
@@ -346,14 +348,6 @@ def area_geometry(area):
     return region.boundary.geometry if region is not None else area.geometry
 
 
-def oil_gas_methane_in(area):
-    """methane.oil_gas_sources() inside the area (a few hundred Valley-wide, so tested in Python); all of them for the Valley."""
-    if isinstance(area, areas.ValleyArea):
-        return methane.oil_gas_sources()
-    shape = area_geometry(area)
-    return [row for row in methane.oil_gas_sources() if shape.contains(row['source'].point)]
-
-
 def wells_csv(wells_qs, filename):
     """A wells table (wells.table) as a CSV download: the Oil & gas tab's."""
     response = HttpResponse(content_type='text/csv')
@@ -525,7 +519,9 @@ class SectorList(ScopeMixin, vanilla.TemplateView):
         rows = [dict(row, trend=trends.get(row['sector'], [])) for row in stats.sector_breakdown(scope)]
         return super().get_context_data(
             rows=stats.sort_sectors(rows, sort), sort=sort,
-            header_place=scope.county.name if scope.county else 'San Joaquin Valley', **kwargs,
+            header_place=scope.county.name if scope.county else 'San Joaquin Valley',
+            subviews=facilities_subviews(self.request, 'sectors', scope.query()),
+            **kwargs,
         )
 
 
@@ -677,6 +673,9 @@ def area_tab_layers(get, tab, scope, *, area_params, nearby=None):
     """
     if tab == 'oil-gas':
         return {'main_layer': None, 'wells': wells_overlay(get, default=True, filtered=True), 'methane': methane_overlay(get, default=True)}
+    if tab == 'methane':
+        # Only the sources, narrowed as the table is.
+        return {'main_layer': None, 'methane': methane_overlay(get, default=True, filtered=True)}
     if tab == 'facilities':
         return {}
     if tab == 'schools':
@@ -690,17 +689,19 @@ def area_tab_layers(get, tab, scope, *, area_params, nearby=None):
     }
 
 
-def methane_overlay(get, *, default=False):
+def methane_overlay(get, *, default=False, filtered=False):
     """
     The maps' Methane sources (Carbon Mapper) overlay: nothing (None) until
     an import has run; else off unless the page says otherwise, with
     ?methane=1|0 overriding either way so the state can be shared.
+    `filtered` (the Methane pages) narrows it to the Methane table's sector groups.
     """
     if not methane.enabled():
         return None
     raw = get.get('methane')
     on = raw == '1' if raw in ('0', '1') else default
-    return {'on': on, 'default': default}
+    params = methane.filter_params(methane.table_filters(get)) if filtered else {}
+    return {'on': on, 'default': default, 'params': params}
 
 
 def locations_layers(get, scope, *, area_params=None):
@@ -746,7 +747,7 @@ def methane_map_data(overlay, area_params=None):
             'methane_default': '',
         }
     return {
-        'methane_url': with_query(reverse('api:v2:emissions:methane-geojson'), area_params),
+        'methane_url': with_query(reverse('api:v2:emissions:methane-geojson'), {**(area_params or {}), **overlay.get('params', {})}),
         'methane_plumes_url': reverse('api:v2:emissions:methane-plumes', args=['__id__']).replace('__id__', '{id}'),
         'methane': '1' if overlay['on'] else '',
         'methane_default': '1' if overlay['default'] else '',
@@ -1011,23 +1012,28 @@ FIND_FIELD_TABS = {
     'map': ('emissions:region', 'emissions:near-me'),
     'facilities': ('emissions:region-facilities', 'emissions:near-me-facilities'),
     'oil-gas': ('emissions:region-oil-gas', 'emissions:near-me-oil-gas'),
+    'methane': ('emissions:region-methane', 'emissions:near-me-methane'),
     'schools': ('emissions:region-schools', 'emissions:near-me-schools'),
     'dairies': ('emissions:region-dairies', 'emissions:near-me-dairies'),
 }
 
 
-def find_field_context(tab, query):
+def find_field_context(tab, query, subview=None):
     """
     What find-field.html takes, for every map tab's filter box (search, then
     Search by location, then the tab's own filters): its places, county jump
-    links, near-me URL and the scope `query` the links carry.
+    links, near-me URL and the scope `query` the links carry. From a data
+    tab's Table (`subview`), a place lands on its Table too.
     """
     region_url, near_url = FIND_FIELD_TABS[tab]
+    if subview == 'table':
+        region_url, near_url = f'{region_url}-table', f'{near_url}-table'
     places = find_area_places(region_url)
     return {
         'find_field': True,
         'find_area_places': places,
         'find_area_counties': [p for p in places if p['type'] == Region.Type.COUNTY],
+        'find_area_ab617': [p for p in places if p['type'] == Region.Type.AB617_COMMUNITY],
         'find_area_qs': query,
         'find_near_url': reverse(near_url),
         'maptiler_key': settings.MAPTILER_API_KEY,
@@ -1159,8 +1165,59 @@ AREA_TABS = (
     ('facilities', 'Facilities', 'fa-industry-windows', 'is-facilities'),
     ('dairies', 'Dairies', 'fa-cow', 'is-dairies'),
     ('oil-gas', 'Oil & gas', 'fa-oil-well', 'is-wells'),
+    ('methane', 'Methane', 'fa-smoke', 'is-methane'),
     ('schools', 'Schools', 'fa-school', 'is-schools'),
 )
+
+
+# A data tab's two views, in the tab row's style under it: the map and what
+# sums it up, and the table with its CSV. The same filters drive both; the
+# Table is the tab's own URL plus table/. Each with its Font Awesome icon.
+SUBVIEWS = (
+    ('summary', 'Summary', 'fa-chart-pie'),
+    ('table', 'Table', 'fa-table'),
+)
+
+
+def subview_url(url, subview):
+    """`url`, a data tab's Summary (perhaps with a query), on `subview`'s page."""
+    if subview != 'table':
+        return url
+    path, sep, query = url.partition('?')
+    return f'{path}table/{sep}{query}'
+
+
+def subview_links(request, current):
+    """The Summary | Table row: [{key, label, icon, url, current}], each keeping the filters but not the page number."""
+    base = request.path[:-len('table/')] if current == 'table' else request.path
+    params = request.GET.copy()
+    for name in ('page', 'format'):
+        params.pop(name, None)
+    query = params.urlencode()
+    return [
+        {'key': key, 'label': label, 'icon': icon, 'current': key == current, 'url': subview_url(base, key) + (f'?{query}' if query else '')}
+        for key, label, icon in SUBVIEWS
+    ]
+
+
+def facilities_subviews(request, current, scope_qs):
+    """
+    The Valley's Facilities row: its Summary | Table (subview_links), and
+    Sectors beside them -- the same facilities by industry, its own page
+    (SectorList, `current` 'sectors'), reached with the scope alone.
+    """
+    if current == 'sectors':
+        base = reverse('emissions:facility-list')
+        links = [
+            {'key': key, 'label': label, 'icon': icon, 'current': False, 'url': subview_url(base, key) + scope_qs}
+            for key, label, icon in SUBVIEWS
+        ]
+    else:
+        links = subview_links(request, current)
+    return links + [{
+        'key': 'sectors', 'label': 'Sectors', 'icon': 'fa-layer-group', 'current': current == 'sectors',
+        'url': reverse('emissions:sector-list') + scope_qs,
+    }]
 
 
 def area_tabs(view, area, current):
@@ -1174,6 +1231,7 @@ def area_tabs(view, area, current):
         'facilities': True,
         'dairies': bool(dairies.years()) and bool(dairies.trend(area=area)),
         'oil-gas': wells.area_summary(area) is not None,
+        'methane': methane.has_sources(area),
         'schools': Location.objects.filter(wells.location_q(area)).exists(),
     }
     return [
@@ -1188,41 +1246,87 @@ class OilGasTabMixin:
     An Oil & gas tab's context, an area's (AreaPage) or the whole Valley's
     (OilGasPage): the wells table, filters, pages and CSV; drilling by year
     and wells by type; the operators and fields with the most wells; the
-    area's oil & gas permit groupings; and the oil & gas methane sources.
+    area's oil & gas permit groupings; and how many oil & gas methane sources, linking the Methane tab.
     The view provides area_tab_url(key, query) and tab_query(key), so the
     leader rows and the table's links stay on the page they're on.
     """
 
-    def well_leaders(self, area):
-        """wells.leaders() as rank-card rows, each linking this tab filtered to it."""
-        query = self.tab_query('oil-gas')
+    def well_leaders(self, area, filters):
+        """wells.leaders() under the filters as rank-card rows, each linking this page narrowed to it, the other filters kept."""
         def rows(name, param):
-            return [
-                {'label': row['label'], 'value': row['count'],
-                 'url': self.area_tab_url('oil-gas', '&'.join(filter(None, [query, urlencode({param: row['label']})])))}
-                for row in leaders[name]
-            ]
-        leaders = wells.leaders(area)
+            def url(label):
+                params = self.request.GET.copy()
+                params.pop('page', None)
+                params[param] = label
+                return f'{self.request.path}?{params.urlencode()}'
+            return [{'label': row['label'], 'value': row['count'], 'url': url(row['label'])} for row in leaders[name]]
+        leaders = wells.leaders(area, filters)
         return {'operators': rows('operators', 'operator'), 'fields': rows('fields', 'field')}
 
+    def oil_gas_methane(self, area):
+        """{'count', 'url'}: Carbon Mapper's oil & gas sources in the area and the Methane tab narrowed to them; None before any import."""
+        if not methane.enabled():
+            return None
+        if isinstance(area, areas.ValleyArea):
+            url = reverse('emissions:methane') + '?' + '&'.join(filter(None, [self.tab_query('methane'), 'sector=oil-gas']))
+        else:
+            url = self.area_tab_url('methane', '&'.join(filter(None, [self.tab_query('methane'), 'sector=oil-gas'])))
+        return {'count': len(methane.area_rows(area, groups=[methane.MethaneSource.Group.OIL_GAS])), 'url': url}
+
     def oil_gas_context(self, area, scope, *, facilities_url):
+        """The filters for both views; the Table's page of wells, or the Summary's stats, cards and chart, all under the filters."""
         well_filters = wells.table_filters(self.request.GET)
-        well_page = page_of(wells.table(area, **well_filters), self.request.GET.get('page'), size=TAB_PAGE_SIZE)
-        return dict(
-            page_obj=well_page, is_paginated=well_page.has_other_pages(), well_rows=well_page.object_list,
+        context = dict(
             sort=well_filters['sort'], filters=well_filters, well_options=wells.filter_options(area),
-            status_options=Well.Status.choices, spud=wells.spud_by_year(area), well_types=wells.by_type(area),
+            status_options=Well.Status.choices, type_options=wells.TYPE_OPTIONS, oil_gas_facilities_url=facilities_url,
+        )
+        if self.subview == 'table':
+            well_page = page_of(wells.table(area, **well_filters), self.request.GET.get('page'), size=TAB_PAGE_SIZE)
+            context.update(page_obj=well_page, is_paginated=well_page.has_other_pages(), well_rows=well_page.object_list)
+            return context
+        context.update(
+            well_summary=wells.area_summary(area, well_filters),
+            spud=wells.spud_by_year(area, well_filters), well_types=wells.by_type(area, well_filters),
+            well_leaders=self.well_leaders(area, well_filters),
             oil_gas_card=[
                 {'label': record.facility.display_name, 'url': record.facility.get_absolute_url(), 'value': record.value}
                 for record in stats.facility_table(scope, sector=Facility.Sector.OIL_GAS)[:5]
             ],
-            well_leaders=self.well_leaders(area),
-            oil_gas_facilities_url=facilities_url,
-            methane_oil_gas=oil_gas_methane_in(area) if methane.enabled() else None,
-            methane_list_rows=METHANE_LIST_ROWS,
-            # An area's list drops the County column; the Valley's keeps it.
-            methane_list_here=not isinstance(area, areas.ValleyArea),
+            # The oil & gas methane sources here, a count linking the Methane tab narrowed to them.
+            methane_oil_gas=self.oil_gas_methane(area),
+            # The schools card's View all: the area's Schools tab narrowed to sites near a well (the Valley has none).
+            schools_near_wells_url=None if isinstance(area, areas.ValleyArea) else self.area_tab_url(
+                'schools', '&'.join(filter(None, [self.tab_query('schools'), 'near=wells'])),
+            ),
         )
+        return context
+
+
+class MethaneTabMixin:
+    """
+    A Methane tab's context, an area's (AreaPage) or the whole Valley's
+    (MethanePage): Carbon Mapper's sources in the area under the sector
+    filter -- the Table's page of them, or the Summary's figures and cards.
+    No source is tied to a facility, dairy, well or operator (MethaneSource).
+    """
+
+    def methane_context(self, area):
+        filters = methane.table_filters(self.request.GET)
+        rows = methane.area_rows(area, groups=filters['groups'], sort=filters['sort'])
+        context = dict(sort=filters['sort'], filters=filters, group_options=methane.GROUP_OPTIONS, methane_stamp=methane.stamp())
+        if self.subview == 'table':
+            page = page_of(rows, self.request.GET.get('page'), size=TAB_PAGE_SIZE)
+            context.update(page_obj=page, is_paginated=page.has_other_pages(), methane_rows=page.object_list)
+            return context
+        summary = methane.area_summary(rows)
+        # Each sector group a link narrowing the page to it, the rest of the query kept.
+        for row in summary['by_group']:
+            params = self.request.GET.copy()
+            params.pop('page', None)
+            params.setlist('sector', [row['group']])
+            row['url'] = f'{self.request.path}?{params.urlencode()}'
+        context.update(methane_summary=summary)
+        return context
 
 
 class FacilitiesTabMixin:
@@ -1233,17 +1337,51 @@ class FacilitiesTabMixin:
     """
 
     def facilities_table_context(self, scope, filters):
-        table = stats.facility_table(scope, **filters)
-        page = page_of(table, self.request.GET.get('page'), size=TAB_PAGE_SIZE)
-        return dict(
-            page_obj=page, is_paginated=page.has_other_pages(), sort=filters['sort'], filters=filters,
+        """The filters for both views; the Table's page of facilities, or the Summary's figures and cards under the filters."""
+        context = dict(
+            sort=filters['sort'], filters=filters,
             sector_options=sector_options(), compliance_options=compliance.FILTER_LABELS,
             reporting=stats.facility_table(scope).filter(value__gt=0).count(),
-            top_rows=stats.with_ranks(page.object_list, stats.ranks(scope)),
+        )
+        if self.subview == 'table':
+            page = page_of(stats.facility_table(scope, **filters), self.request.GET.get('page'), size=TAB_PAGE_SIZE)
+            context.update(page_obj=page, is_paginated=page.has_other_pages(), top_rows=stats.with_ranks(page.object_list, stats.ranks(scope)))
+            return context
+        context.update(top_rows=[], **self.facilities_summary(scope, filters))
+        return context
+
+    def facilities_summary(self, scope, filters):
+        """
+        A Facilities Summary under the filters: whether any is set; the
+        matching facilities, how many reported the pollutant and their total
+        (`filtered_totals`, None unfiltered: the page's own totals stand);
+        the five largest; and, without a sector filter, their total by sector.
+        """
+        narrowed = {key: value for key, value in filters.items() if key != 'sort'}
+        filtered = any(narrowed.values())
+        table = stats.facility_table(scope, **narrowed)
+        totals, sectors, labels = {'facilities': 0, 'reporting': 0, 'total': 0}, {}, dict(Facility.Sector.choices)
+        for sector, value in table.values_list('facility__sector', 'value'):
+            totals['facilities'] += 1
+            if value:
+                totals['reporting'] += 1
+                totals['total'] += value
+                sectors[sector] = sectors.get(sector, 0) + value
+        top = list(table.filter(value__gt=0)[:5])
+        sector_rows = [] if filters.get('sector') else sorted((
+            {'label': labels.get(sector, sector), 'url': reverse('emissions:sector-detail', args=[sector]), 'value': value,
+             'share': value / totals['total'] if totals['total'] else None}
+            for sector, value in sectors.items()
+        ), key=lambda row: -row['value'])
+        return dict(
+            filtered=filtered,
+            filtered_totals=totals if filtered else None,
+            facility_card=[{'label': record.facility.display_name, 'url': record.facility.get_absolute_url(), 'value': record.value} for record in top],
+            sector_card=sector_rows,
         )
 
 
-class AreaPage(FacilitiesTabMixin, OilGasTabMixin, ScopeMixin, vanilla.TemplateView):
+class AreaPage(FacilitiesTabMixin, OilGasTabMixin, MethaneTabMixin, ScopeMixin, vanilla.TemplateView):
     """
     What a region page and near-me share: one area's page, one tab of it
     (`tab`, AREA_TABS) -- Overview's totals, map, sectors and trend, or the
@@ -1325,7 +1463,7 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, ScopeMixin, vanilla.TemplateV
         county_scope = stats.Scope(year=base.year, county=county, pollutant=base.pollutant, minor=base.minor)
         county_total = stats.totals(county_scope)['value'] if county and tab in ('overview', 'facilities') else None
         if tab == 'facilities':
-            # The facility list's table, filters, sorts, pages and CSV, for the area.
+            # The facility list's filters, and its table (sorts, pages, CSV) or summary, for the area.
             filters = self.area_filters()
             table_ctx = self.facilities_table_context(scope, filters)
             top_rows = table_ctx.pop('top_rows')
@@ -1335,6 +1473,9 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, ScopeMixin, vanilla.TemplateV
                 area, scope,
                 facilities_url=self.area_tab_url('facilities', '&'.join(filter(None, [self.tab_query('facilities'), 'sector=oil-gas']))),
             ))
+            top_rows = []
+        elif tab == 'methane':
+            kwargs.update(self.methane_context(area))
             top_rows = []
         elif tab == 'schools':
             # Every school and child-care center in the area with what's near it:
@@ -1356,6 +1497,7 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, ScopeMixin, vanilla.TemplateV
                 site_count=len(sites), site_types=[('school', 'Schools'), ('child-care', 'Child care')],
                 sites_filtered=bool(site_filters['q'] or site_filters['type'] or site_filters['district'] or site_filters['near']),
                 site_districts=schools.district_options(all_sites),
+                site_near_options=schools.NEAR_OPTIONS,
                 school_districts=districts, districts_hidden=sum(1 for d in districts if d['is_collapsed']),
             )
             self.site_geojson = schools.sites_geojson(sites)
@@ -1389,23 +1531,28 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, ScopeMixin, vanilla.TemplateV
             overview_url=self.area_tab_url('overview', self.tab_query('overview')),
             # A tab's own form keeps the page's point (near-me) and clears to the tab, scope kept.
             point_params=self.point_params(),
-            clear_filters_url=self.area_tab_url(tab, self.tab_query(tab)),
+            clear_filters_url=subview_url(self.area_tab_url(tab, self.tab_query(tab)), self.subview),
+            subview=self.subview,
+            subviews=subview_links(self.request, self.subview) if self.subview else [],
             facilities_tab_url=self.area_tab_url('facilities', self.tab_query('facilities')),
             top_rows=top_rows,
             top_columns=uniform_columns(top_rows),
             top_sectors=top_sectors,
             # The Overview's two cards (rank-card.html): five facilities, every sector.
-            facility_card=[
-                {'label': record.facility.display_name, 'url': record.facility.get_absolute_url(), 'value': record.value}
-                for _, record in top_rows[:5]
-            ] if tab == 'overview' else [],
-            sector_card=[
-                {'label': row['label'], 'url': reverse('emissions:sector-detail', args=[row['sector']]), 'value': row['value'], 'share': row['share']}
-                for row in top_sectors
-            ],
+            **({} if tab == 'facilities' else dict(
+                facility_card=[
+                    {'label': record.facility.display_name, 'url': record.facility.get_absolute_url(), 'value': record.value}
+                    for _, record in top_rows[:5]
+                ] if tab == 'overview' else [],
+                sector_card=[
+                    {'label': row['label'], 'url': reverse('emissions:sector-detail', args=[row['sector']]), 'value': row['value'], 'share': row['share']}
+                    for row in top_sectors
+                ],
+            )),
             by_year=stats.by_year(scope) if tab in ('overview', 'facilities') else [],
             sector_stack=stats.sector_stack(scope) if tab == 'overview' else None,
-            map_config=self.get_map_config(base) if tab in ('overview', 'facilities', 'oil-gas', 'schools') else None,
+            # A Table has no map.
+            map_config=self.get_map_config(base) if tab in ('overview', 'facilities', 'oil-gas', 'methane', 'schools') and self.subview != 'table' else None,
             compliance_line=compliance_line,
             toxics_breakdown=stats.toxics_breakdown(scope) if scope.toxics and tab == 'overview' else None,
             share_unit=scope.pollutant.unit == 'share',
@@ -1414,7 +1561,7 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, ScopeMixin, vanilla.TemplateV
             county_options=[],
             scope_qs=base.query(county=None),
             scope_params=base.params(county=None),
-            **(find_field_context(tab, base.query(county=None)) if tab in FIND_FIELD_TABS else {}),
+            **(find_field_context(tab, base.query(county=None), self.subview) if tab in FIND_FIELD_TABS else {}),
             **kwargs,
             community_about_url=reverse('emissions:about') + '#calenviroscreen',
         )
@@ -1594,7 +1741,7 @@ class NearLookupMixin:
     # AREA_TABS key -> URL name.
     TAB_URLS = {
         'overview': 'emissions:near-me', 'facilities': 'emissions:near-me-facilities', 'dairies': 'emissions:near-me-dairies',
-        'oil-gas': 'emissions:near-me-oil-gas', 'schools': 'emissions:near-me-schools',
+        'oil-gas': 'emissions:near-me-oil-gas', 'methane': 'emissions:near-me-methane', 'schools': 'emissions:near-me-schools',
     }
 
     def area_tab_url(self, key, query):
@@ -1691,12 +1838,22 @@ class NearMe(NearLookupMixin, AreaPage):
 
 class RegionFacilities(RegionPage):
     tab = 'facilities'
+    subview = 'summary'
     template_name = 'emissions/area-facilities.html'
 
 
 class RegionOilGas(RegionPage):
     tab = 'oil-gas'
+    subview = 'summary'
     template_name = 'emissions/area-oil-gas.html'
+
+
+class RegionMethane(RegionPage):
+    tab = 'methane'
+    subview = 'summary'
+    # No year, pollutant or toggle applies to Carbon Mapper's sources.
+    hide_scope = True
+    template_name = 'emissions/area-methane.html'
 
 
 class RegionSchools(RegionPage):
@@ -1706,12 +1863,22 @@ class RegionSchools(RegionPage):
 
 class NearMeFacilities(NearMe):
     tab = 'facilities'
+    subview = 'summary'
     template_name = 'emissions/area-facilities.html'
 
 
 class NearMeOilGas(NearMe):
     tab = 'oil-gas'
+    subview = 'summary'
     template_name = 'emissions/area-oil-gas.html'
+
+
+class NearMeMethane(NearMe):
+    tab = 'methane'
+    subview = 'summary'
+    # No year, pollutant or toggle applies to Carbon Mapper's sources.
+    hide_scope = True
+    template_name = 'emissions/area-methane.html'
 
 
 class NearMeSchools(NearMe):
@@ -1737,6 +1904,7 @@ class OilGasPage(OilGasTabMixin, ScopeMixin, vanilla.TemplateView):
     """
     template_name = 'emissions/oil-gas.html'
     section = 'oil-gas'
+    subview = 'summary'
 
     def get(self, request, *args, **kwargs):
         scope = self.get_scope()
@@ -1772,11 +1940,63 @@ class OilGasPage(OilGasTabMixin, ScopeMixin, vanilla.TemplateView):
                 # Areas shade the wells' own counts (wells_map_view): counties, ZIP codes, tracts.
                 areas_view=wells_map_view(self.request.GET),
                 methane=methane_overlay(self.request.GET, default=True),
-            ),
-            point_params={}, clear_filters_url=self.area_tab_url('oil-gas', self.tab_query('oil-gas')),
+            ) if self.subview != 'table' else None,
+            point_params={}, clear_filters_url=subview_url(self.area_tab_url('oil-gas', self.tab_query('oil-gas')), self.subview),
+            subview=self.subview, subviews=subview_links(self.request, self.subview),
             # The scope bar keeps its county picker: a county opens that county's own tab (get()).
             scope_qs=scope.query(county=None), scope_params=scope.params(county=None),
-            **find_field_context('oil-gas', scope.query(county=None)),
+            **find_field_context('oil-gas', scope.query(county=None), self.subview),
+            **kwargs,
+        )
+
+
+class MethanePage(MethaneTabMixin, ScopeMixin, vanilla.TemplateView):
+    """
+    The top-level Methane tab: an area's Methane tab (area-methane.html) for
+    every covered county at once (areas.ValleyArea), a find box into an
+    area's own tab. Mirrors OilGasPage.
+    """
+    template_name = 'emissions/methane.html'
+    section = 'methane'
+    subview = 'summary'
+    # No year, pollutant or toggle applies to Carbon Mapper's sources; a county is a place in the filter box.
+    hide_scope = True
+
+    def get(self, request, *args, **kwargs):
+        scope = self.get_scope()
+        if scope.county is not None:
+            # A county picked in the scope bar is that county's own tab.
+            return redirect(scope.county.get_emissions_tab_url('methane') + subview_url('', self.subview) + scope.query(county=None))
+        return super().get(request, *args, **kwargs)
+
+    def tab_query(self, key):
+        return self.get_scope().query(county=None).lstrip('?')
+
+    def area_tab_url(self, key, query):
+        url = reverse('emissions:methane')
+        return f'{url}?{query}' if query else url
+
+    def get_context_data(self, **kwargs):
+        scope = self.get_scope()
+        area = areas.ValleyArea()
+        enabled = methane.enabled()
+        return super().get_context_data(
+            **(self.methane_context(area) if enabled else {}),
+            methane_enabled=enabled,
+            area=area,
+            # The shared area-tab skeleton and header (regions/area-tab.html).
+            explorer_base='emissions/base.html', area_crumbs=[], tab_label='Methane',
+            name='San Joaquin Valley', kind='All covered counties',
+            header_links=[], tabs=[], tab_links=[],
+            map_config=facility_map_config(
+                scope, mode='compact', params=scope.params(county=None), main_layer=None,
+                methane=methane_overlay(self.request.GET, default=True, filtered=True),
+            ) if enabled and self.subview != 'table' else None,
+            point_params={}, clear_filters_url=subview_url(self.area_tab_url('methane', self.tab_query('methane')), self.subview),
+            subview=self.subview, subviews=subview_links(self.request, self.subview),
+            # The scope bar keeps its county picker: a county opens that county's own tab (get()).
+            scope_qs=scope.query(county=None), scope_params=scope.params(county=None),
+            **find_field_context('methane', scope.query(county=None), self.subview),
             **kwargs,
         )
 
@@ -1789,6 +2009,7 @@ class FacilityList(FacilitiesTabMixin, ScopeMixin, vanilla.TemplateView):
     """
     template_name = 'emissions/facility-list.html'
     section = 'facilities'
+    subview = 'summary'
 
     def get(self, request, *args, **kwargs):
         # ?region= was the list's place filter; a place has its own Facilities tab now.
@@ -1844,12 +2065,13 @@ class FacilityList(FacilitiesTabMixin, ScopeMixin, vanilla.TemplateView):
             map_config=facility_map_config(
                 scope, mode='compact', params=filtered_map_params(scope.params(county=None), filters),
                 areas_view=map_view(self.request.GET, year=scope.year, share=scope.pollutant.unit == 'share'),
-            ),
-            point_params={}, clear_filters_url=self.area_tab_url('facilities', self.tab_query('facilities')),
+            ) if self.subview != 'table' else None,
+            point_params={}, clear_filters_url=subview_url(self.area_tab_url('facilities', self.tab_query('facilities')), self.subview),
+            subview=self.subview, subviews=facilities_subviews(self.request, self.subview, scope.query(county=None)),
             facilities_tab_url=self.area_tab_url('facilities', self.tab_query('facilities')),
             # The scope bar keeps its county picker: a county opens that county's own tab (get()).
             scope_qs=scope.query(county=None), scope_params=scope.params(county=None),
-            **find_field_context('facilities', scope.query(county=None)),
+            **find_field_context('facilities', scope.query(county=None), self.subview),
             community_about_url=reverse('emissions:about') + '#calenviroscreen',
             **kwargs,
         )
