@@ -358,6 +358,6 @@ class EntitySearch(CachedEndpointMixin, EntitySearchBase):
     `county` (slug) to offer only names with reported use there, `narrow=concern|restricted|fumigant|aerial`
     (or the legacy `concern=1`) to offer only what that narrowing keeps, and
     `limit` (default 10, capped at 25). Each result carries the entity's `id` (sqid), `name`, and a
-    `detail` string -- the CDPR chem code, registration number, or site code, labelled.
+    `detail` string -- the CDPR chem code, registration number, or site code, labeled.
     """
     cache_timeout = 60 * 5

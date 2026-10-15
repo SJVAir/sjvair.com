@@ -73,7 +73,7 @@ NARROW_HELP = {
     NARROW_AERIAL: "Applications reported as made by aircraft (CDPR's application method A)",
 }
 # The "within about a mile" block: a section plus the eight around it. MTRS
-# sections are roughly one mile square, so a neighbour's centroid is about a
+# sections are roughly one mile square, so a neighbor's centroid is about a
 # mile away (1.5 miles diagonally) and the next ring out is about two.
 BLOCK_MILES = 1.5
 BLOCK_RADIUS_M = 2414
@@ -223,7 +223,7 @@ def scope_query(year, all_years=False, county=None, concern=False):
 def resolve_narrow(params):
     """
     What the explorer is narrowed to, from a request's GET: one of
-    NARROW_VALUES, or '' for all use. Anything unrecognised is all use --
+    NARROW_VALUES, or '' for all use. Anything unrecognized is all use --
     a bad value shouldn't silently show a subset and call it the total.
     """
     value = str(params.get(NARROW_PARAM) or '').strip().lower()
@@ -739,9 +739,9 @@ def block_sections(point):
     (home section, [section pks]) -- (None, []) when the point isn't inside
     any surveyed section.
 
-    Neighbours are found by centroid distance rather than by touching the
+    Neighbors are found by centroid distance rather than by touching the
     home section's boundary: PLSS sections are surveyed, not gridded, so
-    neighbouring polygons don't always share an edge cleanly, but their
+    neighboring polygons don't always share an edge cleanly, but their
     centroids are reliably ~1 mile apart and the next ring out is ~2.
     """
     # Local import: camp.api.v2.pesticides.sections imports this module.

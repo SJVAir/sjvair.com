@@ -10,7 +10,7 @@ Township geometry is the union of its sections, simplified to drop the
 collinear vertices the union leaves at every section corner. Most townships
 come out as plain rectangles; the ones along a county line, a river, or a
 survey irregularity keep their real outline instead of an envelope that would
-overlap the neighbouring township. Both lookups here are whole-table and
+overlap the neighboring township. Both lookups here are whole-table and
 change only when the MTRS regions are reimported, so they're cached for a day.
 """
 import json

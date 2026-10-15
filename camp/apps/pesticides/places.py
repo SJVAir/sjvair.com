@@ -31,7 +31,7 @@ PLACE_REGION_TYPES = (
     Region.Type.COUNTY, *Region.COMMUNITY_TYPES, Region.Type.ZIPCODE, Region.Type.SCHOOL_DISTRICT,
     Region.Type.AB617_COMMUNITY,
 )
-# v2: the 'places' group became 'communities', each entry labelled.
+# v2: the 'places' group became 'communities', each entry labeled.
 WITHIN_KEY = 'pesticides:within:v2'
 RADIUS_CHOICES = (1, 3, 5)
 METERS_PER_MILE = 1609.344
@@ -305,7 +305,7 @@ def schools_nearby(region, year, all_years=False, concern=False):
     """
     key = ':'.join([
         # v4: entries link the district that runs them.
-        'pesticides:schools-nearby:v7',
+        'pesticides:schools-nearby:v8',
         str(region.pk),
         stats.year_param(year, all_years) or 'none',
         concern or '',
@@ -323,11 +323,13 @@ def schools_nearby(region, year, all_years=False, concern=False):
         run_by = list(Location.objects
             .filter(type=Location.Type.PUBLIC_SCHOOL,
                 metadata__district_code=district_code)
+            .one_per_place()
             .select_related('city')
             .order_by('name', 'pk')
         ) if district_code else []
         others = list(region.district_locations
             .exclude(pk__in=[location.pk for location in run_by])
+            .one_per_place()
             .select_related('city', 'school_district')
             .order_by('name', 'pk')
         )
@@ -364,7 +366,7 @@ def area_schools(area, year, all_years=False, concern=False):
         return schools_nearby(area.region, year, all_years, concern=concern)
 
     key = ':'.join([
-        'pesticides:area-schools:v5',
+        'pesticides:area-schools:v6',
         area.cache_key(),
         stats.year_param(year, all_years) or 'none',
         concern or '',
@@ -377,7 +379,7 @@ def area_schools(area, year, all_years=False, concern=False):
         districts = schools.district_urls(url_method='get_pesticides_url')
         others = [
             _school_entry(location, rows, year, all_years, is_run_by=False, districts=districts)
-            for location in area.locations().select_related('city', 'school_district').order_by('name', 'pk')
+            for location in area.locations().one_per_place().select_related('city', 'school_district').order_by('name', 'pk')
         ]
         others.sort(key=lambda entry: (-entry['lbs'], entry['display_name']))
         cities = {entry['display_city'].lower() for entry in others if entry['display_city']}
@@ -408,6 +410,8 @@ def _school_entry(location, rows, year, all_years, is_run_by, districts=None):
         'run_by_name': metadata.get('district_name') or '',
         **schools.district_fields(location, districts or {}, url_method='get_pesticides_url'),
         'is_run_by': is_run_by,
+        # A child-care center's several licenses are one row (Location.objects.one_per_place).
+        'licenses': getattr(location, 'licenses', 1),
         'lbs': totals['lbs'],
         'applications': totals['applications'],
         'section_sqid': section.sqid if section is not None else None,

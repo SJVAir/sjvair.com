@@ -66,7 +66,7 @@ class ExplorerMarkupTests(RollupTestMixin, TestCase):
             html = self.client.get(url).content.decode()
             assert len(re.findall(r'<h1[\s>]', html)) == 1, url
 
-    def test_notice_mode_is_a_labelled_group(self):
+    def test_notice_mode_is_a_labeled_group(self):
         html = self.client.get(reverse('pesticides:notice-list')).content.decode()
         assert '<fieldset class="field notice-mode">' in html
         assert '<legend class="label">Notices</legend>' in html

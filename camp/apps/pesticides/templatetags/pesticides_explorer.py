@@ -141,7 +141,7 @@ def css_percent(value):
 def signed_lbs(value):
     """
     `lbs` with the sign always shown, for a change. An increase reads "+400"
-    rather than "400", so the direction never rests on the colour of a map
+    rather than "400", so the direction never rests on the color of a map
     swatch or the column a row happens to be in.
     """
     if value is None:
@@ -366,7 +366,7 @@ def month_chart(by_month, year_label=None):
     }
 
 
-# The application methods' colours, as the method bar's (pesticides.sass
+# The application methods' colors, as the method bar's (pesticides.sass
 # .method-bar-seg): the stacked chart's bands are the same methods.
 METHOD_COLORS = {'G': '#3498db', 'A': '#f1c40f', 'F': '#d35400', 'O': '#7a7a7a', '': '#b5b5b5'}
 
@@ -486,7 +486,7 @@ def sparkline(values):
     maximum so the shape is readable whatever the magnitude -- these say
     "rising" or "receding", never "bigger than the row below".
 
-    Stays aria-hidden and unlabelled: the row already reads as its name and
+    Stays aria-hidden and unlabeled: the row already reads as its name and
     its pounds, and what the line covers is said once under the board
     (stats.series_label) rather than five times over. Keeping it out of here also
     keeps this a pure formatting filter with no database behind it.

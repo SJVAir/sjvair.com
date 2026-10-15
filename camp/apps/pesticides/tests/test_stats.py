@@ -726,7 +726,7 @@ class ByMethodTests(RollupTestMixin, TestCase):
         assert abs(sum(r['share'] for r in out) - 1) < 1e-9
         assert out[1]['label'] == 'Air' and out[1]['applications'] == 2
 
-    def test_not_reported_is_labelled_not_dropped(self):
+    def test_not_reported_is_labeled_not_dropped(self):
         PesticideUseRollup.objects.filter(year=2023).update(method='')
         out = stats.by_method(PesticideUseRollup.objects.all(), 2023)
         assert [(r['method'], r['label'], r['share']) for r in out] == [('', 'Not reported', 1.0)]

@@ -125,7 +125,7 @@ class RecordsFilterForm(forms.Form):
         self.fields['fume_method'].choices = [('', _('Any'))] + [(str(m.code), m.name) for m in used]
 
     def set_bounds(self, low, high):
-        """Bound the date inputs to the scope's range (the browser's picker greys out the rest)."""
+        """Bound the date inputs to the scope's range (the browser's picker grays out the rest)."""
         for name in ('start', 'end'):
             attrs = self.fields[name].widget.attrs
             if low is not None:

@@ -389,7 +389,7 @@
   // list, sets it to the map's current style, and swaps the style live on a
   // change (no diff, so onStyleLoad's addLayers() puts the module's own
   // layers back from its cached data). `changed()` runs after the swap for
-  // whatever the module still needs of its own (recolouring, syncUrl) --
+  // whatever the module still needs of its own (recoloring, syncUrl) --
   // the shell only knows the style itself. Called fresh from onChrome
   // (including after an adopt, whose new chrome is fresh DOM), so no bound
   // guard: same convention as the facility map's own Ramp select.

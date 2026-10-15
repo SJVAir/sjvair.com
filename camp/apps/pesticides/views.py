@@ -550,7 +550,7 @@ FIND_AREA_PLACES_TTL = 60 * 60 * 24
 # Short, human labels for the "Search by location" dropdown. Region.Type's own
 # labels read a little long there ("ZIP Code"), and the dropdown shows the
 # type as a trailing tag: "93725 · ZIP". Each community layer (city, urban
-# area, CDP) is listed as-is, labelled: "Fresno · City", "Fresno · Urban area".
+# area, CDP) is listed as-is, labeled: "Fresno · City", "Fresno · Urban area".
 FIND_AREA_TYPE_LABELS = {
     Region.Type.COUNTY: 'County',
     **Region.COMMUNITY_LABELS,
@@ -1198,7 +1198,7 @@ def page_url_pattern(name):
     return unquote(reverse(name, kwargs={'sqid': '{id}'}))
 
 
-# MapTiler's neutral grey "dataviz" vector style, as on the map figures
+# MapTiler's neutral gray "dataviz" vector style, as on the map figures
 # (camp.utils.mapfigure): a quiet ground for the choropleth.
 MAP_STYLE = mapfigure.MAP_STYLE
 
@@ -2438,7 +2438,7 @@ class AreaPageMixin:
         if area.kind == 'point':
             kind, links = headers.point_kind(area.radius), []
         else:
-            # The same grey line and links as the emissions header.
+            # The same gray line and links as the emissions header.
             query = self.scope_query()
             scope_qs = f'?{query}' if query else ''
             header = headers.region_header(area.region, url_method='get_pesticides_tab_url', tab=self.tab, scope_qs=scope_qs)
@@ -2750,11 +2750,11 @@ class AreaSchoolsMixin:
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = f'attachment; filename="schools-{place}-{period}.csv"'
         writer = csv.writer(response)
-        writer.writerow(['name', 'type', 'city', 'district', 'lbs_nearby', 'applications_nearby', 'section', 'latitude', 'longitude'])
+        writer.writerow(['name', 'type', 'licenses', 'city', 'district', 'lbs_nearby', 'applications_nearby', 'section', 'latitude', 'longitude'])
         for row in rows:
             point = row['location'].point
             writer.writerow([
-                row['display_name'], row['type_label'], row['display_city'], row['run_by_name'],
+                row['display_name'], row['type_label'], row['licenses'], row['display_city'], row['run_by_name'],
                 '' if row['lbs'] is None else round(row['lbs'], 1), row['applications'] or 0,
                 row['section_mtrs'] or '', f'{point.y:.5f}', f'{point.x:.5f}',
             ])

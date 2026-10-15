@@ -45,7 +45,7 @@ class FindAreaTests(RollupTestMixin, TestCase):
         # Sorted by name, and only places that have a boundary to scope.
         assert [place['name'] for place in places] == sorted(place['name'] for place in places)
 
-    def test_every_community_layer_is_listed_labelled(self):
+    def test_every_community_layer_is_listed_labeled(self):
         from camp.apps.regions.models import Boundary
         square = 'SRID=4326;MULTIPOLYGON (((-119.85 36.65, -119.75 36.65, -119.75 36.75, -119.85 36.75, -119.85 36.65)))'
         for name, slug, kind in (
@@ -107,7 +107,7 @@ class AB617CommunityTests(RollupTestMixin, TestCase):
         self.community.save()
         self.region_url = reverse('pesticides:region', kwargs={'sqid': self.community.sqid, 'slug': 'south-central-fresno'})
 
-    def test_the_place_search_lists_it_labelled(self):
+    def test_the_place_search_lists_it_labeled(self):
         places = FindAreaTests.embedded_places(self, self.client.get(self.url).content.decode())
         place = next(place for place in places if place['type'] == Region.Type.AB617_COMMUNITY)
         assert (place['name'], place['type_label'], place['url']) == ('South Central Fresno', 'AB 617 community', self.region_url)

@@ -170,7 +170,7 @@ class RegionsWithinTests(RollupTestMixin, TestCase):
     def test_county_lists_communities_districts_and_zips_inside_it(self):
         within = places.regions_within(self.fresno)
         assert within['counties'] == []
-        # Every community layer, as-is and labelled; same names by layer order.
+        # Every community layer, as-is and labeled; same names by layer order.
         assert [(p['name'], p['type_label']) for p in within['communities']] == [
             ('Caruthers', 'Community'), ('Selma', 'City'), ('Selma', 'Urban area'),
         ]
@@ -196,7 +196,7 @@ class RegionsWithinTests(RollupTestMixin, TestCase):
         assert 'In Fresno County' in html and 'Selma Unified' in html and '93662' in html
         assert 'Tehachapi' not in html
 
-    def test_community_pages_render_labelled(self):
+    def test_community_pages_render_labeled(self):
         for slug, label in (('selma-ua', 'Urban area'), ('caruthers', 'Community')):
             region = Region.objects.get(slug=slug)
             response = self.client.get(reverse('pesticides:region', kwargs={'sqid': region.sqid, 'slug': slug}))
@@ -595,10 +595,18 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         assert response['Content-Type'] == 'text/csv'
         assert 'attachment; filename="schools-' in response['Content-Disposition']
         lines = response.content.decode().splitlines()
-        assert lines[0] == 'name,type,city,district,lbs_nearby,applications_nearby,section,latitude,longitude'
+        assert lines[0] == 'name,type,licenses,city,district,lbs_nearby,applications_nearby,section,latitude,longitude'
         assert len(lines) == 3
-        assert lines[1].startswith('Selma High,Public school,') and ',695.0,6,MDM-T14S-R20E-01,' in lines[1]
+        assert lines[1].startswith('Selma High,Public school,1,') and ',695.0,6,MDM-T14S-R20E-01,' in lines[1]
         assert lines[2].startswith('Away Child Care,Child care,')
+
+    def test_a_child_care_centers_licenses_are_one_row(self):
+        self.make_location('AWAY CHILD CARE ')  # its second license, the same place
+        html = self.client.get(self.url).content.decode()
+        rows = self.client.get(self.url).context['schools']['rows']
+        assert [row['display_name'] for row in rows] == ['Selma High', 'Away Child Care']
+        assert rows[1]['licenses'] == 2
+        assert '2 licenses' in html
 
     def test_the_csv_follows_the_filters(self):
         lines = self.client.get(self.url, {'format': 'csv', 'schools_run_by': '1'}).content.decode().splitlines()
@@ -642,7 +650,7 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         assert 'No schools or child care on record here.' in html
 
     def test_schools_nearby_follows_the_concern_scope(self):
-        # Section 9101's concern pounds only (170); the neighbouring
+        # Section 9101's concern pounds only (170); the neighboring
         # section's rollup row carries no chemical at all.
         assert [row['lbs'] for row in places.schools_nearby(self.district, 2023, concern=stats.NARROW_CONCERN)['run_by']] == [170.0]
         assert [row['lbs'] for row in places.schools_nearby(self.district, 2023)['run_by']] == [695.0]
