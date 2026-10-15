@@ -351,28 +351,6 @@ body.emissions
       vertical-align: -0.1em
   .facility-regulator a[href^="tel:"]
     white-space: nowrap
-  // Home: the 4 entry cards under the stats row (Facilities, Dairies, Oil &
-  // gas, Schools) -- the whole card is the link.
-  .entry-cards
-    margin-top: 0.5rem
-    .entry-card
-      display: block
-      height: 100%
-      color: $text
-      transition: box-shadow 0.15s ease, transform 0.15s ease
-      &:hover, &:focus
-        box-shadow: 0 0.5em 1em -0.125em rgba(10, 10, 10, 0.15), 0 0 0 1px rgba(10, 10, 10, 0.02)
-        transform: translateY(-1px)
-    .entry-card-icon
-      margin-bottom: 0.25rem
-    .entry-card-value
-      margin: 0.1rem 0 0.35rem
-      .entry-card-label
-        margin-left: 0.3rem
-    .entry-card-sentence
-      font-size: $size-7
-      margin: 0
-
   // Home: "Search by location" and "Find a facility" side by side, the same height.
   .find-row
     .box
