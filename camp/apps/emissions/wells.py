@@ -10,7 +10,7 @@ import time
 from django.contrib.gis.geos import Polygon
 from django.contrib.gis.measure import D
 from django.core.cache import cache
-from django.db.models import Count, Exists, F, OuterRef, Q, Sum
+from django.db.models import Count, Exists, F, IntegerField, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import ExtractYear
 
 from camp.apps.emissions import areas, stats
@@ -298,3 +298,62 @@ def by_type(area):
         )
         return [{'label': row['well_type_label'], 'count': row['n']} for row in rows]
     return cache.get_or_set(key('types', area.key), compute, stats.CACHE_TIMEOUT)
+
+
+# The Oil & gas map's Areas view: what it can shade each area by, and the
+# measure it opens on (wells per square mile, so a big tract doesn't read as
+# more than a small, dense one).
+AREA_MEASURES = (('density', 'Wells per sq mi'), ('total', 'Wells'), ('active', 'Active wells'), ('hpz_share', 'Share in a health-protection zone'))
+DEFAULT_AREA_MEASURE = 'density'
+
+
+class _Count(Subquery):
+    """A correlated COUNT(*) of `queryset`'s rows, for one value per outer row."""
+    template = '(SELECT COUNT(*) FROM (%(subquery)s) _count)'
+    output_field = IntegerField()
+
+
+def area_values(level, filters=None):
+    """
+    The wells per area of `level` (areas.LEVELS) for the Areas view, under
+    the table's filters (status, hpz; the free-text ones aren't cached):
+    {'level', 'unit': 'wells', 'areas': [{id, wells, active, hpz,
+    per_sq_mi, hpz_share}]}, only areas with a well. Counties by the well's
+    county; ZIP codes and tracts by the area its point falls in.
+    """
+    filters = {key: value for key, value in (filters or {}).items() if key in ('q', 'status', 'operator', 'field', 'hpz') and value}
+
+    def compute():
+        wells = filter_wells(Well.objects.all(), **filters)
+        regions = areas.level_regions(level)
+        if level == Region.Type.COUNTY:
+            counts = {
+                row['county']: row for row in wells.exclude(county=None).values('county').annotate(
+                    wells=Count('pk'), active=Count('pk', filter=Q(status=Well.Status.ACTIVE)),
+                    hpz=Count('pk', filter=Q(in_hpz=Well.HPZ.VERIFIED)),
+                )
+            }
+            rows = [(pk, sqid, counts[pk]) for pk, sqid in regions.filter(pk__in=counts).values_list('pk', 'sqid')]
+        else:
+            inside = wells.filter(point__intersects=OuterRef('boundary__geometry')).values('pk')
+            annotated = regions.annotate(
+                n_wells=_Count(inside), n_active=_Count(inside.filter(status=Well.Status.ACTIVE)),
+                n_hpz=_Count(inside.filter(in_hpz=Well.HPZ.VERIFIED)),
+            ).filter(n_wells__gt=0).values_list('pk', 'sqid', 'n_wells', 'n_active', 'n_hpz')
+            rows = [(pk, sqid, {'wells': n, 'active': active, 'hpz': hpz}) for pk, sqid, n, active, hpz in annotated]
+        miles = areas.region_sq_miles(level)
+        result = [{
+            'id': sqid,
+            'wells': row['wells'],
+            'active': row['active'],
+            'hpz': row['hpz'],
+            'per_sq_mi': row['wells'] / miles[pk] if miles.get(pk) else None,
+            'hpz_share': row['hpz'] / row['wells'] if row['wells'] else None,
+        } for pk, sqid, row in rows]
+        result.sort(key=lambda area: area['id'])
+        return {'level': level, 'unit': 'wells', 'areas': result}
+
+    if filters.keys() - {'status', 'hpz'}:
+        return compute()
+    return cache.get_or_set(key('areas', level, *(f'{name}={filters[name]}' for name in sorted(filters))), compute, stats.CACHE_TIMEOUT)
+

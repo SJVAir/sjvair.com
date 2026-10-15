@@ -349,3 +349,16 @@ class DairyFilterBoxTests(TestCase):
         assert dairy_views.parse_sizes(QueryDict('sizes=small,large')) == ['small', 'large']
         assert dairy_views.parse_sizes(QueryDict('')) == ['small', 'medium', 'large']
 
+
+class DairyAreasLevelTests(TestCase):
+    """The Dairies map's Areas view: a level picker, CARB's emissions measures at the county level only."""
+
+    def test_levels_and_county_only_measures(self):
+        view = dairy_views.dairy_map_view
+        assert view({})['level'] == 'county' and view({})['measure'] == 'mature_cows_per_sq_mi'
+        assert (view({'level': 'tract', 'measure': 'dairies'})['level'], view({'level': 'tract', 'measure': 'dairies'})['measure']) == ('tract', 'dairies')
+        # Emissions at a tract: back to the herds.
+        assert view({'level': 'tract', 'measure': 'emissions'})['measure'] == 'mature_cows_per_sq_mi'
+        assert view({'level': 'county', 'measure': 'emissions'})['measure'] == 'emissions'
+        assert view({'level': 'bogus'})['level'] == 'county'
+

@@ -74,6 +74,15 @@
   };
   var AREA_FIELDS = { density: 'per_sq_mi', total: 'total', per_resident: 'per_1k_residents' };
   var AREA_SUFFIX = { density: ' per sq mi', total: '', per_resident: ' per 1,000 people' };
+  // An Oil & gas map's Areas view (data-areas-kind="wells") shades the wells'
+  // own counts (/api/2.0/emissions/wells/areas/): its measures' fields,
+  // fixed classes (from the Valley's spread: most tracts hold a handful of
+  // wells, a few oil-field tracts thousands) and legend titles.
+  var WELL_AREA_FIELDS = { density: 'per_sq_mi', total: 'wells', active: 'active', hpz_share: 'hpz_share' };
+  var WELL_AREA_BREAKS = { density: [0.5, 2, 10, 50], total: [5, 25, 100, 1000], active: [5, 25, 100, 1000], hpz_share: [0.1, 0.25, 0.5, 0.75] };
+  var WELL_AREA_TITLES = {
+    density: 'Wells per sq mi', total: 'Wells', active: 'Active wells', hpz_share: 'Share of wells in a health-protection zone',
+  };
   // Compare mode: the Areas view shades the selected measure's percent
   // change instead of its value, on a fixed diverging scale (ColorBrewer
   // RdBu) -- blue for a fall, red for a rise, pale grey near zero. Fixed
@@ -422,14 +431,15 @@
     this.level = this.data.level || this.defaultLevel;
     this.measure = this.data.measure || 'density';
     // A weighted toxics measure is a share: only Total means anything (the
-    // server renders density and per-resident disabled).
-    if (this.data.unit === 'share') this.measure = 'total';
+    // server renders density and per-resident disabled). Not for the wells'
+    // areas, which are counts whatever the pollutant.
+    if (this.data.unit === 'share' && !this.wellsAreas()) this.measure = 'total';
     // The year Compare shades the change against, in both views, or ''
     // for plain values; a toolbar control, not part of the page's scope.
     this.compare = this.data.compare || '';
     // A shared link asking for density (or per-resident) on a share opens as
     // Total; the address bar says so too.
-    if (this.areasEnabled && this.data.unit === 'share' && /[?&]measure=(?!total(&|$))/.test(window.location.search)) this.syncUrl();
+    if (this.areasEnabled && !this.wellsAreas() && this.data.unit === 'share' && /[?&]measure=(?!total(&|$))/.test(window.location.search)) this.syncUrl();
     // The wells overlay: offered where the page gave a URL; its default is the
     // page's (Kern County, the oil-gas sector), the URL may override it.
     this.wellsEnabled = !!this.data.wellsUrl;
@@ -624,8 +634,16 @@
       // mainLayer: the legend's checkbox for the pollutant's own layer, off
       // to see an overlay (plumes, wells) alone.
       set(this.map, 'facilities', !areas && this.mainLayer);
-      set(this.map, 'areas-fill', areas && this.mainLayer);
-      set(this.map, 'areas-line', areas && this.mainLayer);
+      // The wells' areas are the wells, drawn another way: shown whatever the
+      // (absent) facilities layer says, with the wells' own points hidden under them.
+      var shaded = areas && (this.mainLayer || this.wellsAreas());
+      set(this.map, 'areas-fill', shaded);
+      set(this.map, 'areas-line', shaded);
+      if (this.wellsAreas()) {
+        var wellsOn = !areas && this.wellsEnabled && this.wells;
+        set(this.map, 'wells', wellsOn);
+        set(this.map, 'wells-clusters', wellsOn);
+      }
     }
     Array.prototype.forEach.call(this.shell.controls('[data-view]'), function (button) {
       var on = button.getAttribute('data-view') === (areas ? 'areas' : 'facilities');
@@ -708,7 +726,18 @@
     this.el.dataset.loaded = '1';
   };
 
+  // An Oil & gas map: its Areas view shades the wells, not the facilities.
+  FacilityMap.prototype.wellsAreas = function () {
+    return this.data.areasKind === 'wells';
+  };
+
   FacilityMap.prototype.areasUrl = function () {
+    if (this.wellsAreas()) {
+      // The wells' own filters (status, HPZ...), as their overlay's URL carries them.
+      var wellsParams = new URLSearchParams((this.data.wellsUrl || '').split('?')[1] || '');
+      wellsParams.set('level', this.level);
+      return this.data.areasUrl + '?' + wellsParams.toString();
+    }
     var params = new URLSearchParams(this.data.query || '');
     params.set('level', this.level);
     if (this.compare) params.set('compare', this.compare); else params.delete('compare');
@@ -755,8 +784,9 @@
     var compare = this.compare && data.values.compare;
     var byId = {};
     data.values.areas.forEach(function (area) { byId[area.id] = area; });
-    var field = AREA_FIELDS[this.measure] || AREA_FIELDS.density;
-    var breaks = compare ? CHANGE_BREAKS : areaBreaksFor(this.measure, data.values.unit);
+    var wellsAreas = this.wellsAreas();
+    var field = wellsAreas ? (WELL_AREA_FIELDS[this.measure] || WELL_AREA_FIELDS.density) : (AREA_FIELDS[this.measure] || AREA_FIELDS.density);
+    var breaks = compare ? CHANGE_BREAKS : (wellsAreas ? (WELL_AREA_BREAKS[this.measure] || WELL_AREA_BREAKS.density) : areaBreaksFor(this.measure, data.values.unit));
     var ramp = compare ? CHANGE_RAMP : RAMP;
     var features = (data.shapes.features || []).map(function (feature) {
       var area = byId[feature.id];
@@ -775,6 +805,10 @@
           total_prev: area ? area.total_prev : null,
           per_sq_mi_prev: area ? area.per_sq_mi_prev : null,
           per_1k_residents_prev: area ? area.per_1k_residents_prev : null,
+          wells: area ? area.wells : 0,
+          active: area ? area.active : 0,
+          hpz: area ? area.hpz : 0,
+          hpz_share: area ? area.hpz_share : null,
           _change: change,
           _color: shaded ? ramp[classIndex(compare ? change : value, breaks)] : EMPTY_COLOR,
           _empty: shaded ? 0 : 1,
@@ -849,7 +883,8 @@
 
   // The overlay's layers follow `this.wells`; the legend's checkbox too.
   FacilityMap.prototype.applyWells = function () {
-    var on = this.wellsEnabled && this.wells;
+    // In an Oil & gas map's Areas view the shading is the wells: their points stay under it.
+    var on = this.wellsEnabled && this.wells && !(this.wellsAreas() && this.view === 'areas');
     if (this.map && this.map.getLayer('wells')) {
       // A page swap can move between a locations map and an Oil & gas one: the colours follow.
       var colors = this.wellColors();
@@ -1214,6 +1249,7 @@
   FacilityMap.prototype.openAreaPopup = function (feature, lngLat) {
     var self = this;
     var p = feature.properties;
+    if (this.wellsAreas()) return this.openWellAreaPopup(feature, lngLat);
     var count = Number(p.facilities) || 0;
     var share = this.data.unit === 'share';
     var name = (LEVEL_NAMES[this.level] || '') + p.name;
@@ -1253,14 +1289,47 @@
     }
   };
 
+  // An Oil & gas map's area: its wells by status and how many sit in a
+  // health-protection zone, and a button back to them on the map.
+  FacilityMap.prototype.openWellAreaPopup = function (feature, lngLat) {
+    var self = this;
+    var p = feature.properties;
+    var count = Number(p.wells) || 0;
+    var name = (LEVEL_NAMES[this.level] || '') + p.name;
+    var number = function (value) { return Number(value || 0).toLocaleString('en-US'); };
+    var html = '<div class="facility-popup area-popup">' +
+      '<p class="facility-popup-name">' + escapeHtml(name) + '</p>' +
+      '<p><strong>' + number(count) + '</strong> well' + (count === 1 ? '' : 's') + (count ? ' · ' + number(p.active) + ' active' : '') + '</p>' +
+      (count ? '<p>Per square mile: <strong>' + (p.per_sq_mi === null || p.per_sq_mi === undefined ? '—' : Number(p.per_sq_mi).toLocaleString('en-US', { maximumFractionDigits: 1 })) + '</strong></p>' +
+        '<p>In a health-protection zone: <strong>' + number(p.hpz) + '</strong>' + (p.hpz_share !== null && p.hpz_share !== undefined ? ' (' + sharePct(p.hpz_share) + ')' : '') + '</p>' : '') +
+      (count ? '<p><button type="button" class="button is-small is-link is-light" data-show-facilities>Show wells</button></p>' : '') +
+      '</div>';
+    var popup = this.shell.placePopup(html, lngLat);
+    var button = popup.getElement().querySelector('[data-show-facilities]');
+    if (button) {
+      button.addEventListener('click', function () {
+        var shape = (self.areaData && self.areaData.shapes.features || []).filter(function (f) { return f.id === p.id; })[0];
+        popup.remove();
+        self.setView('facilities');
+        var bounds = shape && M.geometryBounds(shape.geometry);
+        if (bounds) self.map.fitBounds(bounds, { padding: 24, animate: !self.shell.reducedMotion });
+      });
+    }
+  };
+
   // The legend card follows the view. It stays hidden until there's
   // something to put in it.
   FacilityMap.prototype.legend = function (body) {
     var legend = body.querySelector('.facility-map-legend');
     if (!legend) return;
     if (this.noFacilities) {
-      // Only the overlays: their own checkboxes and keys, no facility key.
+      // Only the overlays: their own checkboxes and keys, no facility key --
+      // or, in the wells' Areas view, the areas' key with them.
       if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = false;
+      if (this.wellsAreas() && this.view === 'areas' && this.areaData) {
+        this.areaLegend(legend);
+        return;
+      }
       legend.innerHTML = this.overlaysLegendHtml();
       return;
     }
@@ -1325,6 +1394,15 @@
     var share = data.values.unit === 'share';
     var breaks = data.breaks;
     var missing = Number(data.values.facilities_without_point) || 0;
+    if (this.wellsAreas()) {
+      legend.innerHTML = '<p class="legend-title">' + escapeHtml(WELL_AREA_TITLES[this.measure] || WELL_AREA_TITLES.density) + '</p>' +
+        facilityBins(breaks, 'is-area', this.measure === 'hpz_share' ? sharePct : undefined) +
+        '<p class="legend-empty"><span class="legend-swatch is-area is-none"></span>No wells</p>' +
+        '<p class="legend-note">' + this.wellsAsOf('Today\'s wells') + ': CalGEM records, not emissions.</p>' +
+        // The other overlays; not the wells' own row, whose points the shading stands in for.
+        this.pointsLegendHtml(['dairies']) + this.pointsLegendHtml(['schools']) + this.methaneLegendHtml();
+      return;
+    }
     if (data.compareActive) {
       var title = escapeHtml(this.data.label) + (share ? '' : (AREA_SUFFIX[this.measure] || '')) + ', change ' +
         escapeHtml(String(data.compareActive)) + ' to ' + escapeHtml(this.data.year || '');
@@ -1487,7 +1565,7 @@
     this.shell.updateLegend();
     // The status pill speaks for the view on screen.
     if (this.view === 'facilities') {
-      this.shell.setStatus(this.el.dataset.loaded === '1' ? '' : 'Loading facilities…');
+      this.shell.setStatus(this.el.dataset.loaded === '1' || this.wellsAreas() ? '' : 'Loading facilities…');
     } else {
       this.shell.setStatus('');
     }

@@ -104,28 +104,40 @@ class DairyCountiesBase(generics.Endpoint):
         pollutant, error = get_pollutant(request)
         if error:
             return http.Http400({'error': error})
+        level = (request.GET.get('level') or '').strip() or dairies.DEFAULT_LEVEL
+        if level not in dairies.AREA_LEVELS:
+            return http.Http400({'error': f"level must be one of {', '.join(dairies.AREA_LEVELS)}."})
         measure = (request.GET.get('measure') or '').strip() or dairies.DEFAULT_MEASURE
         if measure not in dairies.MEASURES:
             return http.Http400({'error': f"measure must be one of {', '.join(dairies.MEASURES)}."})
-        return {
+        rows = [dict(row, value=row[measure]) for row in dairies.area_values(year, pollutant, level)]
+        body = {
             'year': year,
             'pollutant': pollutant.key,
             'label': pollutant.label,
             'unit': pollutant.unit,
+            'level': level,
             'measure': measure,
             'source': dairies.CEPAM_NOTE,
-            'counties': [dict(row, value=row[measure]) for row in dairies.county_values(year, pollutant)],
+            'areas': rows,
         }
+        if level == dairies.DEFAULT_LEVEL:
+            # The endpoint's first shape, kept for existing clients.
+            body['counties'] = rows
+        return body
 
 
 class DairyCounties(DairyCachedEndpointMixin, DairyCountiesBase):
     """
-    Per covered county: CARB's dairy cattle emissions (CEPAM, tons/yr, and per
-    square mile) and CADD's mature dairy cows (total and per square mile), plus
-    `value` for ?measure=. ?year= (CADD's), ?pollutant= (rog, pm, pm10, tog).
+    Per area for the Dairies map's Areas view, ?level= county (the default),
+    zipcode or tract: CADD's dairies and mature dairy cows (total and per
+    square mile) and, by county only, CARB's dairy cattle emissions (CEPAM,
+    tons/yr, and per square mile), plus `value` for ?measure=. ?year= (CADD's),
+    ?pollutant= (rog, pm, pm10, tog). `areas` at every level; `counties` too
+    at the county level.
     """
     cache_timeout = 60 * 60 * 24
-    cache_key_version = 2
+    cache_key_version = 3
 
 
 class DairyDetail(generics.Endpoint):

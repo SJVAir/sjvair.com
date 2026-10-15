@@ -63,8 +63,11 @@
     };
   }
   var EMPTY_COLOR = '#8a94a3';
-  // The Counties view's default measure (dairies.DEFAULT_MEASURE), left out of the URL.
-  var DEFAULT_MEASURE = 'mature_cows';
+  // The Areas view's default measure and level (dairies.DEFAULT_MEASURE,
+  // DEFAULT_LEVEL), left out of the URL; its levels' name prefixes.
+  var DEFAULT_MEASURE = 'mature_cows_per_sq_mi';
+  var DEFAULT_LEVEL = 'county';
+  var LEVEL_NAMES = { county: '', zipcode: 'ZIP ', tract: 'Tract ' };
   var COUNTY_COLOR = '#1f2d3d';
   // The smallest herd is the main map's point marker (facility-map.js's LOCATION_RADIUS).
   var MIN_RADIUS = 4;
@@ -255,6 +258,9 @@
     this.dairies = null;
     this.counties = null;
     this.shapes = null;
+    // The Areas view's shapes per level (counties are `shapes`, which also frame the map).
+    this.levelShapes = {};
+    this.areaShapes = null;
     this.countyBreaks = [];
     this.countyAnchors = {};
     // The page's outline (region JSON) has its own request counter and bounds.
@@ -316,7 +322,10 @@
 
   DairyMap.prototype.readState = function () {
     this.view = this.data.view === 'counties' ? 'counties' : 'dairies';
+    this.level = this.data.level || DEFAULT_LEVEL;
+    this.countyOnly = (this.data.countyOnlyMeasures || '').split(',').filter(Boolean);
     this.measure = this.data.measure || DEFAULT_MEASURE;
+    if (this.level !== DEFAULT_LEVEL && this.countyOnly.indexOf(this.measure) !== -1) this.measure = DEFAULT_MEASURE;
     this.sizes = parseSizes(this.data.sizes);
     this.digester = this.data.digester === 'yes' || this.data.digester === 'no' ? this.data.digester : '';
   };
@@ -430,12 +439,14 @@
     this.shell.setStatus('Loading dairies…');
     if (this.methane) this.methane.load();
     var shapes = this.shapes ? Promise.resolve(this.shapes) : getJson(this.data.shapesUrl);
-    this.shell.track(Promise.all([getJson(this.data.geojsonUrl), shapes, getJson(this.data.countiesUrl)]))
+    var level = this.level;
+    this.shell.track(Promise.all([getJson(this.data.geojsonUrl), shapes, getJson(this.areaValuesUrl(level)), this.shapesFor(level)]))
       .then(function (results) {
         // A newer load (a swap) or a destroy superseded this one.
         if (!self.shell.isCurrent(ticket)) return;
         self.shapes = results[1];
         self.counties = results[2];
+        self.areaShapes = results[3] || results[1];
         self.buildCountyAnchors();
         self.showDairies(results[0]);
         self.showCounties();
@@ -520,17 +531,94 @@
     this.shell.updateLegend();
   };
 
-  // Joins the county values to the shapes and colours them by the measure (a
-  // measure change re-runs this without fetching).
+  // The Areas view's values for a level (the endpoint's ?level=).
+  DairyMap.prototype.areaValuesUrl = function (level) {
+    return this.data.countiesUrl + (this.data.countiesUrl.indexOf('?') === -1 ? '?' : '&') + 'level=' + encodeURIComponent(level);
+  };
+
+  // A level's shapes: the counties are the map's own (null here, `shapes`
+  // stands in); ZIP codes and tracts from the same regions endpoint, once each.
+  DairyMap.prototype.shapesFor = function (level) {
+    var self = this;
+    if (level === DEFAULT_LEVEL) return Promise.resolve(null);
+    if (this.levelShapes[level]) return Promise.resolve(this.levelShapes[level]);
+    var url = this.data.shapesUrl.replace(/([?&]type=)[^&]*/, '$1' + encodeURIComponent(level));
+    return getJson(url).then(function (shapes) {
+      self.levelShapes[level] = shapes;
+      return shapes;
+    });
+  };
+
+  // Another level: its values and shapes, then the shading (and the measure,
+  // if CARB's county-only estimate was on, back to the herds).
+  DairyMap.prototype.setLevel = function (level, label) {
+    var self = this;
+    this.level = ['county', 'zipcode', 'tract'].indexOf(level) === -1 ? DEFAULT_LEVEL : level;
+    if (this.level !== DEFAULT_LEVEL && this.countyOnly.indexOf(this.measure) !== -1) this.measure = DEFAULT_MEASURE;
+    this.clearHover();
+    this.shell.closePopup();
+    var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.dairy-map-level');
+    if (dropdown) {
+      if (label) setToolbarLabel(dropdown, label);
+      Array.prototype.forEach.call(dropdown.querySelectorAll('[data-level]'), function (item) {
+        item.classList.toggle('is-active', item.getAttribute('data-level') === self.level);
+      });
+    }
+    this.syncMeasureControls();
+    this.syncUrl();
+    var requested = this.level;
+    this.shell.setStatus('Loading areas…');
+    this.shell.track(Promise.all([getJson(this.areaValuesUrl(requested)), this.shapesFor(requested)]))
+      .then(function (results) {
+        if (requested !== self.level || !self.map) return;
+        self.counties = results[0];
+        self.areaShapes = results[1] || self.shapes;
+        self.buildCountyAnchors();
+        self.showCounties();
+        self.shell.setStatus('');
+      })
+      .catch(function (err) {
+        self.shell.setStatus('Couldn\'t load the areas');
+        logError('failed to load the areas', err);
+      });
+  };
+
+  // The Measure dropdown: CARB's emissions measures only at the county level
+  // (its estimate is by county); the label follows the measure in use.
+  DairyMap.prototype.syncMeasureControls = function () {
+    var self = this;
+    var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.dairy-map-measure');
+    if (!dropdown) return;
+    Array.prototype.forEach.call(dropdown.querySelectorAll('[data-measure]'), function (item) {
+      var value = item.getAttribute('data-measure');
+      var off = self.level !== DEFAULT_LEVEL && self.countyOnly.indexOf(value) !== -1;
+      item.classList.toggle('is-disabled', off);
+      item.setAttribute('aria-disabled', off ? 'true' : 'false');
+      // Why it's off, on hover and focus (bulma-tooltip, as the main map's disabled measures).
+      if (off) {
+        item.setAttribute('data-tooltip', 'CARB estimates dairy emissions by county only: pick Counties to shade by them.');
+        item.classList.add('has-tooltip-left', 'has-tooltip-multiline', 'has-tooltip-arrow');
+      } else {
+        item.removeAttribute('data-tooltip');
+        item.classList.remove('has-tooltip-left', 'has-tooltip-multiline', 'has-tooltip-arrow');
+      }
+      item.classList.toggle('is-active', value === self.measure);
+      if (value === self.measure) setToolbarLabel(dropdown, item.textContent.trim());
+    });
+  };
+
+  // Joins the area values to the level's shapes and colours them by the
+  // measure (a measure change re-runs this without fetching).
   DairyMap.prototype.showCounties = function () {
-    if (!this.shapes || !this.counties) return;
-    var rows = this.counties.counties || [];
+    var shapes = this.areaShapes || this.shapes;
+    if (!shapes || !this.counties) return;
+    var rows = this.counties.areas || this.counties.counties || [];
     var byId = {};
     rows.forEach(function (row) { byId[row.id] = row; });
     var field = this.measure;
     var values = rows.map(function (row) { return row[field]; }).filter(function (value) { return value > 0; });
     var breaks = niceBreaks(values.length ? Math.max.apply(null, values) : 0);
-    var features = (this.shapes.features || []).map(function (feature) {
+    var features = (shapes.features || []).map(function (feature) {
       var row = byId[feature.id] || {};
       var value = row[field];
       var shaded = breaks.length > 0 && value !== null && value !== undefined && value > 0;
@@ -543,6 +631,7 @@
           emissions_per_sq_mi: row.emissions_per_sq_mi,
           mature_cows: row.mature_cows,
           mature_cows_per_sq_mi: row.mature_cows_per_sq_mi,
+          dairies: row.dairies,
           _color: shaded ? RAMP[classIndex(value, breaks)] : EMPTY_COLOR,
           _empty: shaded ? 0 : 1,
         }),
@@ -557,7 +646,7 @@
   // hover label sits there, steady, rather than chasing the cursor.
   DairyMap.prototype.buildCountyAnchors = function () {
     var anchors = {};
-    (this.shapes.features || []).forEach(function (feature) {
+    ((this.areaShapes || this.shapes).features || []).forEach(function (feature) {
       anchors[feature.id] = M.geometryCentroid(feature.geometry);
     });
     this.countyAnchors = anchors;
@@ -579,6 +668,8 @@
         return whole(value) + ' mature dairy cows';
       case 'mature_cows_per_sq_mi':
         return quantity(value) + ' mature dairy cows per sq mi';
+      case 'dairies':
+        return whole(value) + ' dair' + (Number(value) === 1 ? 'y' : 'ies');
       default:
         return 'no data';
     }
@@ -652,15 +743,19 @@
   DairyMap.prototype.openCountyPopup = function (feature, lngLat) {
     var p = feature.properties;
     var unit = escapeHtml(this.data.unit);
+    var county = this.level === DEFAULT_LEVEL;
     var url = (this.data.regionUrl || '').replace('{id}', encodeURIComponent(p.id)) + this.regionQuery();
     var line = function (label, value) { return '<p>' + label + ': <strong>' + value + '</strong></p>'; };
+    // CARB's emissions estimate is by county: a ZIP code or tract has the herds only.
     this.shell.placePopup('<div class="facility-popup dairy-popup">' +
-      '<p class="facility-popup-name"><a href="' + escapeHtml(url) + '">' + escapeHtml(p.name) + '</a></p>' +
-      line('Dairy emissions, ' + escapeHtml(this.data.label), quantity(p.emissions) + ' ' + unit + '/yr') +
-      line('Per square mile', quantity(p.emissions_per_sq_mi) + ' ' + unit + '/yr') +
-      line('Mature dairy cows', whole(p.mature_cows)) +
+      '<p class="facility-popup-name"><a href="' + escapeHtml(url) + '">' + escapeHtml((LEVEL_NAMES[this.level] || '') + p.name) + '</a></p>' +
+      line('Dairies', whole(p.dairies || 0)) +
+      line('Mature dairy cows', whole(p.mature_cows || 0)) +
       line('Per square mile', quantity(p.mature_cows_per_sq_mi)) +
-      '<p class="is-size-7">' + escapeHtml(this.data.sourceNote) + '</p></div>', lngLat);
+      (county ? line('Dairy emissions, ' + escapeHtml(this.data.label), quantity(p.emissions) + ' ' + unit + '/yr') +
+        line('Per square mile', quantity(p.emissions_per_sq_mi) + ' ' + unit + '/yr') +
+        '<p class="is-size-7">' + escapeHtml(this.data.sourceNote) + '</p>' : '') +
+      '</div>', lngLat);
   };
 
   DairyMap.prototype.zoomTo = function (id, lngLat) {
@@ -681,6 +776,7 @@
       emissions_per_sq_mi: 'Dairy emissions, ' + label + ' (' + unit + '/yr per sq mi)',
       mature_cows: 'Mature dairy cows',
       mature_cows_per_sq_mi: 'Mature dairy cows per sq mi',
+      dairies: 'Dairies',
     }[this.measure] || '';
   };
 
@@ -729,7 +825,12 @@
     var self = this;
     if (this.shell.legendPanelEl && !this.dairies) this.shell.legendPanelEl.hidden = true;
     this.shell.bindControls('[data-view]', function (item) { self.setView(item.getAttribute('data-view')); });
-    this.shell.bindControls('[data-measure]', function (item) { self.setMeasure(item.getAttribute('data-measure'), item.textContent.trim()); });
+    this.shell.bindControls('[data-measure]', function (item) {
+      if (item.getAttribute('aria-disabled') === 'true') return;
+      self.setMeasure(item.getAttribute('data-measure'), item.textContent.trim());
+    });
+    this.shell.bindControls('[data-level]', function (item) { self.setLevel(item.getAttribute('data-level'), item.textContent.trim()); });
+    this.syncMeasureControls();
     this.shell.bindTiles('select[name="tiles"]', function () { self.syncUrl(); });
     this.applyView();
     if (this.methane) this.methane.bind(this.shell.legendBodyEl);
@@ -754,6 +855,7 @@
     var counties = this.view === 'counties';
     if (counties) params.set('view', 'counties'); else params.delete('view');
     if (counties && this.measure !== DEFAULT_MEASURE) params.set('measure', this.measure); else params.delete('measure');
+    if (counties && this.level !== DEFAULT_LEVEL) params.set('level', this.level); else params.delete('level');
     // The Options menu's Tiles experiment (shell.bindTiles); not page scope,
     // so it's written regardless of view.
     if (this.shell.tileStyle && this.shell.tileStyle !== this.defaultTileStyle) params.set('tiles', this.shell.tileStyle); else params.delete('tiles');
@@ -791,7 +893,7 @@
   // filter): keep the map as it is and refill the new page's legend card. A
   // new year, pollutant or county: drop the old data, frame, and reload.
   DairyMap.prototype.onAdopt = function (changed) {
-    var reloads = ['geojsonUrl', 'countiesUrl', 'county', 'year', 'label', 'unit', 'outlineUrl', 'center', 'radius'];
+    var reloads = ['geojsonUrl', 'countiesUrl', 'level', 'county', 'year', 'label', 'unit', 'outlineUrl', 'center', 'radius'];
     var reload = changed.some(function (key) { return reloads.indexOf(key) !== -1; });
     // A year or pollutant change on the same area leaves the outline, center
     // and radius alone: keep the outline and wash on screen, and the

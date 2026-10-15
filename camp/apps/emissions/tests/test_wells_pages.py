@@ -260,7 +260,10 @@ class TabLayerTests(WellsPagesTestCase):
     def test_each_tab_maps_its_own_layers(self):
         self.add_wells()
         oil_gas = self.get(self.kern.get_emissions_tab_url('oil-gas'))
-        assert map_data(oil_gas, 'main-layer') == 'none' and map_data(oil_gas, 'wells-url') and map_data(oil_gas, 'areas') == ''
+        # Oil & gas has an Areas view of its own: the wells' counts per area.
+        assert map_data(oil_gas, 'main-layer') == 'none' and map_data(oil_gas, 'wells-url') and map_data(oil_gas, 'areas') == '1'
+        assert map_data(oil_gas, 'areas-kind') == 'wells' and map_data(oil_gas, 'areas-url') == reverse('api:v2:emissions:wells-areas')
+        assert 'data-measure="hpz_share"' in oil_gas and 'map-toolbar-label">Wells<' in oil_gas
         facilities = self.get(self.kern.get_emissions_tab_url('facilities'))
         assert map_data(facilities, 'main-layer') == '' and map_data(facilities, 'wells-url') == '' and map_data(facilities, 'areas') == '1'
         overview = self.get(self.kern.get_emissions_url())

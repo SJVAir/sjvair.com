@@ -23,10 +23,13 @@ from camp.apps.emissions.views import AREA_PAGE_TYPES, ScopeMixin, radius_area, 
 from camp.apps.regions.models import Region
 from camp.utils import mapconfig
 
-VIEW_OPTIONS = (('dairies', 'Dairies'), ('counties', 'Counties'))
+# 'counties' is the Areas view (counties, ZIP codes or tracts); its name is kept for links.
+VIEW_OPTIONS = (('dairies', 'Dairies'), ('counties', 'Areas'))
+LEVEL_OPTIONS = (('county', 'Counties'), ('zipcode', 'ZIP codes'), ('tract', 'Census tracts'))
 MEASURE_OPTIONS = (
-    ('mature_cows', 'Mature dairy cows'),
     ('mature_cows_per_sq_mi', 'Mature dairy cows per sq mi'),
+    ('mature_cows', 'Mature dairy cows'),
+    ('dairies', 'Dairies'),
     ('emissions', 'Dairy emissions'),
     ('emissions_per_sq_mi', 'Dairy emissions per sq mi'),
 )
@@ -97,12 +100,19 @@ def dairy_map_view(get):
     unknown values dropped -- so a link can name none of them.
     """
     view = get.get('view')
+    level = get.get('level')
+    level = level if level in dairies.AREA_LEVELS else dairies.DEFAULT_LEVEL
     measure = get.get('measure')
+    measure = measure if measure in dairies.MEASURES else dairies.DEFAULT_MEASURE
+    if level != dairies.DEFAULT_LEVEL and measure in dairies.COUNTY_ONLY_MEASURES:
+        # CARB's estimate is by county: a finer level shades the herds.
+        measure = dairies.DEFAULT_MEASURE
     sizes = set(parse_sizes(get))
     digester = get.get('digester')
     return {
         'view': view if view in dairies.VIEWS else dairies.DEFAULT_VIEW,
-        'measure': measure if measure in dairies.MEASURES else dairies.DEFAULT_MEASURE,
+        'level': level,
+        'measure': measure,
         'sizes': sizes,
         'digester': digester if digester in DIGESTER_VALUES else '',
     }
@@ -159,7 +169,11 @@ def dairy_map_config(scope, view, *, area_params=None, outline_url='', center=''
         'label': scope.pollutant.label,
         'unit': scope.pollutant.unit,
         'view': 'dairies' if area else view['view'],
+        'level': view.get('level', dairies.DEFAULT_LEVEL),
+        'default_level': dairies.DEFAULT_LEVEL,
         'measure': view['measure'],
+        # Measures a finer level than counties can't shade (CARB's estimate is by county).
+        'county_only_measures': ','.join(dairies.COUNTY_ONLY_MEASURES),
         'source_note': dairies.CEPAM_NOTE,
         # The year CARB's Valley dairy estimate stops changing ('' when it doesn't).
         'flat_since': dairies.flat_since(dairies.emissions_trend(scope.pollutant)) or '',
@@ -170,6 +184,7 @@ def dairy_map_config(scope, view, *, area_params=None, outline_url='', center=''
         'radius': radius,
         'view_options': () if area else VIEW_OPTIONS,
         'measure_options': MEASURE_OPTIONS,
+        'level_options': LEVEL_OPTIONS,
         # Canonical (small, medium, large) order, whatever order the query named them in.
         'sizes': [value for value, label in SIZE_OPTIONS if value in view['sizes']],
         'digester': view['digester'],
@@ -187,7 +202,7 @@ def dairy_map_config(scope, view, *, area_params=None, outline_url='', center=''
     # The options (and the labels built from them) are for the toolbar
     # template, which reads them off map_config; `sizes` goes to the
     # container as a comma-joined string, same as every other data-* value.
-    template_only = {'view_options', 'measure_options', 'size_options', 'digester_options', 'size_label', 'digester_label'}
+    template_only = {'view_options', 'measure_options', 'level_options', 'size_options', 'digester_options', 'size_label', 'digester_label'}
     data = {key.replace('_', '-'): value for key, value in config.items() if key not in template_only}
     # `sizes` is a list above (so the template can test membership); the
     # container wants it the same shape as the `sizes=` URL param.

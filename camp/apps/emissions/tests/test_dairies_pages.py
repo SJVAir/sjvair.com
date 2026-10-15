@@ -225,14 +225,14 @@ class DairyTabContentTests(DairyPageTestCase):
 
     def test_map(self):
         content = self.get().content.decode()
-        assert (dairy_map_data(content, 'view'), dairy_map_data(content, 'measure')) == ('dairies', 'mature_cows')
+        assert (dairy_map_data(content, 'view'), dairy_map_data(content, 'measure')) == ('dairies', 'mature_cows_per_sq_mi')
         assert dairy_map_data(content, 'geojson-url') == '/api/2.0/emissions/dairies/geojson/?year=2023'
         assert 'data-view="counties"' in content and 'data-measure="mature_cows_per_sq_mi"' in content
         assert 'Mature dairy cows per sq mi' in content
         content = self.get({'view': 'counties', 'measure': 'emissions'}).content.decode()
         assert (dairy_map_data(content, 'view'), dairy_map_data(content, 'measure')) == ('counties', 'emissions')
         content = self.get({'view': 'bogus', 'measure': 'x'}).content.decode()
-        assert (dairy_map_data(content, 'view'), dairy_map_data(content, 'measure')) == ('dairies', 'mature_cows')
+        assert (dairy_map_data(content, 'view'), dairy_map_data(content, 'measure')) == ('dairies', 'mature_cows_per_sq_mi')
 
     def test_map_config(self):
         scope, _ = dairies.resolve_scope({'county': 'kern', 'pollutant': 'pm10'})

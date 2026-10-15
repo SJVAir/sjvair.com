@@ -85,8 +85,11 @@ body.emissions
   .facility-map-view .button.is-link .explorer-icon
     --fa-primary-color: #fff
     --fa-secondary-color: rgba(255, 255, 255, 0.6)
-  // Scope options that don't apply on a page (the Dairies tab): shown, not links.
-  .explorer-scope-picker .dropdown-item.is-disabled
+  // Scope options that don't apply on a page (the Dairies tab), and a map
+  // toolbar's measure that doesn't apply at the level picked (the Dairies
+  // map's emissions, by county only): shown, greyed, not links.
+  .explorer-scope-picker .dropdown-item.is-disabled,
+  .map-toolbar-dropdown .dropdown-item.is-disabled
     color: $grey-light
     cursor: not-allowed
     &:hover

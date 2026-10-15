@@ -59,12 +59,18 @@ HERD_CLASSES = (
 )
 TABLE_SORTS = ('name', '-name', 'city', '-city', 'county', '-county', 'mature_cows', '-mature_cows')
 DEFAULT_SORT = '-mature_cows'
-# The Dairies tab map's views and its Counties measures.
+# The Dairies tab map's views ('counties' is the Areas view, its name kept
+# for links) and the Areas view's levels and measures.
 VIEWS = ('dairies', 'counties')
 DEFAULT_VIEW = 'dairies'
-MEASURES = ('emissions', 'emissions_per_sq_mi', 'mature_cows', 'mature_cows_per_sq_mi')
-# Herd counts by default: CARB's county estimate is flat for most years (flat_since).
-DEFAULT_MEASURE = 'mature_cows'
+AREA_LEVELS = areas.LEVELS
+DEFAULT_LEVEL = Region.Type.COUNTY
+MEASURES = ('mature_cows_per_sq_mi', 'mature_cows', 'dairies', 'emissions', 'emissions_per_sq_mi')
+# CARB's dairy emissions estimate is by county only: no ZIP code or tract has one.
+COUNTY_ONLY_MEASURES = ('emissions', 'emissions_per_sq_mi')
+# Herd density by default: a count favours a big area, and CARB's county
+# estimate is flat for most years (flat_since).
+DEFAULT_MEASURE = 'mature_cows_per_sq_mi'
 # A counted herd: at least one head of cattle.
 COUNTED = Q(mature_cows__gt=0) | Q(other_cattle__gt=0)
 # The EPA size classes with their thresholds, largest first (the maps' legends
@@ -392,10 +398,12 @@ def county_values(year, pollutant):
     def compute():
         miles = areas.region_sq_miles(Region.Type.COUNTY)
         emissions = county_emissions(year, pollutant)
-        cows = dict(
-            herds(year).values('dairy__county').annotate(total=Sum('mature_cows'))
-            .values_list('dairy__county', 'total')
-        )
+        cows, counts = {}, {}
+        for county, total, dairies in (
+            herds(year).values('dairy__county').annotate(total=Sum('mature_cows'), dairies=Count('dairy', distinct=True))
+            .values_list('dairy__county', 'total', 'dairies')
+        ):
+            cows[county], counts[county] = total, dairies
         rows = []
         for county in Region.objects.counties().order_by('name'):
             tons = emissions.get(county.pk)
@@ -408,9 +416,40 @@ def county_values(year, pollutant):
                 'emissions_per_sq_mi': areas._per(tons, miles.get(county.pk)),
                 'mature_cows': herd,
                 'mature_cows_per_sq_mi': areas._per(herd, miles.get(county.pk)),
+                'dairies': counts.get(county.pk) or 0,
             })
         return rows
-    return cache.get_or_set(key('county-values', year, pollutant.key), compute, stats.CACHE_TIMEOUT)
+    return cache.get_or_set(key('county-values', 2, year, pollutant.key), compute, stats.CACHE_TIMEOUT)
+
+
+def area_values(year, pollutant, level):
+    """
+    The Areas view's rows for `level` (AREA_LEVELS): every covered county
+    (county_values, with CARB's emissions), or each ZIP code or tract with a
+    counted herd -- its dairies, mature dairy cows and cows per square mile,
+    by where the dairy's point falls (region_index); no emissions there.
+    """
+    if level == Region.Type.COUNTY:
+        return county_values(year, pollutant)
+
+    def compute():
+        index = region_index(level)
+        cows, counts = {}, {}
+        for dairy, mature in herds(year).values_list('dairy', 'mature_cows'):
+            region = index.get(dairy)
+            if region is None:
+                continue
+            cows[region] = cows.get(region, 0) + (mature or 0)
+            counts[region] = counts.get(region, 0) + 1
+        miles = areas.region_sq_miles(level)
+        return [{
+            'id': sqid, 'slug': slug, 'name': name,
+            'emissions': None, 'emissions_per_sq_mi': None,
+            'mature_cows': cows[pk],
+            'mature_cows_per_sq_mi': areas._per(cows[pk], miles.get(pk)),
+            'dairies': counts[pk],
+        } for pk, sqid, slug, name in Region.objects.filter(pk__in=counts).order_by('name').values_list('pk', 'sqid', 'slug', 'name')]
+    return cache.get_or_set(key('area-values', level, year), compute, stats.CACHE_TIMEOUT)
 
 
 def dairy_areas(dairy):

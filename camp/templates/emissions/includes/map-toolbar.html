@@ -10,7 +10,7 @@ which applies to both views.
 <div class="map-toolbar-filters" role="group" aria-label="Map filters">
     {% if map_config.areas %}
     <div class="buttons has-addons facility-map-view" role="group" aria-label="Show">
-        <button type="button" class="button{% if map_config.view != 'areas' %} is-selected is-link{% endif %}" data-view="facilities" aria-pressed="{% if map_config.view != 'areas' %}true{% else %}false{% endif %}" aria-label="Facilities" title="Facilities"><span class="icon"><span class="fa-duotone fa-fw fa-industry-windows explorer-icon is-facilities" aria-hidden="true"></span></span><span class="map-toolbar-label">Facilities</span></button>
+        <button type="button" class="button{% if map_config.view != 'areas' %} is-selected is-link{% endif %}" data-view="facilities" aria-pressed="{% if map_config.view != 'areas' %}true{% else %}false{% endif %}" aria-label="{{ map_config.points_label }}" title="{{ map_config.points_label }}"><span class="icon"><span class="fa-duotone fa-fw {% if map_config.areas_kind == 'wells' %}fa-oil-well explorer-icon is-wells{% else %}fa-industry-windows explorer-icon is-facilities{% endif %}" aria-hidden="true"></span></span><span class="map-toolbar-label">{{ map_config.points_label }}</span></button>
         <button type="button" class="button{% if map_config.view == 'areas' %} is-selected is-link{% endif %}" data-view="areas" aria-pressed="{% if map_config.view == 'areas' %}true{% else %}false{% endif %}" aria-label="Areas" title="Areas"><span class="icon"><span class="fa-duotone fa-fw fa-draw-polygon explorer-icon is-areas" aria-hidden="true"></span></span><span class="map-toolbar-label">Areas</span></button>
     </div>
     {% endif %}

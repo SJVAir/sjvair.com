@@ -76,6 +76,25 @@ class WellGeoJSON(generics.Endpoint):
         }, separators=(',', ':'))
 
 
+class WellAreas(generics.Endpoint):
+    """
+    Wells per area for the Oil & gas map's Areas view: ?level= (county,
+    zipcode, tract; required) and the table's filters (status, hpz, q,
+    operator, field). `{"level", "unit": "wells", "areas": [{id, wells,
+    active, hpz, per_sq_mi, hpz_share}]}`, only areas with a well; shapes
+    come from /api/2.0/regions/geojson/?type=<level>&simplify=1, joined on
+    `id`. Counts of CalGEM records, not emissions.
+    """
+
+    def get(self, request):
+        from camp.apps.emissions import areas
+        level = request.GET.get('level', '')
+        if level not in areas.LEVELS:
+            return HttpResponse(json.dumps({'error': f"level must be one of {', '.join(areas.LEVELS)}."}), status=400, content_type='application/json')
+        filters = {name: value for name, value in wells.table_filters(request.GET).items() if name != 'sort'}
+        return wells.area_values(level, filters)
+
+
 class WellDetail(generics.Endpoint):
     """One well, for the map popup: lease and number, status, type, operator, field, spud year, HPZ status and its CalGEM record."""
 

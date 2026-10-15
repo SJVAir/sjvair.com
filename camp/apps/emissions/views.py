@@ -196,6 +196,14 @@ def home_cards(scope):
     ]
 
 
+def top_facilities_share(scope, total, count=10):
+    """The `count` largest facilities' share of the scope's total (None without one): how concentrated it is."""
+    if not total:
+        return None
+    largest = sum(float(record.value or 0) for record in stats.facility_table(scope)[:count])
+    return largest / float(total)
+
+
 def county_rows(scope):
     """
     The home page's county table: every Valley county, most to least of the
@@ -290,6 +298,10 @@ class Home(ScopeMixin, vanilla.TemplateView):
             sector_board=sector_board(scope, top_sectors),
             by_year=stats.by_year(scope),
             entry_cards=home_cards(scope),
+            # The stats row's derived figures (the entry cards carry the counts):
+            # how concentrated the year's total is in a few facilities and one county.
+            top_ten_share=top_facilities_share(scope, totals['value']),
+            top_county=counties[0] if counties and counties[0].get('share') else None,
             find_area_places=find_area_places(),
             find_area_counties=[p for p in find_area_places() if p['type'] == Region.Type.COUNTY],
             find_area_ab617=[p for p in find_area_places() if p['type'] == Region.Type.AB617_COMMUNITY],
@@ -584,6 +596,26 @@ def map_view(get, default_level=areas.DEFAULT_LEVEL, year=None, *, share=False):
     }
 
 
+def wells_map_view(get, default_level=areas.DEFAULT_LEVEL):
+    """
+    map_view() for the Oil & gas maps' Areas view, which shades the wells'
+    own counts (wells.area_values): the same view and level, the wells'
+    measures, no Compare (CalGEM's list has no years).
+    """
+    view = get.get('view')
+    level = get.get('level')
+    measure = get.get('measure')
+    return {
+        'kind': 'wells',
+        'view': view if view in ('facilities', 'areas') else 'facilities',
+        'level': level if level in areas.LEVELS else default_level,
+        'measure': measure if measure in dict(wells.AREA_MEASURES) else wells.DEFAULT_AREA_MEASURE,
+        'default_level': default_level,
+        'compare': '',
+        'compare_options': [],
+    }
+
+
 def wells_overlay(get, *, default=False, filtered=False):
     """
     The map's Oil & gas wells overlay: on by default where `default` says
@@ -625,7 +657,10 @@ def wells_block(area, scope, *, kern=False):
 
 # The area tabs whose map has the Areas view (a facility choropleth): the
 # ones about facilities.
-AREAS_VIEW_TABS = ('overview', 'facilities')
+# The Oil & gas maps' Areas measures (facility_map_config's `wells` is the overlay, not the module).
+WELL_AREA_MEASURES = wells.AREA_MEASURES
+# The tabs whose map has an Areas view; Oil & gas's shades the wells (wells_map_view).
+AREAS_VIEW_TABS = ('overview', 'facilities', 'oil-gas')
 
 
 def area_tab_layers(get, tab, scope, *, area_params, nearby=None):
@@ -784,6 +819,7 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
     params = dict(params) if params is not None else scope.params()
     if sector:
         params['sector'] = sector
+    areas_kind = (areas_view or {}).get('kind', '')
     point = highlight.point if highlight is not None else None
     config = {
         'mode': mode,
@@ -839,7 +875,9 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         'ring_miles': schools.QUARTER_MILE_FT / schools.FEET_PER_MILE if nearby and highlight is not None else '',
         # The Areas view (the map page, region pages): off where it's None.
         'areas': '1' if areas_view else '',
-        'areas_url': reverse('api:v2:emissions:areas') if areas_view else '',
+        # What the Areas view shades: the facilities' emissions, or (an Oil & gas map) the wells' counts.
+        'areas_kind': areas_kind,
+        'areas_url': (reverse('api:v2:emissions:wells-areas') if areas_kind == 'wells' else reverse('api:v2:emissions:areas')) if areas_view else '',
         'shapes_url': reverse('api:v2:regions:region-geojson') if areas_view else '',
         'region_url': reverse('emissions:region-redirect', args=['__id__']).replace('__id__', '{id}') if areas_view else '',
         'view': areas_view['view'] if areas_view else 'facilities',
@@ -860,15 +898,17 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         'sector_label': Facility.Sector(sector).label if sector else '',
         'level_options': [(level, label) for level, label in (
             (Region.Type.COUNTY, 'Counties'), (Region.Type.ZIPCODE, 'ZIP codes'), (Region.Type.TRACT, 'Census tracts'))],
-        'measure_options': [('density', 'Per square mile'), ('total', 'Total'), ('per_resident', 'Per 1,000 residents')],
+        'measure_options': list(WELL_AREA_MEASURES) if areas_kind == 'wells' else [('density', 'Per square mile'), ('total', 'Total'), ('per_resident', 'Per 1,000 residents')],
+        # The points view's name in the toolbar's switch.
+        'points_label': 'Wells' if areas_kind == 'wells' else 'Facilities',
         'compare_options': areas_view['compare_options'] if areas_view else [],
-        'disabled_measures': {'density': SHARE_MEASURE_TOOLTIP, 'per_resident': SHARE_MEASURE_TOOLTIP} if scope.pollutant.unit == 'share' else {},
+        'disabled_measures': {'density': SHARE_MEASURE_TOOLTIP, 'per_resident': SHARE_MEASURE_TOOLTIP} if scope.pollutant.unit == 'share' and areas_kind != 'wells' else {},
     }
     # The container's data attributes; the sector, its label and the level,
     # measure and compare options are for the toolbar template, which reads
     # them off map_config.
     config['buffer_options'] = buffer_options or []
-    template_only = {'sector', 'sector_label', 'level_options', 'measure_options', 'compare_options', 'disabled_measures', 'buffer_options'}
+    template_only = {'sector', 'sector_label', 'level_options', 'measure_options', 'compare_options', 'disabled_measures', 'buffer_options', 'points_label'}
     config['map'] = mapconfig.map_config(
         'facility-map',
         data={key.replace('_', '-'): value for key, value in config.items() if key not in template_only},
@@ -1454,7 +1494,10 @@ class RegionPage(RegionLookupMixin, AreaPage):
         level = areas.NEXT_LEVEL.get(self.region.type)
         return facility_map_config(
             scope, mode='compact', params=self.map_params(scope),
-            areas_view=map_view(self.request.GET, level, year=scope.year, share=scope.pollutant.unit == 'share') if level and self.tab in AREAS_VIEW_TABS else None,
+            areas_view=(
+                wells_map_view(self.request.GET, level) if self.tab == 'oil-gas'
+                else map_view(self.request.GET, level, year=scope.year, share=scope.pollutant.unit == 'share')
+            ) if level and self.tab in AREAS_VIEW_TABS else None,
             outline_url=reverse('api:v2:regions:region-detail', args=[self.region.sqid]),
             # Every layer limited to the region, or a mile or three past it.
             area_params=area_params, buffer_options=shapes.buffer_options(self.request, buffer),
@@ -1617,7 +1660,10 @@ class NearMe(NearLookupMixin, AreaPage):
     def get_map_config(self, scope):
         return facility_map_config(
             scope, mode='compact', params=self.map_params(scope),
-            areas_view=map_view(self.request.GET, Region.Type.TRACT, year=scope.year, share=scope.pollutant.unit == 'share') if self.tab in AREAS_VIEW_TABS else None,
+            areas_view=(
+                wells_map_view(self.request.GET, Region.Type.TRACT) if self.tab == 'oil-gas'
+                else map_view(self.request.GET, Region.Type.TRACT, year=scope.year, share=scope.pollutant.unit == 'share')
+            ) if self.tab in AREAS_VIEW_TABS else None,
             center=f'{self.near.lat:.4f},{self.near.lng:.4f}', zoom=RADIUS_ZOOMS[self.near.radius],
             radius=self.near.radius,
             area_params=area_map_params(self.near),
@@ -1723,6 +1769,8 @@ class OilGasPage(OilGasTabMixin, ScopeMixin, vanilla.TemplateView):
             map_config=facility_map_config(
                 scope, mode='compact', params=scope.params(county=None),
                 wells=wells_overlay(self.request.GET, default=True, filtered=True), main_layer=None,
+                # Areas shade the wells' own counts (wells_map_view): counties, ZIP codes, tracts.
+                areas_view=wells_map_view(self.request.GET),
                 methane=methane_overlay(self.request.GET, default=True),
             ),
             point_params={}, clear_filters_url=self.area_tab_url('oil-gas', self.tab_query('oil-gas')),
@@ -1792,7 +1840,11 @@ class FacilityList(FacilitiesTabMixin, ScopeMixin, vanilla.TemplateView):
             compliance_line=compliance_line,
             toxics_breakdown=stats.toxics_breakdown(scope) if scope.toxics else None,
             share_unit=scope.pollutant.unit == 'share',
-            map_config=facility_map_config(scope, mode='compact', params=filtered_map_params(scope.params(county=None), filters)),
+            # The main map's Areas view too (counties, ZIP codes, tracts), the same as a place's Facilities tab.
+            map_config=facility_map_config(
+                scope, mode='compact', params=filtered_map_params(scope.params(county=None), filters),
+                areas_view=map_view(self.request.GET, year=scope.year, share=scope.pollutant.unit == 'share'),
+            ),
             point_params={}, clear_filters_url=self.area_tab_url('facilities', self.tab_query('facilities')),
             facilities_tab_url=self.area_tab_url('facilities', self.tab_query('facilities')),
             # The scope bar keeps its county picker: a county opens that county's own tab (get()).

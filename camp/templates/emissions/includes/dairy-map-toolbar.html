@@ -1,7 +1,7 @@
 {% comment %}
 The Dairies tab map's own toolbar controls (dairy-map.js binds them): how
 the map draws, never which dairies -- the Dairies | Counties switch and, in
-Counties, the measure. The size and digester filters are the filter box's
+Areas, the level (counties, ZIP codes, tracts) and the measure. The size and digester filters are the filter box's
 (dairy-filter-fields.html). They borrow the facility map's classes for their
 look. An area page has no view switch and no measure: Dairies only.
 {% endcomment %}
@@ -14,6 +14,19 @@ look. An area page has no view switch and no measure: Dairies only.
     </div>
     {% endif %}
     {% if map_config.view_options %}
+    {# The Areas view's level, as on the main map; CARB's emissions measures are counties-only (dairy-map.js disables them finer). #}
+    <div class="dropdown map-toolbar-dropdown facility-map-level dairy-map-level" data-counties-only{% if map_config.view != 'counties' %} hidden{% endif %}>
+        <div class="dropdown-trigger">
+            <button type="button" class="button" aria-haspopup="true" aria-expanded="false" aria-controls="dairy-map-menu-level" data-name="Areas" aria-label="Areas: {% for value, label in map_config.level_options %}{% if value == map_config.level %}{{ label }}{% endif %}{% endfor %}">
+                <span class="icon"><span class="fa-duotone fa-fw fa-border-all explorer-icon is-level" aria-hidden="true"></span></span>
+                <span class="map-toolbar-label">{% for value, label in map_config.level_options %}{% if value == map_config.level %}{{ label }}{% endif %}{% endfor %}</span>
+                <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+            </button>
+        </div>
+        <div class="dropdown-menu" id="dairy-map-menu-level"><div class="dropdown-content">
+            {% for value, label in map_config.level_options %}<a href="#" class="dropdown-item{% if value == map_config.level %} is-active{% endif %}" data-level="{{ value }}">{{ label }}</a>{% endfor %}
+        </div></div>
+    </div>
     <div class="dropdown map-toolbar-dropdown facility-map-measure dairy-map-measure" data-counties-only{% if map_config.view != 'counties' %} hidden{% endif %}>
         <div class="dropdown-trigger">
             <button type="button" class="button" aria-haspopup="true" aria-expanded="false" aria-controls="dairy-map-menu-measure" data-name="Measure" aria-label="Measure: {% for value, label in map_config.measure_options %}{% if value == map_config.measure %}{{ label }}{% endif %}{% endfor %}">
