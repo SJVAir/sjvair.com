@@ -149,7 +149,7 @@
     }
   });
 
-  // A tooltip's bubble is centred on its element and up to 22rem wide, so one
+  // A tooltip's bubble is centered on its element and up to 22rem wide, so one
   // near either edge of the screen would run off it. When the pointer or
   // focus arrives, anchor the bubble to the near edge instead (the
   // has-tooltip-end / -start rules in global.sass). Left on the element, so

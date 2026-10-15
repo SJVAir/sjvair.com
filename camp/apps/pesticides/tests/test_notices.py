@@ -387,8 +387,8 @@ class AreaNoticesTabTests(TestCase):
         # Put the archived notice in a section, and the point on that section.
         section = Region.objects.get(pk=9101)
         PesticideNotice.objects.filter(pk=1).update(mtrs_id=section.pk)
-        centre = section.boundary.geometry.centroid
-        point = {'lat': round(centre.y, 4), 'lng': round(centre.x, 4), 'radius': 3, 'label': 'near Selma'}
+        center = section.boundary.geometry.centroid
+        point = {'lat': round(center.y, 4), 'lng': round(center.x, 4), 'radius': 3, 'label': 'near Selma'}
         response = self.client.get(url, {**point, 'past': 1})
         assert response.context['archive_months']
         html = response.content.decode()

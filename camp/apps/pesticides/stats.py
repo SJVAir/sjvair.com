@@ -1492,7 +1492,7 @@ SCHOOLS_NEAR_PREFILTER_DEGREES = 0.02
 def schools_near_use(year, all_years=False, county=None, concern=False):
     """
     {'schools_near_use', 'schools_total'}: how many schools and child care
-    centres (in `county`, or the Valley) have a section with use reported
+    centers (in `county`, or the Valley) have a section with use reported
     within SCHOOLS_NEAR_MILES in the year, under the narrowing, and how many
     there are. Part of landing_stats, so cached with it.
     """

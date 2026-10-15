@@ -381,7 +381,7 @@
       cursor: {x: false, y: false, drag: {x: false, y: false}, points: {show: false}},
       scales: {
         // Ordinal, padded half a slot each side so the first and last bars
-        // sit inside the plot instead of centred on its edges.
+        // sit inside the plot instead of centered on its edges.
         x: {time: false, distr: 2, range: function (u, min, max) { return [min - 0.5, max + 0.5]; }},
         y: {range: function (u, min, max) { return [0, (max || 1) * 1.08]; }},
       },

@@ -488,7 +488,7 @@
   };
 
   // Home goes back to what the page is about: the module's own framing when
-  // it has one, else the page's centre, else its bounds, else the default view.
+  // it has one, else the page's center, else its bounds, else the default view.
   Shell.prototype.home = function () {
     var animate = !this.reducedMotion;
     var target = this.module.home ? this.module.home() : null;

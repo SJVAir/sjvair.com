@@ -199,7 +199,7 @@ class Area:
         return {'region': self.region.sqid}
 
     def locations(self):
-        """The schools and child care centres inside this place."""
+        """The schools and child care centers inside this place."""
         if self.kind == 'point':
             return Location.objects.filter(
                 # Bbox prefilter first, as in point_area.
@@ -354,7 +354,7 @@ def schools_nearby(region, year, all_years=False, concern=False):
 
 def area_schools(area, year, all_years=False, concern=False):
     """
-    The schools and child care centres of any place, each with the pesticide
+    The schools and child care centers of any place, each with the pesticide
     use reported around it -- schools_nearby's groups, for the Schools tab.
     A school district is schools_nearby itself (its own schools, wherever
     they stand, then what else sits inside it); anywhere else it's every

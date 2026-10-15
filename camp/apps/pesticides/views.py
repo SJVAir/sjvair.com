@@ -1,4 +1,5 @@
 import calendar
+import csv
 import hashlib
 import math
 import random
@@ -13,7 +14,7 @@ from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db.models import Case, CharField, Count, F, FloatField, IntegerField, Min, OuterRef, Prefetch, Q, Subquery, Sum, Value, When
 from django.db.models.functions import Coalesce, Concat, Lower, TruncMonth
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import timezone
@@ -1281,9 +1282,9 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         'center': center or SJV_CENTER,
         'zoom': zoom or SJV_ZOOM,
         # With nothing else framing the map (a place's radius or outline, a
-        # highlighted section, an explicit centre), it opens fitted to the
+        # highlighted section, an explicit center), it opens fitted to the
         # county outlines once they load, so the whole valley is in view at
-        # any aspect ratio; the fixed centre/zoom only covers the wait.
+        # any aspect ratio; the fixed center/zoom only covers the wait.
         'fit': '' if any((center, zoom, radius, highlight, outline_url)) else 'valley',
         # The page frames a section, place or point: a county filter's fit
         # (section-map.js fitCounty) mustn't zoom out over it.
@@ -2722,17 +2723,47 @@ class AreaRecordsMixin(AreaNarrowedListMixin):
 
 class AreaSchoolsMixin:
     """
-    A place page's Schools tab: the schools and child care centres in it,
+    A place page's Schools tab: the schools and child care centers in it,
     each with the use reported around it, on the map with them on. A school
     district's page adds who goes to school there and its run-by filter;
     anywhere else, the school districts the place overlaps.
     """
     template_name = 'pesticides/area-schools.html'
 
+    def get(self, request, *args, **kwargs):
+        if request.GET.get('format') == 'csv':
+            return self.schools_csv()
+        return super().get(request, *args, **kwargs)
+
+    def district(self):
+        """The school district this page is, or None."""
+        area = self.area
+        return area.region if area.kind == 'region' and area.region.type == Region.Type.SCHOOL_DISTRICT else None
+
+    def schools_csv(self):
+        """Every site the table's filters and sort match, as CSV: not just the page of it."""
+        year, all_years, concern = self.scope
+        groups = places.area_schools(self.area, year, all_years, concern=concern)
+        rows = places.schools_panel(groups, self.request.GET, district=self.district())['rows']
+        place = self.area.region.slug if self.area.kind == 'region' else 'near-me'
+        period = 'all-years' if all_years else str(year)
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="schools-{place}-{period}.csv"'
+        writer = csv.writer(response)
+        writer.writerow(['name', 'type', 'city', 'district', 'lbs_nearby', 'applications_nearby', 'section', 'latitude', 'longitude'])
+        for row in rows:
+            point = row['location'].point
+            writer.writerow([
+                row['display_name'], row['type_label'], row['display_city'], row['run_by_name'],
+                '' if row['lbs'] is None else round(row['lbs'], 1), row['applications'] or 0,
+                row['section_mtrs'] or '', f'{point.y:.5f}', f'{point.x:.5f}',
+            ])
+        return response
+
     def get_context_data(self, **kwargs):
         year, all_years, concern = self.scope
         area = self.area
-        district = area.region if area.kind == 'region' and area.region.type == Region.Type.SCHOOL_DISTRICT else None
+        district = self.district()
         groups = places.area_schools(area, year, all_years, concern=concern)
         schools = places.schools_panel(groups, self.request.GET, district=district)
         # A page of the table at a time, like the other browsers; get_page

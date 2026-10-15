@@ -14,7 +14,7 @@ Context: `map`, a camp.utils.mapconfig.map_config().
     {% if map.features.toolbar %}
     <div class="map-toolbar" hidden>
         {# The page's filter box, on a phone or in expanded mode (where it's off-screen): chrome.js shows this button only then, with how many filters are on, and moves the box itself into the slide-out below. #}
-        <button type="button" class="button map-filters-toggle" aria-expanded="false" aria-controls="{{ map.container_id|default:'map' }}-filters" hidden>
+        <button type="button" class="button map-filters-toggle" aria-expanded="false"{% if map.container_id %} aria-controls="{{ map.container_id }}-filters"{% endif %} hidden>
             <span class="icon"><span class="fa-regular fa-fw fa-filter" aria-hidden="true"></span></span>
             <span class="map-toolbar-label">Filters</span>
             <span class="tag is-rounded is-link map-filters-count" hidden></span>
@@ -49,7 +49,7 @@ Context: `map`, a camp.utils.mapconfig.map_config().
     <div class="{{ map.container_class }} map-canvas"{% if map.container_id %} id="{{ map.container_id }}"{% endif %}{% for key, value in map.data.items %} data-{{ key }}="{{ value }}"{% endfor %}></div>
     {% if map.features.toolbar %}
     {# The filter box's slide-out (the box is moved in, not copied) and, while the box is out of sight, what's on. #}
-    <div class="map-filters-panel" id="{{ map.container_id|default:'map' }}-filters" role="dialog" aria-label="Filters" hidden>
+    <div class="map-filters-panel"{% if map.container_id %} id="{{ map.container_id }}-filters"{% endif %} role="dialog" aria-label="Filters" hidden>
         <div class="map-filters-panel-head">
             <span class="map-filters-panel-title">Filters</span>
             <button type="button" class="delete map-filters-close" aria-label="Close the filters"></button>
@@ -59,7 +59,7 @@ Context: `map`, a camp.utils.mapconfig.map_config().
     <div class="map-filter-chips" aria-label="Filters on" hidden></div>
     {% endif %}
     {% if map.features.status %}
-    {# What the map is doing (a load, a locate), as a pill at the bottom centre; hidden while empty. #}
+    {# What the map is doing (a load, a locate), as a pill at the bottom center; hidden while empty. #}
     <span class="map-status" aria-live="polite"></span>
     {% endif %}
     {% if map.features.legend %}

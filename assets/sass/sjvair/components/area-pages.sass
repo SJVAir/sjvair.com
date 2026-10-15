@@ -5,7 +5,7 @@
 // sideways on a phone rather than wrapping (Bulma's .tabs).
 .area-header
   margin-bottom: 1rem !important
-  // The name with its grey kind line under it, and the same town on
+  // The name with its gray kind line under it, and the same town on
   // its other layer (city limits <-> urban area) as a small button at the
   // right. Wraps under the name on a phone.
   .area-title
@@ -46,7 +46,7 @@
       flex-wrap: nowrap
     .button
       margin-bottom: 0
-      // Bulma's light buttons drop their border; the current view keeps one, in the link colour, so the pair reads as one control.
+      // Bulma's light buttons drop their border; the current view keeps one, in the link color, so the pair reads as one control.
       &.is-selected
         border-color: $link
   @media screen and (max-width: $tablet - 1px)
@@ -60,7 +60,7 @@
     font-weight: 600
 
 // A data tab's Summary | Table switch (subview-tabs.html): the tab row's
-// style, a size down, its icons in the link colour.
+// style, a size down, its icons in the link color.
 .subview-tabs
   margin-bottom: 1.5rem
   font-size: $size-6
@@ -143,7 +143,7 @@
     padding: 0 0.5em
     text-decoration: none
     color: $link
-    // Bulma's grey box and dark text belong to keyboard focus, not a click.
+    // Bulma's gray box and dark text belong to keyboard focus, not a click.
     &:hover, &:focus:not(:focus-visible), &:active
       background: transparent
       border-color: transparent
@@ -179,8 +179,8 @@
     max-width: 24rem
     .tags
       gap: 0.3rem
-      // Links, so they read as links: link colour and an underline
-      // rather than the grey of a label.
+      // Links, so they read as links: link color and an underline
+      // rather than the gray of a label.
       .tag
         font-variant-numeric: tabular-nums
         background: $white
@@ -191,8 +191,19 @@
           border-color: $link
 
 // A sortable column's note (sort_link's `note`: "(1,000 ft)"), on its own
-// line under the label and its icon, in the header's colour, lighter.
+// line under the label and its icon, in the header's color, lighter.
 .sort-link .sort-note
   display: block
   font-weight: normal
   opacity: 0.8
+
+// How many rows match, and the CSV, over a tab's table.
+.table-toolbar
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  justify-content: space-between
+  gap: 0.5rem 1rem
+  margin-bottom: 0.75rem
+  .table-count
+    color: $grey-dark

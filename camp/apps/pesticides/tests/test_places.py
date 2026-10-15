@@ -590,6 +590,24 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         assert [row['display_name'] for row in panel['rows']] == ['Selma High']
         assert panel['run_by_only'] is True
 
+    def test_the_csv_is_every_matching_site_with_its_use(self):
+        response = self.client.get(self.url, {'format': 'csv', 'year': 2023})
+        assert response['Content-Type'] == 'text/csv'
+        assert 'attachment; filename="schools-' in response['Content-Disposition']
+        lines = response.content.decode().splitlines()
+        assert lines[0] == 'name,type,city,district,lbs_nearby,applications_nearby,section,latitude,longitude'
+        assert len(lines) == 3
+        assert lines[1].startswith('Selma High,Public school,') and ',695.0,6,MDM-T14S-R20E-01,' in lines[1]
+        assert lines[2].startswith('Away Child Care,Child care,')
+
+    def test_the_csv_follows_the_filters(self):
+        lines = self.client.get(self.url, {'format': 'csv', 'schools_run_by': '1'}).content.decode().splitlines()
+        assert [line.split(',')[0] for line in lines[1:]] == ['Selma High']
+
+    def test_the_table_offers_the_csv(self):
+        html = self.client.get(self.url).content.decode()
+        assert 'format=csv' in html and 'Download CSV' in html
+
     def test_filters_that_match_nothing_say_so(self):
         response = self.client.get(self.url, {'schools_q': 'zzz'})
         assert response.context['schools']['rows'] == []
