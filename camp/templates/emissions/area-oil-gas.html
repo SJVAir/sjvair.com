@@ -9,7 +9,7 @@ callout); the map with the wells on, the filters beside it; the wells themselves
 sorted, paged and downloadable, each with its CalGEM links; the operators and oil
 fields with the most wells (each a link filtering the table) and the types; the
 schools near wells; the wells drilled by year; the area's oil & gas permit groupings and the methane
-observed at oil & gas sites. CalGEM's list is today's: nothing here is a
+observed at oil & gas sites. CalGEM's list is the current one: nothing here is a
 history of wells in service.
 {% endcomment %}
 
@@ -32,7 +32,7 @@ history of wells in service.
     {% with imported=wells_block.stamp.imported_at|date:"N j, Y" %}
     <div class="notification is-warning is-light wells-snapshot">
         {% if wells_block.past_year %}
-        <p><strong>These are today's wells, not {{ wells_block.year }}'s.</strong> CalGEM's current list of active, idle and new wells{% if imported %}, as of {{ imported }}{% endif %}. It isn't broken down by year: wells plugged or abandoned before then aren't shown, and a well drilled after {{ wells_block.year }} still appears. The emissions figures on this page are for {{ wells_block.year }}.</p>
+        <p><strong>These are current wells, not {{ wells_block.year }}'s.</strong> CalGEM's current list of active, idle and new wells{% if imported %}, as of {{ imported }}{% endif %}. It isn't broken down by year: wells plugged or abandoned before then aren't shown, and a well drilled after {{ wells_block.year }} still appears. The emissions figures on this page are for {{ wells_block.year }}.</p>
         {% else %}
         <p><strong>Current wells{% if imported %}, as of {{ imported }}{% endif %}.</strong> CalGEM's list of active, idle and new wells. It has no history by year; plugged wells aren't shown.</p>
         {% endif %}
@@ -60,13 +60,13 @@ history of wells in service.
     {% for key, value in point_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
     {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
     <input type="hidden" name="sort" value="{{ sort }}">
-    <div class="field">
-        <label class="label" for="well-status">Status</label>
-        <div class="control"><div class="select is-fullwidth"><select id="well-status" name="status">
-            <option value="">Active, idle and new</option>
-            {% for value, label in status_options %}<option value="{{ value }}"{% if filters.status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
-        </select></div></div>
-    </div>
+    {# Ticked together they're every well; untick to leave a status out. #}
+    <fieldset class="field">
+        <legend class="label">Status</legend>
+        {% for value, label in status_options %}
+        <label class="checkbox mr-3"><input type="checkbox" name="status" value="{{ value }}"{% if not filters.status or value in filters.status %} checked{% endif %}> {{ label }}</label>
+        {% endfor %}
+    </fieldset>
     {% if well_options.operators|length > 1 %}
     <div class="field">
         <label class="label" for="well-operator">Operator</label>

@@ -1,6 +1,7 @@
 import re
 
 from django.core.cache import cache
+from django.http import QueryDict
 from django.test import TestCase
 from django.urls import reverse
 
@@ -52,6 +53,8 @@ class OverlayConfigTests(WellsPagesTestCase):
         get = {'status': 'Idle', 'hpz': '1', 'q': ' ', 'sort': 'api'}
         assert views.wells_overlay(get, filtered=True)['params'] == {'status': 'Idle', 'hpz': '1'}
         assert views.wells_overlay(get)['params'] == {}
+        assert wells.table_filters(QueryDict('status=New&status=Active'))['status'] == ['Active', 'New']
+        assert wells.table_filters(QueryDict('status=Active&status=Idle&status=New'))['status'] is None
 
     def test_off_by_default_on_by_request(self):
         for url in (self.fresno.get_emissions_url(), reverse('emissions:near-me') + '?lat=36.737&lng=-119.787'):
@@ -113,7 +116,7 @@ class WellsBlockTests(WellsPagesTestCase):
         assert "not 2024's" not in block
         past = self.get(self.fresno.get_emissions_tab_url('oil-gas'), {'year': '2023'})
         block = past[past.index('id="wells"'):]
-        assert "<strong>These are today's wells, not 2023's.</strong>" in block.replace('&#x27;', "'")
+        assert "<strong>These are current wells, not 2023's.</strong>" in block.replace('&#x27;', "'")
         assert 'The emissions figures on this page are for 2023.' in block
 
     def test_kern_block_has_the_callout(self):
@@ -158,6 +161,13 @@ class OilGasTabTests(WellsPagesTestCase):
         idle = self.get(url, {'year': '2024', 'status': 'Idle'})
         idle_table = idle[idle.index('well-table'):idle.index('</table>', idle.index('well-table'))]
         assert 'No wells match.' in idle_table
+        # Status is a set of checkboxes, all ticked until one is left out; any mix narrows the table.
+        assert content.count('type="checkbox" name="status"') == 3 and content.count('name="status" value="Active" checked') == 1
+        assert 'name="status" value="Idle" checked' in idle and 'name="status" value="Active">' in idle
+        mixed = self.get(url, {'year': '2024', 'status': ['Idle', 'New']})
+        assert 'No wells match.' in mixed and 'name="status" value="New" checked' in mixed and 'name="status" value="Active">' in mixed
+        both = self.get(url, {'year': '2024', 'status': ['Active', 'Idle']})
+        assert 'Showing 1&ndash;2 of 2 wells' in both
         response = self.client.get(url, {'format': 'csv'})
         assert response['Content-Type'] == 'text/csv'
         rows = response.content.decode().strip().splitlines()
@@ -176,6 +186,11 @@ class OilGasTabTests(WellsPagesTestCase):
         assert len(api(region=self.kern.sqid, status='Idle')) == 1
         assert len(api(region=self.kern.sqid, hpz='1')) == 1
         assert api(region=self.kern.sqid, status='nope') == everything
+        # Several statuses travel comma-joined, as the map's URL carries them; all three is no filter.
+        assert len(api(region=self.kern.sqid, status='Idle,New')) == 1
+        assert api(region=self.kern.sqid, status='Active,Idle,New') == everything
+        mixed = self.get(self.kern.get_emissions_tab_url('oil-gas'), {'status': ['Active', 'Idle']})
+        assert 'status=Active%2CIdle' in map_data(mixed, 'wells-url').replace('&amp;', '&')
         # Free text (an operator with spaces) is answered uncached, not keyed.
         assert len(api(region=self.kern.sqid, operator='TEST OIL LLC')) == 2
         assert api(region=self.kern.sqid, operator='NOBODY AT ALL') == []
@@ -238,7 +253,7 @@ class ValleyOilGasTabTests(WellsPagesTestCase):
         assert 'class="is-active"><a href="/tools/emissions/oil-gas/' in content.replace("is-active\"", 'is-active"')
         assert 'data-scope="county"' in content
         box = content[content.index('class="explorer-filters box"'):content.index('</form>', content.index('class="explorer-filters box"'))]
-        assert box.index('id="well-q"') < box.index('Search by location') < box.index('id="well-status"')
+        assert box.index('id="well-q"') < box.index('Search by location') < box.index('name="status"')
         assert self.kern.get_emissions_tab_url('oil-gas') in content
         assert 'Top operators' in content and 'Schools and child care near wells' in content
         response = self.client.get(url, {'format': 'csv'})

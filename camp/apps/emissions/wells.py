@@ -197,12 +197,18 @@ LEADERS = 10
 
 
 def table_filters(get):
-    """The wells table's filters from a query string, validated: q, status, operator, field, hpz (a flag) and sort."""
-    status = get.get('status')
+    """
+    The wells table's filters from a query string, validated: q, status (a
+    list, from ticked boxes or the map URL's comma-joined form; None when
+    all or none are ticked), operator, field, hpz (a flag) and sort.
+    """
+    raw = get.getlist('status') if hasattr(get, 'getlist') else [get.get('status') or '']
+    chosen = {value for item in raw for value in item.split(',')}
+    status = [value for value in Well.Status.values if value in chosen]
     sort = get.get('sort')
     return {
         'q': (get.get('q') or '').strip() or None,
-        'status': status if status in Well.Status.values else None,
+        'status': status if 0 < len(status) < len(Well.Status.values) else None,
         'operator': (get.get('operator') or '').strip() or None,
         'field': (get.get('field') or '').strip() or None,
         'hpz': get.get('hpz') == '1',
@@ -216,7 +222,7 @@ def filter_wells(queryset, *, q=None, status=None, operator=None, field=None, hp
     if q:
         queryset = queryset.filter(Q(lease_name__icontains=q) | Q(api__icontains=q))
     if status:
-        queryset = queryset.filter(status=status)
+        queryset = queryset.filter(status__in=status)
     if operator:
         queryset = queryset.filter(operator_name=operator)
     if field:
@@ -228,7 +234,9 @@ def filter_wells(queryset, *, q=None, status=None, operator=None, field=None, hp
 
 def filter_params(filters):
     """The table's filters that are set, as query parameters (sort left out): what the map's wells URL carries."""
-    params = {key: filters[key] for key in ('q', 'status', 'operator', 'field') if filters.get(key)}
+    params = {key: filters[key] for key in ('q', 'operator', 'field') if filters.get(key)}
+    if filters.get('status'):
+        params['status'] = ','.join(filters['status'])
     if filters.get('hpz'):
         params['hpz'] = '1'
     return params
@@ -355,5 +363,6 @@ def area_values(level, filters=None):
 
     if filters.keys() - {'status', 'hpz'}:
         return compute()
-    return cache.get_or_set(key('areas', level, *(f'{name}={filters[name]}' for name in sorted(filters))), compute, stats.CACHE_TIMEOUT)
+    params = filter_params(filters)
+    return cache.get_or_set(key('areas', level, *(f'{name}={params[name]}' for name in sorted(params))), compute, stats.CACHE_TIMEOUT)
 
