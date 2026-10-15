@@ -42,6 +42,14 @@ class ViewTestCase(TestCase):
 
 
 class HomeTests(ViewTestCase):
+    def test_the_stats_row_is_derived_not_counts(self):
+        # The entry cards carry the counts; the stats row the total, its change, and its concentration.
+        content = self.get('home').content.decode()
+        row = content[content.index('class="level stat-row box"'):]
+        row = row[:row.index('<hr') if '<hr' in row[:4000] else row.index('home-counties')]
+        assert "Top 10 facilities' share" in row and "Largest sector's share" in row and "Largest county's share" in row
+        assert 'Facilities reporting' not in row and 'Tracked by EPA' not in row
+
     def test_renders_for_every_scope(self):
         for params in ({}, {'year': 2023}, {'county': 'fresno'}, {'county': 'kern', 'toxics': 1},
                        {'minor': 1}, {'pollutant': 'pm'}, {'year': 1900, 'pollutant': 'bogus'},
