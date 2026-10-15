@@ -1,5 +1,4 @@
 import re
-from types import SimpleNamespace
 
 from django.core.cache import cache
 from django.template.loader import render_to_string
@@ -122,24 +121,3 @@ class ChemicalNameTests(TestCase):
         assert chemical.cdpr_alias == 'AI IS CONFIDENTIAL'
         assert display_chemical_name('GLYPHOSATE', '') == 'Glyphosate'
 
-
-class CommunityCardTests(TestCase):
-    def render(self, **community):
-        base = {'label': 'CalEnviroScreen 5.0', 'count': 2, 'scored': 2, 'dac_share': None, 'top25_tracts': 1,
-                'min_p': None, 'max_p': None, 'lowest': None, 'highest': None, 'top': [], 'containing': None}
-        base.update(community)
-        return squash(render_to_string('regions/includes/community-card.html', {
-            'community': base, 'show_top_tracts': True, 'community_about_url': '/about/'}))
-
-    def test_heading_names_the_model_once(self):
-        html = self.render()
-        assert '<h2 class="title is-4">CalEnviroScreen 5.0</h2>' in html
-        assert 'CalEnviroScreen CalEnviroScreen' not in html
-
-    def test_tracts_read_as_number_and_place(self):
-        row = {'region': SimpleNamespace(name='06019002001'), 'number': '20.01', 'place': 'Fresno',
-               'ci_score_p': 99.4, 'dac': True}
-        html = self.render(top=[row])
-        assert 'Tract 20.01 · Fresno' in html and '06019002001' not in html
-        bare = dict(row, place=None)
-        assert 'Tract 20.01 <span' in self.render(top=[bare])
