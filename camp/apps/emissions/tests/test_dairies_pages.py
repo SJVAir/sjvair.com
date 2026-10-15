@@ -555,7 +555,7 @@ class DairyIncludeTests(DairyPageTestCase):
             'carb_estimate': {'tons': 730.0, 'share': 0.25, 'place': 'Fresno County'},
             'ddrdp_totals': {'amount': 75198899, 'grants': 50, 'reduction': 819590},
         })
-        # The estimates are a labelled second tier, under the herd's row.
+        # The estimates are a labeled second tier, under the herd's row.
         assert 'Estimates &amp; funding, Fresno County' in html
         assert '<dt>Dairy cattle ROG, CARB</dt>' in html and '<strong>730</strong> tons/yr' in html
         assert "25% of the county's ROG" in html

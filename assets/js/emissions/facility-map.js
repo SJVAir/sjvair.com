@@ -5,8 +5,8 @@
  * Two views, one at a time:
  *   Facilities  one circle per permitted facility: area scaled by the
  *               selected pollutant (square root, so the largest emitter
- *               doesn't bury the rest), colour by a fixed log-scale class;
- *               facilities that reported none are small hollow grey rings.
+ *               doesn't bury the rest), color by a fixed log-scale class;
+ *               facilities that reported none are small hollow gray rings.
  *   Areas       counties, ZIP areas or 2020 census tracts shaded by the
  *               facilities inside them: per square mile, total, or per
  *               1,000 residents (fixed log-scale classes). Shapes come from
@@ -55,7 +55,7 @@
   // 'steelblue'/'rdbu7' are this map's original defaults (ColorBrewer Blues
   // without its palest step, which vanishes on the basemap; ColorBrewer
   // RdBu at this map's own 7-class fixed breaks) -- sampling either at its
-  // native length reproduces the exact original colours.
+  // native length reproduces the exact original colors.
   var DEFAULT_RAMP = 'steelblue';
   var DEFAULT_DRAMP = 'rdbu7';
   var sampleRamp = M.sampleRamp;
@@ -85,7 +85,7 @@
   };
   // Compare mode: the Areas view shades the selected measure's percent
   // change instead of its value, on a fixed diverging scale (ColorBrewer
-  // RdBu) -- blue for a fall, red for a rise, pale grey near zero. Fixed
+  // RdBu) -- blue for a fall, red for a rise, pale gray near zero. Fixed
   // rather than data-driven, like CLASS_BREAKS/AREA_BREAKS: stable classes
   // across a measure, county or year change, at the cost of an outlier
   // pinning the top bucket.
@@ -93,7 +93,7 @@
   var CHANGE_RAMP = sampleRamp(M.ramps.diverging[DEFAULT_DRAMP], CHANGE_BREAKS.length + 1);
   var LEVEL_NAMES = { county: '', zipcode: 'ZIP ', tract: 'Tract ' };
   var EMPTY_COLOR = '#8a94a3';
-  // A facility circle with nothing to colour it by: grey, outlined darker.
+  // A facility circle with nothing to color it by: gray, outlined darker.
   var EMPTY_FILL = '#c9ced6';
   var EMPTY_STROKE = '#6b7480';
   var HIGHLIGHT_COLOR = '#d35400';
@@ -110,7 +110,7 @@
 
   // The Oil & gas wells overlay (CalGEM WellSTAR, /api/2.0/emissions/wells/geojson/):
   // one point per well, clustered by the GeoJSON source until CLUSTER_MAX_ZOOM.
-  // Status colours; a red ring marks a verified health protection zone.
+  // Status colors; a red ring marks a verified health protection zone.
   var WELL_COLORS = { Active: '#b45309', Idle: '#6b7280', New: '#2563eb' };
   var WELL_HPZ_COLOR = '#dc2626';
   var CLUSTER_COLOR = '#7c2d12';
@@ -153,7 +153,7 @@
     },
   ];
   // The Schools tab's `nearby` dots carry the same `kind` as the locations
-  // map's schools point layer, so they share its colours and legend key.
+  // map's schools point layer, so they share its colors and legend key.
   var SCHOOLS_POINT_LAYER = POINT_LAYERS.filter(function (spec) { return spec.key === 'schools'; })[0];
   var CLUSTER_MAX_ZOOM = 11;
   var CLUSTER_RADIUS = 40;
@@ -193,8 +193,8 @@
 
   // The Compare legend's size key (three sample circles at max/10/100 of
   // it). Empty when there's nothing to scale. `color` is the circles'
-  // stroke, the stylesheet's grey when unset: under Compare the circles'
-  // colour means change rather than size.
+  // stroke, the stylesheet's gray when unset: under Compare the circles'
+  // color means change rather than size.
   function sizeKeyHtml(max, color, round) {
     if (!max) return '';
     return '<div class="legend-sizes">' + [max, max / 10, max / 100].map(function (value) {
@@ -202,12 +202,12 @@
     }).join('') + '</div>';
   }
 
-  // The plain Facilities legend's one key: size and colour both follow the
-  // value there, so each colour class shows as a circle in its colour at
+  // The plain Facilities legend's one key: size and color both follow the
+  // value there, so each color class shows as a circle in its color at
   // the size of the class's top (the largest facility's for the top class).
   // Classes above the largest facility have no circles on the map and are
   // left out. Under Compare the two part ways (size is this year's value,
-  // colour the change), so that legend keeps a size key and colour classes.
+  // color the change), so that legend keeps a size key and color classes.
   function valueKeyHtml(max, breaks, round) {
     var box = 2 * MAX_RADIUS + 2;
     var top = classIndex(max, breaks);
@@ -284,7 +284,7 @@
   // Precompute each circle so the layer's paint is plain `get`s. `compare`
   // (a loaded year, from the geojson's own properties.compare) keeps the
   // circle's size by this year's value -- still a useful scale -- but
-  // colours it by the percent change from that year instead, on the same
+  // colors it by the percent change from that year instead, on the same
   // diverging ramp as the Areas view.
   function prepare(collection, unit, compare, uniform) {
     var features = collection.features || [];
@@ -296,15 +296,15 @@
       var p = feature.properties;
       var sized = p.value > 0 && max > 0;
       var change = compare ? changeFraction(p.value, p.value_prev) : null;
-      var coloured = compare ? change !== null : sized;
+      var colored = compare ? change !== null : sized;
       // In locations mode every facility is the one point marker; a "none
-      // reported" one is told apart by its grey, not its size.
+      // reported" one is told apart by its gray, not its size.
       p._radius = uniform ? LOCATION_RADIUS : (sized ? radiusFor(p.value, max) : MIN_RADIUS);
-      p._color = coloured ? ramp[classIndex(compare ? change : p.value, breaks)] : EMPTY_FILL;
+      p._color = colored ? ramp[classIndex(compare ? change : p.value, breaks)] : EMPTY_FILL;
       // Each circle's outline is a darker shade of its own fill, so two
       // overlapping circles read as two rather than one half-bordered one.
-      p._stroke = coloured ? darken(p._color, 0.35) : EMPTY_STROKE;
-      p._empty = coloured ? 0 : 1;
+      p._stroke = colored ? darken(p._color, 0.35) : EMPTY_STROKE;
+      p._empty = colored ? 0 : 1;
       p._sort = sized ? p.value : 0;
       p._change = change;
     });
@@ -330,7 +330,7 @@
     return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [WORLD_RING].concat(rings) } };
   }
 
-  // A `miles` circle around [lng, lat] as a polygon (the SDK has no circles in metres).
+  // A `miles` circle around [lng, lat] as a polygon (the SDK has no circles in meters).
   function circle(center, miles) {
     var meters = miles * METERS_PER_MILE;
     var dLat = meters / 111320;
@@ -366,7 +366,7 @@
     // the click popup already carries the values (M.hover.controller, shared
     // with the dairy map's counties).
     this.areaHover = M.hover.controller(this.map, 'areas');
-    // The Options menu's experiment controls: basemap style and colour
+    // The Options menu's experiment controls: basemap style and color
     // ramp, applied live and written to the URL (?tiles=, ?ramp=, ?dramp=).
     // Not page scope (readViewState), so they survive a scope swap
     // untouched. The shell already resolved the basemap style from
@@ -504,7 +504,7 @@
       paint: { 'line-color': DISTRICT_COLOR, 'line-width': 2, 'line-dasharray': [3, 2] },
     });
     // Wells: clustered until CLUSTER_MAX_ZOOM (by the Tweaks menu's Clusters
-    // setting, wellsClustered); cluster size by count, colour by its active
+    // setting, wellsClustered); cluster size by count, color by its active
     // share; single wells by status, ringed when in a verified HPZ.
     this.shell.ensureSource('wells', {
       cluster: this.wellsClustered(), clusterMaxZoom: CLUSTER_MAX_ZOOM, clusterRadius: CLUSTER_RADIUS,
@@ -562,7 +562,7 @@
       id: 'nearby', type: 'circle', source: 'nearby',
       // The facility page's dots have no `kind` (NEARBY_COLOR, its fixed
       // green) -- the Schools tab's do, and take the schools point layer's
-      // public/private/child-care colours instead.
+      // public/private/child-care colors instead.
       paint: { 'circle-radius': LOCATION_RADIUS, 'circle-color': nearbyColorMatch(), 'circle-stroke-color': '#ffffff', 'circle-stroke-width': LOCATION_STROKE },
     });
     this.shell.ensureLayer({
@@ -597,7 +597,7 @@
     if (this.methane) this.methane.addLayers();
   };
 
-  // Every circle outlined in a darker shade of its fill (grey for "none
+  // Every circle outlined in a darker shade of its fill (gray for "none
   // reported"); with a highlighted facility (a facility page), it gets an
   // orange ring and everything else fades.
   FacilityMap.prototype.applyHighlight = function () {
@@ -772,7 +772,7 @@
       });
   };
 
-  // Joins the values to the shapes and colours them by the current measure
+  // Joins the values to the shapes and colors them by the current measure
   // (a measure change re-runs this without fetching) -- or, in Compare mode,
   // by that measure's percent change from the compared year (both years came
   // with the fetch, so switching the measure or clearing Compare still needs
@@ -886,7 +886,7 @@
     // In an Oil & gas map's Areas view the shading is the wells: their points stay under it.
     var on = this.wellsEnabled && this.wells && !(this.wellsAreas() && this.view === 'areas');
     if (this.map && this.map.getLayer('wells')) {
-      // A page swap can move between a locations map and an Oil & gas one: the colours follow.
+      // A page swap can move between a locations map and an Oil & gas one: the colors follow.
       var colors = this.wellColors();
       this.map.setPaintProperty('wells', 'circle-color', ['match', ['get', 's'], 'Active', colors.Active, 'Idle', colors.Idle, 'New', colors.New, colors.Idle]);
       this.map.setPaintProperty('wells-clusters', 'circle-color', this.locations ? LOCATION_CLUSTER_COLOR : CLUSTER_COLOR);
@@ -1059,7 +1059,7 @@
     return ['case', ['==', ['get', 'h'], 1], 2, LOCATION_STROKE];
   };
 
-  // The wells' status colours: purple shades on a locations map, else their own.
+  // The wells' status colors: purple shades on a locations map, else their own.
   FacilityMap.prototype.wellColors = function () {
     return this.locations ? LOCATION_WELL_COLORS : WELL_COLORS;
   };
@@ -1169,7 +1169,7 @@
 
   // The schools and child care listed on a facility page, from the
   // container's own attributes (no fetch): the dots and the 1/4-mile ring
-  // around the page's centre. Empty on every other page.
+  // around the page's center. Empty on every other page.
   FacilityMap.prototype.showNearby = function () {
     var collection = M.EMPTY;
     if (this.data.nearby) {
@@ -1199,7 +1199,7 @@
   };
 
   // Frame the facilities, unless the page framed the map itself (a facility
-  // page's centre, the covered counties' bounds, or the page's area). A page
+  // page's center, the covered counties' bounds, or the page's area). A page
   // that asks (data-fit, a sector page) frames its facilities over the bounds.
   FacilityMap.prototype.fit = function (collection) {
     if (M.parseCenter(this.data.center) || this.data.outlineUrl) return;
@@ -1335,7 +1335,7 @@
     }
     this.renderLegend(body, legend);
     // The checkbox says which layer it is, "Facilities", with the pollutant
-    // title after it in small grey.
+    // title after it in small gray.
     legend.innerHTML = M.mainLayerToggle(legend.innerHTML.replace(/^<p class="legend-title">([\s\S]*?)<\/p>/,
       '<p class="legend-title">Facilities <small class="legend-title-detail">$1</small></p>'), this.mainLayer);
   };
@@ -1352,7 +1352,7 @@
     var max = this.legendData.max;
     if (this.legendData.compare) {
       // Circles still size by this year's value, a useful scale on its own,
-      // so the key stays; the colour classes swap to the change ramp instead.
+      // so the key stays; the color classes swap to the change ramp instead.
       var changeTitle = escapeHtml(this.data.label) + ', change ' + escapeHtml(String(this.legendData.compare)) +
         ' to ' + escapeHtml(this.data.year || '');
       legend.innerHTML = '<p class="legend-title">' + changeTitle + '</p>' + (this.locations ? '' : sizeKeyHtml(max, undefined, round)) +
@@ -1371,7 +1371,7 @@
       return;
     }
     legend.innerHTML = '<p class="legend-title">' + label + '</p>' +
-      // A locations map's points are all one size: its key is the colour classes alone.
+      // A locations map's points are all one size: its key is the color classes alone.
       (this.locations ? facilityBins(breaks, undefined, round) : valueKeyHtml(max, breaks, round)) +
       '<p class="legend-empty"><span class="legend-ring"></span>None reported</p>' +
       (share ? '<p class="legend-note">Pounds × OEHHA toxicity, relative to the Valley total. Not a health risk: stack height, weather and distance are ignored.</p>' : '') +
@@ -1451,7 +1451,7 @@
     }
     if (this.methane) this.methane.bind(legendBody);
 
-    // The Options menu's experiment controls (basemap style, colour ramp),
+    // The Options menu's experiment controls (basemap style, color ramp),
     // same pattern as the pesticides section map: fill the selects, apply
     // a change live and write it to the URL.
     this.optionsEl = wrap.querySelector('.facility-map-options');
@@ -1525,7 +1525,7 @@
       // written whenever it's set, not only in Areas.
       if (this.compare) params.set('compare', this.compare); else params.delete('compare');
     }
-    // The Options menu's experiment controls (basemap style, colour ramp);
+    // The Options menu's experiment controls (basemap style, color ramp);
     // not page scope, so every map with a toolbar writes these regardless
     // of mode. `dramp` is kept apart from `ramp` (rather than one name
     // reused across both tables) so toggling Compare on and off never
@@ -1628,10 +1628,10 @@
   // the data this map already has cached (facilities, areas, outline), so
   // nothing here needs to refetch.
 
-  // Recolours the facilities layer (Facilities view) and/or the areas
+  // Recolors the facilities layer (Facilities view) and/or the areas
   // choropleth (Areas view) after RAMP or CHANGE_RAMP changes, from data
-  // already on hand -- no refetch. The change ramp also recolours the
-  // Facilities circles while Compare is on (prepare() colours them by the
+  // already on hand -- no refetch. The change ramp also recolors the
+  // Facilities circles while Compare is on (prepare() colors them by the
   // change too, see `compare` there).
   FacilityMap.prototype.recolor = function () {
     if (this.legendData) {
@@ -1647,7 +1647,7 @@
   // the sequential table normally, the diverging one while Compare is on
   // (see fillRampOptions). Each is sampled to the class count its view
   // uses, so the fixed breaks (CLASS_BREAKS/AREA_BREAKS, CHANGE_BREAKS)
-  // are unaffected -- only the colours change.
+  // are unaffected -- only the colors change.
   FacilityMap.prototype.onRampChange = function (event) {
     var name = event.target.value;
     if (this.compare) {

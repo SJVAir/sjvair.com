@@ -15,7 +15,7 @@ filtered, sorted, paged and downloadable, each with what's near it
 {% with s=site_summary %}
 <div class="level is-mobile stat-row box is-grid-mobile">
     <div class="level-item has-text-centered"><div><p class="heading">Schools</p><p class="title">{{ s.schools|intcomma }}</p><p class="stat-note">{{ s.child_care|intcomma }} child-care center{{ s.child_care|pluralize }} too</p></div></div>
-    <div class="level-item has-text-centered"><div><p class="heading">Near a facility · ¼ mile</p><p class="title">{{ s.quarter|intcomma }}</p><p class="stat-note">{{ s.notice|intcomma }} sites within 1,000 ft</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Near a facility · 1,000 ft</p><p class="title">{{ s.notice|intcomma }}</p><p class="stat-note">where parents must be notified</p></div></div>
     <div class="level-item has-text-centered"><div><p class="heading">Near a well · 3,200 ft</p><p class="title">{{ s.wells|intcomma }}</p><p class="stat-note">active or idle oil and gas</p></div></div>
     <div class="level-item has-text-centered"><div><p class="heading">Near a dairy · 1 mile</p><p class="title">{{ s.dairies|intcomma }}</p><p class="stat-note">schools and child care</p></div></div>
 </div>
@@ -40,9 +40,10 @@ filtered, sorted, paged and downloadable, each with what's near it
 <table class="table is-fullwidth is-hoverable is-narrow site-table schools-table is-stacked-mobile">
     <thead><tr>
         <th {% aria_sort 'name' %}>{% sort_link 'name' 'School or child care' %}</th>
+        {# As on the pesticides Schools tab: only where the sites sit in more than one city. #}
+        {% if site_show_city %}<th {% aria_sort 'city' %}>{% sort_link 'city' 'City' %}</th>{% endif %}
         <th class="has-text-right" {% aria_sort 'notice' %}>{% sort_link 'notice' 'Facilities' note='1,000 ft' %}</th>
-        <th class="has-text-right" {% aria_sort 'quarter' %}>{% sort_link 'quarter' 'Facilities' note='¼ mile' %}</th>
-        <th class="has-text-right" {% aria_sort 'value' %}>{% if pollutant.weighted %}{% sort_link 'value' 'Share' note='¼ mile' %}{% else %}{% sort_link 'value' pollutant.label note='¼ mile' %}{% endif %}</th>
+        <th class="has-text-right" {% aria_sort 'value' %}>{% if pollutant.weighted %}{% sort_link 'value' 'Share' note='1,000 ft' %}{% else %}{% sort_link 'value' pollutant.label note='1,000 ft' %}{% endif %}</th>
         <th class="has-text-right" {% aria_sort 'wells' %}>{% sort_link 'wells' 'Wells' note='3,200 ft' %}</th>
         <th class="has-text-right" {% aria_sort 'dairies' %}>{% sort_link 'dairies' 'Dairies' note='1 mile' %}</th>
     </tr></thead>
@@ -50,14 +51,14 @@ filtered, sorted, paged and downloadable, each with what's near it
     {% for row in site_rows %}
     <tr>
         <td class="cell-name">{% include 'regions/includes/school-name-cell.html' %}</td>
+        {% if site_show_city %}<td class="cell-meta{% if not row.display_city %} is-none{% endif %}" data-label="City">{{ row.display_city|default:"—" }}</td>{% endif %}
         <td class="has-text-right cell-meta{% if not row.notice %} is-none{% endif %}" data-label="Facilities within 1,000 ft">{{ row.notice|intcomma }}</td>
-        <td class="has-text-right cell-meta{% if not row.quarter %} is-none{% endif %}" data-label="Facilities within ¼ mile">{{ row.quarter|intcomma }}</td>
-        <td class="has-text-right cell-meta{% if row.value is None %} is-none{% endif %}" data-label="{% if pollutant.weighted %}Share{% else %}{{ pollutant.label }} ({{ pollutant.unit_label }}){% endif %}, ¼ mile">{% if row.value is None %}—{% else %}{{ row.value|amount:pollutant }}{% endif %}</td>
+        <td class="has-text-right cell-meta{% if row.value is None %} is-none{% endif %}" data-label="{% if pollutant.weighted %}Share{% else %}{{ pollutant.label }} ({{ pollutant.unit_label }}){% endif %}, 1,000 ft">{% if row.value is None %}—{% else %}{{ row.value|amount:pollutant }}{% endif %}</td>
         <td class="has-text-right cell-meta{% if not row.wells %} is-none{% endif %}" data-label="Wells within 3,200 ft">{{ row.wells|intcomma }}</td>
         <td class="has-text-right cell-meta{% if not row.dairies %} is-none{% endif %}" data-label="Dairies within 1 mile">{{ row.dairies|intcomma }}</td>
     </tr>
     {% empty %}
-    <tr><td colspan="6">No schools or child care match.</td></tr>
+    <tr><td colspan="{% if site_show_city %}6{% else %}5{% endif %}">No schools or child care match.</td></tr>
     {% endfor %}
     </tbody>
 </table>
@@ -122,8 +123,8 @@ filtered, sorted, paged and downloadable, each with what's near it
     <ul>
         <li><strong>Sites are the state's lists</strong>: CDE's public and private schools and CDSS's licensed child-care centers.</li>
         <li><strong>Nearness, not exposure.</strong> Distances are straight lines between map points; wind, stack height and what each source emits aren't counted.</li>
-        <li><strong>Why these distances.</strong> 1,000 ft is where a district must notify parents before permitting a source of hazardous air emissions near a school; ¼ mile is what districts review before siting one; 3,200 ft is CalGEM's health protection zone around wells. <a href="{% url 'emissions:about' %}#schools">More on schools nearby</a></li>
-        <li><strong>Facilities count where their point is the site</strong>, not oil &amp; gas or refinery permit groupings, whose addresses are offices. The {{ pollutant.label }} column sums what the facilities within ¼ mile reported in {{ year }}.</li>
+        <li><strong>Why these distances.</strong> 1,000 ft is where a district must notify parents before permitting a source of hazardous air emissions near a school; 3,200 ft is CalGEM's health protection zone around wells. <a href="{% url 'emissions:about' %}#schools">More on schools nearby</a></li>
+        <li><strong>Facilities count where their point is the site</strong>, not oil &amp; gas or refinery permit groupings, whose addresses are offices. The {{ pollutant.label }} column sums what the facilities within 1,000 ft reported in {{ year }}.</li>
     </ul>
 </details>
 {% endblock %}

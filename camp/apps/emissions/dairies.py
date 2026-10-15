@@ -68,7 +68,7 @@ DEFAULT_LEVEL = Region.Type.COUNTY
 MEASURES = ('mature_cows_per_sq_mi', 'mature_cows', 'dairies', 'emissions', 'emissions_per_sq_mi')
 # CARB's dairy emissions estimate is by county only: no ZIP code or tract has one.
 COUNTY_ONLY_MEASURES = ('emissions', 'emissions_per_sq_mi')
-# Herd density by default: a count favours a big area, and CARB's county
+# Herd density by default: a count favors a big area, and CARB's county
 # estimate is flat for most years (flat_since).
 DEFAULT_MEASURE = 'mature_cows_per_sq_mi'
 # A counted herd: at least one head of cattle.

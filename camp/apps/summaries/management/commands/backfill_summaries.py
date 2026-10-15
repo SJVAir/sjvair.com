@@ -101,7 +101,7 @@ class Command(BaseCommand):
             return
         job.state = SummaryBackfillJob.State.DONE
         job.save(update_fields=['state'])
-        self.stdout.write(self.style.SUCCESS('Backfill job cancelled.'))
+        self.stdout.write(self.style.SUCCESS('Backfill job canceled.'))
 
     def _parse_date(self, value):
         d = parse_date(value)

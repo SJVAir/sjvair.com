@@ -86,7 +86,7 @@ class PlaceSearchTests(ListTestCase):
         assert response.status_code == 200
         return response.json()['results']
 
-    def test_ab617_communities_are_found_and_labelled(self):
+    def test_ab617_communities_are_found_and_labeled(self):
         community = make(Region.Type.AB617_COMMUNITY, 'Plantville', AROUND_PLANT)
         make(Region.Type.CITY, 'Plantville', AROUND_PLANT)
         results = self.search('plantv')
@@ -106,7 +106,7 @@ class PlaceSearchTests(ListTestCase):
         assert self.search('9399') == [{'id': zipcode.sqid, 'name': '93999', 'detail': 'ZIP'}]
 
     def test_every_layer_of_a_name_is_offered(self):
-        # A city and the urban area of the same name are both offered, labelled.
+        # A city and the urban area of the same name are both offered, labeled.
         city = self.plant.city
         make(Region.Type.URBAN_AREA, city.name, AROUND_PLANT)
         assert [r['detail'] for r in self.search(city.name) if r['name'] == city.name] == ['City', 'Urban area']

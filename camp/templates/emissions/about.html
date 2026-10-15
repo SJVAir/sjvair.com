@@ -65,7 +65,7 @@
 <p>The <a href="{% url 'emissions:dairy-list' %}">Dairies</a> tab covers what the facility inventory barely sees. CEIDARS lists a handful of permitted livestock facilities; CARB's <strong>California Dairy &amp; Livestock Database (CADD)</strong> locates every dairy CARB tracks, {{ dairy_count|intcomma }} of them in the eight Valley counties.</p>
 <p>Every county, city, community, ZIP area, census tract, school district and AB 617 community has its own dairy page, scoped to that area's dairies. Reach one from its area page, or from the Dairies tab's find box.</p>
 <ul>
-    <li><strong>Counted, not modelled.</strong> CADD gives each dairy's location, its herd by year ({{ dairy_span }}) and its anaerobic digesters. No public dataset reports emissions dairy by dairy, and the explorer doesn't estimate them.</li>
+    <li><strong>Counted, not modeled.</strong> CADD gives each dairy's location, its herd by year ({{ dairy_span }}) and its anaerobic digesters. No public dataset reports emissions dairy by dairy, and the explorer doesn't estimate them.</li>
     <li><strong>Herd size and EPA size classes.</strong> Herds are counted in head: <em>mature dairy cows</em> (milking and dry cows) and <em>other cattle</em> (heifers, calves and beef cattle). Each dairy gets the U.S. EPA's size class for animal feeding operations (<a href="https://www.ecfr.gov/current/title-40/chapter-I/subchapter-D/part-122/subpart-B/section-122.23">40 CFR 122.23</a>) from its counts that year, the larger of the two counts' classes:
         <ul>
             {% for size in dairy_size_classes %}<li><strong>{{ size.label }}</strong>: {{ size.threshold }}{% if forloop.last %} (at least one head of cattle){% endif %}.</li>
@@ -76,7 +76,7 @@
     <li><strong>Where a dairy counts.</strong> A dairy counts toward a city or community by its mailing city or its point, whichever falls inside it; it counts toward an urban area, a ZIP area or a census tract by its point only.</li>
     <li><strong>Coverage grew in 2019.</strong> CADD has herds for {{ dairies_before|intcomma }} Valley dairies in 2018 and {{ dairies_after|intcomma }} in 2019. The two years aren't a like-for-like comparison.</li>
     <li><strong>Digesters.</strong> CADD lists the year each digester started and, for the few that closed, the year it shut down. A dairy has a digester in a year when one was operating that year.</li>
-    <li><strong>Digester grants.</strong> CDFA's Dairy Digester Research and Development Program lists each grant it has made, the developer, the biogas end use and CDFA's estimate of the annual reduction in tonnes of CO2-equivalent. Dairy popups show a dairy's grants; county dairy pages total them. The reductions are CDFA's estimates, not measurements.</li>
+    <li><strong>Digester grants.</strong> CDFA's Dairy Digester Research and Development Program lists each grant it has made, the developer, the biogas end use and CDFA's estimate of the annual reduction in metric tons of CO2-equivalent. Dairy popups show a dairy's grants; county dairy pages total them. The reductions are CDFA's estimates, not measurements.</li>
     <li><strong>County dairy emissions.</strong> The Counties view and the county pages use CARB's county inventory (CEPAM) for dairy cattle waste. The explorer shows its ROG, TOG, total PM and PM10; CARB reports no NOx, SOx or CO from dairy cattle, and CEPAM has no ammonia, so the county dairy pages take dairy-cattle ammonia from EPA's NEI. That's the animals and their manure only. Feed and silage are left out: CARB reports them separately, without assigning them to an animal type, and for ROG they're the larger source, so these figures understate dairies' ROG. Like the rest of CEPAM, these are CARB's projections from its 2017 base year, converted from tons per day to tons per year.</li>
 </ul>
 
@@ -88,7 +88,7 @@
 <h2 id="calenviroscreen">CalEnviroScreen</h2>
 <p>Region pages and facility pages show figures from <strong>CalEnviroScreen</strong>, the Office of Environmental Health Hazard Assessment's screening tool that ranks every California census tract by pollution burden and population vulnerability, and from the state's list of <strong>SB 535 disadvantaged communities</strong>, which CalEPA designates from those scores.</p>
 <p>CalEnviroScreen percentiles are OEHHA's, for census tracts, and rank tracts against the rest of California. Figures for a city, ZIP or county are SJVAir's summary of the tracts inside it, not an OEHHA score. The SB 535 disadvantaged-community list shown is CalEPA's 2026 draft until it is final.</p>
-<p>A tract counts toward an area when its centre is inside the area or the area covers at least a tenth of the tract; a place too small to do either is described by the tract it sits in. Tracts OEHHA leaves unscored (too few people, or missing data) count toward populations but not toward percentiles.</p>
+<p>A tract counts toward an area when its center is inside the area or the area covers at least a tenth of the tract; a place too small to do either is described by the tract it sits in. Tracts OEHHA leaves unscored (too few people, or missing data) count toward populations but not toward percentiles.</p>
 
 <h2 id="compliance">Compliance</h2>
 <p>Facility pages for the largest sources carry a <strong>Compliance (federal Clean Air Act reporting)</strong> card from EPA's ICIS-Air database, where the Valley Air District reports its inspections, notices of violation, settlements and high-priority violations for the sources federal law requires it to track. {% if compliance_stamp and compliance_stamp.data_through %}Reported through {{ compliance_stamp.data_through|date:"N j, Y" }}.{% else %}No compliance data has been imported yet.{% endif %}</p>
@@ -126,7 +126,7 @@
 <div class="notification is-light">
     <p>Plumes are snapshots from aircraft and satellite passes. Each rate is an instantaneous estimate with wide uncertainty, not an annual total. A site with no plume hasn't been shown to be clean: it may not have been overflown, or the plume was below detection. Methane is a climate pollutant, not a direct local toxic. Data by Carbon Mapper®, for non-commercial use.</p>
 </div>
-<p class="is-size-7 has-text-grey"><a href="https://carbonmapper.org">Data by Carbon Mapper®</a>, under Carbon Mapper's <a href="https://carbonmapper.org/terms">non-commercial terms</a>: the sources, plumes and plume images are also available through SJVAir's public API (<code>/api/2.0/emissions/methane/</code>), for non-commercial use with the same attribution and share-alike licence carried in every response. Every rate shown is a Carbon Mapper estimate, not SJVAir's.</p>
+<p class="is-size-7 has-text-grey"><a href="https://carbonmapper.org">Data by Carbon Mapper®</a>, under Carbon Mapper's <a href="https://carbonmapper.org/terms">non-commercial terms</a>: the sources, plumes and plume images are also available through SJVAir's public API (<code>/api/2.0/emissions/methane/</code>), for non-commercial use with the same attribution and share-alike license carried in every response. Every rate shown is a Carbon Mapper estimate, not SJVAir's.</p>
 
 <h2 id="sources">Sources</h2>
 <ul>

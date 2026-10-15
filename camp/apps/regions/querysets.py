@@ -3,7 +3,7 @@ from django.contrib.gis.db.models import Count, FloatField, Func, F, OuterRef, S
 from django.contrib.gis.db.models.functions import Intersection
 from django.contrib.gis.geos import GEOSGeometry
 from django.db.models import Q
-from django.db.models.functions import NullIf
+from django.db.models.functions import Lower, NullIf, Trim
 
 import geopandas as gpd
 from shapely.wkt import loads as load_wkt
@@ -76,7 +76,7 @@ class RegionQuerySet(models.QuerySet):
         This is deliberately not a strict ST_Within. Tract/ZIP boundaries
         come from different sources than county boundaries and disagree by
         hairline slivers, so a tract that is unambiguously in Fresno County
-        can still poke a few metres into Madera; strict containment drops
+        can still poke a few meters into Madera; strict containment drops
         ~15% of Fresno's tracts and a third of its ZIPs on real data. Those
         excursions are all well under 0.1% of area, while the smallest
         genuine straddle is several percent, so 99% separates the two.
@@ -122,3 +122,39 @@ class BoundaryQuerySet(models.QuerySet):
             records.append(row)
 
         return gpd.GeoDataFrame(records, geometry='geometry', crs=crs)
+
+
+class LocationQuerySet(models.QuerySet):
+    """Schools and child-care centers (regions.Location)."""
+
+    # The state licenses a day care center and a school-age center (or an
+    # infant room and a preschool) separately, at one address under one name.
+    # Child-care licenses of the same name about this close (in degrees, the
+    # point field's own units: ~150 m north-south, a little less east-west in
+    # the Valley) are one place.
+    SAME_PLACE_DEGREES = 0.00135
+
+    def _same_place(self):
+        """The child-care licenses at the outer row's place (its own included): same name, case and spacing aside, within SAME_PLACE_DEGREES."""
+        from camp.apps.regions.models import Location
+        return (
+            Location.objects.annotate(name_key=Lower(Trim('name')))
+            .filter(type=Location.Type.CHILD_CARE, name_key=OuterRef('name_key'), point__dwithin=(OuterRef('point'), self.SAME_PLACE_DEGREES))
+        )
+
+    def one_per_place(self):
+        """
+        One row per place: a child-care center's several licenses (_same_place)
+        stand as their first (lowest pk), the rest left out, every row
+        annotated `licenses` -- how many it stands for (1 for schools and a
+        single license). A school and a child-care center on one site stay two.
+        """
+        from camp.apps.regions.models import Location
+        same = self._same_place()
+        child_care = Q(type=Location.Type.CHILD_CARE)
+        count = Subquery(same.order_by().values('type').annotate(n=Count('pk')).values('n')[:1], output_field=models.IntegerField())
+        return (
+            self.annotate(name_key=Lower(Trim('name')))
+            .exclude(child_care & models.Exists(same.filter(pk__lt=OuterRef('pk'))))
+            .annotate(licenses=models.Case(models.When(child_care, then=count), default=models.Value(1), output_field=models.IntegerField()))
+        )

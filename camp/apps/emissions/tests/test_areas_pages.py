@@ -364,7 +364,7 @@ class FindAreaTests(TestCase):
         fresno = next(place for place in places if place['name'] == 'Fresno County')
         assert fresno['url'] == Region.objects.get(type='county', slug='fresno').get_emissions_url()
 
-    def test_every_community_layer_is_listed_labelled(self):
+    def test_every_community_layer_is_listed_labeled(self):
         # No de-duplication across layers: a city and an urban area of the
         # same name are both listed; a CDP reads as a "Community".
         cache.clear()
@@ -380,7 +380,7 @@ class FindAreaTests(TestCase):
         hrefs = re.findall(r'href="([^"]*)"', jumps)
         assert hrefs and all('county=' not in href for href in hrefs)
 
-    def test_ab617_community_is_findable_and_labelled_distinctly(self):
+    def test_ab617_community_is_findable_and_labeled_distinctly(self):
         cache.clear()
         make(Region.Type.AB617_COMMUNITY, 'Shafter', AROUND_PLANT)
         labels = {(place['name'], place['type_label']) for place in views.find_area_places()}

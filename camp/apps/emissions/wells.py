@@ -151,43 +151,6 @@ def locations_near_wells():
     return cache.get_or_set(key('near-schools'), compute, stats.CACHE_TIMEOUT)
 
 
-# Child-care licenses at one place: the state licenses a day care center and a
-# school-age center (or an infant room and a preschool) separately, at the same
-# address under the same name. Within this many metres they're one place.
-SAME_PLACE_METERS = 150
-
-
-def merge_licenses(rows):
-    """
-    `rows` ({name, type, lat, lng, wells, ...}) with child-care licenses of
-    the same name within SAME_PLACE_METERS merged into one row: the most
-    wells any of them has, and `licenses`, how many it stands for (1 for
-    everything else). A school and a child-care center on one site stay two.
-    """
-    merged = []
-    for row in rows:
-        row = dict(row, licenses=1)
-        if row['type'] == Location.Type.CHILD_CARE:
-            name = row['name'].strip().casefold()
-            for kept in merged:
-                if kept['type'] == row['type'] and kept['name'].strip().casefold() == name and _meters(kept, row) <= SAME_PLACE_METERS:
-                    kept['licenses'] += 1
-                    kept['wells'] = max(kept['wells'], row['wells'])
-                    break
-            else:
-                merged.append(row)
-        else:
-            merged.append(row)
-    return merged
-
-
-def _meters(a, b):
-    """The distance between two rows' lat/lng, near enough for a few hundred metres (equirectangular)."""
-    dy = (a['lat'] - b['lat']) * MILES_PER_DEGREE
-    dx = (a['lng'] - b['lng']) * MILES_PER_DEGREE * math.cos(math.radians((a['lat'] + b['lat']) / 2))
-    return math.hypot(dx, dy) * 1609.344
-
-
 def schools_near_wells(area):
     """
     The area's schools and child-care centers with a well within 3,200 ft:
@@ -196,7 +159,7 @@ def schools_near_wells(area):
     lat, lng, wells, licenses} -- the shape schools.area_sites() rows carry,
     so the card can share the Schools tab's name-and-district cell
     (school-name-cell.html). One child-care center's several licenses are
-    one row (merge_licenses).
+    one row (Location.objects.one_per_place).
     """
     from camp.apps.regions import schools as region_schools
 
@@ -212,15 +175,14 @@ def schools_near_wells(area):
                 'lat': place.point.y, 'lng': place.point.x,
                 'run_by_name': (place.metadata or {}).get('district_name') or '',
                 **region_schools.district_fields(place, districts, url_method='get_emissions_url'),
-                'wells': counts[place.pk],
+                'wells': counts[place.pk], 'licenses': place.licenses,
             }
-            for place in Location.objects.filter(location_q(area), pk__in=list(counts))
+            for place in Location.objects.filter(location_q(area), pk__in=list(counts)).one_per_place()
             .select_related('school_district').order_by('name')
         ]
-        rows = merge_licenses(rows)
         rows.sort(key=lambda row: (-row['wells'], row['name']))
         return {'count': len(rows), 'top': rows[:SCHOOL_TOP]}
-    return cache.get_or_set(key('schools-v2', area.key), compute, stats.CACHE_TIMEOUT)
+    return cache.get_or_set(key('schools-v3', area.key), compute, stats.CACHE_TIMEOUT)
 
 
 def kern_callout(year):

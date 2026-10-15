@@ -36,18 +36,18 @@ class SiteIndexTests(SchoolSitesTestCase):
     def test_counts_each_source_at_its_distance(self):
         rows = self.rows()
         close, quarter, far = rows['CLOSE ELEMENTARY'], rows['QUARTER CARE'], rows['FAR HIGH']
-        assert (close['notice'], close['quarter']) == (1, 1)
-        assert (quarter['notice'], quarter['quarter']) == (0, 1)
-        assert (far['notice'], far['quarter']) == (0, 0)
+        # Facilities count within 1,000 ft only: QUARTER, at 1,200 ft, has none.
+        assert (close['notice'], quarter['notice'], far['notice']) == (1, 0, 0)
+        assert 'quarter' not in close
         # The well is 1,500 ft from CLOSE and 800 ft from QUARTER: both within 3,200 ft; FAR is 7,000 ft away.
         assert (close['wells'], quarter['wells'], far['wells']) == (1, 1, 0)
         # The dairy is ~0.69 mi north of the plant: within a mile of CLOSE and QUARTER, ~1.02 mi from FAR.
         assert (close['dairies'], quarter['dairies'], far['dairies']) == (1, 1, 0)
-        assert close['value'] is not None and far['value'] is None
+        assert close['value'] is not None and quarter['value'] is None and far['value'] is None
 
     def test_an_untrusted_point_doesnt_count(self):
         Facility.objects.filter(pk=self.plant.pk).update(point_source='maptiler')
-        assert self.rows()['CLOSE ELEMENTARY']['quarter'] == 0
+        assert self.rows()['CLOSE ELEMENTARY']['notice'] == 0
 
     def test_filters_and_sort(self):
         assert list(self.rows(type='child-care')) == ['QUARTER CARE']
@@ -62,7 +62,7 @@ class SiteIndexTests(SchoolSitesTestCase):
 
     def test_summary(self):
         summary = schools.site_summary(list(self.rows().values()))
-        assert summary == {'schools': 2, 'child_care': 1, 'quarter': 2, 'notice': 1, 'wells': 2, 'dairies': 2}
+        assert summary == {'schools': 2, 'child_care': 1, 'notice': 1, 'wells': 2, 'dairies': 2}
 
 
 class SchoolsTabTests(SchoolSitesTestCase):
@@ -70,7 +70,7 @@ class SchoolsTabTests(SchoolSitesTestCase):
         url = self.fresno.get_emissions_tab_url('schools')
         content = self.client.get(url, {'year': '2024'}).content.decode()
         assert 'site-table' in content and 'CLOSE ELEMENTARY' in content
-        assert 'Near a facility · ¼ mile' in content
+        assert 'Near a facility · 1,000 ft' in content and '(¼ mile)' not in content
         # Under the map, in its column; the count and the CSV button over the table, as on every data table.
         assert content.index('facility-map map-canvas') < content.index('class="table-toolbar"') < content.index('site-table')
         assert 'Showing 1&ndash;3 of 3 sites' in content and '<span>Download CSV</span>' in content
@@ -81,7 +81,21 @@ class SchoolsTabTests(SchoolSitesTestCase):
         response = self.client.get(url, {'format': 'csv', 'year': '2024'})
         assert response['Content-Type'] == 'text/csv'
         lines = response.content.decode().strip().splitlines()
-        assert lines[0].startswith('name,type,latitude,longitude,facilities_within_1000ft') and len(lines) == 4
+        assert lines[0].startswith('name,type,city,latitude,longitude,facilities_within_1000ft,nox_tons_per_year_within_1000ft_2024') and len(lines) == 4
+
+    def test_a_city_column_where_the_sites_span_cities(self):
+        url = self.fresno.get_emissions_tab_url('schools')
+        # One city (or none) among the sites: no column, as on the pesticides Schools tab.
+        assert 'sort=city' not in self.client.get(url, {'year': '2024'}).content.decode()
+        Location.objects.filter(pk=self.close.pk).update(city_name='Fresno')
+        Location.objects.filter(pk=self.far.pk).update(city_name='Clovis')
+        cache.clear()
+        content = self.client.get(url, {'year': '2024', 'sort': 'city'}).content.decode()
+        table = content[content.index('site-table'):content.index('</table>', content.index('site-table'))]
+        assert 'sort=-city' in table and '>City <span class="icon' in table
+        # By city, A to Z, a site without one last.
+        assert table.index('FAR HIGH') < table.index('CLOSE ELEMENTARY') < table.index('QUARTER CARE')
+        assert 'data-label="City">Clovis</td>' in table
 
     def test_the_map_shows_the_filtered_sites(self):
         import html
@@ -170,7 +184,7 @@ class LocationsMapTests(SchoolSitesTestCase):
         off = self.client.get(reverse('emissions:map'), {'schools': '0'}).content.decode()
         assert map_data(off, 'schools') == ''
         # The Schools tab maps what its table counts: the dairies on, in the
-        # Overview's colours; its sites are its own dots, not the schools layer.
+        # Overview's colors; its sites are its own dots, not the schools layer.
         schools_tab = self.client.get(self.fresno.get_emissions_tab_url('schools'), {'year': '2024'}).content.decode()
         assert map_data(schools_tab, 'locations') == '1' and map_data(schools_tab, 'dairies') == '1'
         assert f'region={self.fresno.sqid}' in map_data(schools_tab, 'dairies-url')

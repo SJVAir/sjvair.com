@@ -17,7 +17,7 @@ def make(name, kind, geometry, **metadata):
 
 
 class RegionHeaderTests(TestCase):
-    """The area header's grey line and links, the same in both explorers."""
+    """The area header's gray line and links, the same in both explorers."""
 
     def setUp(self):
         self.county = make('Fresno County', Region.Type.COUNTY, square(-120.0, 36.0, 1), population=1016725)

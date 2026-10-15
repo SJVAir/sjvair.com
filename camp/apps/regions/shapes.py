@@ -3,7 +3,7 @@ Region outlines as GeoJSON features for maps.
 
 Full precision is exact but heavy (the eight counties are ~850 KB, the ZIP
 areas ~10 MB). Simplified shapes run a whole region type through
-shapely.coverage_simplify together, so neighbours keep one identical shared
+shapely.coverage_simplify together, so neighbors keep one identical shared
 border -- simplifying each shape on its own leaves gaps and doubled lines
 where they meet. Each type's simplified set is computed once and cached,
 zlib-compressed, for a day.

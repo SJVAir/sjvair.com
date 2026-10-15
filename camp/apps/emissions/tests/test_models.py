@@ -239,7 +239,7 @@ class MethaneSourceTests(TestCase):
         assert source.group == 'livestock' and source.sector_label == 'Dairies & livestock'
         assert self.make(source_name='x', ipcc_sector='1B2').group == 'oil-gas'
 
-    def test_rate_text_and_licence(self):
+    def test_rate_text_and_license(self):
         from camp.apps.emissions.models import MethaneSource
         source = self.make()
         assert source.rate_text == '120 ± 40 kg/h'

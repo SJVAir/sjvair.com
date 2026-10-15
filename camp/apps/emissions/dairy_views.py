@@ -227,7 +227,7 @@ def dairy_map_config(scope, view, *, area_params=None, outline_url='', center=''
         features={'toolbar': True, 'expand': True, 'legend': True},
         toolbar_template='emissions/includes/dairy-map-toolbar.html',
         # Shared with the facility map (emissions/includes/map-options.html),
-        # Tiles only: the dairy colours are the fixed EPA size classes, no
+        # Tiles only: the dairy colors are the fixed EPA size classes, no
         # ramp to pick.
         options_template='emissions/includes/map-options.html',
         # Named as on the pesticides maps.

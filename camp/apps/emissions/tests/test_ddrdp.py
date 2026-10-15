@@ -7,7 +7,7 @@ to stamp each page as it's rendered, not the data's as-of date); parse()
 only ever reads page 1 of a real, full download, so this is solely an
 artifact of the sample being a single extracted page. It has 28 real
 projects, including two ("De Groot North Dairy Biogas", "Milky Way Dairy
-Biogas") CDFA marked cancelled: those rows carry a cancellation note in
+Biogas") CDFA marked canceled: those rows carry a cancellation note in
 place of the GHG figure and have no city/county/dates, which is why
 test_the_real_page doesn't require every row to have a county -- only that
 project_name/dairy_name and grant_amount are always there (the real PDF
@@ -39,13 +39,13 @@ class ParseTests(TestCase):
             'end_use', 'est_reduction_tco2e', 'awarded', 'operational',
         }
         assert all(r['dairy_name'] for r in rows)
-        # Two of the 28 are CDFA-cancelled projects with no city/county/dates.
+        # Two of the 28 are CDFA-canceled projects with no city/county/dates.
         assert sum(1 for r in rows if r['county']) == 26
         assert sum(1 for r in rows if r['grant_amount'] is not None) == 28
         assert all(r['grant_amount'] is None or isinstance(r['grant_amount'], Decimal) for r in rows)
-        cancelled = next(r for r in rows if r['project_name'] == 'De Groot North Dairy Biogas')
-        assert (cancelled['county'], cancelled['city'], cancelled['awarded'], cancelled['est_reduction_tco2e']) == ('', '', None, None)
-        assert cancelled['grant_amount'] == Decimal('1442440')
+        canceled = next(r for r in rows if r['project_name'] == 'De Groot North Dairy Biogas')
+        assert (canceled['county'], canceled['city'], canceled['awarded'], canceled['est_reduction_tco2e']) == ('', '', None, None)
+        assert canceled['grant_amount'] == Decimal('1442440')
         normal = rows[0]  # 'BV Dairy Biogas', a normal row
         assert (normal['project_name'], normal['city'], normal['county'], normal['developer']) == ('BV Dairy Biogas', 'Bakersfield', 'Kern', 'California Bioenergy')
         assert normal['grant_amount'] == Decimal('1749596')
@@ -54,20 +54,20 @@ class ParseTests(TestCase):
         assert normal['awarded'].isoformat() == '2018-07-01'
         assert normal['operational'].isoformat() == '2020-09-18'
 
-    def test_normalise_name(self):
+    def test_normalize_name(self):
         # 'Lakeside Dairy, LLC' and 'LAKESIDE DAIRY' meeting is the one hard
         # requirement (the plan's own note): plain generic words (dairy,
         # llc) are dropped unless nothing would be left. "j d farms" isn't
         # asserted here -- naive stopword-dropping gives "j d" instead, which
         # the plan's own docstring flags as an open call; this project keeps
         # the naive rule.
-        assert ddrdp.normalise_name('Lakeside Dairy, LLC') == 'lakeside'
+        assert ddrdp.normalize_name('Lakeside Dairy, LLC') == 'lakeside'
         # CDFA's grant words go too, so a project title meets its CADD dairy.
-        assert ddrdp.normalise_name('Scheenstra Dairy Biogas') == ddrdp.normalise_name('Scheenstra Dairy') == 'scheenstra'
-        assert ddrdp.normalise_name('Fern Oaks Dairy Digester Pipeline Project') == 'fern oaks'
-        assert ddrdp.normalise_name('LAKESIDE DAIRY') == 'lakeside'
-        assert ddrdp.normalise_name('J & D Farms Inc.') == 'j d'
-        assert ddrdp.normalise_name('Big Dairy #2') == 'big 2'
+        assert ddrdp.normalize_name('Scheenstra Dairy Biogas') == ddrdp.normalize_name('Scheenstra Dairy') == 'scheenstra'
+        assert ddrdp.normalize_name('Fern Oaks Dairy Digester Pipeline Project') == 'fern oaks'
+        assert ddrdp.normalize_name('LAKESIDE DAIRY') == 'lakeside'
+        assert ddrdp.normalize_name('J & D Farms Inc.') == 'j d'
+        assert ddrdp.normalize_name('Big Dairy #2') == 'big 2'
 
 
 class MatchAndApplyTests(TestCase):

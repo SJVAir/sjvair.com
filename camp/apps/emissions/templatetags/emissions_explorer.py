@@ -313,7 +313,7 @@ def digester_trend_chart(points, year=None):
     }
 
 
-# The sectors stack's colours, largest first, then "All other sectors" in grey.
+# The sectors stack's colors, largest first, then "All other sectors" in gray.
 STACK_COLORS = ['#08519c', '#3182bd', '#6baed6', '#fd8d3c', '#a1d99b']
 STACK_OTHER = '#c8d1da'
 

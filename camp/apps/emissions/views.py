@@ -369,12 +369,12 @@ def sites_csv(rows, scope, filename):
     writer = csv.writer(response)
     unit = 'share' if scope.pollutant.unit == 'share' else f'{scope.pollutant.unit}_per_year'
     writer.writerow([
-        'name', 'type', 'latitude', 'longitude', 'facilities_within_1000ft', 'facilities_within_quarter_mile',
-        f'{scope.pollutant.key}_{unit}_within_quarter_mile_{scope.year}', 'wells_within_3200ft', 'dairies_within_1_mile',
+        'name', 'type', 'city', 'latitude', 'longitude', 'facilities_within_1000ft',
+        f'{scope.pollutant.key}_{unit}_within_1000ft_{scope.year}', 'wells_within_3200ft', 'dairies_within_1_mile',
     ])
     for row in rows:
         writer.writerow([
-            row['name'], row['type_label'], f"{row['lat']:.5f}", f"{row['lng']:.5f}", row['notice'], row['quarter'],
+            row['name'], row['type_label'], row['display_city'], f"{row['lat']:.5f}", f"{row['lng']:.5f}", row['notice'],
             '' if row['value'] is None else row['value'], row['wells'], row['dairies'],
         ])
     return response
@@ -967,7 +967,7 @@ AREA_PAGE_TYPES = (
     Region.Type.SCHOOL_DISTRICT, Region.Type.TRACT, Region.Type.AB617_COMMUNITY,
 )
 # The search box lists every page type but tracts: a tract's name is its GEOID.
-# Each community layer (city, urban area, CDP) is listed as-is, labelled, so
+# Each community layer (city, urban area, CDP) is listed as-is, labeled, so
 # "Fresno" is both "Fresno · City" and "Fresno · Urban area".
 FIND_AREA_TYPE_LABELS = {
     Region.Type.COUNTY: 'County',
@@ -1135,7 +1135,7 @@ def pesticides_tab_links(context):
 
 
 def area_links(regions):
-    """The facility page's "Area" line: each region it counts in, labelled, linking to its page."""
+    """The facility page's "Area" line: each region it counts in, labeled, linking to its page."""
     labels = {Region.Type.ZIPCODE: 'ZIP {}'}
     return [{
         'label': labels.get(region.type, '{}').format(region_title(region)),
@@ -1158,7 +1158,7 @@ def dairy_page_query(scope, year):
 # An area page's tabs, in order. Overview is the page itself; Dairies is its
 # dairy page (dairy_views); the rest are this module's *Facilities, *OilGas
 # and *Schools views. A tab shows only where the area has something for it.
-# Each with its Font Awesome icon and explorer-icon colour class, the same
+# Each with its Font Awesome icon and explorer-icon color class, the same
 # as the explorer's own tabs (base.html) and In and around's headings.
 AREA_TABS = (
     ('overview', 'Overview', 'fa-map', 'is-map'),
@@ -1498,6 +1498,7 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, MethaneTabMixin, ScopeMixin, 
                 sites_filtered=bool(site_filters['q'] or site_filters['type'] or site_filters['district'] or site_filters['near']),
                 site_districts=schools.district_options(all_sites),
                 site_near_options=schools.NEAR_OPTIONS,
+                site_show_city=schools.show_city(all_sites),
                 school_districts=districts, districts_hidden=sum(1 for d in districts if d['is_collapsed']),
             )
             self.site_geojson = schools.sites_geojson(sites)

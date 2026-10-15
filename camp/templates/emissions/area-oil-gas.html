@@ -196,7 +196,7 @@ wells in service.
                     <tbody>
                     {# Five, the rest a View all away: on the Schools tab, or (the Valley's) folded here. #}
                     {% for row in schools.top %}{% if forloop.counter <= 5 or not schools_near_wells_url %}
-                    <tr{% if forloop.counter > 5 %} class="is-collapsed"{% endif %}><td class="rank">{{ forloop.counter }}.</td><td>{% include 'regions/includes/school-name-cell.html' %}{% if row.licenses > 1 %}<span class="school-kind">{{ row.licenses }} child-care licenses here</span>{% endif %}</td><td class="has-text-right">{{ row.wells|intcomma }}</td></tr>
+                    <tr{% if forloop.counter > 5 %} class="is-collapsed"{% endif %}><td class="rank">{{ forloop.counter }}.</td><td>{% include 'regions/includes/school-name-cell.html' %}</td><td class="has-text-right">{{ row.wells|intcomma }}</td></tr>
                     {% endif %}{% endfor %}
                     </tbody>
                 </table>

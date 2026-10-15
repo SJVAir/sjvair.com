@@ -1,6 +1,6 @@
 """
 The public API side of Carbon Mapper's methane data (camp/apps/emissions/methane.py
-does the reading, models.py the licence text): the sources GeoJSON the maps'
+does the reading, models.py the license text): the sources GeoJSON the maps'
 overlay used to fetch same-origin, plus a source's plumes for the popup's
 image stepper. Carbon Mapper's terms are non-commercial with share-alike
 redistribution, so every response here carries MethaneSource.ATTRIBUTION and

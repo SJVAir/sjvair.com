@@ -55,7 +55,7 @@
   var HOVER_RING_WIDTH = 3;
 
   // The dairy circle's stroke paint, hover-aware (feature-state), around the
-  // caller's resting colour and width expressions.
+  // caller's resting color and width expressions.
   function hoverStroke(color, width) {
     return {
       'circle-stroke-color': M.hover.paint(M.hover.COLOR, color),
@@ -80,7 +80,7 @@
   var ZOOM_TO = 12;
 
   // The page's own area (a dairy region page's boundary, near-me's radius):
-  // its outline's colour, the world ring the mask is cut from, and the
+  // its outline's color, the world ring the mask is cut from, and the
   // circle's resolution -- the same as the facility map's.
   var OUTLINE_COLOR = '#d35400';
   var WORLD_RING = [[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]];
@@ -106,12 +106,12 @@
   }
 
   // The counties' classes can fall under 0.01 (per square mile): written to
-  // two significant digits rather than '<0.01', so neighbouring classes differ.
+  // two significant digits rather than '<0.01', so neighboring classes differ.
   function roundLabel(value) {
     return M.format.round(value, true);
   }
 
-  // A dairy's colour from its EPA size class ('large', 'medium', 'small').
+  // A dairy's color from its EPA size class ('large', 'medium', 'small').
   function colorFor(sizeClass) {
     return SIZE_COLORS[sizeClass] || EMPTY_COLOR;
   }
@@ -230,7 +230,7 @@
     return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [WORLD_RING].concat(rings) } };
   }
 
-  // A `miles` circle around [lng, lat] as a polygon (the SDK has no circles in metres).
+  // A `miles` circle around [lng, lat] as a polygon (the SDK has no circles in meters).
   function circle(center, miles) {
     var meters = miles * METERS_PER_MILE;
     var dLat = meters / 111320;
@@ -278,7 +278,7 @@
     this.dairyHover = M.hover.controller(this.map, 'dairies');
     // The Options menu's Tiles select (shell.bindTiles, shared with the
     // facility map): the basemap experiment, applied live and written to
-    // the URL (?tiles=). No Ramp here -- the dairy colours are the fixed
+    // the URL (?tiles=). No Ramp here -- the dairy colors are the fixed
     // EPA size classes.
     this.defaultTileStyle = this.data.style || 'dataviz';
     this.readState();
@@ -331,7 +331,7 @@
   };
 
   // Bottom to top: the shaded counties, their outlines, the dairies. Smaller
-  // herds draw on top of larger ones, so none hides under a neighbour.
+  // herds draw on top of larger ones, so none hides under a neighbor.
   DairyMap.prototype.addLayers = function () {
     this.shell.ensureSource('counties');
     this.shell.ensureSource('dairies');
@@ -629,7 +629,7 @@
     });
   };
 
-  // Joins the area values to the level's shapes and colours them by the
+  // Joins the area values to the level's shapes and colors them by the
   // measure (a measure change re-runs this without fetching).
   DairyMap.prototype.showCounties = function () {
     var shapes = this.areaShapes || this.shapes;

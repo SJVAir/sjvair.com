@@ -53,7 +53,7 @@ def fill_holes(geometry: GEOSGeometry) -> GEOSMultiPolygon:
     return filled
 
 
-# About a metre in degrees at the Valley's latitude.
+# About a meter in degrees at the Valley's latitude.
 GAP_TOLERANCE = 1e-5
 
 

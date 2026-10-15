@@ -30,7 +30,7 @@ from shapely.geometry.base import BaseGeometry
 
 from camp.utils.maps import to_geos
 
-# MapTiler's neutral grey "dataviz" vector style: a quiet ground for the
+# MapTiler's neutral gray "dataviz" vector style: a quiet ground for the
 # choropleths, whose light classes vanish into the greener street styles.
 # The script accepts a `?tiles=<style>` override for trying other styles.
 MAP_STYLE = 'dataviz'

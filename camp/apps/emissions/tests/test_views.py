@@ -101,7 +101,7 @@ class HomeTests(ViewTestCase):
         assert [row['county'] for row in rows[:2]] == [kern, fresno]
         assert rows[0]['value'] == 100 and rows[1]['value'] == 6
         assert {row['county'] for row in rows} == set(Region.objects.counties())
-        # Darkest for the most; the no-data grey for any county with none.
+        # Darkest for the most; the no-data gray for any county with none.
         assert rows[0]['color'] != rows[1]['color']
         assert all(row['value'] == 0 and row['color'] == '#f0f0f0' for row in rows[2:])
         content = response.content.decode()

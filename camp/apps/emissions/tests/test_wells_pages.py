@@ -138,17 +138,6 @@ class WellsBlockTests(WellsPagesTestCase):
         api = self.client.get(reverse('api:v2:emissions:wells-geojson'), {'region': self.kern.sqid, 'type': 'injecting'}).json()
         assert len(api['wells']) == 1
 
-    def test_one_child_care_centers_licenses_are_one_row(self):
-        from camp.apps.regions.models import Location
-        rows = [
-            {'name': 'CHILD LIFE', 'type': Location.Type.CHILD_CARE, 'lat': 35.41, 'lng': -118.965, 'wells': 29},
-            {'name': 'Child Life', 'type': Location.Type.CHILD_CARE, 'lat': 35.4005, 'lng': -118.965, 'wells': 3},  # ~1 km away
-            {'name': 'CHILD LIFE', 'type': Location.Type.CHILD_CARE, 'lat': 35.4103, 'lng': -118.9656, 'wells': 30},  # ~60 m
-            {'name': 'CHILD LIFE', 'type': Location.Type.PRIVATE_SCHOOL, 'lat': 35.41, 'lng': -118.965, 'wells': 29},
-        ]
-        merged = wells.merge_licenses(rows)
-        assert [(row['wells'], row['licenses']) for row in merged] == [(30, 2), (3, 1), (29, 1)]
-
     def test_the_snapshot_caveat_names_the_year(self):
         self.add_wells()
         latest = self.get(self.fresno.get_emissions_tab_url('oil-gas'), {'year': '2024'})

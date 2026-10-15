@@ -175,7 +175,7 @@ class ApplyTests(TestCase):
         self.plant.point_source = Facility.PointSource.CENSUS
         self.plant.save()
 
-    def test_import_records_the_licence_and_links_nothing(self):
+    def test_import_records_the_license_and_links_nothing(self):
         report = carbonmapper.apply([row()])
         source = MethaneSource.objects.get(source_name='CH4-test-1')
         assert source.county.slug == 'fresno' and report.created == 1

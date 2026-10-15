@@ -200,7 +200,7 @@ def _same(well, values):
 def apply(features):
     """
     Upsert every parsed feature on `api`, delete the wells not in `features`
-    (plugged or cancelled since, or gone from the service), stamp
+    (plugged or canceled since, or gone from the service), stamp
     SourceImport('wellstar') and bump the wells cache generation, in one
     transaction. `features` is the whole Valley (every page): a partial list
     would delete the rest. The query already asks for the covered counties

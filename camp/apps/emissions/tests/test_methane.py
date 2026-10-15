@@ -81,7 +81,7 @@ class AreaRowsTests(MethaneTestCase):
 class ViewTests(MethaneTestCase):
     def test_the_old_same_origin_route_is_gone(self):
         # Moved to /api/2.0/emissions/methane/geojson/ (camp/api/v2/emissions/tests.py
-        # pins the new route and its attribution/licence).
+        # pins the new route and its attribution/license).
         with pytest.raises(NoReverseMatch):
             reverse('emissions:methane-geojson')
         assert self.client.get('/tools/emissions/methane/geojson/').status_code == 404

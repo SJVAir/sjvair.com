@@ -19,7 +19,7 @@ class FacilityHeaderTests(TestCase):
 
     def test_identity_where_and_regulator(self):
         content = self.detail('TEST PLANT')
-        # One grey line, as an area page's: the sector (linking its page), the place, the SIC code.
+        # One gray line, as an area page's: the sector (linking its page), the place, the SIC code.
         line = content[content.index('class="identifiers has-text-grey"'):]
         line = line[:line.index('</p>')]
         assert 'href="/tools/emissions/facilities/sectors/glass/' in line and 'Fresno, Fresno County' in line and 'SIC 3221' in line

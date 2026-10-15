@@ -159,8 +159,8 @@
       var feature = geojson.features[i];
       feature.properties = feature.properties || {};
       feature.properties.id = i;
-      // Only a labelled feature needs an anchor, and finding one costs a
-      // centroid per ring -- the report maps carry a thousand unlabelled tracts.
+      // Only a labeled feature needs an anchor, and finding one costs a
+      // centroid per ring -- the report maps carry a thousand unlabeled tracts.
       this.anchors[i] = feature.properties.label ? labelAnchor(feature) : null;
       if (feature.geometry && feature.geometry.type === 'Point') points.push(feature);
       else {

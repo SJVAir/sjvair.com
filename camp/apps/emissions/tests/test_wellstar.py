@@ -92,7 +92,7 @@ class ParseTests(TestCase):
             assert 8 <= len(row['api']) <= 14 and row['status'] in wellstar.STATUSES
             assert row['county_name'] in ('Kern', 'Fresno') and 34 < row['point'].y < 38
         assert any(row['spud_date'] for row in rows), 'no SpudDate parsed: check its encoding in the sample'
-        assert any(row['in_hpz'] for row in rows), 'no inHPZ value recognised: check Well.HPZ against the sample'
+        assert any(row['in_hpz'] for row in rows), 'no inHPZ value recognized: check Well.HPZ against the sample'
 
 
 class PagesTests(TestCase):

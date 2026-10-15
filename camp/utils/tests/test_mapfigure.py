@@ -31,7 +31,7 @@ class GeoJSONTests(TestCase):
         figure.add(mapfigure.Area(
             geometry=Polygon(((0, 0), (0, 1), (1, 1), (0, 0)), srid=4326),
             fill_color='white',
-            border_color='dimgrey',
+            border_color='dimgray',
             fill_opacity=0.5,
             border_width=2,
         ))
@@ -44,7 +44,7 @@ class GeoJSONTests(TestCase):
         # queryRenderedFeatures, which the paint expressions can't read.
         assert feature['properties']['fillColor'] == 'white'
         assert feature['properties']['fillOpacity'] == 0.5
-        assert feature['properties']['color'] == 'dimgrey'
+        assert feature['properties']['color'] == 'dimgray'
         assert feature['properties']['weight'] == 2
         assert 'style' not in feature['properties']
 

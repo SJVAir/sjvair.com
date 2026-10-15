@@ -105,7 +105,7 @@ class AQLiteHourlyAggregator:
 
     Not a per-entry processor — invoked directly by the hourly Huey task.
     Registered in the processor registry so DefaultCalibration can reference it
-    by name and update_latest_entry will recognise it as the display value.
+    by name and update_latest_entry will recognize it as the display value.
     """
 
     name = 'AQLiteHourlyAggregator'

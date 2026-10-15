@@ -7,7 +7,7 @@ from django_sqids import SqidsField, shuffle_alphabet
 class Well(models.Model):
     """
     An oil or gas well in CalGEM's WellSTAR that is active, idle or newly
-    permitted (plugged and cancelled wells aren't kept), where it is and who
+    permitted (plugged and canceled wells aren't kept), where it is and who
     operates it. A regulatory record, not an emission: nothing here says what
     a well emits. `in_hpz` is CalGEM's own flag for SB 1137's 3,200-ft health
     protection zone around homes, schools and other sensitive receptors,
