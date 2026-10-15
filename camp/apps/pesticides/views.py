@@ -2362,8 +2362,8 @@ class NoticeDetail(vanilla.DetailView):
 # own URL (region/<sqid>/<slug>/<key>/, near/<key>/), Overview the page itself.
 AREA_TABS = (
     ('overview', 'Overview', 'fa-map', 'is-map'),
-    ('notices', 'Notices', 'fa-calendar-clock', 'is-notices'),
     ('records', 'Records', 'fa-table-list', 'is-records'),
+    ('notices', 'Notices', 'fa-calendar-clock', 'is-notices'),
     ('schools', 'Schools', 'fa-school', 'is-commodities'),
 )
 # A pesticides tab and the emissions tab for the same thing; any other opens its Overview.
@@ -2413,7 +2413,7 @@ class AreaPageMixin:
         return query
 
     def available_tabs(self):
-        """Which tabs this area has something for; Overview, Notices and Records always do."""
+        """Which tabs this area has something for; Overview, Records and Notices always do."""
         return {
             'overview': True,
             'notices': True,
