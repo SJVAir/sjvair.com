@@ -6,7 +6,6 @@ from django.contrib.gis.geos import Point
 from django_huey import db_task, db_periodic_task
 from huey import crontab
 
-from camp.apps.monitors.models import Entry
 from camp.apps.monitors.aqview.models import AQview
 from camp.apps.regions.counties import COUNTY_NAMES
 
@@ -49,14 +48,3 @@ def process_aqview_data(payload):
         cleaned = monitor.process_entry_ng(entry)
         print('\t[AQview] Entry created:', entry.timestamp)
 
-        # Legacy
-        try:
-            entry = monitor.entries.get(timestamp=entry.timestamp)
-            entry = monitor.process_entry(entry, payload)
-            entry.save()
-        except Entry.DoesNotExist:
-            entry = monitor.create_entry_legacy(payload)
-
-        monitor.check_latest(entry)
-        if monitor.latest_id == entry.pk:
-            monitor.save()

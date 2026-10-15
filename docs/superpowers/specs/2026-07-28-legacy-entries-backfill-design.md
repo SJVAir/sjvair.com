@@ -134,7 +134,13 @@ monitor's legacy timestamp range in fixed 7-day chunks, day-aligned, walking bac
 2. Query existing new-entries keys — `(timestamp, sensor)` at `stage=RAW,
    processor=''` — for that `EntryModel`/monitor/window.
 3. Anti-join in Python over the chunk-sized sets (not a full-table comparison) to find
-   legacy rows with no RAW counterpart. For `per_sensor=False` mappings, multiple legacy
+   legacy rows with no RAW counterpart. A RAW row for the same sensor within 60 seconds
+   counts as a counterpart: the two systems stamped the same reading differently
+   (PurpleAir's history import uses aligned timestamps, legacy used `last_seen`), and
+   exact-match dedupe would interleave near-duplicates. 60s is half PurpleAir's 2-minute
+   interval, so a regular run of existing rows covers every point in it, while real gaps
+   still get filled. Per-sensor mappings skip legacy rows whose sensor isn't in the
+   monitor type's `ENTRY_CONFIG[...]['sensors']`. For `per_sensor=False` mappings, multiple legacy
    sensor rows can map to the same target key (`sensor=''`) — dedup before diffing so a
    monitor with both `a` and `b` rows for the same timestamp doesn't get counted or
    inserted twice.
@@ -170,6 +176,23 @@ EntryBackfillJob                         backfill_legacy_entries_tick (periodic,
 │ raw_entries_created   │                  restart batch (bump batch_id, re-dispatch)
 └───────────────────────┘
 ```
+
+**Reliability rules** (both jobs):
+
+- A batch counts as stalled only when nothing has happened for 60 minutes. "Something"
+  is the dispatch (`phase_started_at`) or any sub-task finishing (`last_progress_at`), so
+  a slow batch that is still completing monitors isn't restarted under its workers.
+- A RAW insert that fails (e.g. a legacy value too large for the new field) falls back to
+  one row at a time. The bad rows are logged and skipped. A pipeline entry that raises is
+  logged and skipped inside its own savepoint, which also covers two workers racing on
+  the same entry. A monitor that no longer exists counts as done.
+- On the fifth consecutive stall the job goes `failed`, and `chunk_start` is cleared. If
+  an operator sets the state back to `running`, the unfinished chunk is re-dispatched
+  from the cursor with a fresh retry budget. The admin email is sent on commit, so a
+  mail error can't roll back the `failed` state.
+- The `raw_entries_created` / `entries_processed` counters are bigint.
+- Pipeline reprocessing's `range_end` defaults to 24 hours ago, so it doesn't race live
+  ingestion's own pipeline on new RAW rows.
 
 There's only one phase here (`monitors`) — unlike the summaries job's `monitors` →
 `regions` two-phase handoff, entries backfill has no second, dependent aggregation
@@ -247,25 +270,26 @@ hardcoded per-monitor-type list — any `EntryModel` whose `ENTRY_CONFIG` entry 
 `Humidity`, `CLEANED` for AirNow/AQview's `PM25`). Entry models with no `processors` key
 (PurpleAir's `PM10`, `PM100`, `Particulates`) have nothing to reprocess and are skipped.
 
-**Selection, per chunk per monitor per eligible `EntryModel`:** revised from the
-terminal-stage anti-join originally sketched here. Instead, mirroring the existing
-`derived_entries__isnull=True` idiom already used by `process_monitor_history`
-(`camp/apps/monitors/purpleair/tasks.py`), it selects `stage=RAW` entries in the chunk
-window that have *no derived entries of any kind* — i.e. the pipeline was never even
-attempted. For each match, call `monitor.process_entry_pipeline(raw_entry)` (no
-`cutoff_stage`, so the pipeline runs all the way to its terminal stage).
+**Selection, per chunk per monitor per eligible `EntryModel`:** revised twice from the
+terminal-stage anti-join originally sketched here. Using the
+`derived_entries__isnull=True` idiom from `process_monitor_history`
+(`camp/apps/monitors/purpleair/tasks.py`), it selects entries in the chunk window that
+sit at any stage with a processor configured (the keys of `ENTRY_CONFIG[...]['processors']`)
+and have *no derived entries* yet. The pipeline therefore continues from wherever it
+stopped. For each match, call `monitor.process_entry_pipeline(entry)` (no `cutoff_stage`,
+so it runs to the terminal stage). Matches are processed oldest first, then in pipeline
+stage order.
 
-This is a deliberate, signed-off tradeoff, not an oversight: a terminal-stage anti-join
-cannot correctly handle PurpleAir's dual-sensor PM25 merge-and-defer semantics, where
-`PM25_LCS_Correction` merges both sensor channels into a single `sensor=''` CORRECTED
-entry and only the alphabetically-first sensor's RAW row ever produces a derived entry
-at all — the other sensor's RAW row is expected to stay childless forever. A
-terminal-stage check keyed on `(monitor, timestamp, sensor)` would misidentify that
-RAW row as perpetually incomplete. The accepted limitation is the flip side: a RAW
-entry stuck partway through the pipeline (e.g. `CORRECTED` exists but
-`CLEANED`/`CALIBRATED` doesn't, from an earlier crashed/partial run) is *not* detected,
-since it already has at least one derived entry. Completing such partially-stuck chains
-is out of scope for this feature.
+This covers PurpleAir PM2.5 that an earlier migration left with CORRECTED and CLEANED
+but no CALIBRATED: each CLEANED entry has no children, so calibration runs on it. The
+first revision only selected RAW entries and could never reach that data.
+
+A terminal-stage anti-join was rejected because it can't handle PurpleAir's dual-sensor
+PM25 merge-and-defer semantics. `PM25_LCS_Correction` merges both channels into one
+`sensor=''` CORRECTED entry, and only the alphabetically-first sensor's RAW row produces
+a derived entry. The cost of the per-entry check is that entries which can never advance
+(sensor `b` RAW rows, calibrations missing an input such as humidity) are retried on
+every pass. Each retry is a wasted attempt that writes nothing.
 
 **Job/task shape:** identical pattern to the RAW backfill job — a new
 `PipelineBackfillJob` (same fields: `state`, `cursor`, `chunk_start`, `range_start`/
@@ -279,8 +303,12 @@ RAW job's cursor, and re-running it later (e.g. after a calibration change) shou
 require re-running RAW backfill too.
 
 `range_start`/`range_end` default the same way — earliest RAW entry timestamp across the
-four eligible monitor types → now — and the cursor walks backward, same rationale as
-the RAW job (recent data most likely to matter operationally).
+four eligible monitor types → now — but unlike the RAW job, the cursor walks **forward**
+from `range_start`, and each chunk's RAW entries are processed oldest-first. PurpleAir's
+spike cleaning for an entry runs when the entry after it is corrected, and needs the
+CORRECTED entry before it to already exist; walking backward left every reprocessed
+CLEANED value unsmoothed. Run the RAW backfill to completion before starting this job,
+so no chunk is reprocessed before its RAW rows exist.
 
 Management command `camp/apps/monitors/management/commands/reprocess_legacy_pipeline.py`,
 same `start`/`status`/`cancel` shape as `backfill_legacy_entries`.

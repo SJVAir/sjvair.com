@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
@@ -9,6 +9,10 @@ from django.utils.dateparse import parse_date
 from camp.utils.datetime import make_aware
 from camp.apps.monitors.models import PipelineBackfillJob
 
+# Default end of the range: far enough back that reprocessing doesn't race
+# live ingestion, which runs its own pipeline on new RAW rows.
+LIVE_MARGIN = timedelta(days=1)
+
 
 class Command(BaseCommand):
     help = 'Start, monitor, or cancel the historical pipeline reprocessing job.'
@@ -18,7 +22,7 @@ class Command(BaseCommand):
         parser.add_argument('--from', dest='date_from', metavar='YYYY-MM-DD',
             help='Earliest date to reprocess (required for start)')
         parser.add_argument('--to', dest='date_to', metavar='YYYY-MM-DD',
-            help='Latest date to reprocess, exclusive (default: now)')
+            help='Latest date to reprocess, exclusive (default: 24 hours ago)')
         parser.add_argument('--force', action='store_true',
             help='Replace an existing running/paused job instead of refusing to start a new one')
         parser.add_argument('--chunk-days', dest='chunk_days', type=int, default=1,
@@ -56,7 +60,7 @@ class Command(BaseCommand):
         range_end = (
             self._parse_date(options['date_to'])
             if options['date_to']
-            else timezone.now()
+            else timezone.now() - LIVE_MARGIN
         )
         if range_start >= range_end:
             raise CommandError('--from must be before --to')
@@ -66,7 +70,7 @@ class Command(BaseCommand):
                 active.delete()
 
             PipelineBackfillJob.objects.create(
-                cursor=range_end,
+                cursor=range_start,
                 range_start=range_start,
                 range_end=range_end,
                 chunk_days=chunk_days,
@@ -83,7 +87,7 @@ class Command(BaseCommand):
             return
 
         total_seconds = (job.range_end - job.range_start).total_seconds()
-        done_seconds = (job.range_end - job.cursor).total_seconds()
+        done_seconds = (job.cursor - job.range_start).total_seconds()
         percent = 100 * done_seconds / total_seconds if total_seconds else 100
 
         self.stdout.write(f'State: {job.state}')

@@ -274,6 +274,14 @@ class BamCreateEntrySentinelTests(TestCase):
         assert entry is None
         assert not entry_models.PM25.objects.filter(monitor=self.monitor).exists()
 
+    def test_skips_pm25_sentinel_sent_as_string(self):
+        for value in ('99999', '99999.0'):
+            entry = self.monitor.create_entry(
+                entry_models.PM25, timestamp='2023-01-01T00:00:00Z', value=value,
+            )
+            assert entry is None
+        assert not entry_models.PM25.objects.filter(monitor=self.monitor).exists()
+
     def test_creates_valid_pm25_value(self):
         entry = self.monitor.create_entry(
             entry_models.PM25, timestamp='2023-01-01T00:00:00Z', value=Decimal('12.5'),

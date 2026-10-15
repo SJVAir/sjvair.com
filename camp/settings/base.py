@@ -162,6 +162,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'camp.api.middleware.MonitorAccessMiddleware',
+    'camp.api.middleware.DeprecatedAPIMiddleware',
     'camp.utils.middleware.TimezoneMiddleware',
 ]
 

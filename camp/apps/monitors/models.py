@@ -858,12 +858,13 @@ class EntryBackfillJob(TimeStampedModel):
     pending_tasks = models.PositiveIntegerField(_('pending tasks'), default=0)
     batch_id = models.PositiveIntegerField(_('batch id'), default=0)
     phase_started_at = models.DateTimeField(_('phase started at'), null=True, blank=True)
+    last_progress_at = models.DateTimeField(_('last progress at'), null=True, blank=True)
     locked_at = models.DateTimeField(_('locked at'), null=True, blank=True)
 
     consecutive_failures = models.PositiveSmallIntegerField(_('consecutive failures'), default=0)
     last_error = models.TextField(_('last error'), blank=True, default='')
 
-    raw_entries_created = models.PositiveIntegerField(_('raw entries created'), default=0)
+    raw_entries_created = models.PositiveBigIntegerField(_('raw entries created'), default=0)
 
     def __str__(self):
         return f'{self.state} @ {self.cursor:%Y-%m-%d}'
@@ -873,7 +874,9 @@ class PipelineBackfillJob(TimeStampedModel):
     '''
     Tracks progress of driving historical RAW entries through the
     correction/cleaning/calibration pipeline. Independent from
-    EntryBackfillJob — can run anytime, safe to re-run.
+    EntryBackfillJob — can run anytime, safe to re-run. Walks forward from
+    range_start (cursor = start of the next chunk), unlike EntryBackfillJob,
+    because PurpleAir spike cleaning needs each entry's predecessor first.
     See docs/superpowers/specs/2026-07-28-legacy-entries-backfill-design.md.
     '''
     class State(models.TextChoices):
@@ -895,12 +898,13 @@ class PipelineBackfillJob(TimeStampedModel):
     pending_tasks = models.PositiveIntegerField(_('pending tasks'), default=0)
     batch_id = models.PositiveIntegerField(_('batch id'), default=0)
     phase_started_at = models.DateTimeField(_('phase started at'), null=True, blank=True)
+    last_progress_at = models.DateTimeField(_('last progress at'), null=True, blank=True)
     locked_at = models.DateTimeField(_('locked at'), null=True, blank=True)
 
     consecutive_failures = models.PositiveSmallIntegerField(_('consecutive failures'), default=0)
     last_error = models.TextField(_('last error'), blank=True, default='')
 
-    entries_processed = models.PositiveIntegerField(_('entries processed'), default=0)
+    entries_processed = models.PositiveBigIntegerField(_('entries processed'), default=0)
 
     def __str__(self):
         return f'{self.state} @ {self.cursor:%Y-%m-%d}'
