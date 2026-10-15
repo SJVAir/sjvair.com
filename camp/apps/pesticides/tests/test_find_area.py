@@ -118,6 +118,11 @@ class AB617CommunityTests(RollupTestMixin, TestCase):
         assert f'{self.region_url}?year=2022' in html
         assert html.index('find-area-counties') < html.index('find-area-ab617')
 
+    def test_the_filter_box_search_links_it_under_the_counties(self):
+        html = self.client.get(reverse('pesticides:records'), {'year': 2022}).content.decode()
+        assert f'{self.region_url}records/?year=2022' in html
+        assert html.index('find-area-counties') < html.index('find-area-ab617')
+
     def test_it_has_a_place_page_naming_its_type_and_community_page(self):
         response = self.client.get(self.region_url)
         assert response.status_code == 200

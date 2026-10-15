@@ -885,8 +885,11 @@ body.pesticides
                 margin-top: 0.25rem
                 margin-bottom: 0.75rem
             font-size: $size-7
+            // A name never splits ("San / Joaquin", "Arvin, / Lamont"); the
+            // row wraps after a separator (<wbr>) instead.
             a
                 font-weight: 600
+                white-space: nowrap
             .find-area-sep
                 color: $grey-light
                 margin: 0 0.15rem

@@ -599,6 +599,7 @@ def find_field_context(tab, query=''):
         'find_field': True,
         'find_area_places': place_list,
         'find_area_counties': [place for place in place_list if place['type'] == Region.Type.COUNTY],
+        'find_area_ab617': [place for place in place_list if place['type'] == Region.Type.AB617_COMMUNITY],
         'find_area_qs': query,
         'find_near_url': reverse('pesticides:near-me' if tab == 'overview' else f'pesticides:near-me-{tab}'),
         'maptiler_key': settings.MAPTILER_API_KEY,
