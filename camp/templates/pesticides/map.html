@@ -11,6 +11,14 @@
     <p class="notification is-warning is-light">No matches for that filter.</p>
     {% endif %}
 </div>
-{% include 'pesticides/includes/section-map.html' %}
+{# The filters beside the map decide what it shows; its toolbar, how. #}
+<div class="columns">
+    <div class="column is-3-desktop">
+        {% include 'pesticides/includes/map-filters.html' %}
+    </div>
+    <div class="column">
+        {% include 'pesticides/includes/section-map.html' %}
+    </div>
+</div>
 <p class="is-size-7 has-text-grey mt-3">Squares with no reported use{% if map_config.year_label %} in {{ map_config.year_label }}{% endif %} are outlined only; dark lines are county boundaries. Want to be told about notices near you? <a href="https://spraydays.cdpr.ca.gov/" target="_blank" rel="noopener">Sign up with SprayDays</a>.</p>
 {% endblock %}

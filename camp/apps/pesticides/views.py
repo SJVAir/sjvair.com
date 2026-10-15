@@ -585,6 +585,26 @@ def find_area_place_list():
     return place_list
 
 
+def find_field_context(tab, query=''):
+    """
+    The "Search by location" field at the head of a map tab's filter box
+    (regions/includes/find-field.html, shared with the emissions explorer):
+    a place, or a point, lands on the same `tab` of that place ('overview'
+    for its page itself), carrying the scope `query` ('?year=2023' or '').
+    """
+    # A place's tab is its page's URL plus the tab (Region.get_pesticides_tab_url).
+    suffix = '' if tab == 'overview' else f'{tab}/'
+    place_list = [{**place, 'url': f"{place['url']}{suffix}"} for place in find_area_place_list()]
+    return {
+        'find_field': True,
+        'find_area_places': place_list,
+        'find_area_counties': [place for place in place_list if place['type'] == Region.Type.COUNTY],
+        'find_area_qs': query,
+        'find_near_url': reverse('pesticides:near-me' if tab == 'overview' else f'pesticides:near-me-{tab}'),
+        'maptiler_key': settings.MAPTILER_API_KEY,
+    }
+
+
 class Home(vanilla.TemplateView):
     template_name = 'pesticides/home.html'
 
@@ -622,6 +642,7 @@ class Home(vanilla.TemplateView):
             product_list_url=reverse('pesticides:product-list') + scope_qs,
             chemical_list_url=reverse('pesticides:chemical-list') + scope_qs,
             commodity_list_url=reverse('pesticides:commodity-list') + scope_qs,
+            records_url=reverse('pesticides:records') + scope_qs,
             concern_chemical_list_url=reverse('pesticides:chemical-list') + concern_scope_qs,
             find_area_counties=[
                 place for place in find_area_places
@@ -1298,18 +1319,19 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # on the county outlines (see `fit`).
         data={**{key.replace('_', '-'): value for key, value in config.items()}, 'bounds': ''},
         features={'toolbar': True, 'expand': True, 'legend': True, 'status': True},
-        # The filter pickers only on the map page; Shade by, Tweaks and Expand everywhere.
-        # On a region's area tabs, only the buffer picker.
-        toolbar_template=(
-            'pesticides/includes/map-toolbar.html' if toolbar
-            else 'pesticides/includes/buffer-toolbar.html' if clip_region else None
-        ),
-        # Shade by on every section map; the experiment selects live in Tweaks.
-        toolbar_end_template='pesticides/includes/map-metric.html',
+        # Shade by starts every section map's toolbar (map-toolbar-start.html);
+        # Tweaks and Expand end it. The experiment selects live in Tweaks.
+        toolbar_template='pesticides/includes/map-toolbar-start.html',
         options_template='pesticides/includes/map-options.html',
         options_label='Tweaks',
         options_icon='fa-flask-gear',
         legend_template='pesticides/includes/map-legend.html',
+    )
+    # After Shade by: Compare on the valley map, the boundary picker on a
+    # region's area tabs.
+    config['map']['start_template'] = (
+        'pesticides/includes/map-toolbar.html' if toolbar
+        else 'pesticides/includes/buffer-toolbar.html' if clip_region else None
     )
     return config
 
@@ -1373,12 +1395,9 @@ class MapPage(vanilla.TemplateView):
             map_config=map_config,
             filters=filters,
             related=resolved,
-            # Products before chemicals; icons match the explorer's tab icons.
-            toolbar_kinds=[
-                ('product', 'Product', 'fa-spray-can-sparkles', 'is-products'),
-                ('chemical', 'Chemical', 'fa-flask', 'is-chemicals'),
-                ('commodity', 'Commodity', 'fa-seedling', 'is-commodities'),
-            ],
+            # The filter box beside the map (map-filters.html) also searches
+            # by location, landing on a place's page.
+            **find_field_context('overview', stats.scope_query(year, all_years, None, concern)),
             no_matches=no_matches,
             county_map=county_map,
             compare=compare,
@@ -1874,6 +1893,7 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
             map_config=self.get_map_config(),
             map_unfiltered=self.get_map_unfiltered(),
             county_map=county_map,
+            **find_field_context('records', stats.scope_query(self.year, self.all_years, None, self.concern)),
             # The entity pickers render the resolved objects; an unresolved
             # sqid has nothing to show, so it stays a plain hidden value.
             related={k: v for k, v in self.related.items() if v is not MISSING},
@@ -2264,6 +2284,7 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
             filter_all_months=self.archive_all,
             filter_month_defaulted=self.archive_defaulted,
             filter_month_label=f'{calendar.month_name[self.archive_month]} {self.archive_year}' if self.archive_year and self.archive_month else '',
+            **find_field_context('notices', stats.scope_query(None, False, None, self.concern)),
             **year_ctx,
             **kwargs,
         )
@@ -2744,6 +2765,7 @@ class AreaSchoolsMixin:
                 show_all_sections=True, locations_area=area.locations_area(), **self.map_clip(), **area.map_kwargs(),
                 location_ids=[row['location'].sqid for row in schools['rows']] if schools['is_filtered'] else None,
             ),
+            **find_field_context('schools', stats.scope_query(year, all_years, None, concern)),
             **self.header_context(),
             **self.tab_scope_context(),
             **kwargs,

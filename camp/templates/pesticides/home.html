@@ -1,5 +1,5 @@
 {% extends 'pesticides/base.html' %}
-{% load humanize pesticides_explorer %}
+{% load humanize pesticides_explorer region_pages %}
 
 {% block body-class %}{{ block.super }} home{% endblock %}
 {% block explorer-hero-class %}{% endblock %}
@@ -16,23 +16,79 @@
     </p>
 </div>
 
+{% comment %}
+Where to go first, above the search, as on the emissions explorer's home:
+one card per kind of thing, each a count for the year (notices: scheduled
+now; schools: those with use reported within a mile, stats.schools_near_use),
+a line of context and a link to its list. Products before chemicals.
+{% endcomment %}
+<h2 class="is-sr-only">Explore</h2>
+<div class="columns is-multiline entry-cards">
+    <div class="column is-half-tablet is-one-third-desktop">
+        <a class="box entry-card" href="{{ product_list_url }}">
+            <span class="icon is-medium entry-card-icon"><span class="fa-duotone fa-fw fa-spray-can-sparkles explorer-icon is-products" aria-hidden="true"></span></span>
+            <p class="title is-5">Products</p>
+            <p class="entry-card-value"><span class="title is-3">{{ product_count|default:0|intcomma }}</span> <span class="entry-card-label has-text-grey">used{% if year_label %} in {{ year_label }}{% endif %}</span></p>
+            <p class="entry-card-sentence has-text-grey">{% if products_fumigant %}{{ products_fumigant|intcomma }} of them fumigants.{% else %}Pesticides as sold, by brand.{% endif %}</p>
+        </a>
+    </div>
+    <div class="column is-half-tablet is-one-third-desktop">
+        <a class="box entry-card" href="{{ chemical_list_url }}">
+            <span class="icon is-medium entry-card-icon"><span class="fa-duotone fa-fw fa-flask explorer-icon is-chemicals" aria-hidden="true"></span></span>
+            <p class="title is-5">Chemicals</p>
+            <p class="entry-card-value"><span class="title is-3">{{ chemical_count|default:0|intcomma }}</span> <span class="entry-card-label has-text-grey">active ingredients</span></p>
+            <p class="entry-card-sentence has-text-grey">{% if chemicals_flagged %}{{ chemicals_flagged|intcomma }} flagged for health concerns.{% else %}The active ingredients in those products.{% endif %}</p>
+        </a>
+    </div>
+    <div class="column is-half-tablet is-one-third-desktop">
+        <a class="box entry-card" href="{{ commodity_list_url }}">
+            <span class="icon is-medium entry-card-icon"><span class="fa-duotone fa-fw fa-seedling explorer-icon is-commodities" aria-hidden="true"></span></span>
+            <p class="title is-5">Commodities</p>
+            <p class="entry-card-value"><span class="title is-3">{{ commodity_count|default:0|intcomma }}</span> <span class="entry-card-label has-text-grey">treated</span></p>
+            <p class="entry-card-sentence has-text-grey">The crops and sites pesticides went on.</p>
+        </a>
+    </div>
+    <div class="column is-half-tablet is-one-third-desktop">
+        <a class="box entry-card" href="{{ records_url }}">
+            <span class="icon is-medium entry-card-icon"><span class="fa-duotone fa-fw fa-table-list explorer-icon is-records" aria-hidden="true"></span></span>
+            <p class="title is-5">Records</p>
+            <p class="entry-card-value"><span class="title is-3">{{ applications|default:0|intcomma }}</span> <span class="entry-card-label has-text-grey">applications</span></p>
+            <p class="entry-card-sentence has-text-grey">Each application growers reported to their county and the state.</p>
+        </a>
+    </div>
+    <div class="column is-half-tablet is-one-third-desktop">
+        <a class="box entry-card" href="{% url 'pesticides:notice-list' %}">
+            <span class="icon is-medium entry-card-icon"><span class="fa-duotone fa-fw fa-calendar-clock explorer-icon is-notices" aria-hidden="true"></span></span>
+            <p class="title is-5">Notices</p>
+            <p class="entry-card-value"><span class="title is-3">{{ active_notices|default:0|intcomma }}</span> <span class="entry-card-label has-text-grey">scheduled now</span></p>
+            <p class="entry-card-sentence has-text-grey">SprayDays notices of intent, filed before a restricted material is applied.</p>
+        </a>
+    </div>
+    <div class="column is-half-tablet is-one-third-desktop">
+        <a class="box entry-card" href="#find">
+            <span class="icon is-medium entry-card-icon"><span class="fa-duotone fa-fw fa-school explorer-icon is-commodities" aria-hidden="true"></span></span>
+            <p class="title is-5">Schools</p>
+            <p class="entry-card-value"><span class="title is-3">{{ schools_near_use|default:0|intcomma }}</span> <span class="entry-card-label has-text-grey">schools and child care within a mile of reported use{% if year_label %} in {{ year_label }}{% endif %}</span></p>
+            <p class="entry-card-sentence has-text-grey">Of {{ schools_total|default:0|intcomma }}. Pick your area to see its schools.</p>
+        </a>
+    </div>
+</div>
+
 <div class="columns landing-top">
     <div class="column is-8">{% include 'pesticides/includes/find-area.html' %}</div>
     <div class="column is-4">{% include 'pesticides/includes/spraydays-signup.html' %}</div>
 </div>
 
-<p class="notice-callout">
-    <span class="icon has-text-info"><span class="fa-regular fa-fw fa-calendar-clock"></span></span>
-    <span>
-        <a href="{% url 'pesticides:notice-list' %}"><strong>{{ active_notices }}</strong></a> SprayDays notice{{ active_notices|pluralize }} of intent currently scheduled.
-        <a href="{% url 'pesticides:about' %}#spraydays">What are notices of intent?</a>
-    </span>
-</p>
 
 <hr>
 
-{# The valley in five numbers. Each carries a line of context, as a place's #}
-{# row does, so they sit on one baseline and say what they are. #}
+{% comment %}
+The year worked out: figures derived from the totals, not counts (the entry
+cards above hold those). Each carries a line of context, as a place's row
+does, so they sit on one baseline and say what they are. A figure that can't
+apply (the flagged share under a narrowing, the largest county's share
+inside one county) is left out rather than shown as 100%.
+{% endcomment %}
 {% if total_lbs %}
 <div class="level stat-row box">
     <div class="level-item has-text-centered">
@@ -42,34 +98,42 @@
             <p class="stat-note">{% if lbs_delta %}{{ lbs_delta|delta_phrase }}{% endif %}</p>
         </div>
     </div>
+    {% if lbs_per_acre %}
     <div class="level-item has-text-centered">
         <div>
-            <p class="heading">Applications{% if year_label %} in {{ year_label }}{% endif %}</p>
-            <p class="title">{{ applications|default:0|intcomma }}</p>
-            <p class="stat-note"></p>
+            <p class="heading">Lbs per acre treated</p>
+            <p class="title">{{ lbs_per_acre|floatformat:1 }}</p>
+            <p class="stat-note">across {{ acres|floatformat:0|intcomma }} acres</p>
         </div>
     </div>
+    {% endif %}
+    {% if flagged_share is not None %}
     <div class="level-item has-text-centered">
         <div>
-            <p class="heading">Chemicals used</p>
-            <p class="title">{{ chemical_count|default:0|intcomma }}</p>
-            <p class="stat-note">{% if chemicals_flagged %}{{ chemicals_flagged|default:0|intcomma }} flagged{% endif %}</p>
+            <p class="heading">Pounds from flagged chemicals</p>
+            <p class="title">{{ flagged_share|whole_percent }}</p>
+            <p class="stat-note">of all pounds applied</p>
         </div>
     </div>
+    {% endif %}
+    {% if top_county %}
     <div class="level-item has-text-centered">
         <div>
-            <p class="heading">Products used</p>
-            <p class="title">{{ product_count|default:0|intcomma }}</p>
-            <p class="stat-note">{% if products_fumigant %}{{ products_fumigant|default:0|intcomma }} fumigants{% endif %}</p>
+            <p class="heading">Largest county's share</p>
+            <p class="title">{{ top_county.share|whole_percent }}</p>
+            <p class="stat-note">{{ top_county.county_name|cut:" County" }}</p>
         </div>
     </div>
+    {% endif %}
+    {% if lbs_per_application %}
     <div class="level-item has-text-centered">
         <div>
-            <p class="heading">Commodities treated</p>
-            <p class="title">{{ commodity_count|default:0|intcomma }}</p>
-            <p class="stat-note"></p>
+            <p class="heading">Lbs per application</p>
+            <p class="title">{{ lbs_per_application|floatformat:0|intcomma }}</p>
+            <p class="stat-note">on average</p>
         </div>
     </div>
+    {% endif %}
 </div>
 {% endif %}
 

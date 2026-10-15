@@ -883,8 +883,9 @@
 
     // The filter form only knows its own fields; the map's view settings
     // (metric, notices, all sections) ride along so the URL it lands on
-    // still says how the map is being viewed.
-    var form = wrap.querySelector('.map-toolbar-filters');
+    // still says how the map is being viewed. It's the filter box beside
+    // the map (map-filters.html), outside the map's wrapper.
+    var form = document.querySelector('form[data-map-filters]');
     if (form && !form.getAttribute('data-view-bound')) {
       form.setAttribute('data-view-bound', '1');
       form.addEventListener('htmx:configRequest', function (event) {
@@ -965,6 +966,7 @@
     Array.prototype.forEach.call(wrap.querySelectorAll('input[name="metric"]'), function (radio) {
       radio.checked = radio.value === metric;
     });
+    this.labelMetric();
     var set = function (selector, prop, value) {
       var input = wrap.querySelector(selector);
       if (input) input[prop] = value;
@@ -1657,8 +1659,21 @@
 
   SectionMap.prototype.onMetricChange = function (event) {
     this.metric = event.target.value;
+    this.labelMetric();
+    M.chrome.closeDropdowns(this.shell, null);
     this.restyle();
     this.syncViewParams();
+  };
+
+  // The Shade by dropdown's button names the current choice (map-metric.html).
+  SectionMap.prototype.labelMetric = function () {
+    var wrap = this.wrapEl;
+    if (!wrap) return;
+    var name = this.metric === 'applications' ? 'applications' : 'pounds';
+    var label = wrap.querySelector('.map-metric-label');
+    if (label) label.textContent = 'Shade by ' + name;
+    var button = wrap.querySelector('.map-metric .dropdown-trigger .button');
+    if (button) button.setAttribute('aria-label', 'Shade by: ' + name);
   };
 
   // The basemap style is part of the map's style, so swapping it rebuilds

@@ -19,7 +19,7 @@ from camp.apps.pesticides.models import (
     Chemical, Commodity, FumigationMethod, PesticideNotice, PesticideUse, PesticideUseRollup, PesticideUseTotal, Product,
 )
 from camp.apps.pesticides.townships import township_index
-from camp.apps.regions.models import Region
+from camp.apps.regions.models import Boundary, Location, Region
 
 LATEST_YEAR_KEY = 'pesticides:latest-year'
 # Bumped whenever the cached shape changes -- v2 added `county_sqid` to
@@ -27,7 +27,7 @@ LATEST_YEAR_KEY = 'pesticides:latest-year'
 # under an old key would be missing them. v4: fumigants are now decided by
 # Product.is_fumigant, so cached fumigant counts and narrowings are stale.
 # v5: the flagged board is its own top five rather than the remainder.
-LANDING_KEY = 'pesticides:landing-stats:v5'
+LANDING_KEY = 'pesticides:landing-stats:v6'
 NOTICE_WINDOW_KEY = 'pesticides:notice-window'
 YEARS_KEY = 'pesticides:years'
 ALL_YEARS = 'all'
@@ -1433,6 +1433,8 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
         'series_label': series_label(year, all_years),
     }
     data['lbs_delta'] = trend_deltas(data['by_year'], year)['previous']
+    data.update(derived_stats(data, year_uses, county, concern))
+    data.update(schools_near_use(year, all_years, county, concern))
     # Under the concern scope every leaderboard is already of concern, so
     # the dedicated one would just restate the top chemicals. Under any other
     # narrowing its "View all" (the flagged-chemicals list) would be a
@@ -1448,6 +1450,70 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
         data['top_chemicals_of_concern'] = with_series(
             uses, 'chemical', of_concern, year=year, all_years=all_years)
     return data
+
+
+def derived_stats(data, year_uses, county=None, concern=False):
+    """
+    The landing stat row's figures, worked out from the year's totals rather
+    than counted (the entry cards above it hold the counts): pounds per acre
+    treated and per application, the flagged chemicals' share of the pounds
+    (not under a narrowing, where it's all or nothing), and the largest
+    county's share of the Valley's pounds (not when scoped to one county).
+    Each is None where it can't be worked out.
+    """
+    lbs = data['total_lbs']
+    flagged_share = None
+    if lbs and not concern:
+        flagged = concern_rows(year_uses.filter(chemical__isnull=False)).aggregate(lbs=Sum('lbs_chemical'))['lbs']
+        flagged_share = (flagged or 0) / lbs
+    top_county = None
+    counties = data['by_county']
+    valley_lbs = sum(row['lbs'] or 0 for row in counties)
+    if county is None and counties and valley_lbs:
+        top_county = {**counties[0], 'share': (counties[0]['lbs'] or 0) / valley_lbs}
+    return {
+        'lbs_per_acre': lbs / data['acres'] if lbs and data['acres'] else None,
+        'lbs_per_application': lbs / data['applications'] if lbs and data['applications'] else None,
+        'flagged_share': flagged_share,
+        'top_county': top_county,
+    }
+
+
+# "Within about a mile" for the Valley-wide schools count: a section with
+# reported use this close to a school. A school's own figure (block_totals)
+# is its 3x3 block of sections, a spatial query per school; this is one query
+# for every school at once, and comes out close to it. The degrees are a
+# coarse, index-friendly prefilter (a mile is ~0.0145 deg of latitude, ~0.018
+# of longitude here) before the exact distance.
+SCHOOLS_NEAR_MILES = 1
+SCHOOLS_NEAR_PREFILTER_DEGREES = 0.02
+
+
+def schools_near_use(year, all_years=False, county=None, concern=False):
+    """
+    {'schools_near_use', 'schools_total'}: how many schools and child care
+    centres (in `county`, or the Valley) have a section with use reported
+    within SCHOOLS_NEAR_MILES in the year, under the narrowing, and how many
+    there are. Part of landing_stats, so cached with it.
+    """
+    rows = PesticideUseRollup.objects.filter(chemical__isnull=False, lbs_chemical__gt=0)
+    locations = Location.objects.all()
+    if county is not None:
+        rows = rows.filter(county=county)
+        locations = locations.filter(point__within=county.boundary.geometry)
+    if concern:
+        rows = narrow_rows(rows, concern)
+    sections = list(in_year(rows, year, all_years).values_list('mtrs', flat=True).distinct())
+    boundaries = list(Region.objects.filter(pk__in=sections).values_list('boundary_id', flat=True))
+    near = Boundary.objects.filter(
+        pk__in=boundaries,
+        geometry__dwithin=(OuterRef('point'), SCHOOLS_NEAR_PREFILTER_DEGREES),
+        geometry__distance_lte=(OuterRef('point'), D(mi=SCHOOLS_NEAR_MILES)),
+    )
+    return {
+        'schools_near_use': locations.filter(Exists(near)).count() if boundaries else 0,
+        'schools_total': locations.count(),
+    }
 
 
 def landing_stats(year=None, all_years=False, county=None, concern=False):

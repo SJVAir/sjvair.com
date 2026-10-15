@@ -263,77 +263,41 @@
   margin-top: 0.3rem;
 }
 
-/* Shade by, in the toolbar's end group (map-metric.html): a segmented
-   control styled as the toolbar's buttons. The radios are visually hidden but
-   focusable; the checked option fills, and keyboard focus rings the group. */
-.map-toolbar .map-metric {
-  display: inline-flex;
-  align-items: stretch;
-  min-width: 0;
-  height: 33px; /* the toolbar buttons' */
-  margin: 0;
-  padding: 0;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 4px;
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-  font-size: 0.85rem;
-  overflow: hidden;
+/* The toolbar's start group (map-toolbar-start.html): Shade by, then
+   Compare or the boundary picker, side by side. */
+.map-toolbar .map-toolbar-start {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem;
+  pointer-events: none;
 }
 
-/* The group's name, as a visible prefix where there's room. */
+/* Shade by's menu (map-metric.html): two radios as menu items. */
+.map-toolbar .map-metric .dropdown-menu {
+  min-width: 12rem;
+}
+.map-toolbar .map-metric-options {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
 .map-toolbar .map-metric-legend {
-  display: flex;
-  align-items: center;
-  float: left; /* a fieldset's legend is laid out outside the flow otherwise */
-  padding: 0 0.6rem;
+  padding: 0 0 0.35rem;
   color: #6b6b6b;
   font-size: 0.7rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  white-space: nowrap;
 }
-
 .map-toolbar .map-metric-option {
-  position: relative;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  padding: 0 0.7rem;
-  border-left: 1px solid rgba(0, 0, 0, 0.12);
-  color: #363636;
-  white-space: nowrap;
+  gap: 0.5rem;
+  padding: 0.3rem 0.25rem;
   cursor: pointer;
 }
-
-.map-toolbar .map-metric-option:hover {
-  background: #f5f5f5;
-}
-
 .map-toolbar .map-metric-option:has(input:checked) {
-  background: #3273dc;
-  color: #fff;
-}
-
-.map-toolbar .map-metric-option:has(input:focus-visible) {
-  outline: 2px solid #1f6fae;
-  outline-offset: -3px;
-}
-
-/* On the checked option's blue fill the blue ring vanishes: ring it white. */
-.map-toolbar .map-metric-option:has(input:checked:focus-visible) {
-  outline-color: #fff;
-}
-
-.map-toolbar .map-metric-option input {
-  position: absolute;
-  opacity: 0;
-  width: 1px;
-  height: 1px;
-  margin: 0;
-}
-
-.map-toolbar .map-metric-short {
-  display: none;
+  font-weight: 600;
 }
 
 /* The marker layers' and "All sections" toggles in the legend: the core's
@@ -372,47 +336,6 @@
 .map-legend-panel .section-map-sections-toggle:has(input:disabled) {
   color: #6b6b6b;
   cursor: default;
-}
-
-@media (max-width: 768px) {
-  /* Shade by makes the end group too wide to share a row with the filter
-     buttons: they wrap onto their own row (the end group keeps the right
-     edge) instead of squeezing the filters into a one-button column. */
-  .map-toolbar:has(.map-metric) {
-    flex-wrap: wrap;
-  }
-  .map-toolbar:has(.map-metric) .map-toolbar-filters {
-    flex: 1 1 100%;
-  }
-  /* "Lbs" / "Apps" on a phone; the full words stay as the accessible names. */
-  .map-toolbar .map-metric-legend {
-    /* Visually hidden, not display:none, which would drop the group's name. */
-    position: absolute;
-    float: none;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-  .map-toolbar .map-metric-full {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-  .map-toolbar .map-metric-short {
-    display: inline;
-  }
-  .map-toolbar .map-metric-option {
-    padding: 0 0.5rem;
-  }
-  .map-toolbar .map-metric-option:first-of-type {
-    border-left: 0;
-  }
 }
 
 /* The legend body scrolls (overflow-y), which would clip the "?" tooltip;

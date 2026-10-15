@@ -1,12 +1,30 @@
 {% comment %}
-Shade by, on every section map: a segmented control in the toolbar's end
-group (rendered by maps/includes/map.html as map.toolbar_end_template). The
-script (section-map.js) binds the radios by name anywhere in the map wrapper.
-On a phone the visible labels shorten ("Lbs" / "Apps"); the full words stay
-as the accessible names.
+Shade by, on every section map: a toolbar dropdown at the start of the row,
+like the toolbar's other pickers, before Compare or the boundary picker
+(map-toolbar-start.html). Pounds or applications: how the map draws, not what
+it shows. The script (section-map.js) binds the radios by name anywhere in the
+map wrapper, and relabels the button when one changes.
 {% endcomment %}
-<fieldset class="map-metric">
-    <legend class="map-metric-legend">Shade by</legend>
-    <label class="map-metric-option"><input type="radio" name="metric" value="lbs_chemical"{% if request.GET.metric != 'applications' %} checked{% endif %}><span class="map-metric-full">Pounds</span><span class="map-metric-short" aria-hidden="true">Lbs</span></label>
-    <label class="map-metric-option"><input type="radio" name="metric" value="applications"{% if request.GET.metric == 'applications' %} checked{% endif %}><span class="map-metric-full">Applications</span><span class="map-metric-short" aria-hidden="true">Apps</span></label>
-</fieldset>
+{% with apps=request.GET.metric|default:''|stringformat:'s' %}
+<div class="control">
+    <div class="dropdown map-toolbar-dropdown map-metric">
+        <div class="dropdown-trigger">
+            <button type="button" class="button" aria-expanded="false" aria-controls="map-menu-metric"
+                    aria-label="Shade by: {% if apps == 'applications' %}applications{% else %}pounds{% endif %}">
+                <span class="icon"><span class="fa-duotone fa-fw fa-palette explorer-icon is-scope" aria-hidden="true"></span></span>
+                <span class="map-toolbar-label map-metric-label">Shade by {% if apps == 'applications' %}applications{% else %}pounds{% endif %}</span>
+                <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+            </button>
+        </div>
+        <div class="dropdown-menu" id="map-menu-metric">
+            <div class="dropdown-content">
+                <fieldset class="map-metric-options">
+                    <legend class="map-metric-legend">Shade by</legend>
+                    <label class="dropdown-item map-metric-option"><input type="radio" name="metric" value="lbs_chemical"{% if apps != 'applications' %} checked{% endif %}> Pounds</label>
+                    <label class="dropdown-item map-metric-option"><input type="radio" name="metric" value="applications"{% if apps == 'applications' %} checked{% endif %}> Applications</label>
+                </fieldset>
+            </div>
+        </div>
+    </div>
+</div>
+{% endwith %}

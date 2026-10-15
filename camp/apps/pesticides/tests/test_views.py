@@ -739,9 +739,22 @@ class HomeTests(RollupTestMixin, TestCase):
         assert Chemical.objects.get(pk=3).get_absolute_url() + '?year=2022' in html
         # The caveat still names the latest loaded year.
         assert 'the newest full year here is 2023' in html
-        # Live notice count sits outside the year-binned stat row.
+        # The notices card counts what's scheduled now, whatever the year.
         assert 'Notices next 7 days' not in html
-        assert 'notice-callout' in html and 'currently scheduled' in html
+        assert 'scheduled now' in html
+
+    def test_entry_cards_lead_the_page(self):
+        response = self.client.get(self.url, {'year': '2023'})
+        html = response.content.decode()
+        cards = html[html.index('entry-cards'):html.index('class="columns landing-top"')]
+        # Products, chemicals, commodities, records and notices, in that order.
+        titles = ['Products', 'Chemicals', 'Commodities', 'Records', 'Notices', 'Schools']
+        positions = [cards.index(f'<p class="title is-5">{title}</p>') for title in titles]
+        assert positions == sorted(positions)
+        assert reverse('pesticides:records') in cards and reverse('pesticides:notice-list') in cards
+        assert f'<span class="title is-3">{response.context["applications"]}</span>' in cards
+        # The year's stat row stays, under the search.
+        assert html.index('class="columns landing-top"') < html.index('level stat-row box')
 
     def test_all_years_on_home(self):
         response = self.client.get(self.url, {'year': 'all'})
@@ -883,7 +896,7 @@ class MapPageTests(RollupTestMixin, TestCase):
         assert 'class="map-wrap"' in html
         assert 'class="section-map map-canvas" id="section-map-2023"' in html
         # The page's filters, then Shade by, then Tweaks, then Expand.
-        assert html.index('class="map-toolbar-filters"') < html.index('class="map-metric"') < html.index('map-options') < html.index('class="button map-expand"')
+        assert html.index('map-metric') < html.index('class="map-toolbar-filters"') < html.index('map-options') < html.index('class="button map-expand"')
         assert 'name="metric"' in html and 'class="section-map-controls"' in html
         # The legend body's hooks for the script, and the toggle pointing at it.
         assert 'aria-controls="section-map-2023-legend"' in html and 'id="section-map-2023-legend"' in html
@@ -895,12 +908,14 @@ class MapPageTests(RollupTestMixin, TestCase):
         assert 'data-features="expand legend status toolbar"' in html
         assert 'class="map-status"' in html
 
-    def test_only_the_map_page_has_the_filter_toolbar(self):
+    def test_only_the_map_page_has_compare_after_shade_by(self):
+        # Every section map's toolbar starts with Shade by; the map page adds Compare after it.
         config = views.section_map_config(2023)
-        assert config['map']['toolbar_template'] is None
+        assert config['map']['toolbar_template'] == 'pesticides/includes/map-toolbar-start.html'
+        assert config['map']['start_template'] is None
         assert config['map']['options_template'] == 'pesticides/includes/map-options.html'
         assert config['map']['features'] == {'toolbar': True, 'expand': True, 'legend': True, 'status': True}
-        assert views.section_map_config(2023, toolbar=True)['map']['toolbar_template'] == 'pesticides/includes/map-toolbar.html'
+        assert views.section_map_config(2023, toolbar=True)['map']['start_template'] == 'pesticides/includes/map-toolbar.html'
 
     def test_every_flat_key_is_a_data_attribute(self):
         config = views.section_map_config(2023, chemical=None, show_locations=True)
@@ -1806,13 +1821,14 @@ class MapTweaksTests(RollupTestMixin, TestCase):
     def test_every_section_map_has_shade_by_and_tweaks(self):
         for name, url in self.urls().items():
             html = self.client.get(url, {'year': 2023}).content.decode()
+            # Shade by is a dropdown at the start of the toolbar, before its other pickers.
+            start = html.split('class="map-toolbar-start"')[1].split('class="map-toolbar-end"')[0]
+            assert 'dropdown map-toolbar-dropdown map-metric' in start, name
+            assert '<span class="map-toolbar-label map-metric-label">Shade by pounds</span>' in start, name
+            assert '<legend class="map-metric-legend">Shade by</legend>' in start, name
+            assert 'value="lbs_chemical" checked' in start and 'value="applications"' in start, name
             end = self.toolbar_end(html)
-            assert '<fieldset class="map-metric">' in end, name
-            assert '<legend class="map-metric-legend">Shade by</legend>' in end, name
-            assert 'value="lbs_chemical" checked' in end and 'value="applications"' in end, name
-            # The full words are the accessible names; Lbs / Apps are decoration.
-            assert 'Pounds' in end and 'Applications' in end and 'aria-hidden="true">Lbs<' in end, name
-            assert end.index('map-metric') < end.index('map-options'), name
+            assert 'map-metric' not in end, name
             assert 'aria-label="Map tweaks"' in end and '<span class="map-toolbar-label">Tweaks</span>' in end, name
             assert 'fa-flask-gear' in end and 'fa-gear' not in end, name
             assert 'Options' not in end, name
@@ -1841,7 +1857,8 @@ class MapTweaksTests(RollupTestMixin, TestCase):
 
     def test_compare_view_has_shade_by_too(self):
         html = self.client.get(reverse('pesticides:map'), {'compare': '2022'}).content.decode()
-        assert '<fieldset class="map-metric">' in html
+        start = html.split('class="map-toolbar-start"')[1]
+        assert start.index('map-metric') < start.index('map-menu-compare')
 
 
 class MapChromeDefaultsTests(TestCase):
