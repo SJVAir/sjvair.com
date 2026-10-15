@@ -4,7 +4,7 @@ The notices filters, on the Notices page and a place's Notices tab: Search
 by location first (beside the form, so Enter there doesn't submit it), then
 the filters, which apply as they change.
 {% endcomment %}
-<div class="notice-filters box">
+<div class="notice-filters box" data-filter-box>
 {% include 'regions/includes/find-field.html' %}
 <form method="GET" id="notice-filter-form" hx-trigger="submit, change delay:250ms">
     {% if county %}<input type="hidden" name="county" value="{{ county.slug }}">{% endif %}

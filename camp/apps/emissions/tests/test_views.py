@@ -303,8 +303,10 @@ class MapTests(ViewTestCase):
         assert '<option value="glass" selected>' in box
         assert 'sector=glass' in content  # the map's data query
         assert 'data-sector=' not in content  # no sector dropdown in the toolbar
-        # The core's chrome: the toolbar, expand button and legend card.
+        # The core's chrome: the toolbar, expand button and legend card, and
+        # (for when the filter box is out of sight) the Filters button, its slide-out and chips.
         assert 'class="map-toolbar-filters"' in content
+        assert 'class="button map-filters-toggle"' in content and 'class="map-filters-panel"' in content and 'class="map-filter-chips"' in content
         assert 'class="button map-expand"' in content
         assert 'map-legend-panel' in content
         assert 'class="facility-map-legend"' in content

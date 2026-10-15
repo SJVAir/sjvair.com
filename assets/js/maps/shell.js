@@ -594,6 +594,7 @@
   // fetch still in flight is let go of (its ticket is no longer current).
   Shell.prototype.destroy = function () {
     if (this.expanded) M.chrome.setExpanded(this, false);
+    M.chrome.unbindFilters(this);
     M.chrome.unbindDocument(this);
     this.unbindWheelZoom();
     this.tickets += 1;

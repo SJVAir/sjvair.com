@@ -563,3 +563,104 @@ html.map-expanded .navbar {
   min-width: 29px;
   min-height: 29px;
 }
+
+/* The page's filter box when it's out of sight (a phone, expanded mode):
+   chrome.js shows the Filters button first in the toolbar and moves the box
+   itself into this slide-out on the map's left, under the toolbar; chips
+   under the toolbar say what's on while it's closed. */
+.map-toolbar .map-filters-toggle {
+  pointer-events: auto;
+  flex: 0 0 auto;
+}
+
+/* Only while the box is out of sight: .button's display would otherwise outrank [hidden]. */
+.map-toolbar .map-filters-toggle[hidden] {
+  display: none;
+}
+
+/* No filters on, no badge: .tag's own display would otherwise outrank [hidden]. */
+.map-filters-toggle .map-filters-count[hidden] {
+  display: none;
+}
+
+.map-filters-toggle .map-filters-count {
+  margin-left: 0.35rem;
+  height: 1.4em;
+  min-width: 1.4em;
+  padding: 0 0.4em;
+  font-size: 0.75em;
+}
+
+.map-filters-panel {
+  position: absolute;
+  top: 54px; /* under the toolbar row */
+  left: 10px;
+  bottom: 10px;
+  z-index: 1005; /* over the toolbar's dropdowns' row, the legend and popups */
+  width: min(22rem, calc(100% - 20px));
+  display: flex;
+  flex-direction: column;
+  background: var(--map-panel-bg, #fff);
+  border-radius: 6px;
+  box-shadow: 0 0.5em 1.5em -0.25em rgba(10, 10, 10, 0.3), 0 0 0 1px rgba(10, 10, 10, 0.05);
+  overflow: hidden;
+}
+
+.map-filters-panel[hidden] {
+  display: none;
+}
+
+.map-filters-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid rgba(10, 10, 10, 0.08);
+  font-weight: 600;
+}
+
+.map-filters-slot {
+  overflow-y: auto;
+  padding: 0.75rem;
+}
+
+/* The box keeps its own look; in the slide-out it's the panel's content, not a card on a card. */
+.map-filters-slot > .explorer-filters,
+.map-filters-slot > [data-filter-box] {
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+}
+
+.map-filter-chips {
+  position: absolute;
+  top: 54px;
+  left: 53px;
+  right: 10px;
+  z-index: 999;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  pointer-events: none;
+}
+
+.map-filter-chips[hidden] {
+  display: none;
+}
+
+.map-filter-chip {
+  pointer-events: auto;
+  max-width: 100%;
+  box-shadow: 0 1px 3px rgba(10, 10, 10, 0.2);
+}
+
+/* A long choice ("With an unaddressed high-priority violation") is cut short; the chip's title has it all. */
+.map-filter-chip-text {
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* On a phone the toolbar wraps: chrome.js sets both tops just under it, measured. */
