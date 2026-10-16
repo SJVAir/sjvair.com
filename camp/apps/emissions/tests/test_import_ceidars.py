@@ -1,3 +1,6 @@
+import io
+import re
+
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
@@ -75,7 +78,7 @@ class ImportCeidarsTests(TestCase):
             county.save(update_fields=['metadata'])
 
     def run_import(self, year=2024, county=None, criteria=None, toxics=None, urls=None,
-                   census=census_all, maptiler=none_found, markers=None, regeocode=False, crawl_toxics=False):
+                   census=census_all, maptiler=none_found, markers=None, regeocode=False, crawl_toxics=False, stdout=None):
         criteria = criteria if criteria is not None else {10: FRESNO_CRITERIA, 15: KERN_CRITERIA}
         toxics = toxics if toxics is not None else {10: FRESNO_TOXICS, 15: KERN_TOXICS}
         with patch('requests.get', side_effect=carb(criteria, toxics, urls)), \
@@ -89,6 +92,8 @@ class ImportCeidarsTests(TestCase):
                 kwargs['regeocode'] = True
             if not crawl_toxics:
                 kwargs['skip_toxics'] = True
+            if stdout is not None:
+                kwargs['stdout'] = stdout
             call_command('import_ceidars', **kwargs)
         return maptiler_mock
 
@@ -253,6 +258,20 @@ class ImportCeidarsTests(TestCase):
         facility = Facility.objects.get(county_code=10, facid=1)
         assert facility.point is None
         assert facility.emissions.count() == 1
+
+    def test_a_log_gets_whole_lines_without_the_counter(self):
+        out = io.StringIO()
+        self.run_import(county='fresno', stdout=out)
+        assert '\r' not in out.getvalue()
+        assert 'Fresno County (10): fetching...' in out.getvalue().splitlines()
+        assert not re.search(r'\d+/\d+ facilities', out.getvalue())
+
+    def test_a_terminal_gets_the_overwriting_counter(self):
+        out = io.StringIO()
+        out.isatty = lambda: True
+        self.run_import(county='fresno', stdout=out)
+        assert 'Fresno County (10): 1/' in out.getvalue()
+        assert '\033[K\r' in out.getvalue()
 
     def test_sets_sector_from_sic(self):
         self.run_import(county='fresno')
