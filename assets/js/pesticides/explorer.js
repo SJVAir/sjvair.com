@@ -157,6 +157,10 @@
   function placeTooltip(evt) {
     var el = evt.target && evt.target.closest ? evt.target.closest('[data-tooltip]') : null;
     if (!el) return;
+    if (el.closest('.table-container')) {
+      showFloatingTooltip(el);
+      return;
+    }
     // Side tooltips are placed by the extension, and a class set by hand in
     // a template is the template's: this only adds and removes its own,
     // which it records in data-tooltip-auto.
@@ -179,6 +183,56 @@
   }
   document.addEventListener('mouseover', placeTooltip);
   document.addEventListener('focusin', placeTooltip);
+
+  // A table that scrolls sideways (.table-container) clips whatever leaves
+  // its box, upward too, so a badge's bubble there was cut off at the
+  // table's top and sides. Those bubbles are drawn on the page instead: one
+  // fixed element, placed over the badge (under it when there's no room
+  // above) and kept on screen. The badge's own bubble is hidden by
+  // .has-tooltip-floating (global.sass).
+  var floating = null;
+  var floatingFor = null;
+  function showFloatingTooltip(el) {
+    if (floatingFor === el) return;
+    if (!floating) {
+      floating = document.createElement('div');
+      floating.className = 'floating-tooltip';
+      floating.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(floating);
+    }
+    hideFloatingTooltip();
+    floatingFor = el;
+    el.classList.add('has-tooltip-floating');
+    floating.textContent = el.getAttribute('data-tooltip');
+    floating.style.left = '0px';
+    floating.style.top = '0px';
+    floating.classList.add('is-active');
+    var rect = el.getBoundingClientRect();
+    var bubble = floating.getBoundingClientRect();
+    var viewport = document.documentElement.clientWidth;
+    var center = rect.left + rect.width / 2;
+    var left = Math.max(8, Math.min(center - bubble.width / 2, viewport - bubble.width - 8));
+    var below = rect.top - bubble.height - 10 < 8;
+    var top = below ? rect.bottom + 10 : rect.top - bubble.height - 10;
+    floating.classList.toggle('is-below', below);
+    floating.style.left = left + 'px';
+    floating.style.top = top + 'px';
+    floating.style.setProperty('--arrow-x', (center - left) + 'px');
+  }
+  function hideFloatingTooltip() {
+    if (!floatingFor) return;
+    floatingFor.classList.remove('has-tooltip-floating');
+    floatingFor = null;
+    floating.classList.remove('is-active');
+  }
+  document.addEventListener('mouseout', function (evt) {
+    if (floatingFor && !floatingFor.contains(evt.relatedTarget)) hideFloatingTooltip();
+  });
+  document.addEventListener('focusout', function (evt) {
+    if (floatingFor && evt.target === floatingFor) hideFloatingTooltip();
+  });
+  // Fixed to the screen, so it would stay put while its badge scrolled away.
+  window.addEventListener('scroll', hideFloatingTooltip, true);
 
   // Filter forms carry hidden fields that are usually empty; dropping empty
   // values keeps the pushed URL to the parameters that mean something.

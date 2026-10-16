@@ -231,3 +231,41 @@ span[data-tooltip][aria-disabled="true"]
         transform: translate(0, 100%)
     &.has-tooltip-bottom.has-tooltip-start::before
         transform: translate(0, 100%)
+    // Drawn by .floating-tooltip instead (a sideways-scrolling table would
+    // clip this one).
+    &.has-tooltip-floating::before,
+    &.has-tooltip-floating::after
+        display: none
+
+// A tooltip inside a .table-container, drawn on the page by explorer.js so
+// the table's scroll box can't clip it. Matches bulma-tooltip's multiline
+// bubble; --arrow-x puts the arrow over the badge when the bubble is pushed
+// in from a screen edge.
+.floating-tooltip
+    display: none
+    position: fixed
+    z-index: $tooltip-z-index
+    max-width: unquote("min(#{$tooltip-max-width}, calc(100vw - 16px))")
+    padding: $tooltip-padding
+    border-radius: $tooltip-radius
+    background: rgba($tooltip-background-color, $tooltip-background-opacity)
+    color: $white
+    font-size: $tooltip-font-size
+    line-height: 1.4
+    white-space: normal
+    pointer-events: none
+    &.is-active
+        display: block
+    &::after
+        content: ""
+        position: absolute
+        left: var(--arrow-x, 50%)
+        top: 100%
+        margin-left: -6px
+        border: 6px solid transparent
+        border-top-color: rgba($tooltip-background-color, $tooltip-background-opacity)
+    &.is-below::after
+        top: auto
+        bottom: 100%
+        border-top-color: transparent
+        border-bottom-color: rgba($tooltip-background-color, $tooltip-background-opacity)
