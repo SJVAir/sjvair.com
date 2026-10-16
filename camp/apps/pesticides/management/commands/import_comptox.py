@@ -101,6 +101,11 @@ class Command(BaseCommand):
             action='store_true',
             help='With --phase audit: clear the DTXSID, preferred name, CAS number and IARC group of uncorroborated matches',
         )
+        parser.add_argument(
+            '--refresh',
+            action='store_true',
+            help='With --phase hazard: recheck chemicals that already have an IARC group, so reclassifications come through',
+        )
 
     def handle(self, *args, **options):
         api_key = settings.COMPTOX_API_KEY
@@ -128,7 +133,7 @@ class Command(BaseCommand):
             self._phase_names()
 
         if phase in ('hazard', 'all'):
-            self._phase_hazard(inspect=options['inspect'])
+            self._phase_hazard(inspect=options['inspect'], refresh=options['refresh'])
 
     # --- Phase 1: name search → DTXSID + CAS number ---
 
@@ -345,11 +350,12 @@ class Command(BaseCommand):
 
     # --- Phase 2: hazard lookup → IARC group ---
 
-    def _phase_hazard(self, inspect=False):
+    def _phase_hazard(self, inspect=False, refresh=False):
         self.stdout.write('Phase 2: fetching hazard data for IARC group...')
-        chemicals = list(
-            Chemical.objects.exclude(dtxsid='').filter(iarc_group='').values('id', 'dtxsid')
-        )
+        chemicals = Chemical.objects.exclude(dtxsid='')
+        if not refresh:
+            chemicals = chemicals.filter(iarc_group='')
+        chemicals = list(chemicals.values('id', 'dtxsid', 'iarc_group'))
         self.stdout.write(f'  {len(chemicals):,} chemicals to check')
 
         if inspect and chemicals:
@@ -361,7 +367,7 @@ class Command(BaseCommand):
             return
 
         def lookup(chem):
-            return chem['id'], self._get_iarc_group(chem['dtxsid'])
+            return chem, self._get_iarc_group(chem['dtxsid'])
 
         updated = 0
         completed = 0
@@ -369,9 +375,11 @@ class Command(BaseCommand):
             futures = {pool.submit(lookup, c): c for c in chemicals}
             for future in as_completed(futures):
                 completed += 1
-                chem_id, iarc_group = future.result()
-                if iarc_group:
-                    Chemical.objects.filter(pk=chem_id).update(iarc_group=iarc_group)
+                chem, iarc_group = future.result()
+                # A blank answer can be a failed request as well as "not
+                # classified", so it never clears a group already stored.
+                if iarc_group and iarc_group != chem['iarc_group']:
+                    Chemical.objects.filter(pk=chem['id']).update(iarc_group=iarc_group)
                     updated += 1
                 if completed % 50 == 0:
                     self.stdout.write(f'  {completed:,} / {len(chemicals):,}', ending='\r')

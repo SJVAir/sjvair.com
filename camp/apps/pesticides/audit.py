@@ -159,8 +159,8 @@ def _category(command, categories, noun, fix, notes=()):
 
 
 def carbtac():
-    return _category('import_carbtac --url', [Chemical.Category.TOXIC_AIR_CONTAMINANT],
-        'toxic air contaminants', _fix('import_carbtac --url'))
+    return _category('import_carbtac', [Chemical.Category.TOXIC_AIR_CONTAMINANT],
+        'toxic air contaminants', _fix('import_carbtac'))
 
 
 def restricted_materials():

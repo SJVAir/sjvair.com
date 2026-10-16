@@ -28,11 +28,19 @@ class SearchForm(forms.Form):
         return {'true': True, 'false': False}.get(value)
 
 
+# DPR's annual-report categories no import assigns (the PUR archive doesn't
+# carry them), so a filter on one would always come back empty.
+UNASSIGNED_CATEGORIES = {
+    Chemical.Category.BIOPESTICIDE, Chemical.Category.CHOLINESTERASE_INHIBITOR,
+    Chemical.Category.GROUNDWATER_CONTAMINANT, Chemical.Category.OIL,
+}
+
+
 class ChemicalFilterForm(SearchForm):
     category = forms.MultipleChoiceField(
         label=_('Category'),
         required=False,
-        choices=Chemical.Category.choices,
+        choices=[(value, label) for value, label in Chemical.Category.choices if value not in UNASSIGNED_CATEGORIES],
         widget=forms.CheckboxSelectMultiple,
     )
     iarc_group = forms.ChoiceField(
