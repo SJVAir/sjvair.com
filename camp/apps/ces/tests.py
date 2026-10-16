@@ -1,8 +1,14 @@
+import io
+from unittest import mock
+
+import pandas as pd
+
 from django.contrib.gis.geos import MultiPolygon, Point, Polygon
 from django.core.cache import cache
 from django.test import TestCase
 
 from camp.apps.ces import stats
+from camp.apps.ces.management.commands import import_ces5
 from camp.apps.ces.models import CES4, CES5, DACCategory
 from camp.apps.regions.models import Boundary, Region
 
@@ -277,3 +283,55 @@ class TractLabelTests(TestCase):
         summary = stats.tract_summary(bbox(-119.8, 36.7, -119.6, 36.8), places=False)
         assert all('place' not in row for row in summary['top'])
         assert summary['highest']['number'] == '1.01'
+
+
+class DACDesignationTests(TestCase):
+    """import_ces5's join of CalEPA's final 2026 SB 535 CSV (no network: the CKAN lookup and the CSV are stubbed)."""
+
+    fixtures = ['calenviroscreen']
+
+    def command(self, csv_text):
+        command = import_ces5.Command(stdout=io.StringIO())
+        package = {'resources': [{'name': import_ces5.DAC_2026_RESOURCE_NAME, 'url': 'https://example.test/dac.csv'}]}
+        ckan = mock.Mock()
+        ckan.return_value.action.package_show.return_value = package
+        read_csv = pd.read_csv
+        patches = [
+            mock.patch.object(import_ces5.ckanapi, 'RemoteCKAN', ckan),
+            mock.patch.object(import_ces5.pd, 'read_csv', lambda url, **kwargs: read_csv(io.StringIO(csv_text), **kwargs)),
+        ]
+        return command, patches
+
+    def test_tracts_join_by_their_full_geoid(self):
+        command, patches = self.command(
+            'tract,dac_type,county\n'
+            '6019000101.000000000000000,CES 5.0 Top 25%,Fresno\n'
+            '6029000700.000000000000000,CES 4.0 Carry-Over DAC,Kern\n'
+        )
+        gdf = pd.DataFrame({'tract': ['06019000101', '06029000700', '06107000100']})
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+        command.apply_dac_designation(gdf)
+        assert list(gdf['dac_sb535']) == [True, True, False]
+        assert gdf['dac_category'].iloc[0] == DACCategory.TOP_CES_SCORE
+        assert gdf['dac_category'].iloc[1] == DACCategory.PRIOR_DAC
+        assert pd.isna(gdf['dac_category'].iloc[2])
+
+    def test_an_unknown_designation_type_leaves_the_columns_null(self):
+        command, patches = self.command('tract,dac_type\n6019000101.0,Something New\n')
+        gdf = pd.DataFrame({'tract': ['06019000101']})
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+        command.apply_dac_designation(gdf)
+        assert gdf['dac_sb535'].iloc[0] is None
+
+    def test_a_stored_tract_off_the_list_is_no_longer_a_dac(self):
+        command, _ = self.command('tract,dac_type\n')
+        record = CES5.objects.select_related('boundary__region').filter(dac_sb535=True).first()
+        assert record is not None
+        command.reconcile_dac({})
+        record.refresh_from_db()
+        assert record.dac_sb535 is False
+        assert record.dac_category is None
