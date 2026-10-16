@@ -121,8 +121,8 @@ def geojson(result):
 
 
 # An area page's Schools tab: every school and child-care center in the area
-# with what's near it -- permitted facilities within 1,000 ft and 1/4 mile
-# (the facility page's two distances), active or idle oil and gas wells
+# with what's near it -- permitted facilities within 1,000 ft (the
+# facility page's nearer distance), active or idle oil and gas wells
 # within 3,200 ft (wells.HPZ_FEET, the health protection zone) and dairies
 # within a mile.
 

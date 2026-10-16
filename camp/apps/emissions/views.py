@@ -322,7 +322,17 @@ class About(ScopeMixin, vanilla.TemplateView):
 
     def get_context_data(self, **kwargs):
         dairies_before, dairies_after = dairies.coverage_counts()
+        years = stats.available_years()
+        latest = years[-1] if years else None
         return super().get_context_data(
+            # The page's figures, from the data loaded here rather than written into the text.
+            county_count=Region.objects.counties().count(),
+            first_year=years[0] if years else None,
+            latest_year=latest,
+            facility_count=stats.facility_count(latest),
+            compliance_count=AirComplianceFacility.objects.count(),
+            well_count=Well.objects.count(),
+            kern_well_count=Well.objects.filter(county__slug='kern').count(),
             dairy_span=dairies.coverage_span(),
             dairy_count=dairies.dairy_count(),
             dairies_before=dairies_before,
@@ -1564,7 +1574,6 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, MethaneTabMixin, ScopeMixin, 
             scope_params=base.params(county=None),
             **(find_field_context(tab, base.query(county=None), self.subview) if tab in FIND_FIELD_TABS else {}),
             **kwargs,
-            community_about_url=reverse('emissions:about') + '#calenviroscreen',
         )
         context.update(area_header(context))
         return context
@@ -2073,7 +2082,6 @@ class FacilityList(FacilitiesTabMixin, ScopeMixin, vanilla.TemplateView):
             # The scope bar keeps its county picker: a county opens that county's own tab (get()).
             scope_qs=scope.query(county=None), scope_params=scope.params(county=None),
             **find_field_context('facilities', scope.query(county=None), self.subview),
-            community_about_url=reverse('emissions:about') + '#calenviroscreen',
             **kwargs,
         )
 

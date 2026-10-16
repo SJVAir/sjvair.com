@@ -680,6 +680,7 @@ class About(vanilla.TemplateView):
             section='about',
             **scope,
             years=stats.years_loaded(),
+            county_count=Region.objects.counties().count(),
             **kwargs,
         )
 

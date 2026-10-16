@@ -251,5 +251,5 @@ class NeiBarTests(NEITestCase):
         from django.urls import reverse
         content = self.client.get(reverse('emissions:about')).content.decode()
         assert '<section class="about-section" id="ammonia">' in content
-        assert 'only 7 dairies report ammonia to CARB' in content and 'NEI 2023 loaded' in content
+        assert 'only a handful of dairies report ammonia to CARB' in content and 'NEI 2023 loaded' in content
         assert 'National Emissions Inventory' in self.client.get('/about/integrations/').content.decode()

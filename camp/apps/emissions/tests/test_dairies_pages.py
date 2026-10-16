@@ -509,7 +509,7 @@ class DairyAboutTests(DairyPageTestCase):
         # replaced with the section's own markup.
         assert f'<a href="{reverse("emissions:dairy-list")}">Dairies</a> tab covers what the facility inventory barely sees' in content
         # dairy_count is every imported Dairy row (3), not just the ones with a counted herd.
-        assert 'locates every dairy CARB tracks, 3 of them in the eight Valley counties.' in content
+        assert 'locates every dairy CARB tracks, 3 of them in the Valley' in content
         assert "<summary>Coverage grew in 2019</summary>" in content and "CADD has herds for 1 Valley dairies in 2018 and 1 in 2019. The two years aren't a like-for-like comparison." in content
         assert 'https://ww2.arb.ca.gov/california-dairy-livestock-database-cadd' in content
 

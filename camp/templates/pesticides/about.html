@@ -22,6 +22,7 @@ Bulma messages, and a long list folds into headlines that open
             <li><a href="#pur">Pesticide Use Reporting</a></li>
             <li><a href="#spraydays">SprayDays notices of intent</a></li>
             <li><a href="#records">What a record is</a></li>
+            <li><a href="#schools">Schools and child care</a></li>
             <li><a href="#years">Years and lag</a></li>
         </ul>
     </div>
@@ -29,7 +30,6 @@ Bulma messages, and a long list folds into headlines that open
         <p class="menu-label">Chemical lists</p>
         <ul class="menu-list">
             <li><a href="#concern">Flagged chemicals</a></li>
-            <li><a href="#categories">DPR chemical categories</a></li>
             <li><a href="#prop65">Proposition 65</a></li>
             <li><a href="#iarc">IARC groups</a></li>
             <li><a href="#tac">CARB Toxic Air Contaminants</a></li>
@@ -57,10 +57,10 @@ Bulma messages, and a long list folds into headlines that open
     <h1 class="title is-3">About the data</h1>
 
     <div class="level is-mobile stat-row box about-glance">
-        <div class="level-item has-text-centered"><div><p class="heading">Valley counties</p><p class="title is-4">8</p></div></div>
+        <div class="level-item has-text-centered"><div><p class="heading">Valley counties</p><p class="title is-4">{{ county_count }}</p></div></div>
         {% if years %}<div class="level-item has-text-centered"><div><p class="heading">Years of use records</p><p class="title is-4">{{ years.0 }}–{{ years.1 }}</p></div></div>{% endif %}
         <div class="level-item has-text-centered"><div><p class="heading">Finest location</p><p class="title is-4">1 sq mi</p></div></div>
-        <div class="level-item has-text-centered"><div><p class="heading">Filed by growers</p><p class="title is-4">Reports</p></div></div>
+        <div class="level-item has-text-centered"><div><p class="heading">Growers and applicators</p><p class="title is-4">Reports</p></div></div>
     </div>
 
     <section class="about-section" id="coverage">
@@ -91,7 +91,7 @@ Bulma messages, and a long list folds into headlines that open
 
     <section class="about-section" id="pur">
     <h2>Pesticide Use Reporting (PUR)</h2>
-    <p class="about-lead">California requires agricultural pesticide applications to be reported to the county agricultural commissioner, who forwards them to the Department of Pesticide Regulation (DPR).</p>
+    <p class="about-lead">California requires agricultural pesticide applications, and most professional non-farm ones, to be reported to the county agricultural commissioner, who forwards them to the Department of Pesticide Regulation (DPR).</p>
     <p>Each record gives the product, active ingredient, crop or use site, county, one-square-mile section, date, and amount. The commodity list therefore includes the non-crop sites <a href="#coverage">listed above</a> alongside crops. This explorer loads the records for Fresno, Kern, Kings, Madera, Merced, San Joaquin, Stanislaus, and Tulare counties{% if years %} for {{ years.0 }}–{{ years.1 }}{% endif %}.</p>
     </section>
 
@@ -105,19 +105,50 @@ Bulma messages, and a long list folds into headlines that open
 
     <section class="about-section" id="records">
     <h2>What a record is</h2>
-    <p class="about-lead">A record is what a grower told the county they applied: a report, not a measurement, located to a square mile.</p>
+    <p class="about-lead">A record is what a grower or applicator told the county they applied: a report, not a measurement, located to a square mile for farm use and to a county for most other use.</p>
     <div class="about-points">
         <details>
             <summary>They are reports, not measurements</summary>
-            <div class="about-point-body"><p>A record says what a grower told the county they applied. Nobody sampled the air or the soil. An error in a filing carries through to every page here, and DPR checks the paperwork rather than re-measuring the field.</p></div>
+            <div class="about-point-body"><p>A record says what a grower or applicator told the county they applied. Nobody sampled the air or the soil. An error in a filing carries through to every page here, and DPR checks the paperwork rather than re-measuring the field.</p></div>
         </details>
         <details>
             <summary>A location is a square mile, not a field</summary>
-            <div class="about-point-body"><p>Applications are reported to a one-square-mile MTRS section. A section's total covers everything reported inside that square mile; it does not say where in it, or how near a home, a school or a property line. The same limit applies to notices of intent.</p></div>
+            <div class="about-point-body"><p>Farm applications are reported to a one-square-mile MTRS section. A section's total covers everything reported inside that square mile; it does not say where in it, or how near a home, a school or a property line. The same limit applies to notices of intent.</p></div>
+        </details>
+        <details>
+            <summary>Non-farm use is a county's monthly total</summary>
+            <div class="about-point-body"><p>Rights of way, structural, landscape and other non-farm applications are reported as monthly summaries by county, with no section and no day. They count in county and Valley totals but appear on no map square or section page.</p></div>
         </details>
         <details>
             <summary>Some active ingredients are withheld</summary>
-            <div class="about-point-body"><p>CDPR reports a few as &ldquo;AI IS CONFIDENTIAL&rdquo; or &ldquo;UNKNOWN&rdquo;. Those pounds are counted in the totals, because they were applied, but they are left out of chemical rankings and chemical counts, where naming them is the point.</p></div>
+            <div class="about-point-body"><p>CDPR reports a few as &ldquo;AI IS CONFIDENTIAL&rdquo; or &ldquo;UNKNOWN&rdquo;, with no active-ingredient pounds. Their applications and pounds of product are counted; they are left out of chemical rankings and chemical counts, where naming them is the point.</p></div>
+        </details>
+    </div>
+    </section>
+
+    <section class="about-section" id="schools">
+    <h2>Schools and child care</h2>
+    <p class="about-lead">A place page's Schools tab lists its public and private schools and licensed child-care centers, each with the pesticide use reported nearby: the pounds (of active ingredient; see <a href="#units">the units</a>) and the applications in the block of nine square-mile sections around it.</p>
+    <table class="table is-bordered about-block" aria-label="The block of sections counted as nearby">
+        <tbody>
+            <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+            <tr><td>&nbsp;</td><td class="has-background-warning-light has-text-weight-semibold">The site's section</td><td>&nbsp;</td></tr>
+            <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+        </tbody>
+    </table>
+    <article class="message is-warning"><div class="message-body"><p><strong>Nearby is a block of sections, not a distance.</strong> Applications are located only to their square mile, so the block is the closest the records allow: use a few hundred feet from a site and use more than a mile away can both be in it. It counts what was reported there, not what reached the site.</p></div></article>
+    <div class="about-points">
+        <details>
+            <summary>Where the sites come from</summary>
+            <div class="about-point-body"><p>The California Department of Education's public and private school directories and the Department of Social Services' child-care licensing list. Child care covers licensed centers only, not family child-care homes. Several licenses at one address are one row.</p></div>
+        </details>
+        <details>
+            <summary>School district pages</summary>
+            <div class="about-point-body"><p>A school district's page lists the schools it runs, wherever they stand, then the other sites inside it, and adds enrollment and student groups as the Department of Education reports them for the district.</p></div>
+        </details>
+        <details>
+            <summary>The quarter-mile rule</summary>
+            <div class="about-point-body"><p>Since 2018, growers can't make certain agricultural applications within ¼ mile of a public K–12 school or licensed child day care center on weekdays between 6 a.m. and 6 p.m., and must give those sites a written notice each year, by April 30, of the pesticides they may use on fields within ¼ mile (3 CCR 6690–6692; <a href="https://www.cdpr.ca.gov/wp-content/uploads/2025/11/pesticide_use_near_schools_and_child_day_care_centers.pdf" target="_blank" rel="noopener">DPR's fact sheet</a>). The records here can't show whether an application was within ¼ mile: a square mile is the finest location they give.</p></div>
         </details>
     </div>
     </section>
@@ -125,7 +156,7 @@ Bulma messages, and a long list folds into headlines that open
     {# #caveats is the anchor the year picker's "why is this the newest year" link uses. #}
     <section class="about-section" id="years">
     <h2><span id="caveats"></span>Years and lag</h2>
-    <p class="about-lead">{% if years %}This explorer has use records for {{ years.0 }}–{{ years.1 }}. {% endif %}DPR checks and publishes each year's records one to two years after the fact, so the most recent full year available is {% if latest_year %}{{ latest_year }}{% else %}not yet available{% endif %}.</p>
+    <p class="about-lead">{% if years %}This explorer has use records for {{ years.0 }}–{{ years.1 }}. {% endif %}DPR checks and publishes each year's records a year or two after the fact, sometimes longer{% if latest_year %}, so the newest year here is {{ latest_year }}{% endif %}.</p>
     <p>Notices of intent are current: SprayDays publishes them before the application, and the explorer fetches them once a day.</p>
     <article class="message is-warning"><div class="message-body"><p><strong>Absence of a record is not proof that nothing was applied.</strong> Reporting gaps, late filings and corrections all exist, and a section with no use reported is not the same as a section where nothing happened.</p></div></article>
     </section>
@@ -135,7 +166,7 @@ Bulma messages, and a long list folds into headlines that open
     <p class="about-lead">The scope bar's <strong>Flagged chemicals</strong> toggle narrows the whole explorer &mdash; every count, pounds figure, leaderboard, table and map square &mdash; to the active ingredients that appear on at least one of four official lists.</p>
     <div class="columns is-multiline about-cards">
         <div class="column is-half-tablet"><div class="box"><span class="tag is-danger is-light">Prop 65</span><p>California's list of chemicals known to the state to cause cancer, birth defects or other reproductive harm. <a href="#prop65">More</a></p></div></div>
-        <div class="column is-half-tablet"><div class="box"><span class="tag is-warning is-light">CARB TAC</span><p>Air pollutants the California Air Resources Board has identified as posing a health hazard. <a href="#tac">More</a></p></div></div>
+        <div class="column is-half-tablet"><div class="box"><span class="tag is-warning is-light">CARB TAC</span><p>On CARB&rsquo;s list of toxic air contaminants, which includes the federal hazardous air pollutants. <a href="#tac">More</a></p></div></div>
         <div class="column is-half-tablet"><div class="box"><span class="tag is-danger">IARC 1, 2A, 2B</span><p>Agents the International Agency for Research on Cancer rates as carcinogenic, probably carcinogenic, or possibly carcinogenic to humans. Group 3 is not included. <a href="#iarc">More</a></p></div></div>
         <div class="column is-half-tablet"><div class="box"><span class="tag is-warning is-light">Restricted</span><p>Active ingredients the state restricts under 3 CCR 6400, which need a county permit and a notice of intent before each application. <a href="#restricted">More</a></p></div></div>
 </div>
@@ -157,33 +188,17 @@ Bulma messages, and a long list folds into headlines that open
         </details>
         <details>
             <summary>How it differs from the Category filter</summary>
-            <div class="about-point-body"><p>The chemicals list's <strong>Category</strong> filter picks out a single DPR category (carcinogen, reproductive toxin, toxic air contaminant and so on) one at a time, while the toggle is the union of all four lists above and follows you from page to page.</p></div>
+            <div class="about-point-body"><p>The chemicals list's <strong>Category</strong> filter keeps the chemicals in whichever categories you tick (carcinogen, reproductive toxin, toxic air contaminant and so on) on that list only, while the toggle is the union of all four lists above and follows you from page to page.</p></div>
         </details>
     </div>
     <article class="message is-warning"><div class="message-body"><p><strong>Listed isn't exposed.</strong> Being listed says a chemical is <em>listed</em>, not how much of it reached anyone &mdash; see <a href="#units">what the units mean</a>.</p></div></article>
     </section>
 
-    <section class="about-section" id="categories">
-    <h2>DPR chemical categories</h2>
-    <p class="about-lead">DPR tags active ingredients with regulatory categories. A chemical can carry several; here's what each of the ones this explorer calls out means.</p>
-    <table class="table is-narrow is-fullwidth about-table"><tbody>
-        {% health_note 'fumigant' as fumigant_note %}
-        <tr><th scope="row">{{ fumigant_note.title }}</th><td>{{ fumigant_note.summary }}</td></tr>
-        {% health_note 'cholinesterase_inhibitor' as cholinesterase_note %}
-        <tr><th scope="row">{{ cholinesterase_note.title }}</th><td>{{ cholinesterase_note.summary }}</td></tr>
-        {% health_note 'groundwater_contaminant' as groundwater_note %}
-        <tr><th scope="row">{{ groundwater_note.title }}</th><td>{{ groundwater_note.summary }}</td></tr>
-        {% health_note 'biopesticide' as biopesticide_note %}
-        <tr><th scope="row">{{ biopesticide_note.title }}</th><td>{{ biopesticide_note.summary }}</td></tr>
-        {% health_note 'oil' as oil_note %}
-        <tr><th scope="row">{{ oil_note.title }}</th><td>{{ oil_note.summary }}</td></tr>
-    </tbody></table>
-    </section>
-
     <section class="about-section" id="prop65">
     <h2><span class="tag is-danger is-light">Prop 65</span> Proposition 65</h2>
     {% health_note 'prop65' as prop65_note %}
-    <p>{{ prop65_note.summary }} {{ prop65_note.detail }}</p>
+    <p class="about-lead">{{ prop65_note.summary }}</p>
+    <p>{{ prop65_note.detail }}</p>
     </section>
 
     <section class="about-section" id="iarc">
@@ -204,7 +219,14 @@ Bulma messages, and a long list folds into headlines that open
     <section class="about-section" id="tac">
     <h2><span class="tag is-warning is-light">CARB TAC</span> CARB Toxic Air Contaminants</h2>
     {% health_note 'carb_tac' as carb_tac_note %}
-    <p>{{ carb_tac_note.summary }}</p>
+    <p class="about-lead">{{ carb_tac_note.summary }}</p>
+    <p>The badge means the chemical is on CARB&rsquo;s list: the substances CARB identified itself (17 CCR 93000) and the federal hazardous air pollutants CARB designated as toxic air contaminants in 1993 (17 CCR 93001).</p>
+    <div class="about-points">
+        <details>
+            <summary>A listing can cover a family of chemicals</summary>
+            <div class="about-point-body"><p>Some listings name a group: &ldquo;manganese compounds&rdquo; covers every chemical containing manganese, so mancozeb and maneb carry the badge, and &ldquo;2,4-D, salts and esters&rdquo; covers each form of 2,4-D.</p></div>
+        </details>
+    </div>
     </section>
 
     <section class="about-section" id="restricted">
@@ -232,7 +254,7 @@ Bulma messages, and a long list folds into headlines that open
 
     <section class="about-section" id="methodology">
     <h2>How these numbers are made</h2>
-    <p class="about-lead">Everything here is arithmetic on the records described above. Nothing is modeled, estimated or interpolated: if a number appears on this site, a grower filed it.</p>
+    <p class="about-lead">Everything here is arithmetic on the records described above. Nothing is modeled, estimated or interpolated: if a number appears on this site, someone reported it.</p>
     <p>What that arithmetic does and does not support:</p>
 
 
@@ -240,15 +262,15 @@ Bulma messages, and a long list folds into headlines that open
     <div class="about-points">
         <details>
             <summary>Fumigants are decided over every loaded year, not one at a time</summary>
-            <div class="about-point-body"><p>A product is a fumigant if CDPR flags it as one, or if it contains a fumigant active ingredient. An ingredient counts once it has at least 100 pounds applied across all loaded years (since 2014) and at least 90 percent of those pounds came from CDPR-flagged fumigant products or were applied by field fumigation.</p></div>
+            <div class="about-point-body"><p>A product is a fumigant if CDPR flags it as one, or if it contains a fumigant active ingredient. An ingredient counts once it has at least 100 pounds applied across all loaded years{% if years %} ({{ years.0 }}–{{ years.1 }}){% endif %} and at least 90 percent of those pounds came from CDPR-flagged fumigant products or were applied by field fumigation.</p></div>
         </details>
         <details>
             <summary>CDPR&rsquo;s flag has gaps</summary>
-            <div class="about-point-body"><p>Telone, a soil fumigant, was re-registered in 2021 under new registration numbers that the flag does not cover, so from 2021 on it was missing from the Fumigants figures. The earlier Fumigants totals for 2021 onward were roughly 30&ndash;40 percent low. A product marked Fumigant that CDPR has not flagged says so in its badge.</p></div>
+            <div class="about-point-body"><p>CDPR&rsquo;s flag has at times missed products moved to new registration numbers, as Telone, a soil fumigant, was when it moved to a new registrant in 2021; going by the ingredient catches those. A product marked Fumigant that CDPR has not flagged says so in its badge.</p></div>
         </details>
         <details>
             <summary>How a field fumigation was done is recorded only in some places</summary>
-            <div class="about-point-body"><p>Since 2008, CDPR has required the fumigation method (tarp, deep injection, drip and so on) for field fumigations in the state&rsquo;s five air-quality non-attainment areas, the San Joaquin Valley among them, and each report carries a code for it. Fumigant pages show it under &ldquo;How it was fumigated&rdquo;. It is blank for fumigations outside those areas and before 2008, and those show as &ldquo;Not recorded&rdquo;; that means no code was filed, not that no method was used. The number under a technique is the section of the fumigation regulations (3 CCR 6447&ndash;6450) that governs it.</p></div>
+            <div class="about-point-body"><p>Since 2008, CDPR has required the fumigation method (tarp, deep injection, drip and so on) for field fumigations in the state&rsquo;s five air-quality non-attainment areas, the San Joaquin Valley among them, and each report carries a code for it. Fumigant pages show it under &ldquo;How it was fumigated&rdquo;. It is blank for fumigations outside those areas and before 2008, and those show as &ldquo;Not recorded&rdquo;; that means no code was filed, not that no method was used. The number under a technique is the section of the fumigation regulations (3 CCR 6446&ndash;6451) that governs it.</p></div>
         </details>
     </div>
 
@@ -277,7 +299,7 @@ Bulma messages, and a long list folds into headlines that open
     <div class="about-points">
         <details>
             <summary>Every page reads a rollup</summary>
-            <div class="about-point-body"><p>It is summed from the raw records by year, month, county, section, product, chemical and commodity, with per-county and per-section totals derived from that. It is the same arithmetic as summing the records directly, kept ready so a page doesn't re-add millions of rows on each visit.</p></div>
+            <div class="about-point-body"><p>It is summed from the raw records by year, month, county, section, product, chemical, commodity and application method, with per-county and per-section totals derived from that. It is the same arithmetic as summing the records directly, kept ready so a page doesn't re-add millions of rows on each visit.</p></div>
         </details>
         <details>
             <summary>Rates carry two denominators</summary>
@@ -308,11 +330,11 @@ Bulma messages, and a long list folds into headlines that open
     <div class="columns is-multiline about-cards">
         <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://www.cdpr.ca.gov/pesticide-use-in-california/pesticide-use-reporting/" target="_blank" rel="noopener">DPR Pesticide Use Reporting</a></p><p>Every reported agricultural application.</p></div></div>
         <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://spraydays.cdpr.ca.gov/" target="_blank" rel="noopener">DPR SprayDays</a></p><p>Notices of intent for restricted materials.</p></div></div>
-        <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://comptox.epa.gov/dashboard" target="_blank" rel="noopener">EPA CompTox Chemicals Dashboard</a></p><p>Chemical identifiers and cancer classifications.</p></div></div>
-        <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://monographs.iarc.who.int/agents-classified-by-the-iarc/" target="_blank" rel="noopener">IARC Monographs</a></p><p>The IARC groups.</p></div></div>
+        <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://comptox.epa.gov/dashboard" target="_blank" rel="noopener">EPA CompTox Chemicals Dashboard</a></p><p>Chemical identifiers, and the IARC groups as CompTox records them.</p></div></div>
+        <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://monographs.iarc.who.int/agents-classified-by-the-iarc/" target="_blank" rel="noopener">IARC Monographs</a></p><p>What each IARC group means.</p></div></div>
         <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://oehha.ca.gov/proposition-65/proposition-65-list" target="_blank" rel="noopener">OEHHA Proposition 65 list</a></p><p>Chemicals known to cause cancer or reproductive harm.</p></div></div>
-        <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://ww2.arb.ca.gov/resources/documents/consolidated-table-oehha-arb-approved-risk-assessment-health-values" target="_blank" rel="noopener">CARB/OEHHA Consolidated Table</a></p><p>CARB&rsquo;s toxic air contaminants.</p></div></div>
-        <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://www.cdpr.ca.gov/enforcement/restricted-materials/" target="_blank" rel="noopener">DPR restricted materials</a></p><p>California restricted materials (3 CCR 6400).</p></div></div>
+        <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://ww2.arb.ca.gov/resources/documents/carb-identified-toxic-air-contaminants" target="_blank" rel="noopener">CARB toxic air contaminants</a></p><p>CARB&rsquo;s list, with <a href="https://www.epa.gov/haps/initial-list-hazardous-air-pollutants-modifications" target="_blank" rel="noopener">EPA&rsquo;s hazardous air pollutants</a> for their CAS numbers.</p></div></div>
+        <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://www.law.cornell.edu/regulations/california/3-CCR-6400" target="_blank" rel="noopener">California restricted materials (3 CCR 6400)</a></p><p>The state&rsquo;s list of restricted pesticides.</p></div></div>
         <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://ww2.arb.ca.gov/capp" target="_blank" rel="noopener">CARB Community Air Protection Program</a></p><p>AB 617 communities.</p></div></div>
         <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1">Schools and child care</p><p><a href="https://data.ca.gov/dataset/california-public-schools-2025-26" target="_blank" rel="noopener">CDE public schools</a>, <a href="https://data.ca.gov/dataset/california-private-schools-2024-25" target="_blank" rel="noopener">CDE private schools</a> and <a href="https://data.ca.gov/dataset/community-care-licensing-facilities1" target="_blank" rel="noopener">CDSS licensed child-care facilities</a>.</p></div></div>
     </div>

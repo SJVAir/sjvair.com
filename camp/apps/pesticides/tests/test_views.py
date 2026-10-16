@@ -1017,9 +1017,9 @@ class AboutTests(RollupTestMixin, TestCase):
         assert response.status_code == 200
         self.assertTemplateUsed(response, 'pesticides/about.html')
         html = response.content.decode()
-        for anchor in ('id="pur"', 'id="spraydays"', 'id="prop65"', 'id="iarc"', 'id="tac"', 'id="categories"'):
+        for anchor in ('id="pur"', 'id="spraydays"', 'id="prop65"', 'id="iarc"', 'id="tac"', 'id="restricted"'):
             assert anchor in html
-        assert 'one to two years after the fact' in html and '2023' in html
+        assert 'a year or two after the fact' in html and '2023' in html
 
     def test_home_teaser_links_to_about(self):
         html = self.client.get(reverse('pesticides:home')).content.decode()

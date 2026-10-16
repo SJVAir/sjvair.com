@@ -42,7 +42,6 @@ Bulma messages, and a long list folds into headlines that open
             <li><a href="#dairies">Dairies</a></li>
             <li><a href="#oil-gas">Oil &amp; gas</a></li>
             <li><a href="#schools">Schools and child care</a></li>
-            <li><a href="#calenviroscreen">CalEnviroScreen</a></li>
             <li><a href="#compliance">Compliance</a></li>
         </ul>
     </div>
@@ -59,10 +58,10 @@ Bulma messages, and a long list folds into headlines that open
 <h1 class="title is-3">About the data</h1>
 
 <div class="level is-mobile stat-row box about-glance">
-    <div class="level-item has-text-centered"><div><p class="heading">Valley counties</p><p class="title is-4">8</p></div></div>
-    <div class="level-item has-text-centered"><div><p class="heading">Permitted facilities</p><p class="title is-4">~11,000</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Valley counties</p><p class="title is-4">{{ county_count }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Facilities reporting{% if latest_year %} in {{ latest_year }}{% endif %}</p><p class="title is-4">{{ facility_count|intcomma }}</p></div></div>
     <div class="level-item has-text-centered"><div><p class="heading">Dairies</p><p class="title is-4">{{ dairy_count|intcomma }}</p></div></div>
-    <div class="level-item has-text-centered"><div><p class="heading">Oil and gas wells</p><p class="title is-4">~66,000</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Oil and gas wells</p><p class="title is-4">{{ well_count|intcomma }}</p></div></div>
 </div>
 
 <section class="about-section" id="coverage">
@@ -108,12 +107,12 @@ Bulma messages, and a long list folds into headlines that open
 
 <section class="about-section" id="years">
 <h2>Years and changes</h2>
-<p>The explorer covers 2010 onward. The number of facilities grows over those years partly because reporting coverage grew. A large change from one year to the next can reflect a new way of estimating a facility's emissions, not only a real change in what it emitted; facility pages point these out.</p>
+<p>{% if first_year %}The explorer covers {{ first_year }}{% if latest_year != first_year %}–{{ latest_year }}{% endif %}. {% endif %}A large change from one year to the next can reflect a new way of estimating a facility's emissions, not only a real change in what it emitted; facility pages point these out.</p>
 </section>
 
 <section class="about-section" id="minor-sources">
 <h2>Minor sources</h2>
-<p>Gas stations, dry cleaners, auto body shops and small print shops are permitted, but CARB leaves them out of its facility totals by default and counts them in its county-wide estimates instead. The explorer does the same; turn on <em>Include minor sources</em> to add them.</p>
+<p>Gas stations, dry cleaners, auto body and repair shops, small print shops and a few other small trades are permitted, but CARB leaves them out of its facility totals by default and counts them in its county-wide estimates instead. The explorer does the same; turn on <em>Include minor sources</em> to add them.</p>
 </section>
 
 <section class="about-section" id="units">
@@ -137,7 +136,7 @@ Bulma messages, and a long list folds into headlines that open
 
 <section class="about-section" id="weighted-toxics">
 <h2>Toxicity-weighted emissions</h2>
-<p class="about-lead">Pounds alone rank ammonia and solvents above diesel particulate and hexavalent chromium, so the explorer's default toxics view weights each pollutant by how toxic it is, the way CARB's own Pollution Mapping Tool does.</p>
+<p class="about-lead">Pounds alone rank common solvents above diesel particulate and hexavalent chromium, so the explorer's default toxics view weights each pollutant by how toxic it is, the way CARB's own Pollution Mapping Tool does.</p>
 <table class="table is-narrow is-fullwidth about-table"><tbody>
     <tr><th scope="row">Cancer-weighted</th><td>pounds × OEHHA inhalation unit risk × molecular-weight adjustment factor × 7,700</td></tr>
     <tr><th scope="row">Hazard-weighted</th><td>pounds ÷ chronic reference exposure level × 0.01712</td></tr>
@@ -163,7 +162,7 @@ Bulma messages, and a long list folds into headlines that open
 <section class="about-section" id="ammonia">
 <h2>Ammonia</h2>
 <p class="about-lead">Ammonia isn't toxic at these levels, but it reacts with other pollution to form fine particles (PM2.5), the Valley's main winter air problem.</p>
-<article class="message is-info"><div class="message-body"><p>Most Valley ammonia, about 90%, comes from livestock and fertilizer that aren't permitted facilities; only 7 dairies report ammonia to CARB. County figures are EPA and CARB model estimates for 2023, not measurements.</p></div></article>
+<article class="message is-info"><div class="message-body"><p>Most Valley ammonia, well over 90% in EPA's estimates, comes from livestock and fertilizer that aren't permitted facilities; only a handful of dairies report ammonia to CARB. County figures are EPA and CARB model estimates for 2023, not measurements.</p></div></article>
 <div class="about-points">
     <details>
         <summary>Where the ammonia figures come from</summary>
@@ -175,7 +174,7 @@ Bulma messages, and a long list folds into headlines that open
 <section class="about-section" id="greenhouse-gases">
 <h2>Greenhouse gases</h2>
 <p class="about-lead">Facility pages for the largest emitters carry a <strong>Greenhouse gases</strong> card, and county pages a <strong>Largest greenhouse-gas reporters</strong> table, from EPA's <a href="https://ghgdata.epa.gov/flight">Greenhouse Gas Reporting Program</a> (GHGRP) and CARB's <a href="https://ww2.arb.ca.gov/mrr-data">Mandatory GHG Reporting</a> (MRR).</p>
-<article class="message is-warning"><div class="message-body"><p><strong>Greenhouse gases warm the climate; they aren't a local health measure.</strong> Only large emitters (about 10,000 t CO2e a year and up) report, so most facilities have none.</p></div></article>
+<article class="message is-warning"><div class="message-body"><p><strong>Greenhouse gases warm the climate; they aren't a local health measure.</strong> Only large emitters report, about 10,000 t CO2e a year and up for CARB and 25,000 for EPA, so most facilities have none.</p></div></article>
 <div class="about-points">
     <details>
         <summary>What isn't reported</summary>
@@ -220,7 +219,7 @@ Bulma messages, and a long list folds into headlines that open
 
 <section class="about-section" id="dairies">
 <h2>Dairies</h2>
-<p class="about-lead">The <a href="{% url 'emissions:dairy-list' %}">Dairies</a> tab covers what the facility inventory barely sees. CARB's <strong>California Dairy &amp; Livestock Database (CADD)</strong> locates every dairy CARB tracks, {{ dairy_count|intcomma }} of them in the eight Valley counties. CEIDARS lists only a handful of permitted livestock facilities.</p>
+<p class="about-lead">The <a href="{% url 'emissions:dairy-list' %}">Dairies</a> tab covers what the facility inventory barely sees. CARB's <strong>California Dairy &amp; Livestock Database (CADD)</strong> locates every dairy CARB tracks, {{ dairy_count|intcomma }} of them in the Valley's {{ county_count }} counties. CEIDARS lists only a handful of permitted livestock facilities.</p>
 <p>Every county, city, community, ZIP area, census tract, school district and AB 617 community has its own dairy page, scoped to that area's dairies. Reach one from its area page, or from the Dairies tab's find box.</p>
 <article class="message is-warning"><div class="message-body"><p><strong>Counted, not modeled.</strong> CADD gives each dairy's location, its herd by year ({{ dairy_span }}) and its anaerobic digesters. No public dataset reports emissions dairy by dairy, and the explorer doesn't estimate them.</p></div></article>
 <h3>Size classes</h3>
@@ -245,7 +244,7 @@ Bulma messages, and a long list folds into headlines that open
     </details>
     <details>
         <summary>Where a dairy counts</summary>
-        <div class="about-point-body"><p>A dairy counts toward a city or community by its mailing city or its point, whichever falls inside it; it counts toward an urban area, a ZIP area or a census tract by its point only.</p></div>
+        <div class="about-point-body"><p>A dairy counts toward a city or community by its mailing city or its point, whichever falls inside it; it counts toward an urban area, a ZIP area, a census tract, a school district or an AB 617 community by its point only.</p></div>
     </details>
     <details>
         <summary>Coverage grew in 2019</summary>
@@ -268,11 +267,11 @@ Bulma messages, and a long list folds into headlines that open
 
 <section class="about-section" id="oil-gas">
 <h2>Oil &amp; gas</h2>
-<p class="about-lead">CARB's inventory lists oil and gas production as district permit groupings ("HEAVY OIL WESTERN", "LIGHT OIL") that can cover a whole field, and half of Kern's have no map point at all; where one exists it's the operator's address. So the explorer also shows <strong>where the wells are</strong>.</p>
-<p>That's every active, idle and newly permitted well in CalGEM's WellSTAR database, about 66,000 in the eight counties, nearly all in Kern, shown:</p>
+<p class="about-lead">CARB's inventory lists oil and gas production as district permit groupings ("HEAVY OIL WESTERN", "LIGHT OIL") that can cover a whole field, and many of Kern's have no map point at all; where one exists it's the operator's address. So the explorer also shows <strong>where the wells are</strong>.</p>
+<p>That's every active, idle and newly permitted well in CalGEM's WellSTAR database, {{ well_count|intcomma }} in the Valley's counties, {{ kern_well_count|intcomma }} of them in Kern, shown:</p>
 <ul>
     <li>as an <em>Oil &amp; gas wells</em> overlay on the map,</li>
-    <li>as counts on region pages,</li>
+    <li>on every area's Oil &amp; gas tab,</li>
     <li>and as the schools and child-care centers with a well within 3,200 ft, the distance state law (SB 1137) sets for a health protection zone around homes, schools and other sensitive receptors.</li>
 </ul>
 <article class="message is-warning"><div class="message-body"><p><strong>Well counts are CalGEM's regulatory records, not emissions.</strong> Idle wells can still leak; plugged wells aren't shown.</p></div></article>
@@ -281,8 +280,8 @@ Bulma messages, and a long list folds into headlines that open
 <div class="columns is-multiline about-cards">
     <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1">Producing</p><p>Oil and gas wells (CalGEM doesn't separate the two) and dry gas wells.</p></div></div>
     <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1">Injecting to push oil out</p><p>Cyclic steam wells, which steam and then produce in turns, and steamflood, waterflood, pressure-maintenance and air-injection wells, which pump steam, water, gas or air down to drive oil toward producing wells; Kern's heavy oil needs the heat.</p></div></div>
-    <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1">Disposal &amp; gas storage</p><p>Wells that put the salty water from production, or unwanted gas, back underground, and gas storage wells.</p></div></div>
-    <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1">Monitoring &amp; other</p><p>Observation wells, core and dry holes, water-source and multi-purpose wells, and the few with no type.</p></div></div>
+    <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1">Disposal &amp; gas storage</p><p>Wells that put the salty water from production, or unwanted gas, back underground, other injection wells, and gas storage wells.</p></div></div>
+    <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1">Monitoring &amp; other</p><p>Observation wells, core, dry and stratigraphic holes, water-source and multi-purpose wells, and the few of unknown type.</p></div></div>
 </div>
 <h3>Limits of the well data</h3>
 <div class="about-points">
@@ -303,14 +302,15 @@ Bulma messages, and a long list folds into headlines that open
 
 <section class="about-section" id="schools">
 <h2>Schools and child care</h2>
-<p class="about-lead">A facility's page lists the public and private schools and licensed child-care centers within 1,000 ft and within ¼ mile of it, and draws them on the facility's map.</p>
+<p class="about-lead">A facility's page lists the public and private schools and licensed child-care centers within 1,000 ft and within ¼ mile of it, and draws them on the facility's map. An area's Schools tab lists every school and child-care center in it, with the permitted facilities within 1,000 ft, the oil and gas wells within 3,200 ft and the dairies within a mile.</p>
 <div class="table-container">
 <table class="table is-narrow is-fullwidth about-table">
     <thead><tr><th>Distance</th><th>Why that distance</th></tr></thead>
     <tbody>
-        <tr><td><strong>1,000 ft</strong></td><td>The air district must notify parents before permitting a source of hazardous air emissions this close (Health &amp; Safety Code 42301.6)</td></tr>
+        <tr><td><strong>1,000 ft</strong></td><td>The air district must notify parents before permitting a source of hazardous air emissions this close to a school (Health &amp; Safety Code 42301.6)</td></tr>
         <tr><td><strong>¼ mile</strong></td><td>What school districts must review before siting a school (Education Code 17213)</td></tr>
         <tr><td><strong>3,200 ft</strong></td><td>CalGEM's health protection zone around oil and gas wells (SB 1137); see <a href="#oil-gas">Oil &amp; gas</a></td></tr>
+        <tr><td><strong>1 mile</strong></td><td>Dairies, on the Schools tab: a round distance; no law sets one for dairies</td></tr>
     </tbody>
 </table>
 </div>
@@ -327,26 +327,10 @@ Bulma messages, and a long list folds into headlines that open
 </div>
 </section>
 
-<section class="about-section" id="calenviroscreen">
-<h2>CalEnviroScreen</h2>
-<p class="about-lead">Region pages and facility pages show figures from <strong>CalEnviroScreen</strong>, the Office of Environmental Health Hazard Assessment's screening tool that ranks every California census tract by pollution burden and population vulnerability, and from the state's list of <strong>SB 535 disadvantaged communities</strong>, which CalEPA designates from those scores.</p>
-<article class="message is-info"><div class="message-body"><p>CalEnviroScreen percentiles are OEHHA's, for census tracts, and rank tracts against the rest of California. Figures for a city, ZIP or county are SJVAir's summary of the tracts inside it, not an OEHHA score.</p></div></article>
-<div class="about-points">
-    <details>
-        <summary>How tracts count toward an area</summary>
-        <div class="about-point-body"><p>A tract counts toward an area when its center is inside the area or the area covers at least a tenth of the tract; a place too small to do either is described by the tract it sits in. Tracts OEHHA leaves unscored (too few people, or missing data) count toward populations but not toward percentiles.</p></div>
-    </details>
-    <details>
-        <summary>The SB 535 list is a draft</summary>
-        <div class="about-point-body"><p>The SB 535 disadvantaged-community list shown is CalEPA's 2026 draft until it is final.</p></div>
-    </details>
-</div>
-</section>
-
 <section class="about-section" id="compliance">
 <h2>Compliance</h2>
 <p class="about-lead">Facility pages for the largest sources carry a <strong>Compliance (federal Clean Air Act reporting)</strong> card from EPA's ICIS-Air database, where the Valley Air District reports its inspections, notices of violation, settlements and high-priority violations for the sources federal law requires it to track. {% if compliance_stamp and compliance_stamp.data_through %}Reported through {{ compliance_stamp.data_through|date:"N j, Y" }}.{% else %}No compliance data has been imported yet.{% endif %}</p>
-<article class="message is-warning"><div class="message-body"><p><strong>Only large sources are here.</strong> About 660 of the Valley's 11,000 permitted facilities are tracked in EPA's air compliance system. Smaller sources' inspections and violations aren't published anywhere. A facility with no compliance card isn't known to be in compliance.</p></div></article>
+<article class="message is-warning"><div class="message-body"><p><strong>Only large sources are here.</strong> {{ compliance_count|intcomma }} facilities in the Valley's counties are tracked in EPA's air compliance system{% if facility_count %}, against {{ facility_count|intcomma }} that reported to CARB in {{ latest_year }}{% endif %}. Smaller sources' inspections and violations aren't published anywhere. A facility with no compliance card isn't known to be in compliance.</p></div></article>
 <div class="about-points">
     <details>
         <summary>The record runs late</summary>
@@ -362,7 +346,7 @@ Bulma messages, and a long list folds into headlines that open
     </details>
     <details>
         <summary>How facilities are matched</summary>
-        <div class="about-point-body"><p>The district's facility id is embedded in EPA's id, so the match is exact for the Valley Air District's sources; Eastern Kern sources aren't matched yet. The five-year counts are measured back from the newest event EPA has, not from today.</p></div>
+        <div class="about-point-body"><p>The district's facility id is embedded in EPA's id, so the match is exact for the Valley Air District's sources; Eastern Kern sources aren't matched yet. The five-year counts are measured back from the newest event EPA has for that facility, not from today.</p></div>
     </details>
 </div>
 </section>
@@ -370,20 +354,20 @@ Bulma messages, and a long list folds into headlines that open
 <section class="about-section" id="sources">
 <h2>Sources</h2>
 <div class="columns is-multiline about-cards">
-    <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://ww2.arb.ca.gov/criteria-pollutant-emission-inventory-data">CARB facility emissions inventory (CEIDARS)</a></p><p>Facilities and their reported emissions.</p></div></div>
+    <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://ww2.arb.ca.gov/criteria-pollutant-ei/about">CARB facility emissions inventory (CEIDARS)</a></p><p>Facilities and their reported emissions.</p></div></div>
     <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://ww2.arb.ca.gov/resources/documents/consolidated-table-oehha-arb-approved-risk-assessment-health-values">CARB/OEHHA Consolidated Table</a></p><p>Health values for weighting toxics.</p></div></div>
     <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://ww2.arb.ca.gov/applications/cepam2019v1-04-standard-emission-tool">CARB CEPAM 2019</a></p><p>Emission projections for every source in a county.</p></div></div>
     <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://ww2.arb.ca.gov/california-air-districts">CARB air district directory</a></p><p>Districts and their <a href="https://gis.data.ca.gov/datasets/CaliforniaARB::california-air-district-boundaries/about">boundaries</a>.</p></div></div>
-    <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://ww2.arb.ca.gov/capp">CARB Community Air Protection Program</a></p><p>AB 617 communities.</p></div></div>
+    <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://ww2.arb.ca.gov/capp/community-air-protection-program">CARB Community Air Protection Program</a></p><p>AB 617 communities.</p></div></div>
     <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://ww2.arb.ca.gov/california-dairy-livestock-database-cadd">CARB Dairy &amp; Livestock Database (CADD)</a></p><p>Dairies, herds and digesters.</p></div></div>
     <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://www.cdfa.ca.gov/oefi/DDRDP/docs/DDRDP_Project_Level_Data.pdf">CDFA Dairy Digester Research and Development Program</a></p><p>Digester grants, project-level data.</p></div></div>
     <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1">Schools and child care</p><p><a href="https://data.ca.gov/dataset/california-public-schools-2025-26">CDE public schools</a>, <a href="https://data.ca.gov/dataset/california-private-schools-2024-25">CDE private schools</a> and <a href="https://data.ca.gov/dataset/community-care-licensing-facilities1">CDSS licensed child-care facilities</a>.</p></div></div>
-    <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://oehha.ca.gov/calenviroscreen">OEHHA CalEnviroScreen</a></p><p>And <a href="https://calepa.ca.gov/envjustice/ghginvest/">CalEPA SB 535 disadvantaged communities</a>.</p></div></div>
+    <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://oehha.ca.gov/calenviroscreen">OEHHA CalEnviroScreen</a></p><p>And <a href="https://calepa.ca.gov/programs/dac2026/">CalEPA SB 535 disadvantaged communities</a>.</p></div></div>
     <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://echo.epa.gov/tools/data-downloads">EPA ECHO / ICIS-Air</a></p><p>Inspections, violations and settlements.</p></div></div>
     <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://www.epa.gov/air-emissions-inventories/2023-nei-supporting-data-and-summaries">EPA 2023 National Emissions Inventory</a></p><p>County ammonia by source.</p></div></div>
     <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://data.ca.gov/dataset/wellstar-oil-and-gas-wells">CalGEM WellSTAR</a></p><p>Oil and gas wells.</p></div></div>
     <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://carbonmapper.org/data">Carbon Mapper</a></p><p>Methane point sources. Data by Carbon Mapper®, non-commercial terms.</p></div></div>
-    <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://ghgdata.epa.gov/flight">EPA Greenhouse Gas Reporting Program</a></p><p>Via <a href="https://www.epa.gov/enviro/greenhouse-gas-customized-search">Envirofacts</a>.</p></div></div>
+    <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://ghgdata.epa.gov/flight">EPA Greenhouse Gas Reporting Program</a></p><p>Via <a href="https://www.epa.gov/enviro/greenhouse-gas-restful-data-service">Envirofacts</a>.</p></div></div>
     <div class="column is-half-tablet"><div class="box"><p class="has-text-weight-bold mb-1"><a href="https://ww2.arb.ca.gov/mrr-data">CARB Mandatory GHG Reporting</a></p><p>California's greenhouse-gas reporters.</p></div></div>
 </div>
 <p class="is-size-7 has-text-grey">Header photo: <a href="https://commons.wikimedia.org/wiki/File:Pumpjacks,_San_Joaquin_Valley,_California.jpg">Pumpjacks, San Joaquin Valley, California</a> by Downtowngal, <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>, resized, cropped and darkened.</p>
