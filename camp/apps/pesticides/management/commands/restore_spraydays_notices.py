@@ -1,5 +1,7 @@
 import csv
+import re
 import sys
+from collections import defaultdict
 
 from django.contrib.gis.geos import GEOSGeometry
 from django.core.management.base import BaseCommand, CommandError
@@ -7,6 +9,8 @@ from django.db import transaction
 from django.utils.dateparse import parse_datetime
 
 from camp.apps.pesticides.models import Chemical, PesticideNotice, Product
+from camp.apps.pesticides.spraydays import _MTRS_RE
+from camp.apps.regions.models import Region
 
 # SprayDays only serves active notices, so the past ones exist nowhere but
 # our own table: a reset of the pesticides app (`migrate pesticides zero`)
@@ -14,8 +18,10 @@ from camp.apps.pesticides.models import Chemical, PesticideNotice, Product
 # database as it stands -- it reads only columns every version of the app has
 # had -- and reload them with this command once the re-import has products
 # and chemicals again. Products and chemicals travel as CDPR's codes (prodno,
-# chem_code), since their ids change on a re-import; sections and counties are
-# regions, which a pesticides reset doesn't touch, so their ids carry over.
+# chem_code), since their ids change on a re-import. Sections and counties are
+# found again from the COMTRS code, not the exported ids: a rebuild from
+# scratch re-imports regions under new ids. (The export keeps mtrs_id and
+# county_id only so older exports still load; they are ignored.)
 #
 #   heroku pg:psql -a <app> -c "\copy (<EXPORT_SQL>) TO 'notices.csv' WITH CSV HEADER"
 EXPORT_SQL = (
@@ -35,6 +41,50 @@ def codes(value):
 
 def optional_float(value):
     return float(value) if value not in (None, '') else None
+
+
+# County, optional meridian letter (PUR has it, SprayDays leaves it out),
+# township, range, section: "10M14S20E01" or "1014S20E01".
+COMTRS_RE = re.compile(r'^(\d{2})([A-Z]?)(\d{2})([NS])(\d{2})([EW])(\d{2})$')
+
+
+class SectionFinder:
+    """Find a notice's county and MTRS section from its COMTRS code."""
+
+    def __init__(self):
+        self.counties = {
+            metadata.get('ca_county_code'): pk
+            for pk, metadata in Region.objects.filter(type=Region.Type.COUNTY).values_list('pk', 'metadata')
+            if metadata
+        }
+        # (township, N/S, range, E/W, section) -> [(meridian letter, pk)]
+        self.sections = defaultdict(list)
+        for pk, external_id in Region.objects.filter(type=Region.Type.MTRS).values_list('pk', 'external_id'):
+            match = _MTRS_RE.match(external_id or '')
+            if match:
+                township, ns, range_, ew, section = match.groups()
+                key = (int(township), ns, int(range_), ew, int(section))
+                self.sections[key].append((external_id[0], pk))
+
+    def county(self, comtrs):
+        return self.counties.get((comtrs or '')[:2])
+
+    def section(self, comtrs, point):
+        match = COMTRS_RE.match(comtrs or '')
+        if not match:
+            return None
+        _, meridian, township, ns, range_, ew, section = match.groups()
+        candidates = self.sections.get((int(township), ns, int(range_), ew, int(section)), [])
+        if meridian:
+            candidates = [c for c in candidates if c[0] == meridian]
+        if len(candidates) == 1:
+            return candidates[0][1]
+        if candidates and point is not None:
+            # The same township/range/section under two meridians: the one the pin is in.
+            return Region.objects.filter(
+                pk__in=[pk for _, pk in candidates], boundary__geometry__covers=point,
+            ).values_list('pk', flat=True).first()
+        return None
 
 
 class Command(BaseCommand):
@@ -62,7 +112,8 @@ class Command(BaseCommand):
         products = dict(Product.objects.values_list('prodno', 'pk'))
         chemicals = dict(Chemical.objects.values_list('chem_code', 'pk'))
         existing = set(PesticideNotice.objects.values_list('application_id', flat=True))
-        created = skipped = 0
+        finder = SectionFinder()
+        created = skipped = unplaced = 0
         missing_products, missing_chemicals = set(), set()
 
         with transaction.atomic():
@@ -73,12 +124,17 @@ class Command(BaseCommand):
                 if application_id in existing:
                     skipped += 1
                     continue
+                point = GEOSGeometry(row['point'], srid=4326) if row['point'] else None
+                mtrs_id = finder.section(row['comtrs'], point)
+                # A notice exported without a section stays without one, unremarked.
+                if mtrs_id is None and row['mtrs_id']:
+                    unplaced += 1
                 notice = PesticideNotice.objects.create(
                     application_id=application_id,
                     comtrs=row['comtrs'],
-                    mtrs_id=int(row['mtrs_id']) if row['mtrs_id'] else None,
-                    county_id=int(row['county_id']) if row['county_id'] else None,
-                    point=GEOSGeometry(row['point'], srid=4326) if row['point'] else None,
+                    mtrs_id=mtrs_id,
+                    county_id=finder.county(row['comtrs']),
+                    point=point,
                     scheduled_application=parse_datetime(row['scheduled_application']),
                     treated_amount=optional_float(row['treated_amount']),
                     treated_units=row['treated_units'] or '',
@@ -95,6 +151,10 @@ class Command(BaseCommand):
                 created += 1
 
         self.stdout.write(f'Restored {created} notices; skipped {skipped} already present.')
+        if unplaced:
+            self.stdout.write(self.style.WARNING(
+                f'Unplaced: {unplaced} notice(s) with no matching section -- import_mtrs first.'
+            ))
         if missing_products or missing_chemicals:
             self.stdout.write(self.style.WARNING(
                 f'Unlinked: {len(missing_products)} product number(s) and {len(missing_chemicals)} '
