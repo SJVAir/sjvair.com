@@ -95,6 +95,33 @@ class RestoreNoticesTests(TestCase):
         assert f'Restored 1 notices; skipped {total - 1}' in output
         assert PesticideNotice.objects.get(application_id=111).treated_amount == 99
 
+    def test_a_rebuild_relinks_sections_and_counties_by_comtrs(self):
+        # A rebuild from scratch re-imports regions under new ids, so the
+        # exported ids point at nothing; the COMTRS code still names the place.
+        exported = export_csv().replace(',9101,9001,', ',88742,2,')
+        PesticideNotice.objects.all().delete()
+        self.restore(exported)
+        notice = PesticideNotice.objects.get(application_id=111)
+        assert (notice.mtrs_id, notice.county_id) == (9101, 9001)
+
+    def test_a_spraydays_comtrs_without_a_meridian_resolves(self):
+        # SprayDays writes COMTRS without the meridian letter PUR uses.
+        PesticideNotice.objects.filter(application_id=111).update(comtrs='1014S20E01')
+        exported = export_csv().replace(',9101,9001,', ',88742,2,')
+        PesticideNotice.objects.all().delete()
+        self.restore(exported)
+        notice = PesticideNotice.objects.get(application_id=111)
+        assert (notice.mtrs_id, notice.county_id) == (9101, 9001)
+
+    def test_a_comtrs_with_no_local_section_is_reported(self):
+        PesticideNotice.objects.filter(application_id=111).update(comtrs='1099S99E01')
+        exported = export_csv()
+        PesticideNotice.objects.all().delete()
+        output = self.restore(exported)
+        notice = PesticideNotice.objects.get(application_id=111)
+        assert notice.mtrs_id is None and notice.county_id == 9001
+        assert '1 notice(s) with no matching section' in output
+
     def test_codes_missing_after_the_reimport_are_reported(self):
         exported = export_csv()
         PesticideNotice.objects.all().delete()
