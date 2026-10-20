@@ -217,8 +217,8 @@ PM25 = LevelSet(
     AQLevel.MODERATE(9.1),
     AQLevel.UNHEALTHY_SENSITIVE(35.5),
     AQLevel.UNHEALTHY(55.5),
-    AQLevel.VERY_UNHEALTHY(150.5),
-    AQLevel.HAZARDOUS(250.5),
+    AQLevel.VERY_UNHEALTHY(125.5),
+    AQLevel.HAZARDOUS(225.5),
 )
 
 PM100 = LevelSet(

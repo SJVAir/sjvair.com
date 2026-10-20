@@ -26,12 +26,12 @@ PM25Levels = LevelSet(
         color='#ff7e00'
     ),
     VERY_UNHEALTHY = Level(
-        value=150.5,
+        value=125.5,
         label='Very Unhealthy',
         color='#ff0000'
     ),
     HAZARDOUS = Level(
-        value=250.5,
+        value=225.5,
         label='Hazardous',
         color='#7e0023'
     ),
