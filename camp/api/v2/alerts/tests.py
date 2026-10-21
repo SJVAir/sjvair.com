@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
 from django.contrib.auth.models import AnonymousUser
-from django.test import TestCase, RequestFactory
+from django.test import TestCase
 from django.urls import reverse
 
 from . import endpoints
@@ -10,7 +10,7 @@ from camp.apps.accounts.models import User
 from camp.apps.alerts.models import Subscription
 from camp.apps.entries.models import PM25
 from camp.apps.monitors.purpleair.models import PurpleAir
-from camp.utils.test import debug, get_response_data
+from camp.utils.test import CsrfExemptRequestFactory, debug, get_response_data
 
 subscription_list = endpoints.SubscriptionList.as_view()
 subscribe = endpoints.Subscribe.as_view()
@@ -21,7 +21,7 @@ class EndpointTests(TestCase):
     fixtures = ['users.yaml', 'purple-air.yaml']
 
     def setUp(self):
-        self.factory = RequestFactory()
+        self.factory = CsrfExemptRequestFactory()
         self.monitor = PurpleAir.objects.get(sensor_id=8892)
         self.user = User.objects.get(email='user@sjvair.com')
 
