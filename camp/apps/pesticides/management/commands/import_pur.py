@@ -411,7 +411,7 @@ class Command(BaseCommand):
     def _build_mtrs_cache(self):
         return {
             row['external_id']: row['id']
-            for row in Region.objects.filter(type=Region.Type.MTRS).values('external_id', 'id')
+            for row in Region.all_objects.filter(type=Region.Type.MTRS).values('external_id', 'id')
         }
 
     def _build_commodity_cache(self):

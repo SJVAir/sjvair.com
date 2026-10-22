@@ -65,7 +65,7 @@ class Command(BaseCommand):
             if not monitors.exists():
                 raise CommandError(f'Monitor not found: {monitor_id}')
         elif region_id:
-            region = Region.objects.filter(pk=region_id).first()
+            region = Region.all_objects.filter(pk=region_id).first()
             if not region:
                 raise CommandError(f'Region not found: {region_id}')
             if not region.boundary:
@@ -78,7 +78,7 @@ class Command(BaseCommand):
 
         # Determine region scope
         if region_id:
-            regions = Region.objects.filter(pk=region_id)
+            regions = Region.all_objects.filter(pk=region_id)
         elif monitor_id:
             monitor = monitors.first()
             regions = monitor.regions if monitor else Region.objects.none()

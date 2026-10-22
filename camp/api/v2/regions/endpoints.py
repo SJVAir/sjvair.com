@@ -26,6 +26,9 @@ class RegionMixin:
 
 
 class RegionList(RegionMixin, generics.ListEndpoint):
+    # A listing: current regions only. (The model's default manager,
+    # all_objects, would include retired ones.)
+    queryset = Region.objects.all()
     filter_class = RegionFilter
     paginate = False
     serializer_class = RegionListSerializer
@@ -34,7 +37,8 @@ class RegionList(RegionMixin, generics.ListEndpoint):
         qs = super().get_queryset()
         within_ids = [value for value in self.request.GET.getlist('within') if value.strip()]
         if within_ids:
-            geometry = Region.objects.filter(sqid__in=within_ids).combined_geometry()
+            # Parents are named by id, so a retired one still narrows.
+            geometry = Region.all_objects.filter(sqid__in=within_ids).combined_geometry()
             if geometry is None or geometry.empty:
                 # `within` was asked for but nothing resolved (unknown ids, or
                 # parents with no boundary): nothing can be inside it. Falling
@@ -96,6 +100,8 @@ class RegionGeoJSON(CachedEndpointMixin, RegionGeoJSONBase):
 
 class RegionDetail(RegionMixin, generics.DetailEndpoint):
     """One region with its boundary. ?buffer=1|3|5 widens the boundary by that many miles."""
+    # Named by sqid: a retired region is still found.
+    queryset = Region.all_objects.all()
     lookup_field = 'sqid'
     lookup_url_kwarg = 'region_id'
 

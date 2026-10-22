@@ -50,7 +50,7 @@ class Command(CountyFilterMixin, BaseCommand):
                     continue
 
                 name = place_name(row.GEOID, row.NAME)
-                region, created = Region.objects.import_or_update(
+                region, created = Region.all_objects.import_or_update(
                     name=name,
                     slug=slugify(name),
                     type=region_type,

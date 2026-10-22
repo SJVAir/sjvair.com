@@ -1451,8 +1451,8 @@ def area_filter(queryset, *, county=None, region=None, section=None, point=None,
 # What a `?section=` / `?region=` sqid is allowed to resolve to. Sections are
 # always MTRS squares; a "region" is a place (county/city/ZIP/place), never an
 # MTRS square -- `?section=` covers those.
-SECTION_REGIONS = Region.objects.filter(type=Region.Type.MTRS)
-PLACE_REGIONS = Region.objects.filter(type__in=places.PLACE_REGION_TYPES)
+SECTION_REGIONS = Region.all_objects.filter(type=Region.Type.MTRS)
+PLACE_REGIONS = Region.all_objects.filter(type__in=places.PLACE_REGION_TYPES)
 
 RECORDS_SORT_FIELDS = {'date': 'application_date', 'lbs': 'lbs_chemical', 'acres': 'acres_treated'}
 RECORDS_DEFAULT_SORT = '-date'
@@ -2030,7 +2030,7 @@ class SectionDetail(vanilla.DetailView):
     template_name = 'pesticides/section-detail.html'
 
     def get_queryset(self):
-        return Region.objects.filter(type=Region.Type.MTRS)
+        return Region.all_objects.filter(type=Region.Type.MTRS)
 
     def get_context_data(self, **kwargs):
         section = self.object
@@ -2477,7 +2477,7 @@ class RegionAreaMixin(AreaPageMixin):
     # RecordsBrowser) reads the area in its own dispatch.
     def dispatch(self, request, *args, **kwargs):
         region = (
-            Region.objects
+            Region.all_objects
             .filter(sqid=kwargs['sqid'], type__in=places.PLACE_REGION_TYPES)
             .select_related('boundary')
             .first()

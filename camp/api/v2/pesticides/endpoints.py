@@ -151,7 +151,7 @@ class PesticideRegionMixin:
     def setup(self, request, *args, **kwargs):
         super().setup(request, *args, **kwargs)
         self.region = get_object_or_404(
-            Region.objects.select_related('boundary'),
+            Region.all_objects.select_related('boundary'),
             sqid=self.kwargs['region_id'],
         )
 

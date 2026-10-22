@@ -28,7 +28,7 @@ class Command(CountyFilterMixin, BaseCommand):
         with transaction.atomic():
             for _, row in gdf.iterrows():
                 region_name = row.LABEL_NAME or row.UNIT_NAME or row.SITE_NAME
-                region, created = Region.objects.import_or_update(
+                region, created = Region.all_objects.import_or_update(
                     name=region_name,
                     slug=slugify(region_name),
                     type=Region.Type.PROTECTED,

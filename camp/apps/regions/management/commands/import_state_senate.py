@@ -25,7 +25,7 @@ class Command(CountyFilterMixin, BaseCommand):
         with transaction.atomic():
             for _, row in gdf.iterrows():
                 external_id = f"sd-{row.GEOID}"
-                region, created = Region.objects.import_or_update(
+                region, created = Region.all_objects.import_or_update(
                     name=row.SenateDist,
                     slug=external_id,
                     type=Region.Type.STATE_SENATE,

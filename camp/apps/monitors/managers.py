@@ -168,7 +168,7 @@ class MonitorQuerySet(InheritanceQuerySet):
             regions = []
             for region_id in region_ids:
                 try:
-                    regions.append(Region.objects.get(sqid=region_id))
+                    regions.append(Region.all_objects.get(sqid=region_id))
                 except Region.DoesNotExist:
                     raise Http404(f'"{region_id}" is not a valid region id')
             queryset = queryset.in_regions(regions)

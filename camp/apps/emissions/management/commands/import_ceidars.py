@@ -44,7 +44,7 @@ class Command(BaseCommand):
         # Pre-load region lookups once for the entire import.
         districts = {
             region.external_id: region
-            for region in Region.objects.filter(type=Region.Type.AIR_DISTRICT)
+            for region in Region.all_objects.filter(type=Region.Type.AIR_DISTRICT)
         }
         zipcode_regions = {r.name: r for r in Region.objects.filter(type=Region.Type.ZIPCODE)}
         city_regions = {

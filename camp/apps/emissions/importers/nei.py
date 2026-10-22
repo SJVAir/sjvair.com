@@ -55,7 +55,7 @@ def download(url):
 
 def county_fips():
     """{5-digit county FIPS: county Region} for the covered counties (external_id is the FIPS)."""
-    return {str(region.external_id).zfill(5): region for region in Region.objects.counties()}
+    return {str(region.external_id).zfill(5): region for region in Region.all_objects.counties()}
 
 
 def _resolve(fieldnames, columns, optional=None):

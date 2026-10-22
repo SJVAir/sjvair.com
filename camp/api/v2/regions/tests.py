@@ -1,4 +1,5 @@
 import json
+from datetime import date
 
 from django.contrib.gis.geos import GEOSGeometry
 from django.test import TestCase, RequestFactory
@@ -548,3 +549,48 @@ class RegionWithinFilterTests(TestCase):
         )
         ids = self._ids(('type', 'tract'), ('within', self.parent_a.sqid))
         assert ids == {self.inside_a.sqid, sliver_out.sqid}
+
+
+class RetiredRegionTests(TestCase):
+    """Listings and searches skip a retired region; naming it by sqid still finds it."""
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.factory = RequestFactory()
+        self.region = Region.objects.get(name='Fresno County')
+        self.region.retire(date(2026, 10, 1))
+
+    def test_detail_by_sqid_finds_retired_region(self):
+        response = region_detail(self.factory.get('/'), region_id=self.region.sqid)
+        assert response.status_code == 200
+        assert get_response_data(response)['data']['id'] == self.region.sqid
+
+    def test_list_and_search_skip_retired(self):
+        response = region_list(self.factory.get('/', {'type': self.region.type}))
+        ids = [r['id'] for r in get_response_data(response)['data']]
+        assert ids
+        assert self.region.sqid not in ids
+        assert self.region not in Region.objects.search_regions(self.region.name, type=self.region.type)
+
+    def test_unfiltered_list_skips_retired(self):
+        ids = [r['id'] for r in get_response_data(region_list(self.factory.get('/')))['data']]
+        assert self.region.sqid not in ids
+
+    def test_geojson_skips_retired(self):
+        response = region_geojson(self.factory.get('/', {'type': self.region.type}))
+        ids = [f['id'] for f in get_response_data(response)['features']]
+        assert ids
+        assert self.region.sqid not in ids
+
+    def test_within_accepts_a_retired_parent(self):
+        tract = make_tract('Tract inside Fresno', FRESNO_TRACT_WKT)
+        parent = make_county('Old Fresno County', FRESNO_COUNTY_WKT)
+        parent.retire(date(2026, 10, 1))
+        response = region_list(self.factory.get('/', [('type', 'tract'), ('within', parent.sqid)]))
+        ids = {r['id'] for r in get_response_data(response)['data']}
+        assert tract.sqid in ids
+
+    def test_place_lookup_skips_retired(self):
+        assert Region.objects.resolve_place(self.region.name, type=self.region.type) != self.region

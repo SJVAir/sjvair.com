@@ -140,7 +140,7 @@ def hourly_region_summaries(hour=None):
 @db_task(priority=90, queue='summaries')
 def summarize_region_hour(region_id, hour, entry_type):
     """Compute and save one hourly RegionSummary record."""
-    region = Region.objects.select_related('boundary').get(pk=region_id)
+    region = Region.all_objects.select_related('boundary').get(pk=region_id)
 
     stats = compute_region_summary(region, hour, entry_type)
     if stats is None:
@@ -400,7 +400,7 @@ def backfill_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id)
 @db_task(priority=1, queue='summaries')
 def backfill_region_chunk(job_id, region_id, chunk_start, chunk_end, batch_id):
     """Compute one region's hourly summaries for a backfill chunk, then report completion."""
-    region = Region.objects.select_related('boundary').get(pk=region_id)
+    region = Region.all_objects.select_related('boundary').get(pk=region_id)
     monitor_grades = dict(region.monitors.with_grade().values_list('pk', 'grade'))
     hours = list(hour_range(chunk_start, chunk_end))
     backfill_region_hours(region, hours, monitor_grades)

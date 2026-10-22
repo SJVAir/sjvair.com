@@ -508,7 +508,7 @@ def county_breakdown(scope, *, sector=None):
             queryset.values('facility__county')
             .annotate(facilities=Count('facility', distinct=True), value=Sum('raw'))
         )
-        counties = Region.objects.in_bulk([row['facility__county'] for row in rows if row['facility__county']])
+        counties = Region.all_objects.in_bulk([row['facility__county'] for row in rows if row['facility__county']])
         total = sum(float(row['value'] or 0) * factor for row in rows)
         result = [{
             'county': counties[row['facility__county']],

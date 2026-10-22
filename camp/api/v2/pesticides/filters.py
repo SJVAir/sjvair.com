@@ -62,7 +62,7 @@ class PesticideUseFilter(FilterSet):
 
     def filter_region_id(self, queryset, name, value):
         try:
-            region = Region.objects.select_related('boundary').get(sqid=value)
+            region = Region.all_objects.select_related('boundary').get(sqid=value)
         except Region.DoesNotExist:
             return queryset.none()
         if region.type == Region.Type.COUNTY:
@@ -114,7 +114,7 @@ class PesticideNoticeFilter(FilterSet):
 
     def filter_region_id(self, queryset, name, value):
         try:
-            region = Region.objects.select_related('boundary').get(sqid=value)
+            region = Region.all_objects.select_related('boundary').get(sqid=value)
         except Region.DoesNotExist:
             return queryset.none()
         if region.type == Region.Type.COUNTY:
