@@ -95,27 +95,73 @@ def published_processor(monitor, model):
     return processors[0].name if processors else ''
 
 
+def is_summarized(monitor, model, processor):
+    """
+    Whether hourly MonitorSummary rows exist for this processor's entries:
+    only RAW (processor '') and CALIBRATED-stage processors are summarized
+    (summaries.tasks.hourly_monitor_summaries), so e.g. PM25_FEM_Cleaner's
+    CLEANED entries are not.
+    """
+    if not model.summarize:
+        return False
+    if processor == '':
+        return True
+    for processors in monitor.ENTRY_CONFIG.get(model, {}).get('processors', {}).values():
+        for cls in processors:
+            if cls.name == processor:
+                return getattr(cls, 'next_stage', None) == model.Stage.CALIBRATED
+    return False
+
+
+def latest_timestamp(queryset):
+    return queryset.aggregate(value=Max('timestamp'))['value']
+
+
+def first_timestamp(queryset):
+    return queryset.aggregate(value=Min('timestamp'))['value']
+
+
 def monitor_span(monitor, entry_type: str) -> Span:
     """
-    A published pair counts only the published processor's entries; any other
-    pair counts every stage. `first` is MIN(timestamp) over the monitor's
-    entries (the unique index), `last` the matching LatestEntry, falling back
-    to MAX over the same entries if there is none. Three queries with data.
+    At most three queries, each an index seek:
+
+    - Published pair (counts only the DefaultCalibration processor's data):
+      LatestEntry for that processor first, and nulls without anything
+      further if there is none. `first` is the first hourly MonitorSummary
+      for the processor (a seek on its unique index; the same "first
+      summarized hour" as dataset-level coverage). A processor that isn't
+      summarized (a CLEANED-stage one like PM25_FEM_Cleaner) takes MIN over
+      its entries instead; never a MIN with a processor filter on a monitor
+      that has no rows for that processor, since LatestEntry gates it.
+    - Unpublished pair (any stage): MIN over the monitor's entries, i.e. its
+      first index tuple; last from LatestEntry, else MAX (the last tuple).
     """
     model = entry_model(entry_type)
-    processor = published_processor(monitor, model)
     entries = model.objects.filter(monitor_id=monitor.pk)
     latest = LatestEntry.objects.filter(monitor_id=monitor.pk, entry_type=entry_type)
-    if processor is not None:
-        entries = entries.filter(processor=processor)
-        latest = latest.filter(processor=processor)
+    processor = published_processor(monitor, model)
 
-    first = entries.aggregate(value=Min('timestamp'))['value']
-    if first is None:
-        return make_span(None, None)
-    last = latest.aggregate(value=Max('timestamp'))['value']
+    if processor is None:
+        first = first_timestamp(entries)
+        if first is None:
+            return make_span(None, None)
+        last = latest_timestamp(latest) or latest_timestamp(entries)
+        return make_span(first, last)
+
+    last = latest_timestamp(latest.filter(processor=processor))
     if last is None:
-        last = entries.aggregate(value=Max('timestamp'))['value']
+        return make_span(None, None)
+    entries = entries.filter(processor=processor)
+    if is_summarized(monitor, model, processor):
+        summaries = MonitorSummary.objects.filter(
+            monitor_id=monitor.pk, entry_type=entry_type,
+            processor=processor, resolution=HOURLY,
+        )
+        # Before its first hourly summary runs, fall back to the entries
+        # (bounded: LatestEntry says this processor has rows).
+        first = first_timestamp(summaries) or first_timestamp(entries)
+    else:
+        first = first_timestamp(entries)
     return make_span(first, last)
 
 

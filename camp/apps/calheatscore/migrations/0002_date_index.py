@@ -7,7 +7,6 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('calheatscore', '0001_initial'),
-        ('regions', '0013_location_retirement'),
     ]
 
     operations = [

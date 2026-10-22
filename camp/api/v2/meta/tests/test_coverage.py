@@ -11,6 +11,7 @@ from camp.api.v2.meta import catalog, coverage
 from camp.api.v2.meta.endpoints import CoverageEndpoint
 from camp.apps.entries.models import PM10, PM25, Humidity, Temperature
 from camp.apps.hms.models import Fire
+from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.monitors.models import LatestEntry
 from camp.apps.monitors.purpleair.models import PurpleAir
@@ -46,10 +47,10 @@ def make_latest(monitor, entry):
     )
 
 
-def make_monitor_summary(monitor, timestamp, entry_type='pm25', resolution='hour'):
+def make_monitor_summary(monitor, timestamp, entry_type='pm25', resolution='hour', processor=''):
     return MonitorSummary.objects.create(
         monitor=monitor, timestamp=timestamp, entry_type=entry_type,
-        resolution=resolution, processor='', is_complete=True, **STATS,
+        resolution=resolution, processor=processor, is_complete=True, **STATS,
     )
 
 
@@ -61,7 +62,7 @@ def make_region_summary(region, timestamp, entry_type='pm25', resolution='hour')
 
 
 class CoverageTestCase(TestCase):
-    fixtures = ['purple-air.yaml', 'regions.yaml', 'default-calibrations.yaml']
+    fixtures = ['purple-air.yaml', 'bam1022.yaml', 'regions.yaml', 'default-calibrations.yaml']
 
     def setUp(self):
         cache.clear()
@@ -75,15 +76,18 @@ class CoverageTestCase(TestCase):
 
 class MonitorSpanTests(CoverageTestCase):
     def published_data(self):
-        # Raw on Dec 31 (Pacific), the published processor from Jan 1 22:00
-        # Pacific (Jan 2 UTC) to Jan 1 23:30 Pacific (also Jan 2 UTC).
+        # Raw entries and raw summary hours on Dec 31 (Pacific); the published
+        # processor from Jan 1 22:00 Pacific (Jan 2 06:00 UTC) to Jan 1 23:30
+        # Pacific (Jan 2 07:30 UTC). A newer raw LatestEntry too.
         make_entry(PM25, self.monitor, utc(2026, 1, 1, 4, 0), sensor='a', stage='raw')
-        first = make_entry(PM25, self.monitor, utc(2026, 1, 2, 6, 0), stage='calibrated', processor=PUBLISHED)
+        make_monitor_summary(self.monitor, utc(2026, 1, 1, 4, 0))
+        make_entry(PM25, self.monitor, utc(2026, 1, 2, 6, 0), stage='calibrated', processor=PUBLISHED)
+        make_monitor_summary(self.monitor, utc(2026, 1, 2, 6, 0), processor=PUBLISHED)
         last = make_entry(PM25, self.monitor, utc(2026, 1, 2, 7, 30), stage='calibrated', processor=PUBLISHED)
+        make_monitor_summary(self.monitor, utc(2026, 1, 2, 7, 0), processor=PUBLISHED)
         raw_later = make_entry(PM25, self.monitor, utc(2026, 1, 3, 12, 0), sensor='a', stage='raw')
         make_latest(self.monitor, last)
         make_latest(self.monitor, raw_later)
-        return first, last
 
     def test_monitor_span_uses_published_processor_and_pacific_dates(self):
         self.published_data()
@@ -93,8 +97,42 @@ class MonitorSpanTests(CoverageTestCase):
 
     def test_monitor_span_query_count(self):
         self.published_data()
-        with self.assertNumQueries(3):  # published-pair lookup, MIN, LatestEntry
+        with self.assertNumQueries(3):  # published-pair lookup, LatestEntry, first summary hour
             coverage.monitor_span(self.monitor, 'pm25')
+
+    def test_published_first_is_the_first_summarized_hour(self):
+        self.published_data()
+        # An unsummarized published entry earlier still: first stays the
+        # first summarized hour, like dataset-level coverage.
+        make_entry(PM25, self.monitor, utc(2025, 12, 20, 12, 0), stage='calibrated', processor=PUBLISHED)
+        with timezone.override(None):
+            assert coverage.monitor_span(self.monitor, 'pm25')['first'] == date(2026, 1, 1)
+
+    def test_published_first_falls_back_to_entries_before_any_summary(self):
+        self.published_data()
+        MonitorSummary.objects.filter(processor=PUBLISHED).delete()
+        with timezone.override(None):
+            assert coverage.monitor_span(self.monitor, 'pm25')['first'] == date(2026, 1, 1)
+
+    def test_published_pair_without_latest_entry_is_null_without_min(self):
+        make_entry(PM25, self.monitor, utc(2026, 1, 1, 4, 0), sensor='a', stage='raw')
+        make_monitor_summary(self.monitor, utc(2026, 1, 1, 4, 0))
+        with self.assertNumQueries(2):  # published-pair lookup, LatestEntry
+            span = coverage.monitor_span(self.monitor, 'pm25')
+        assert span == {'first': None, 'last': None}
+
+    def test_published_unsummarized_processor_reads_its_entries(self):
+        # bam1022/pm25 publishes PM25_FEM_Cleaner, a CLEANED-stage processor
+        # that hourly summaries skip.
+        bam = BAM1022.objects.get()
+        make_entry(PM25, bam, utc(2026, 5, 1, 12, 0), stage='raw')
+        make_monitor_summary(bam, utc(2026, 5, 1, 12, 0))
+        make_entry(PM25, bam, utc(2026, 5, 2, 12, 0), stage='cleaned', processor='PM25_FEM_Cleaner')
+        last = make_entry(PM25, bam, utc(2026, 5, 3, 12, 0), stage='cleaned', processor='PM25_FEM_Cleaner')
+        make_latest(bam, last)
+        with self.assertNumQueries(3), timezone.override(None):
+            span = coverage.monitor_span(bam, 'pm25')
+        assert span == {'first': date(2026, 5, 2), 'last': date(2026, 5, 3)}
 
     def test_unpublished_pair_counts_any_stage(self):
         make_entry(PM10, self.monitor, utc(2026, 2, 1, 12, 0), sensor='a', stage='raw')
