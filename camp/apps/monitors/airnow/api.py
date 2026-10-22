@@ -88,7 +88,6 @@ class AirNowAPI:
             'bbox': ','.join(map(str, bbox)),
             'datatype': 'C',
             'verbose': 1,
-            'nowcastonly': 0,
             'includerawconcentrations': 1,
         }
 
