@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
@@ -25,7 +26,7 @@ def place_name(geoid, source_name):
     return NAME_OVERRIDES.get(str(geoid), source_name)
 
 
-def import_place_row(row):
+def import_place_row(row, write=print):
     """
     Import one Census place row. Returns the Region, or None for place classes
     we don't track. A city retires the current CDP with the same GEOID: a CDP
@@ -61,12 +62,13 @@ def import_place_row(row):
     )
 
     if region_type == Region.Type.CITY:
+        today = timezone.localdate(timezone=settings.DEFAULT_TIMEZONE)
         for cdp in Region.all_objects.filter(
             type=Region.Type.CDP, external_id=row.GEOID, retired_at__isnull=True
         ):
-            cdp.retire(timezone.localdate(), replaced_by=region)
+            cdp.retire(today, replaced_by=region)
 
-    print(f'{region.get_type_display()} {"Imported" if created else "Updated"}: {region.name}')
+    write(f'{region.get_type_display()} {"Imported" if created else "Updated"}: {region.name}')
     return region
 
 
@@ -88,4 +90,4 @@ class Command(CountyFilterMixin, BaseCommand):
 
         with transaction.atomic():
             for _, row in gdf.iterrows():
-                import_place_row(row)
+                import_place_row(row, write=self.stdout.write)
