@@ -79,3 +79,39 @@ class DatasetCatalogTests(TestCase):
         assert 'facility-nox' in ids and 'methane-emission-rate' in ids
         assert self.entry('emissions', 'facility-nox')['units'] == 'tons/yr'
         assert self.entry('emissions', 'methane-emission-rate')['units'] == 'kg/h'
+
+
+LAUNCH_ENTRY_TYPES = {
+    'air-quality': {'co', 'co2', 'humidity', 'no2', 'o3', 'particulates', 'pm10', 'pm100', 'pm25', 'pressure', 'so2', 'temperature'},
+    'weather': {
+        'dewpoint', 'eto', 'etr', 'humidity', 'netradiation', 'precipitation', 'soiltemperature',
+        'solarradiation', 'temperature', 'vaporpressure', 'winddirection', 'windspeed',
+    },
+    'hms-smoke': {'smoke-density'},
+    'hms-fire': {'fire-frp'},
+    'pesticide-use': {'pounds-applied', 'acres-treated'},
+    'pesticide-notices': {'spray-notice'},
+    'forecasts': {'aqi-forecast'},
+    'calheatscore': {'heat-score'},
+    'calenviroscreen': {'ces-score'},
+    'emissions': {
+        'facility-nox', 'facility-rog', 'facility-pm', 'facility-pm10', 'facility-sox', 'facility-co',
+        'facility-tog', 'facility-nh3', 'methane-emission-rate',
+    },
+    'tempo': {'no2', 'o3tot', 'hcho', 'cldo4'},
+}
+
+
+class LaunchIdsArePermanentTests(TestCase):
+    fixtures = ['default-calibrations.yaml']
+
+    def test_launch_ids_still_present(self):
+        """
+        Ids are permanent: to remove one, mark it retired in the catalog instead of deleting it.
+        """
+        response = datasets_view(RequestFactory().get(reverse('api:v2:meta:datasets')))
+        datasets = {d['id']: d for d in get_response_data(response)['data']['datasets']}
+        assert set(datasets) == set(LAUNCH_ENTRY_TYPES)
+        for dataset, launch_ids in LAUNCH_ENTRY_TYPES.items():
+            current = {e['id'] for e in datasets[dataset]['entry_types']}
+            assert launch_ids <= current, f'{dataset} dropped {sorted(launch_ids - current)}'
