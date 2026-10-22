@@ -1,6 +1,6 @@
 import csv
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from decimal import Decimal
 from io import StringIO
 from pprint import pprint
@@ -879,3 +879,81 @@ class PublishedFixtureTests(TestCase):
         assert rows[('airnow', 'o3')] == ''
         assert rows[('vozbox', 'o3')] == 'VOZBox_QuinnCal'
         assert ('vozbox', 'pm25') not in rows
+
+
+class ZoneAwareTimestampTests(TestCase):
+    '''
+        Clients send UTC ISO timestamps ("Z" or an offset) for
+        timestamp__gte/timestamp__lte and for at/'s timestamp. Pin that the
+        server reads them as that instant, and that a zone-less value is
+        still Pacific wall time.
+    '''
+    fixtures = ['purple-air.yaml', 'bam1022.yaml', 'default-calibrations.yaml']
+
+    # 2026-10-22 00:00 Pacific (PDT, UTC-7) is 07:00 UTC.
+    BOUNDARY_PARAMS = {
+        'utc': '2026-10-22T07:00:00Z',
+        'offset': '2026-10-22T00:00:00-07:00',
+        'zoneless': '2026-10-22 00:00:00',
+    }
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        self.boundary = datetime(2026, 10, 22, 7, 0, tzinfo=dt_timezone.utc)
+        stage = self.monitor.get_default_stage(entry_models.PM25)
+        for offset, value in [(timedelta(minutes=-1), '12.0'), (timedelta(minutes=1), '999.0')]:
+            entry_models.PM25.objects.create(
+                monitor_id=self.monitor.pk, timestamp=self.boundary + offset,
+                sensor='a', stage=stage, value=Decimal(value),
+            )
+
+    def entry_values(self, **params):
+        kwargs = {'monitor_id': self.monitor.pk, 'entry_type': 'pm25'}
+        url = reverse('api:v2:monitors:entry-list', kwargs=kwargs)
+        request = self.factory.get(url, params)  # urlencodes the "+" in an offset
+        request.monitor = self.monitor
+        response = entry_list(request, **kwargs)
+        content = get_response_data(response)
+        assert response.status_code == 200
+        return sorted(Decimal(str(e['value'])) for e in content['data'])
+
+    @override_settings(MONITOR_HEALTHY_THRESHOLD=0)
+    def at_value(self, timestamp):
+        kwargs = {'entry_type': 'pm25'}
+        url = reverse('api:v2:monitors:monitor-at', kwargs=kwargs)
+        request = self.factory.get(url, {'timestamp': timestamp})
+        response = monitors_at(request, **kwargs)
+        content = get_response_data(response)
+        assert response.status_code == 200
+        result = [m for m in content['data'] if m['id'] == str(self.monitor.pk)]
+        return Decimal(str(result[0]['latest']['value'])) if result else None
+
+    def test_gte_accepts_utc_z(self):
+        assert self.entry_values(timestamp__gte=self.BOUNDARY_PARAMS['utc']) == [Decimal('999.0')]
+
+    def test_gte_accepts_offset(self):
+        assert self.entry_values(timestamp__gte=self.BOUNDARY_PARAMS['offset']) == [Decimal('999.0')]
+
+    def test_lte_accepts_utc_z(self):
+        assert self.entry_values(timestamp__lte=self.BOUNDARY_PARAMS['utc']) == [Decimal('12.0')]
+
+    def test_lte_accepts_offset(self):
+        assert self.entry_values(timestamp__lte=self.BOUNDARY_PARAMS['offset']) == [Decimal('12.0')]
+
+    def test_zoneless_filter_is_pacific_whatever_the_active_zone(self):
+        for active in (timezone.get_current_timezone(), None):
+            with timezone.override(active):
+                assert self.entry_values(timestamp__gte=self.BOUNDARY_PARAMS['zoneless']) == [Decimal('999.0')]
+                assert self.entry_values(timestamp__lte=self.BOUNDARY_PARAMS['zoneless']) == [Decimal('12.0')]
+
+    def test_at_accepts_utc_z(self):
+        assert self.at_value(self.BOUNDARY_PARAMS['utc']) == Decimal('12.0')
+
+    def test_at_accepts_offset(self):
+        assert self.at_value(self.BOUNDARY_PARAMS['offset']) == Decimal('12.0')
+
+    def test_at_zoneless_is_pacific_whatever_the_active_zone(self):
+        for active in (timezone.get_current_timezone(), None):
+            with timezone.override(active):
+                assert self.at_value(self.BOUNDARY_PARAMS['zoneless']) == Decimal('12.0')
