@@ -8,7 +8,7 @@ from django.db.models.expressions import ExpressionWrapper
 from django.db.models.fields import FloatField
 
 from camp.apps.regions.counties import SJV_COUNTIES
-from camp.apps.regions.querysets import RegionQuerySet
+from camp.apps.regions.querysets import LocationQuerySet, RegionQuerySet
 from camp.utils.gis import to_multipolygon
 
 
@@ -128,11 +128,11 @@ class RegionManager(models.Manager.from_queryset(RegionQuerySet)):
             # (import_counties, import_zipcodes, import_census_tracts) would
             # silently wipe a population any prior import_population run set.
             if 'population' not in metadata:
-                existing = Region.objects.filter(external_id=external_id, type=type).values_list('metadata', flat=True).first()
+                existing = Region.all_objects.filter(external_id=external_id, type=type).values_list('metadata', flat=True).first()
                 if existing and 'population' in existing:
                     metadata = {**metadata, 'population': existing['population']}
             region_defaults['metadata'] = metadata
-        region, created = Region.objects.update_or_create(
+        region, created = Region.all_objects.update_or_create(
             external_id=external_id,
             type=type,
             defaults=region_defaults,
@@ -151,3 +151,21 @@ class RegionManager(models.Manager.from_queryset(RegionQuerySet)):
             region.boundary = boundary
             region.save(update_fields=['boundary'])
         return region, created
+
+
+class CurrentRegionManager(RegionManager):
+    """`Region.objects`: RegionManager minus retired regions."""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(retired_at__isnull=True)
+
+
+class LocationManager(models.Manager.from_queryset(LocationQuerySet)):
+    """`Location.all_objects`: every location, retired ones included."""
+
+
+class CurrentLocationManager(LocationManager):
+    """`Location.objects`: LocationManager minus retired locations."""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(retired_at__isnull=True)

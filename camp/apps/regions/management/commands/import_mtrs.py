@@ -36,7 +36,7 @@ class Command(BaseCommand):
             for i, (_, row) in enumerate(gdf.iterrows(), 1):
                 mtrs = build_mtrs(row.Meridian, row.Township, row.Range, int(row.Section))
 
-                region, created = Region.objects.import_or_update(
+                region, created = Region.all_objects.import_or_update(
                     name=mtrs,
                     slug=slugify(mtrs),
                     type=Region.Type.MTRS,

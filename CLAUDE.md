@@ -149,6 +149,42 @@ docker compose run --rm web python manage.py mirror_bam_entries --monitor-id Gge
 
 Idempotent and safe to re-run.
 
+## Region and Location Codes
+
+Regions are referenced publicly by `(type, external_id)` and locations by
+`(source, external_id)`. These codes are permanent and never reused, so imports
+**retire** rows (`retired_at`, optionally `replaced_by`) instead of deleting them.
+
+- The location import keeps child-care codes when the lowest license number closes.
+- A CDP that incorporates is retired with `replaced_by` set to the new city.
+- Staff can retire and un-retire regions and locations in the admin.
+- Land use (`type=land_use`) is excluded from code lookup and the permanence promise:
+  its codes come from OBJECTID and aren't stable.
+
+Managers: `Region.all_objects` and `Location.all_objects` are unfiltered and are the
+default and base managers; `objects` is current-only. Listings and searches use
+`objects`. Anything that resolves a specific region or location from a request id or
+code uses `all_objects`, so retired ones still answer. Resticus list endpoints default
+to `_default_manager` (unfiltered), so pin listing querysets to `objects`.
+
+After migrating on production, run `import_forecast_zones` (the 3 custom forecast
+zones are missing there; see SJVAPCD Forecast Setup).
+
+## Metadata Endpoints
+
+- `GET /api/2.0/meta/datasets/` is the dataset catalog. Dataset and entry-type ids are
+  permanent (a rename changes only the label). A pollutant's `available` flag comes
+  from `DefaultCalibration`.
+- `GET /api/2.0/meta/coverage/` returns first/last Pacific dates per dataset. It is
+  computed on request, cached, and backed by the per-monitor unique index (no
+  table-wide MIN/MAX on entry tables); there is no background task.
+
+Timestamps: zone-less `timestamp__*` filter and `at/` values are read as Pacific,
+explicitly, via `PacificDateTimeField`. `settings.TIME_ZONE` is UTC and
+`TimezoneMiddleware` activates Pacific per request. Tests that use `RequestFactory`
+bypass the middleware and `conftest.py` activates Pacific, so wrap Pacific-date
+assertions in `timezone.override(None)`.
+
 ## Architecture Overview
 
 SJVAir is a Django/PostGIS air quality monitoring platform for the San Joaquin Valley. It ingests data from multiple sensor networks, processes it through a calibration pipeline, and exposes it via a versioned REST API.

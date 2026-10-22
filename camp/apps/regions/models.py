@@ -1,6 +1,7 @@
 from typing import Literal, Optional
 
 from django.contrib.gis.db import models
+from django.core.exceptions import ValidationError
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.functional import cached_property
@@ -9,8 +10,8 @@ from django.utils.translation import gettext_lazy as _
 from django_sqids import SqidsField, shuffle_alphabet
 from model_utils.models import TimeStampedModel
 
-from camp.apps.regions.managers import RegionManager
-from camp.apps.regions.querysets import BoundaryQuerySet, LocationQuerySet
+from camp.apps.regions.managers import CurrentLocationManager, CurrentRegionManager, LocationManager, RegionManager
+from camp.apps.regions.querysets import BoundaryQuerySet
 from camp.utils import gis
 from camp.utils.encoders import JSONEncoder
 
@@ -101,7 +102,40 @@ class Region(TimeStampedModel):
     metadata = models.JSONField(blank=True, default=dict, encoder=JSONEncoder)
     boundary = models.OneToOneField('Boundary', null=True, blank=True, on_delete=models.SET_NULL, related_name='current_for',)
 
-    objects = RegionManager()
+    # Codes (type + external_id) are a permanent public reference, so a region
+    # is retired rather than deleted. Retired rows stay in the table and are
+    # hidden from `objects`; `all_objects` sees everything.
+    retired_at = models.DateField(null=True, blank=True, db_index=True)
+    replaced_by = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='replaces')
+
+    all_objects = RegionManager()
+    objects = CurrentRegionManager()
+
+    @property
+    def is_retired(self):
+        return self.retired_at is not None
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.replaced_by_id is not None and self.pk is not None and self.replaced_by_id == self.pk:
+            errors['replaced_by'] = 'A row cannot replace itself.'
+        elif self.replaced_by_id is not None and self.retired_at is None:
+            errors['replaced_by'] = 'Only a retired row can have a replacement; set retired_at too.'
+        if errors:
+            raise ValidationError(errors)
+
+    def retire(self, since, replaced_by=None):
+        if replaced_by is not None and replaced_by.pk == self.pk:
+            raise ValueError('A row cannot be replaced by itself.')
+        self.retired_at = since
+        self.replaced_by = replaced_by
+        self.save(update_fields=['retired_at', 'replaced_by'])
+
+    def unretire(self):
+        self.retired_at = None
+        self.replaced_by = None
+        self.save(update_fields=['retired_at', 'replaced_by'])
 
     @property
     def short_name(self):
@@ -121,6 +155,8 @@ class Region(TimeStampedModel):
         ]
         ordering = ['type', 'name']
         unique_together = ('external_id', 'type')
+        default_manager_name = 'all_objects'
+        base_manager_name = 'all_objects'
 
     def __str__(self):
         return f'{self.name} ({self.get_type_display()})'
@@ -319,7 +355,13 @@ class Location(TimeStampedModel):
     metadata = models.JSONField(blank=True, default=dict, encoder=JSONEncoder)
     imported_at = models.DateTimeField(_('Imported At'), default=timezone.now)
 
-    objects = LocationQuerySet.as_manager()
+    # Codes (source + external_id) are a permanent public reference, so a
+    # location that closes is retired rather than deleted (see Region).
+    retired_at = models.DateField(null=True, blank=True, db_index=True)
+    replaced_by = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='replaces')
+
+    all_objects = LocationManager()
+    objects = CurrentLocationManager()
 
     # The region links resolve_regions() fills in, in the order it fills them.
     REGION_FIELDS = ('county', 'city', 'zipcode', 'school_district')
@@ -327,6 +369,8 @@ class Location(TimeStampedModel):
     class Meta:
         ordering = ['name']
         unique_together = ('source', 'external_id')
+        default_manager_name = 'all_objects'
+        base_manager_name = 'all_objects'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -350,6 +394,37 @@ class Location(TimeStampedModel):
 
     def __str__(self):
         return self.name
+
+    @property
+    def is_retired(self):
+        return self.retired_at is not None
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.replaced_by_id is not None and self.pk is not None and self.replaced_by_id == self.pk:
+            errors['replaced_by'] = 'A row cannot replace itself.'
+        elif self.replaced_by_id is not None and self.retired_at is None:
+            errors['replaced_by'] = 'Only a retired row can have a replacement; set retired_at too.'
+        if errors:
+            raise ValidationError(errors)
+
+    def retire(self, since, replaced_by=None):
+        if replaced_by is not None and replaced_by.pk == self.pk:
+            raise ValueError('A row cannot be replaced by itself.')
+        self.retired_at = since
+        self.replaced_by = replaced_by
+        self.save(update_fields=['retired_at', 'replaced_by'])
+
+    def unretire(self):
+        self.retired_at = None
+        self.replaced_by = None
+        self.save(update_fields=['retired_at', 'replaced_by'])
+
+    @property
+    def facility_numbers(self) -> list[str]:
+        """A child-care site's license numbers (its code is one of them, or one that has since closed); [] for schools."""
+        return (self.metadata or {}).get('facility_numbers') or []
 
     def save(self, *args, **kwargs):
         """

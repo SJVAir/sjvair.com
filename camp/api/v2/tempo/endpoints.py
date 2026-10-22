@@ -115,7 +115,7 @@ class TempoRegion(TempoProductMixin, generics.Endpoint):
 
     def get(self, request, region_id, *args, **kwargs):
         try:
-            region = Region.objects.select_related('boundary').get(sqid=region_id)
+            region = Region.all_objects.select_related('boundary').get(sqid=region_id)
             geometry = region.boundary.geometry
         except (Region.DoesNotExist, AttributeError):
             raise Http404(f'"{region_id}" is not a valid region id')

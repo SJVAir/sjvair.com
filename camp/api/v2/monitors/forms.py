@@ -5,7 +5,7 @@ from django.conf import settings
 from django.db.models import enums
 from django.utils import timezone
 
-from camp.api.v2.forms import BboxField
+from camp.api.v2.forms import BboxField, PacificDateTimeField
 from camp.utils.datetime import make_aware
 
 
@@ -42,7 +42,7 @@ class EntryExportForm(forms.Form):
 
 
 class MonitorAtForm(forms.Form):
-    timestamp = forms.DateTimeField(required=True)
+    timestamp = PacificDateTimeField(required=True)
     bbox = BboxField()
 
     def clean_timestamp(self):

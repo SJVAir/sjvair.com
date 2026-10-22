@@ -54,12 +54,12 @@ class SectionFinder:
     def __init__(self):
         self.counties = {
             metadata.get('ca_county_code'): pk
-            for pk, metadata in Region.objects.filter(type=Region.Type.COUNTY).values_list('pk', 'metadata')
+            for pk, metadata in Region.all_objects.filter(type=Region.Type.COUNTY).values_list('pk', 'metadata')
             if metadata
         }
         # (township, N/S, range, E/W, section) -> [(meridian letter, pk)]
         self.sections = defaultdict(list)
-        for pk, external_id in Region.objects.filter(type=Region.Type.MTRS).values_list('pk', 'external_id'):
+        for pk, external_id in Region.all_objects.filter(type=Region.Type.MTRS).values_list('pk', 'external_id'):
             match = _MTRS_RE.match(external_id or '')
             if match:
                 township, ns, range_, ew, section = match.groups()
@@ -81,7 +81,7 @@ class SectionFinder:
             return candidates[0][1]
         if candidates and point is not None:
             # The same township/range/section under two meridians: the one the pin is in.
-            return Region.objects.filter(
+            return Region.all_objects.filter(
                 pk__in=[pk for _, pk in candidates], boundary__geometry__covers=point,
             ).values_list('pk', flat=True).first()
         return None

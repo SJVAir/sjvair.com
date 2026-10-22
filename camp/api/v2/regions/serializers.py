@@ -3,6 +3,24 @@ import json
 from resticus import serializers
 
 
+def retired_json(obj):
+    """
+    The public "this record was retired" marker, or None for a current one.
+    `replaced_by` names the replacement by its permanent code: {type,
+    external_id} for a Region, {source, external_id} for a Location.
+    """
+    if obj.retired_at is None:
+        return None
+    replacement = obj.replaced_by
+    if replacement is None:
+        replaced_by = None
+    elif hasattr(replacement, 'source'):
+        replaced_by = {'source': replacement.source, 'external_id': replacement.external_id}
+    else:
+        replaced_by = {'type': replacement.type, 'external_id': replacement.external_id}
+    return {'since': obj.retired_at.isoformat(), 'replaced_by': replaced_by}
+
+
 class BoundarySerializer(serializers.Serializer):
     fields = (
         ('id', lambda b: b.sqid),
@@ -29,11 +47,18 @@ class BoundaryListSerializer(serializers.Serializer):
 
 
 class RegionSerializer(serializers.Serializer):
+    """
+    A region. `external_id` is the official code for permanent region types,
+    but for `land_use` regions it is NOT a permanent code, so the
+    `external_id` lookup refuses them.
+    """
     fields = (
         ('id', lambda r: r.sqid),
         'name',
         'slug',
         'type',
+        'external_id',
+        ('retired', retired_json),
         ('boundary', lambda r: BoundarySerializer(r.boundary).serialize() if r.boundary else None),
     )
 
@@ -44,5 +69,28 @@ class RegionListSerializer(serializers.Serializer):
         'name',
         'slug',
         'type',
+        'external_id',
+        ('retired', retired_json),
         ('boundary', lambda r: BoundaryListSerializer(r.boundary).serialize() if r.boundary else None),
+    )
+
+
+def _region_ref(region):
+    return {'type': region.type, 'external_id': region.external_id} if region else None
+
+
+class LocationSerializer(serializers.Serializer):
+    fields = (
+        ('id', lambda l: l.sqid),
+        'source',
+        'external_id',
+        ('aliases', lambda l: [n for n in l.facility_numbers if n != l.external_id]),
+        'type',
+        'name',
+        'address',
+        'city_name',
+        'zip',
+        ('point', lambda l: {'lat': l.point.y, 'lng': l.point.x}),
+        ('regions', lambda l: {field: _region_ref(getattr(l, field)) for field in l.REGION_FIELDS}),
+        ('retired', retired_json),
     )

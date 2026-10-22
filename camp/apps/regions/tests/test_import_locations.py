@@ -3,6 +3,7 @@ import os
 import tempfile
 
 from contextlib import ExitStack
+from datetime import date, datetime, timezone as dt_timezone
 from io import StringIO
 from pathlib import Path
 from unittest import mock
@@ -14,6 +15,7 @@ from django.core.cache import cache
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
+from django.utils import timezone
 
 from camp.apps.regions import locations
 from camp.apps.regions.models import Location, Region
@@ -40,6 +42,28 @@ def trimmed(testcase, path, column, keep):
     writer = csv.writer(handle, lineterminator='\n')
     writer.writerow(rows[0])
     writer.writerows([row for row in rows[1:] if row[index] in keep])
+    handle.close()
+    testcase.addCleanup(os.unlink, handle.name)
+    return handle.name
+
+
+CCL_HEADER = ['FAC_LATITUDE', 'FAC_LONGITUDE', 'FAC_NBR', 'PROGRAM_TYPE', 'STATUS', 'CAPACITY',
+    'NAME', 'RES_STREET_ADDR', 'RES_CITY', 'RES_ZIP_CODE', 'COUNTY', 'FAC_TYPE_DESC']
+
+
+def ccl_file(testcase, *licenses):
+    """
+    A CDSS file of child-care licenses, each (facility number, street
+    address, facility type): all under one name in Selma, so licenses that
+    share an address are one site.
+    """
+    handle = tempfile.NamedTemporaryFile('w', suffix='.csv', encoding='utf-8',
+        newline='', delete=False)
+    writer = csv.writer(handle, lineterminator='\n')
+    writer.writerow(CCL_HEADER)
+    for number, address, facility_type in licenses:
+        writer.writerow(['36.7150', '-119.7950', number, 'CHILD CARE', '3', '30',
+            'Little Sprouts Learning Center', address, 'Selma', '93662', 'Fresno County', facility_type])
     handle.close()
     testcase.addCleanup(os.unlink, handle.name)
     return handle.name
@@ -204,18 +228,64 @@ class PublicSchoolImportTests(TestCase):
         assert counts['removed'] == 0
         assert Location.objects.count() == 5
 
-    def test_rows_missing_from_the_source_are_removed(self):
+    def test_missing_rows_are_retired_not_deleted(self):
         locations.import_source('cde-public', path=PUBLIC_PATH)
         path = trimmed(self, PUBLIC_PATH, 'CDS Code',
             {'10621176059453', '15633216059455'})
 
-        counts = locations.import_source('cde-public', path=path)
+        # 03:00 UTC on the 23rd is still the 22nd in Pacific time. A
+        # management command runs with the settings TIME_ZONE (UTC), not the
+        # Pacific zone conftest activates, so override it the same way.
+        now = datetime(2026, 10, 23, 3, 0, tzinfo=dt_timezone.utc)
+        with timezone.override(None), mock.patch('django.utils.timezone.now', return_value=now):
+            counts = locations.import_source('cde-public', path=path)
 
         assert counts['updated'] == 2
-        assert counts['removed'] == 3
+        assert counts['retired'] == 3
+        assert counts['removed'] == 0
         assert set(Location.objects.values_list('external_id', flat=True)) == {
             '10621176059453', '15633216059455',
         }
+        retired = Location.all_objects.filter(source='cde-public', retired_at__isnull=False)
+        assert retired.count() == 3
+        assert set(retired.values_list('retired_at', flat=True)) == {date(2026, 10, 22)}
+
+    def test_a_retired_row_stays_retired_on_the_same_date(self):
+        locations.import_source('cde-public', path=PUBLIC_PATH)
+        path = trimmed(self, PUBLIC_PATH, 'CDS Code', {'10621176059453'})
+        locations.import_source('cde-public', path=path)
+        Location.all_objects.filter(retired_at__isnull=False).update(retired_at=date(2020, 1, 1))
+
+        counts = locations.import_source('cde-public', path=path)
+
+        assert counts['retired'] == 0
+        assert set(Location.all_objects.filter(retired_at__isnull=False)
+            .values_list('retired_at', flat=True)) == {date(2020, 1, 1)}
+
+    def test_a_retired_row_that_reappears_is_unretired_in_place(self):
+        locations.import_source('cde-public', path=PUBLIC_PATH)
+        school = Location.objects.get(external_id='10621256059470')
+        path = trimmed(self, PUBLIC_PATH, 'CDS Code', {'10621176059453'})
+        locations.import_source('cde-public', path=path)
+        assert Location.all_objects.get(pk=school.pk).is_retired
+
+        counts = locations.import_source('cde-public', path=PUBLIC_PATH)
+
+        assert counts['unretired'] == 4
+        assert counts['imported'] == 0
+        reappeared = Location.objects.get(external_id='10621256059470')
+        assert reappeared.pk == school.pk
+        assert reappeared.retired_at is None and reappeared.replaced_by is None
+        assert Location.all_objects.filter(source='cde-public').count() == 5
+
+    def test_an_import_never_changes_a_code(self):
+        locations.import_source('cde-public', path=PUBLIC_PATH)
+        before = set(Location.all_objects.values_list('pk', 'source', 'external_id'))
+        path = trimmed(self, PUBLIC_PATH, 'CDS Code', {'10621176059453'})
+        locations.import_source('cde-public', path=path)
+        locations.import_source('cde-public', path=PUBLIC_PATH)
+
+        assert set(Location.all_objects.values_list('pk', 'source', 'external_id')) == before
 
     def test_an_empty_parse_removes_nothing(self):
         locations.import_source('cde-public', path=PUBLIC_PATH)
@@ -224,6 +294,7 @@ class PublicSchoolImportTests(TestCase):
         counts = locations.import_source('cde-public', path=path)
 
         assert counts['removed'] == 0
+        assert counts['retired'] == 0
         assert Location.objects.count() == 5
 
     def test_locations_from_another_source_are_left_alone(self):
@@ -452,6 +523,90 @@ class ChildCareImportTests(TestCase):
 
         assert geocode.call_count == 0
         assert counts['geocoded'] == 0
+
+    def test_facility_numbers_are_fixed_width_digit_strings(self):
+        # one_per_place and the importer order codes as strings, which is
+        # numeric order only while every number is the same width.
+        locations.import_source('cdss-ccl', path=CCL_PATH)
+        numbers = [n for row in Location.objects.all() for n in row.facility_numbers]
+        assert numbers and all(n.isdigit() and len(n) == 9 for n in numbers)
+
+    def test_child_care_keeps_its_code_when_the_lowest_license_closes(self):
+        locations.import_source('cdss-ccl', path=ccl_file(self,
+            ('100400105', '55 Orchard Way', 'DAY CARE CENTER'),
+            ('100400210', '55 Orchard Way', 'INFANT CENTER'),
+        ))
+        site = Location.objects.get()
+        assert site.external_id == '100400105'
+
+        counts = locations.import_source('cdss-ccl', path=ccl_file(self,
+            ('100400210', '55 Orchard Way', 'INFANT CENTER'),
+        ))
+
+        after = Location.all_objects.get()
+        assert after.pk == site.pk
+        assert after.external_id == '100400105'
+        assert after.facility_numbers == ['100400210']
+        assert after.retired_at is None
+        assert counts['updated'] == 1 and counts['imported'] == 0 and counts['retired'] == 0
+
+    def test_a_split_site_keeps_one_code_and_the_other_gets_its_own(self):
+        locations.import_source('cdss-ccl', path=ccl_file(self,
+            ('100400105', '55 Orchard Way', 'DAY CARE CENTER'),
+            ('100400210', '55 Orchard Way', 'INFANT CENTER'),
+        ))
+        site = Location.objects.get()
+
+        # The infant center moves down the street: two sites now.
+        counts = locations.import_source('cdss-ccl', path=ccl_file(self,
+            ('100400210', '90 Orchard Way', 'INFANT CENTER'),
+            ('100400105', '55 Orchard Way', 'DAY CARE CENTER'),
+        ))
+
+        kept = Location.objects.get(pk=site.pk)
+        assert kept.external_id == '100400105'
+        assert kept.facility_numbers == ['100400105']
+        moved = Location.objects.exclude(pk=site.pk).get()
+        assert moved.external_id == '100400210'
+        assert moved.address == '90 Orchard Way'
+        assert counts['imported'] == 1 and counts['updated'] == 1
+
+    def test_the_site_holding_the_code_license_keeps_the_code(self):
+        locations.import_source('cdss-ccl', path=ccl_file(self,
+            ('100400105', '55 Orchard Way', 'DAY CARE CENTER'),
+            ('100400210', '55 Orchard Way', 'INFANT CENTER'),
+        ))
+        site = Location.objects.get()
+
+        # The day care center moves away and a new, lower-numbered license
+        # opens beside the infant center. Both new sites match the old row;
+        # the one still holding license 100400105 keeps that code, though
+        # the other sorts first.
+        locations.import_source('cdss-ccl', path=ccl_file(self,
+            ('100400050', '55 Orchard Way', 'SCHOOL-AGE DC CENTER'),
+            ('100400210', '55 Orchard Way', 'INFANT CENTER'),
+            ('100400105', '90 Orchard Way', 'DAY CARE CENTER'),
+        ))
+
+        kept = Location.objects.get(pk=site.pk)
+        assert kept.external_id == '100400105'
+        assert kept.address == '90 Orchard Way'
+        other = Location.objects.exclude(pk=site.pk).get()
+        assert other.external_id == '100400050'
+        assert other.facility_numbers == ['100400050', '100400210']
+
+    def test_a_closed_site_is_retired_and_its_code_never_reused(self):
+        locations.import_source('cdss-ccl', path=ccl_file(self,
+            ('100400105', '55 Orchard Way', 'DAY CARE CENTER'),
+        ))
+        site = Location.objects.get()
+        counts = locations.import_source('cdss-ccl', path=ccl_file(self,
+            ('100400300', '70 Orchard Way', 'DAY CARE CENTER'),
+        ))
+
+        assert counts['retired'] == 1
+        assert Location.all_objects.get(pk=site.pk).is_retired
+        assert list(Location.objects.values_list('external_id', flat=True)) == ['100400300']
 
 
 class DownloadGuardTests(TestCase):

@@ -224,7 +224,7 @@ class RegionSummaryList(SummaryMixin, generics.ListEndpoint):
     def get_queryset(self):
         region_id = self.kwargs.get('region_id')
         try:
-            region = Region.objects.get(sqid=region_id)
+            region = Region.all_objects.get(sqid=region_id)
         except (Region.DoesNotExist, ValueError):
             raise Http404('Region not found')
         # super() → SummaryMixin.get_queryset() → ListEndpoint → RegionSummary.objects.all()
@@ -278,7 +278,7 @@ class BulkRegionSummaryList(SummaryMixin, generics.ListEndpoint):
         for row in source:
             grouped.setdefault(row.region_id, []).append(row)
 
-        regions_by_id = Region.objects.in_bulk(list(grouped))
+        regions_by_id = Region.all_objects.in_bulk(list(grouped))
         regions = []
         for region_id, rows in grouped.items():
             region = regions_by_id.get(region_id)

@@ -266,7 +266,10 @@ def county_map(by_county, width=600, height=420, query='', metric='lbs', ramp=No
 
     figure = mapfigure.MapFigure(width=width, height=height, padding=10)
     for pk, geojson in geometries.items():
-        county = counties[pk]
+        county = counties.get(pk)
+        if county is None:
+            # Retired since the (cached) geometries were built.
+            continue
         value = value_by_pk.get(pk)
         label = f'{county.name}: {int(round(value)):,} {unit}' if value else f'{county.name}: no data'
         url = county.get_pesticides_url()

@@ -1,5 +1,7 @@
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.utils import timezone
 from django.utils.text import slugify
 
 from camp.apps.regions.management.base import CountyFilterMixin
@@ -24,6 +26,52 @@ def place_name(geoid, source_name):
     return NAME_OVERRIDES.get(str(geoid), source_name)
 
 
+def import_place_row(row, write=print):
+    """
+    Import one Census place row. Returns the Region, or None for place classes
+    we don't track. A city retires the current CDP with the same GEOID: a CDP
+    that incorporates usually keeps its GEOID, and region codes are permanent,
+    so the old row stays resolvable and points at the city.
+    """
+    if row.CLASSFP == 'C1':
+        region_type = Region.Type.CITY
+    elif row.CLASSFP in {'U1', 'U2'}:
+        region_type = Region.Type.CDP
+    else:
+        return None
+
+    name = place_name(row.GEOID, row.NAME)
+    region, created = Region.all_objects.import_or_update(
+        name=name,
+        slug=slugify(name),
+        type=region_type,
+        external_id=row.GEOID,
+        version='2023',
+        geometry=to_multipolygon(row.geometry),
+        metadata={
+            'geoid': row.GEOID,
+            'statefp': row.STATEFP,
+            'placefp': row.PLACEFP,
+            'name': row.NAME,
+            'namelsad': row.NAMELSAD,
+        },
+        boundary_metadata={
+            'aland': row.ALAND,
+            'awater': row.AWATER,
+        },
+    )
+
+    if region_type == Region.Type.CITY:
+        today = timezone.localdate(timezone=settings.DEFAULT_TIMEZONE)
+        for cdp in Region.all_objects.filter(
+            type=Region.Type.CDP, external_id=row.GEOID, retired_at__isnull=True
+        ):
+            cdp.retire(today, replaced_by=region)
+
+    write(f'{region.get_type_display()} {"Imported" if created else "Updated"}: {region.name}')
+    return region
+
+
 class Command(CountyFilterMixin, BaseCommand):
     help = 'Import California cities (places) into the Region table'
 
@@ -42,32 +90,4 @@ class Command(CountyFilterMixin, BaseCommand):
 
         with transaction.atomic():
             for _, row in gdf.iterrows():
-                if row.CLASSFP == 'C1':
-                    region_type = Region.Type.CITY
-                elif row.CLASSFP in {'U1', 'U2'}:
-                    region_type = Region.Type.CDP
-                else:
-                    continue
-
-                name = place_name(row.GEOID, row.NAME)
-                region, created = Region.objects.import_or_update(
-                    name=name,
-                    slug=slugify(name),
-                    type=region_type,
-                    external_id=row.GEOID,
-                    version='2023',
-                    geometry=to_multipolygon(row.geometry),
-                    metadata={
-                        'geoid': row.GEOID,
-                        'statefp': row.STATEFP,
-                        'placefp': row.PLACEFP,
-                        'name': row.NAME,
-                        'namelsad': row.NAMELSAD,
-                    },
-                    boundary_metadata={
-                        'aland': row.ALAND,
-                        'awater': row.AWATER,
-                    },
-                )
-
-                self.stdout.write(f'{region.get_type_display()} {"Imported" if created else "Updated"}: {region.name}')
+                import_place_row(row, write=self.stdout.write)

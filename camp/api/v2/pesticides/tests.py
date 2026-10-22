@@ -528,7 +528,7 @@ class PesticideRegionSummaryTests(TestCase):
         data = self.client.get(self.url).json()
         assert set(data.keys()) == {'region', 'data', 'count'}
         assert data['count'] == 1
-        assert set(data['region'].keys()) == {'id', 'name', 'slug', 'type'}
+        assert set(data['region'].keys()) == {'id', 'name', 'slug', 'type', 'external_id', 'retired'}
         item = data['data'][0]
         assert set(item.keys()) == {'year', 'chemical', 'commodity', 'total_lbs', 'total_acres', 'application_count'}
 
@@ -1502,6 +1502,11 @@ class LocationEndpointTests(TestCase):
 
     def test_unknown_county_returns_nothing(self):
         assert self.features(bbox='-120.0,35.0,-119.0,37.0', county='nope') == []
+
+    def test_retired_locations_are_left_out(self):
+        self.daycare.retire(timezone.localdate())
+        names = [f['properties']['name'] for f in self.features(bbox='-119.9,36.6,-119.7,36.8')]
+        assert names == ['Alpha Elementary']
 
     def test_cached(self):
         assert len(self.features(bbox='-119.9,36.6,-119.7,36.8')) == 2

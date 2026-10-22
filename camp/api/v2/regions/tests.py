@@ -1,17 +1,19 @@
 import json
+from datetime import date
 
 from django.contrib.gis.geos import GEOSGeometry
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
 
-from camp.api.v2.regions.endpoints import RegionDetail, RegionGeoJSON, RegionList, RegionMetaEndpoint
-from camp.apps.regions.models import Boundary, Region
+from camp.api.v2.regions.endpoints import LocationList, RegionDetail, RegionGeoJSON, RegionList, RegionMetaEndpoint
+from camp.apps.regions.models import Boundary, Location, Region
 from camp.utils.test import get_response_data
 
 region_list = RegionList.as_view()
 region_detail = RegionDetail.as_view()
 region_meta = RegionMetaEndpoint.as_view()
 region_geojson = RegionGeoJSON.as_view()
+location_list = LocationList.as_view()
 
 
 class RegionListTests(TestCase):
@@ -30,7 +32,7 @@ class RegionListTests(TestCase):
         response = region_list(request)
         data = get_response_data(response)
         assert len(data['data']) > 0
-        assert set(data['data'][0].keys()) == {'id', 'name', 'slug', 'type', 'boundary'}
+        assert set(data['data'][0].keys()) == {'id', 'name', 'slug', 'type', 'boundary', 'external_id', 'retired'}
 
     def test_list_boundary_omits_geometry(self):
         request = self.factory.get(reverse('api:v2:regions:region-list'))
@@ -150,7 +152,7 @@ class RegionDetailTests(TestCase):
         request = self.factory.get('/')
         response = region_detail(request, region_id=self.region.sqid)
         data = get_response_data(response)
-        assert set(data['data'].keys()) == {'id', 'name', 'slug', 'type', 'boundary'}
+        assert set(data['data'].keys()) == {'id', 'name', 'slug', 'type', 'boundary', 'external_id', 'retired'}
 
 
 
@@ -227,6 +229,10 @@ class TestPlaceSearch(TestCase):
         names = [r['name'] for r in response.json()['data']]
         assert 'Fresno' in names
 
+    def test_results_carry_code_and_retired(self):
+        result = self.client.get(self.url, {'q': 'Fresno'}).json()['data'][0]
+        assert 'external_id' in result and result['retired'] is None
+
     def test_case_insensitive(self):
         response = self.client.get(self.url, {'q': 'fresno'})
         names = [r['name'] for r in response.json()['data']]
@@ -265,6 +271,8 @@ class TestPlaceLookup(TestCase):
         assert response.status_code == 200
         assert response.json()['data']['name'] == 'Fresno'
         assert response.json()['data']['type'] == Region.Type.CITY
+        assert 'external_id' in response.json()['data']
+        assert response.json()['data']['retired'] is None
 
     def test_case_insensitive(self):
         response = self.client.get(self.url, {'q': 'fresno'})
@@ -353,7 +361,7 @@ class RegionGeoJSONTests(TestCase):
         feature = data['features'][0]
         assert feature['type'] == 'Feature'
         assert feature['id'] == feature['properties']['id']
-        assert set(feature['properties']) == {'id', 'name', 'slug', 'type'}
+        assert set(feature['properties']) == {'id', 'name', 'slug', 'type', 'external_id', 'retired'}
         assert feature['properties']['type'] == 'county'
         assert feature['geometry']['type'] == 'MultiPolygon'
         names = [f['properties']['name'] for f in data['features']]
@@ -548,3 +556,214 @@ class RegionWithinFilterTests(TestCase):
         )
         ids = self._ids(('type', 'tract'), ('within', self.parent_a.sqid))
         assert ids == {self.inside_a.sqid, sliver_out.sqid}
+
+
+class RetiredRegionTests(TestCase):
+    """Listings and searches skip a retired region; naming it by sqid still finds it."""
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.factory = RequestFactory()
+        self.region = Region.objects.get(name='Fresno County')
+        self.region.retire(date(2026, 10, 1))
+
+    def test_detail_by_sqid_finds_retired_region(self):
+        response = region_detail(self.factory.get('/'), region_id=self.region.sqid)
+        assert response.status_code == 200
+        assert get_response_data(response)['data']['id'] == self.region.sqid
+
+    def test_list_and_search_skip_retired(self):
+        response = region_list(self.factory.get('/', {'type': self.region.type}))
+        ids = [r['id'] for r in get_response_data(response)['data']]
+        assert ids
+        assert self.region.sqid not in ids
+        assert self.region not in Region.objects.search_regions(self.region.name, type=self.region.type)
+
+    def test_unfiltered_list_skips_retired(self):
+        ids = [r['id'] for r in get_response_data(region_list(self.factory.get('/')))['data']]
+        assert self.region.sqid not in ids
+
+    def test_geojson_skips_retired(self):
+        response = region_geojson(self.factory.get('/', {'type': self.region.type}))
+        ids = [f['id'] for f in get_response_data(response)['features']]
+        assert ids
+        assert self.region.sqid not in ids
+
+    def test_within_accepts_a_retired_parent(self):
+        tract = make_tract('Tract inside Fresno', FRESNO_TRACT_WKT)
+        parent = make_county('Old Fresno County', FRESNO_COUNTY_WKT)
+        parent.retire(date(2026, 10, 1))
+        response = region_list(self.factory.get('/', [('type', 'tract'), ('within', parent.sqid)]))
+        ids = {r['id'] for r in get_response_data(response)['data']}
+        assert tract.sqid in ids
+
+    def test_place_lookup_skips_retired(self):
+        assert Region.objects.resolve_place(self.region.name, type=self.region.type) != self.region
+
+
+class RegionCodeLookupTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.factory = RequestFactory()
+
+    def get(self, params):
+        response = region_list(self.factory.get('/', params))
+        return response, get_response_data(response)
+
+    def test_lookup_by_several_codes(self):
+        counties = list(Region.objects.filter(type='county')[:2])
+        codes = ','.join(c.external_id for c in counties)
+        _, data = self.get({'type': 'county', 'external_id': codes})
+        assert {r['external_id'] for r in data['data']} == {c.external_id for c in counties}
+
+    def test_lookup_cleans_the_list(self):
+        c = Region.objects.filter(type='county').first()
+        _, data = self.get({'type': 'county', 'external_id': f' {c.external_id}, ,{c.external_id}'})
+        assert [r['external_id'] for r in data['data']] == [c.external_id]
+
+    def test_lookup_returns_retired_flagged_and_skips_unknown(self):
+        c = Region.objects.filter(type='county').first()
+        c.retire(date(2026, 10, 1))
+        _, data = self.get({'type': 'county', 'external_id': f'{c.external_id},99999'})
+        assert len(data['data']) == 1
+        assert data['data'][0]['retired'] == {'since': '2026-10-01', 'replaced_by': None}
+
+    def test_lookup_names_the_replacement_by_code(self):
+        old, new = list(Region.objects.filter(type='county')[:2])
+        old.retire(date(2026, 10, 1), replaced_by=new)
+        _, data = self.get({'type': 'county', 'external_id': old.external_id})
+        assert data['data'][0]['retired']['replaced_by'] == {'type': 'county', 'external_id': new.external_id}
+
+    def test_current_region_is_not_flagged(self):
+        c = Region.objects.filter(type='county').first()
+        _, data = self.get({'type': 'county', 'external_id': c.external_id})
+        assert data['data'][0]['retired'] is None
+
+    def test_lookup_only_matches_the_given_type(self):
+        c = Region.objects.filter(type='county').first()
+        _, data = self.get({'type': 'zipcode', 'external_id': c.external_id})
+        assert data['data'] == []
+
+    def test_lookup_requires_type(self):
+        response, data = self.get({'external_id': '06019'})
+        assert response.status_code == 400
+        assert data['error'] == 'The type parameter is required with external_id.'
+
+    def test_lookup_refuses_land_use(self):
+        response, data = self.get({'type': 'land_use', 'external_id': '1'})
+        assert response.status_code == 400
+        assert data['error'] == "Land-use regions can't be looked up by code yet."
+
+    def test_docs_say_land_use_codes_are_not_permanent(self):
+        from camp.api.v2.regions.filters import RegionFilter
+        from camp.api.v2.regions.serializers import RegionSerializer
+        help_text = RegionFilter.base_filters['external_id'].extra['help_text']
+        assert 'land_use' in help_text and 'not a permanent code' in help_text
+        assert 'NOT a permanent code' in ' '.join(RegionSerializer.__doc__.split())
+
+    def test_lookup_caps_codes(self):
+        codes = ','.join(str(n) for n in range(101))
+        response, _ = self.get({'type': 'county', 'external_id': codes})
+        assert response.status_code == 400
+        codes = ','.join(str(n) for n in range(100))
+        response, _ = self.get({'type': 'county', 'external_id': codes})
+        assert response.status_code == 200
+
+    def test_geojson_properties_include_code(self):
+        c = Region.objects.filter(type='county').exclude(boundary=None).first()
+        response = region_geojson(self.factory.get('/', {'type': 'county'}))
+        props = {f['id']: f['properties'] for f in get_response_data(response)['features']}[c.sqid]
+        assert props['external_id'] == c.external_id
+        assert props['retired'] is None
+
+    def test_simplified_geojson_properties_include_code(self):
+        response = region_geojson(self.factory.get('/', {'type': 'county', 'simplify': '1'}))
+        props = get_response_data(response)['features'][0]['properties']
+        assert 'external_id' in props and 'retired' in props
+
+
+class LocationLookupTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        from django.core.cache import cache
+        from django.contrib.gis.geos import Point
+        cache.clear()
+        self.factory = RequestFactory()
+        self.county = Region.objects.filter(type='county').first()
+        self.school = Location.all_objects.create(
+            type=Location.Type.PUBLIC_SCHOOL, source='cde-public', external_id='15634380000001',
+            name='Test Elementary', address='1 Main St', city_name='Bakersfield', zip='93301',
+            point=Point(-119.0, 35.4, srid=4326), county=self.county)
+        self.child_care = Location.all_objects.create(
+            type=Location.Type.CHILD_CARE, source='cdss-ccl', external_id='153400001',
+            name='Little Ones', point=Point(-119.1, 35.5, srid=4326),
+            metadata={'facility_numbers': ['153400001', '153400002']})
+
+    def get(self, params):
+        response = location_list(self.factory.get('/', params))
+        return response, get_response_data(response)
+
+    def test_lookup_by_code(self):
+        response, data = self.get({'source': 'cde-public', 'external_id': self.school.external_id})
+        assert response.status_code == 200
+        (item,) = data['data']
+        assert item['id'] == self.school.sqid
+        assert item['source'] == 'cde-public'
+        assert item['external_id'] == '15634380000001'
+        assert item['aliases'] == []
+        assert item['type'] == 'public_school'
+        assert item['name'] == 'Test Elementary'
+        assert item['city_name'] == 'Bakersfield'
+        assert item['zip'] == '93301'
+        assert item['point'] == {'lat': 35.4, 'lng': -119.0}
+        assert item['regions']['county'] == {'type': 'county', 'external_id': self.county.external_id}
+        assert item['regions']['city'] is None
+        assert item['retired'] is None
+
+    def test_lookup_by_non_key_license_number(self):
+        _, data = self.get({'source': 'cdss-ccl', 'external_id': '153400002'})
+        (item,) = data['data']
+        assert item['external_id'] == '153400001'
+        assert item['aliases'] == ['153400002']
+
+    def test_two_codes_for_one_site_return_it_once(self):
+        _, data = self.get({'source': 'cdss-ccl', 'external_id': '153400001,153400002'})
+        assert len(data['data']) == 1
+
+    def test_retired_is_returned_flagged(self):
+        self.school.retire(date(2026, 10, 1))
+        _, data = self.get({'source': 'cde-public', 'external_id': self.school.external_id})
+        assert data['data'][0]['retired'] == {'since': '2026-10-01', 'replaced_by': None}
+
+    def test_unknown_code_is_absent(self):
+        _, data = self.get({'source': 'cde-public', 'external_id': '000'})
+        assert data['data'] == []
+
+    def test_source_scopes_the_lookup(self):
+        _, data = self.get({'source': 'cde-private', 'external_id': self.school.external_id})
+        assert data['data'] == []
+
+    def test_missing_params_are_400(self):
+        assert self.get({'external_id': '1'})[0].status_code == 400
+        assert self.get({'source': 'cde-public'})[0].status_code == 400
+        assert self.get({})[0].status_code == 400
+
+    def test_unknown_source_is_400(self):
+        assert self.get({'source': 'nope', 'external_id': '1'})[0].status_code == 400
+
+    def test_caps_codes(self):
+        codes = ','.join(str(n) for n in range(101))
+        assert self.get({'source': 'cde-public', 'external_id': codes})[0].status_code == 400
+        codes = ','.join(str(n) for n in range(100))
+        assert self.get({'source': 'cde-public', 'external_id': codes})[0].status_code == 200
+
+    def test_url_is_not_swallowed_by_region_id(self):
+        response = self.client.get(reverse('api:v2:regions:location-list'),
+            {'source': 'cde-public', 'external_id': self.school.external_id})
+        assert response.status_code == 200

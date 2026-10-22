@@ -4,7 +4,7 @@ Import adapters for `regions.Location`: schools and child care facilities.
 Each source knows where to download its file, how to parse it into plain
 dicts, and which `Location.Type` its rows become. `import_source()` does the
 rest: geocoding the rows that arrive without coordinates, resolving the
-county and school district, upserting by (source, external_id), and removing
+county and school district, upserting by (source, external_id), and retiring
 the rows that have disappeared from the source.
 """
 
@@ -20,6 +20,7 @@ from datetime import datetime
 
 import requests
 
+from django.conf import settings
 from django.contrib.gis.geos import Point
 from django.core.cache import cache
 from django.db import transaction
@@ -736,26 +737,31 @@ def _fetch(config, url):
 def import_source(source, path=None, geocode=True):
     """
     Import one source into `Location`, returning a dict of counts:
-    imported, updated, removed, geocoded, skipped.
+    imported, updated, retired, unretired, geocoded, skipped (and `removed`,
+    always 0 now that a location missing from the file is retired instead).
     """
     try:
         config = SOURCES[source]
     except KeyError:
         raise ValueError(f'Unknown location source: {source}')
 
-    counts = {'imported': 0, 'updated': 0, 'removed': 0, 'geocoded': 0,
-        'skipped': 0, **{key: 0 for key, _ in DISTRICT_TALLIES}}
+    counts = {'imported': 0, 'updated': 0, 'removed': 0, 'retired': 0, 'unretired': 0,
+        'geocoded': 0, 'skipped': 0, **{key: 0 for key, _ in DISTRICT_TALLIES}}
 
     with _open_source(config, path) as handle:
         rows = [row for row in config['parse'](handle) if row.get('external_id')]
 
     if not rows:
         # An empty parse means a failed download or a changed format, never
-        # that every school in the valley closed. Don't remove anything.
+        # that every school in the valley closed. Don't retire anything.
         return counts
 
+    # Every row of the source, retired ones included: a code is never
+    # reused, so a site that reopens takes its old row back.
     existing = {location.external_id: location
-        for location in Location.objects.filter(source=source)}
+        for location in Location.all_objects.filter(source=source)}
+    rows, unplaced = _assign_codes(rows, existing)
+    counts['skipped'] += unplaced
 
     # Resolve coordinates first, outside any transaction: geocoding is
     # network work and must not hold a database transaction open.
@@ -763,7 +769,7 @@ def import_source(source, path=None, geocode=True):
     resolved = []
     for row in rows:
         # Every row in the file is "seen", even one we can't place, so the
-        # removal step below never deletes a school that's still listed.
+        # retirement step below never retires a school that's still listed.
         seen.add(row['external_id'])
 
         point = _point(row.get('lat'), row.get('lng'))
@@ -786,12 +792,16 @@ def import_source(source, path=None, geocode=True):
 
         resolved.append((row, point))
 
+    today = timezone.localdate(timezone=settings.DEFAULT_TIMEZONE)
     with transaction.atomic():
         for row, point in resolved:
             location = existing.get(row['external_id'])
             created = location is None
             if created:
                 location = Location(source=source, external_id=row['external_id'])
+            elif location.is_retired:
+                location.unretire()
+                counts['unretired'] += 1
 
             location.type = config['type']
             location.name = row['name'][:200]
@@ -811,11 +821,70 @@ def import_source(source, path=None, geocode=True):
 
             counts['imported' if created else 'updated'] += 1
 
-        stale = Location.objects.filter(source=source).exclude(external_id__in=seen)
-        counts['removed'] = stale.count()
-        stale.delete()
+        # Gone from the file: retired, never deleted, so the code stays taken.
+        # One UPDATE; a row retired earlier keeps the date it closed.
+        counts['retired'] = (Location.all_objects
+            .filter(source=source, retired_at__isnull=True)
+            .exclude(external_id__in=seen)
+            .update(retired_at=today, replaced_by=None))
 
     return counts
+
+
+def _assign_codes(rows, existing):
+    """
+    Give each parsed row the code it keeps from an earlier import, so a code
+    never moves: a child-care site whose lowest license closed keeps the code
+    it had, and a site that split hands the code to one half only. Returns
+    (rows, unplaced): the rows with `external_id` set, and how many were left
+    out for want of a code no other row had taken.
+
+    A row's numbers are its `facility_numbers` (child care) or its code
+    (schools). It matches an existing row whose code is one of its numbers,
+    or whose stored licenses share one; of several, the one whose code is
+    among its own numbers wins, else the lowest code. A row matched to
+    nothing (or only to rows another row already took) is new and keeps its
+    own lowest number not yet taken.
+
+    Rows holding an existing code's own license go first, then by their
+    lowest number. Without that, a site that merely shares a license with an
+    old row could take its code from the site still holding that license,
+    and leave that site with no code at all.
+    """
+    by_code = existing
+    by_license = {number: location for location in existing.values() for number in location.facility_numbers}
+
+    def numbers(row):
+        return sorted((row.get('metadata') or {}).get('facility_numbers') or [row['external_id']])
+
+    def holds_a_code(row):
+        return any(number in by_code for number in numbers(row))
+
+    claimed = set()
+    assigned = []
+    unplaced = 0
+    for row in sorted(rows, key=lambda row: (not holds_a_code(row), numbers(row)[0])):
+        own = numbers(row)
+        candidates = {by_code[row['external_id']]} if row['external_id'] in by_code else set()
+        for number in own:
+            for match in (by_code.get(number), by_license.get(number)):
+                if match is not None:
+                    candidates.add(match)
+        candidates = [location for location in candidates if location.external_id not in claimed]
+
+        if candidates:
+            code = min(candidates, key=lambda location: (location.external_id not in own, location.external_id)).external_id
+        elif row['external_id'] not in claimed:
+            code = row['external_id']
+        else:
+            code = next((number for number in own if number not in claimed), None)
+            if code is None:
+                unplaced += 1
+                continue
+
+        claimed.add(code)
+        assigned.append({**row, 'external_id': code})
+    return assigned, unplaced
 
 
 def _cross_check_district(location, district_cds):

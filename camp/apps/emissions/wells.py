@@ -182,7 +182,7 @@ def schools_near_wells(area):
         ]
         rows.sort(key=lambda row: (-row['wells'], row['name']))
         return {'count': len(rows), 'top': rows[:SCHOOL_TOP]}
-    return cache.get_or_set(key('schools-v3', area.key), compute, stats.CACHE_TIMEOUT)
+    return cache.get_or_set(key('schools-v4', area.key), compute, stats.CACHE_TIMEOUT)
 
 
 def kern_callout(year):

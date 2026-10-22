@@ -81,7 +81,7 @@ class Command(BaseCommand):
         with transaction.atomic():
             for gdf in [tracts_2020, tracts_2010]:
                 for _, row in gdf.iterrows():
-                    region, created = Region.objects.import_or_update(
+                    region, created = Region.all_objects.import_or_update(
                         name=row.geoid,
                         slug=row.geoid,
                         type=Region.Type.TRACT,

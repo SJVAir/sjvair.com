@@ -289,7 +289,7 @@ def facility_areas(facility):
         pk = region_index(level).get(facility.pk)
         if pk:
             pks.append(pk)
-    regions = Region.objects.in_bulk(pks)
+    regions = Region.all_objects.in_bulk(pks)
     return [regions[pk] for pk in pks if pk in regions]
 
 

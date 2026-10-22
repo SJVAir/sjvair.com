@@ -69,7 +69,7 @@ class RegionListField(forms.Field):
         ids = [v.strip() for v in (value or []) if v and v.strip()]
         if not ids:
             return []
-        regions = list(Region.objects.filter(sqid__in=ids))
+        regions = list(Region.all_objects.filter(sqid__in=ids))
         unknown = sorted(set(ids) - {region.sqid for region in regions})
         if unknown:
             raise forms.ValidationError(

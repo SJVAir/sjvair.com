@@ -158,7 +158,7 @@ def get_filter_region(sqid, types=None):
     if not sqid:
         return None
     return (
-        Region.objects.filter(sqid=sqid, type__in=types or areas.FILTER_REGION_TYPES, boundary__isnull=False)
+        Region.all_objects.filter(sqid=sqid, type__in=types or areas.FILTER_REGION_TYPES, boundary__isnull=False)
         .current_vintage().select_related('boundary').first()
     )
 
@@ -1582,7 +1582,7 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, MethaneTabMixin, ScopeMixin, 
 def get_page_region(sqid):
     """A region with a page (AREA_PAGE_TYPES, a boundary, the current tract vintage), or None."""
     return (
-        Region.objects.filter(sqid=sqid, type__in=AREA_PAGE_TYPES, boundary__isnull=False)
+        Region.all_objects.filter(sqid=sqid, type__in=AREA_PAGE_TYPES, boundary__isnull=False)
         .current_vintage().select_related('boundary').first()
     )
 

@@ -35,7 +35,7 @@ MILES_PER_DEGREE = 69.0
 # Listed on the card per group; the rest is "and N more".
 SHOWN = 10
 HIDDEN_SECTORS = (Facility.Sector.OIL_GAS, Facility.Sector.REFINING_FUELS)
-CACHE_VERSION = 3  # 3: the Schools tab counts facilities within 1,000 ft only; 2: a child-care center's several licenses are one place (Location.objects.one_per_place)
+CACHE_VERSION = 4  # 4: retired locations left out, and a place stands as its lowest code (not pk); 3: the Schools tab counts facilities within 1,000 ft only; 2: a child-care center's several licenses are one place (Location.objects.one_per_place)
 CACHE_TIMEOUT = 60 * 60 * 24
 
 
@@ -143,7 +143,7 @@ def _pairs(table, extra_where, meters, degrees, params=()):
         SELECT l.id, o.id, ST_Distance(l.point::geography, o.point::geography)
         FROM {Location._meta.db_table} l
         JOIN {table} o ON o.point && ST_Expand(l.point, %s)
-        WHERE o.point IS NOT NULL {extra_where}
+        WHERE l.retired_at IS NULL AND o.point IS NOT NULL {extra_where}
           AND ST_DWithin(l.point::geography, o.point::geography, %s)
     """
     with connection.cursor() as cursor:

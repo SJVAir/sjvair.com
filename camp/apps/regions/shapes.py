@@ -18,6 +18,7 @@ from shapely import wkb
 from django.contrib.gis.geos import GEOSGeometry
 from django.core.cache import cache
 
+from camp.api.v2.regions.serializers import retired_json
 from camp.apps.regions.models import Region
 from camp.utils.gis import EPSG_CALIFORNIA_ALBERS, EPSG_LATLON, round_coords
 
@@ -32,7 +33,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_TOLERANCE = 0.0005
 TOLERANCES = {Region.Type.COUNTY: 0.0002}
 SHAPES_TTL = 60 * 60 * 24
-SHAPES_KEY = 'regions:v1:simplified:{type}:{tolerance}'
+SHAPES_KEY = 'regions:v2:simplified:{type}:{tolerance}'
 
 # The only region types ?simplify=1 is allowed to run against: the levels the
 # Areas map actually shades. Every other type (mtrs sections most notably,
@@ -57,7 +58,10 @@ def _as_multipolygon(geojson):
 
 
 def region_feature(region, geometry):
-    properties = {'id': region.sqid, 'name': region.name, 'slug': region.slug, 'type': region.type}
+    properties = {
+        'id': region.sqid, 'name': region.name, 'slug': region.slug, 'type': region.type,
+        'external_id': region.external_id, 'retired': retired_json(region),
+    }
     return {'type': 'Feature', 'id': region.sqid, 'geometry': geometry, 'properties': properties}
 
 

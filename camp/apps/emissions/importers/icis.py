@@ -224,7 +224,7 @@ def apply(data):
     are (ICIS never drops a source; a closed one stays with its history).
     """
     report = Report(facilities=len(data['facilities']))
-    districts = {region.external_id: region for region in Region.objects.filter(type=Region.Type.AIR_DISTRICT)}
+    districts = {region.external_id: region for region in Region.all_objects.filter(type=Region.Type.AIR_DISTRICT)}
     kinds = {'inspections': ComplianceEvent.Kind.INSPECTION, 'novs': ComplianceEvent.Kind.NOV,
              'formals': ComplianceEvent.Kind.FORMAL, 'hpvs': ComplianceEvent.Kind.HPV}
     with transaction.atomic():

@@ -75,7 +75,7 @@ def clip_shape(params):
     miles, error = parse_buffer(params)
     if error:
         return None, error
-    region = Region.objects.filter(sqid=sqid, boundary__isnull=False).select_related('boundary').first()
+    region = Region.all_objects.filter(sqid=sqid, boundary__isnull=False).select_related('boundary').first()
     if region is None:
         return None, 'region not found'
     return region_shape(region, miles), None
@@ -399,7 +399,7 @@ class SectionDetailBase(generics.Endpoint):
     # is the one actually dispatched to.
     def get(self, request, section_id):
         section = get_object_or_404(
-            Region.objects.filter(type=Region.Type.MTRS).select_related('boundary'), sqid=section_id,
+            Region.all_objects.filter(type=Region.Type.MTRS).select_related('boundary'), sqid=section_id,
         )
         year, all_years = parse_year(request.GET)
         rows = PesticideUseRollup.objects.filter(mtrs=section)

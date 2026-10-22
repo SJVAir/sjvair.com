@@ -512,7 +512,7 @@ def dairy_areas(dairy):
         pk = region_index(level).get(dairy.pk)
         if pk:
             pks.append(pk)
-    regions = Region.objects.in_bulk(pks)
+    regions = Region.all_objects.in_bulk(pks)
     return [regions[pk] for pk in pks if pk in regions]
 
 

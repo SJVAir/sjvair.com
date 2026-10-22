@@ -586,7 +586,7 @@ def by_county(rows, year, lbs_field='lbs_chemical', all_years=False, apps_field=
     )
     # sqid isn't a DB column, so it can't come off the aggregate above --
     # one in_bulk() for the (at most eight) counties involved.
-    regions = Region.objects.in_bulk([row['county_id'] for row in counties])
+    regions = Region.all_objects.in_bulk([row['county_id'] for row in counties])
     return [
         {
             'county_id': row['county_id'],
@@ -1504,7 +1504,7 @@ def schools_near_use(year, all_years=False, county=None, concern=False):
     if concern:
         rows = narrow_rows(rows, concern)
     sections = list(in_year(rows, year, all_years).values_list('mtrs', flat=True).distinct())
-    boundaries = list(Region.objects.filter(pk__in=sections).values_list('boundary_id', flat=True))
+    boundaries = list(Region.all_objects.filter(pk__in=sections).values_list('boundary_id', flat=True))
     near = Boundary.objects.filter(
         pk__in=boundaries,
         geometry__dwithin=(OuterRef('point'), SCHOOLS_NEAR_PREFILTER_DEGREES),

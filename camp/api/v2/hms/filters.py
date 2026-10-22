@@ -10,7 +10,7 @@ class SmokeFilter(FilterSet):
 
     def filter_region_id(self, queryset, name, value):
         try:
-            region = Region.objects.select_related('boundary').get(sqid=value)
+            region = Region.all_objects.select_related('boundary').get(sqid=value)
         except Region.DoesNotExist:
             return queryset.none()
         try:
@@ -35,7 +35,7 @@ class FireFilter(FilterSet):
 
     def filter_region_id(self, queryset, name, value):
         try:
-            region = Region.objects.select_related('boundary').get(sqid=value)
+            region = Region.all_objects.select_related('boundary').get(sqid=value)
         except Region.DoesNotExist:
             return queryset.none()
         try:
