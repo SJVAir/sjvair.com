@@ -1,10 +1,24 @@
 import json
 
+from django.test import RequestFactory
 from django.test.utils import override_settings
 
 
 def debug(fn):
     return override_settings(DEBUG=True)(fn)
+
+
+class CsrfExemptRequestFactory(RequestFactory):
+    '''
+        A RequestFactory whose requests skip Django's CSRF check, as
+        requests from Django's test Client do. resticus checks CSRF on
+        session-authenticated writes, and these tests set request.user
+        directly, which looks like a signed-in browser.
+    '''
+    def request(self, **request):
+        request = super().request(**request)
+        request._dont_enforce_csrf_checks = True
+        return request
 
 
 def get_response_data(response):

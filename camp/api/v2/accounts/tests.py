@@ -3,14 +3,14 @@ from unittest.mock import patch
 
 from django.core import mail
 from django.core.cache import cache
-from django.test import Client, TestCase, RequestFactory
+from django.test import Client, TestCase
 from django.urls import reverse
 
 import pytest
 
 from camp.apps.accounts.backends import AuthenticationBackend
 from camp.apps.accounts.models import User
-from camp.utils.test import debug, get_response_data
+from camp.utils.test import CsrfExemptRequestFactory, debug, get_response_data
 
 from . import endpoints, forms
 
@@ -31,7 +31,7 @@ class AuthenticationTests(TestCase):
 
     def setUp(self):
         self.user = User.objects.get(email="user@sjvair.com")
-        self.factory = RequestFactory()
+        self.factory = CsrfExemptRequestFactory()
 
     def tearDown(self):
         cache.clear()
@@ -555,7 +555,7 @@ class AlertListTests(TestCase):
         from camp.apps.monitors.purpleair.models import PurpleAir
         from django.utils import timezone
 
-        self.factory = RequestFactory()
+        self.factory = CsrfExemptRequestFactory()
         self.user = User.objects.get(email='user@sjvair.com')
         self.monitor = PurpleAir.objects.get(sensor_id=8892)
 
