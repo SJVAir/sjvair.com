@@ -463,9 +463,11 @@ class DairyAreaPage(DairyScopeMixin, vanilla.TemplateView):
             tab_label='Dairies',
             tabs=views.area_tabs(self, area, 'dairies'),
             overview_url=self.area_tab_url('overview', self.tab_query('overview')),
-            # The page is the area: no county picker.
+            # The page is the area: no county picker, and no Search by location.
             county_options=[],
-            **views.find_field_context('dairies', scope.query(county=None), self.subview),
+            # Its filter form keeps where the page is (a point, or a region's buffer).
+            point_params=self.point_params(),
+            clear_filters_url=views.with_query(self.request.path, {**page_params(scope), **self.point_params()}),
             size_options=SIZE_OPTIONS, digester_options=DIGESTER_OPTIONS,
             **kwargs,
         )
@@ -489,13 +491,13 @@ class RegionDairies(views.RegionLookupMixin, DairyAreaPage):
         return super().get(request, sqid=sqid, slug=slug)
 
     def get_area(self):
-        return areas.RegionArea(self.region)
+        return areas.RegionArea(self.region, self.buffer)
 
     def carb_county(self):
         return self.region if self.region.type == Region.Type.COUNTY else None
 
     def get_map_config(self, scope):
-        buffer = areas.buffer_param(self.request.GET)
+        buffer = self.buffer
         return dairy_map_config(
             scope, dairy_map_view(self.request.GET), area_params=views.area_map_params(areas.RegionArea(self.region), buffer),
             buffer_options=shapes.buffer_options(self.request, buffer),
@@ -505,7 +507,7 @@ class RegionDairies(views.RegionLookupMixin, DairyAreaPage):
         )
 
     def csv_name(self, year):
-        return f'dairies-{self.region.slug}-{year}.csv'
+        return f'dairies-{self.region.slug}{f"-plus-{self.buffer}mi" if self.buffer else ""}-{year}.csv'
 
     def get_context_data(self, **kwargs):
         region = self.region
@@ -523,6 +525,7 @@ class RegionDairies(views.RegionLookupMixin, DairyAreaPage):
             county_dairies_url=county.get_emissions_dairies_url() if county is not None and county != region else None,
             within=views.region_within_dairies(region),
             ab617=views.ab617_notice(region),
+            buffer_note=self.buffer_note(),
             **kwargs,
         )
 

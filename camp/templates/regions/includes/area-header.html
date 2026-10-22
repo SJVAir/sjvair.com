@@ -10,7 +10,9 @@ Context: `name`; `kind` (the gray line under it); `header_links`, a list of
 stays in this one (the same town on its other layer), at the title line's
 right; `tab_links` [{label, url, icon, icon_class}], the same place in
 another explorer, a small button beside those; `radius_options` [{miles,
-url, current}]; `tabs` [{key, label, icon, icon_class, url, current}], the
+url, current}]; `buffer_note` {miles, url} (regions.shapes.buffer_note) on
+a region page widened past its boundary, whose lists and figures include
+the band too; `tabs` [{key, label, icon, icon_class, url, current}], the
 row showing with more than one; and `subviews` [{label, icon, url,
 current}], a data tab's Summary | Table toggle at the row's right end
 (regions/includes/subview-toggle.html), so there's one row of tabs.
@@ -31,6 +33,9 @@ current}], a data tab's Summary | Table toggle at the row's right end
     {% for t in tab_links %}<a class="button is-small is-rounded area-cross-link" href="{{ t.url }}"><span class="icon is-small"><span class="fa-duotone fa-fw {{ t.icon }} explorer-icon {{ t.icon_class }}" aria-hidden="true"></span></span><span>{{ t.label }}</span></a>{% endfor %}
     </div>
     </div>
+    {% if buffer_note %}
+    <p class="area-buffer-note"><span class="tag is-warning is-light">Including {{ buffer_note.miles }} mile{{ buffer_note.miles|pluralize }} past the boundary</span> <a class="is-size-7" href="{{ buffer_note.url }}">Exact boundary</a></p>
+    {% endif %}
     {% if radius_options %}
     <nav class="radius-switcher" aria-label="Search radius, in miles">
         <div class="buttons has-addons are-small">

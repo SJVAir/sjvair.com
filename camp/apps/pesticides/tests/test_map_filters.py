@@ -114,7 +114,11 @@ class ValleyMapLayersTests(RollupTestMixin, TestCase):
 
 
 class FilterBoxOrderTests(RollupTestMixin, TestCase):
-    """Every map tab's filter box: the search (where there is one), Search by location, then the filters."""
+    """
+    A Valley-wide map tab's filter box: the search (where there is one),
+    Search by location, then the filters. A place's own tab has no Search by
+    location: the page is the place.
+    """
     fixtures = ['pesticides-explorer']
 
     def html(self, url, **params):
@@ -124,19 +128,23 @@ class FilterBoxOrderTests(RollupTestMixin, TestCase):
         fresno = Region.objects.get(pk=9001)
         for url, form_id, tab in (
             (reverse('pesticides:records'), 'records-filter-form', 'records'),
-            (fresno.get_pesticides_tab_url('records'), 'records-filter-form', 'records'),
             (reverse('pesticides:notice-list'), 'notice-filter-form', 'notices'),
-            (fresno.get_pesticides_tab_url('notices'), 'notice-filter-form', 'notices'),
         ):
             html = self.html(url, year=2023)
             assert html.index('find-area-query') < html.index(f'id="{form_id}"'), url
             assert f'data-near-url="{reverse(f"pesticides:near-me-{tab}")}"' in html, url
             assert f'"url": "{fresno.get_pesticides_tab_url(tab)}"' in html, url
 
-    def test_schools_search_then_location_then_filters(self):
+    def test_a_place_tab_has_no_location_search(self):
+        fresno = Region.objects.get(pk=9001)
+        for tab, form_id in (('records', 'records-filter-form'), ('notices', 'notice-filter-form'), ('schools', 'schools-filter-form')):
+            html = self.html(fresno.get_pesticides_tab_url(tab), year=2023)
+            assert f'id="{form_id}"' in html and 'find-area-query' not in html, tab
+
+    def test_schools_search_then_filters(self):
         fresno = Region.objects.get(pk=9001)
         html = self.html(fresno.get_pesticides_tab_url('schools'))
-        assert html.index('id="id_schools_q"') < html.index('find-area-query') < html.index('id="schools-filter-form"')
+        assert html.index('id="id_schools_q"') < html.index('id="schools-filter-form"')
         # The search sits outside the form but still submits with it.
         assert 'form="schools-filter-form"' in html and 'hx-include="#schools-filter-form"' in html
 

@@ -12,6 +12,7 @@ from django.core.paginator import Paginator
 from django.http import Http404, HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.utils.functional import cached_property
 from django.views.generic import RedirectView
 from django.utils.safestring import mark_safe
 
@@ -350,12 +351,6 @@ class About(ScopeMixin, vanilla.TemplateView):
 
 # FacilityList (the top-level Facilities tab) is defined near OilGasPage,
 # below, which it mirrors.
-
-
-def area_geometry(area):
-    """An area's shape: a region's boundary or a radius's circle."""
-    region = getattr(area, 'region', None)
-    return region.boundary.geometry if region is not None else area.geometry
 
 
 def wells_csv(wells_qs, filename):
@@ -1471,7 +1466,8 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, MethaneTabMixin, ScopeMixin, 
         total = totals['value'] or 0
         county = self.get_county()
         county_scope = stats.Scope(year=base.year, county=county, pollutant=base.pollutant, minor=base.minor)
-        county_total = stats.totals(county_scope)['value'] if county and tab in ('overview', 'facilities') else None
+        # No share of the county past the boundary (?buffer=): the band can reach into another county.
+        county_total = stats.totals(county_scope)['value'] if county and tab in ('overview', 'facilities') and not getattr(area, 'buffer', 0) else None
         if tab == 'facilities':
             # The facility list's filters, and its table (sorts, pages, CSV) or summary, for the area.
             filters = self.area_filters()
@@ -1498,7 +1494,7 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, MethaneTabMixin, ScopeMixin, 
             region = getattr(area, 'region', None)
             # The districts the area overlaps, beside the map; not on a district's own page.
             districts = [] if region is not None and region.type == Region.Type.SCHOOL_DISTRICT else region_schools.area_districts(
-                area.geometry if region is None else region.boundary.geometry,
+                area.geometry,
                 cache_key=f'emissions:area-districts:v1:{area.key}', url_method='get_emissions_url',
             )
             kwargs.update(
@@ -1572,7 +1568,6 @@ class AreaPage(FacilitiesTabMixin, OilGasTabMixin, MethaneTabMixin, ScopeMixin, 
             county_options=[],
             scope_qs=base.query(county=None),
             scope_params=base.params(county=None),
-            **(find_field_context(tab, base.query(county=None), self.subview) if tab in FIND_FIELD_TABS else {}),
             **kwargs,
         )
         context.update(area_header(context))
@@ -1612,9 +1607,24 @@ class RegionLookupMixin:
     def region_url(self, region):
         return region.get_emissions_url()
 
+    @cached_property
+    def buffer(self):
+        """Miles past the boundary the page reaches (?buffer=), its lists and figures as well as its map; 0 is the region exactly."""
+        return areas.buffer_param(self.request.GET)
+
+    def point_params(self):
+        """What the tab's filter form keeps of where the page is: the buffer, if any."""
+        return {'buffer': self.buffer} if self.buffer else {}
+
     def area_tab_url(self, key, query):
         url = self.region.get_emissions_tab_url(key)
+        if self.buffer:
+            query = '&'.join(filter(None, [query, f'buffer={self.buffer}']))
         return f'{url}?{query}' if query else url
+
+    def buffer_note(self):
+        """The header's note on a widened page (shapes.buffer_note), or None."""
+        return shapes.buffer_note(self.request, self.buffer)
 
     def lookup_region(self, request, sqid, slug):
         """Sets self.region; None when the URL is right, else the redirect. Raises Http404."""
@@ -1635,10 +1645,10 @@ class RegionPage(RegionLookupMixin, AreaPage):
         return super().get(request, sqid=sqid, slug=slug)
 
     def get_area(self):
-        return areas.RegionArea(self.region)
+        return areas.RegionArea(self.region, self.buffer)
 
     def csv_slug(self):
-        return self.region.slug
+        return self.region.slug + (f'-plus-{self.buffer}mi' if self.buffer else '')
 
     def get_county(self):
         if self.region.type == Region.Type.COUNTY:
@@ -1646,7 +1656,7 @@ class RegionPage(RegionLookupMixin, AreaPage):
         return Region.objects.get_county_region(self.region)
 
     def get_map_config(self, scope):
-        buffer = areas.buffer_param(self.request.GET)
+        buffer = self.buffer
         area_params = area_map_params(areas.RegionArea(self.region), buffer)
         level = areas.NEXT_LEVEL.get(self.region.type)
         return facility_map_config(
@@ -1671,8 +1681,9 @@ class RegionPage(RegionLookupMixin, AreaPage):
         if tab == 'overview' and region.boundary_id:
             extra['within'] = region_within(region)
         if tab == 'oil-gas':
-            extra['wells_block'] = wells_block(areas.RegionArea(region), self.get_scope(), kern=is_kern(region))
+            extra['wells_block'] = wells_block(self.get_area(), self.get_scope(), kern=is_kern(region))
         extra['ab617'] = ab617_notice(region)
+        extra['buffer_note'] = self.buffer_note()
         county_scope = stats.Scope(
             year=self.get_scope().year, county=region, pollutant=self.get_scope().pollutant, minor=self.get_scope().minor,
         ) if region.type == Region.Type.COUNTY and tab == 'overview' else None
@@ -1769,6 +1780,10 @@ class NearLookupMixin:
         phrase = self.near_phrase()
         return phrase[0].upper() + phrase[1:]
 
+    def point_params(self):
+        """What a tab's filter form keeps of where the page is: the point."""
+        return self.near_params()
+
     def near_params(self):
         """The point as query parameters, for links to the other near-me page."""
         params = {'lat': f'{self.near.lat:.4f}', 'lng': f'{self.near.lng:.4f}', 'radius': self.near.radius}
@@ -1807,9 +1822,6 @@ class NearMe(NearLookupMixin, AreaPage):
 
     def csv_slug(self):
         return f'near-{self.near.lat:.4f}-{self.near.lng:.4f}-{self.near.radius}'
-
-    def point_params(self):
-        return self.near_params()
 
     def get_county(self):
         return self.county

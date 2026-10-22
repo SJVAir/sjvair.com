@@ -236,3 +236,15 @@ def buffer_options(request, current, params=None):
             'current': miles == current,
         })
     return options
+
+
+def buffer_note(request, miles, params=None):
+    """
+    The area header's note on a page widened past its boundary: {miles, url}
+    with `url` the same page at the exact boundary (other filters kept, paging
+    dropped), or None at the exact boundary. `params` as in buffer_options.
+    """
+    if not miles:
+        return None
+    exact = next(option for option in buffer_options(request, miles, params) if option['label'] == BUFFER_LABELS[0])
+    return {'miles': miles, 'url': exact['url']}

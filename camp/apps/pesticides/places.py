@@ -24,8 +24,9 @@ from django.urls import reverse
 from camp.api.v2.pesticides.sections import radius_bbox
 from camp.apps.pesticides import stats
 from camp.apps.pesticides.models import PesticideNotice, PesticideUseRollup, PesticideUseTotal
-from camp.apps.regions import nearby, schools
+from camp.apps.regions import nearby, schools, shapes
 from camp.apps.regions.models import Location, Region
+from camp.utils.gis import EPSG_CALIFORNIA_ALBERS
 
 PLACE_REGION_TYPES = (
     Region.Type.COUNTY, *Region.COMMUNITY_TYPES, Region.Type.ZIPCODE, Region.Type.SCHOOL_DISTRICT,
@@ -84,6 +85,7 @@ class Area:
     point: Point | None = None  # SRID 4326
     radius: int | None = None  # miles
     section_pks: list[int] = field(default_factory=list)
+    buffer: int = 0  # miles a region's shape is widened by; 0 is its exact boundary
 
     @property
     def page_title(self):
@@ -102,8 +104,11 @@ class Area:
 
     @property
     def county(self):
-        """The county FK filter, when this area *is* a county region."""
-        if self.kind == 'region' and self.region.type == Region.Type.COUNTY:
+        """
+        The county FK filter, when this area *is* a county region. A widened
+        county isn't the county, so it has none.
+        """
+        if self.kind == 'region' and self.region.type == Region.Type.COUNTY and not self.buffer:
             return self.region
         return None
 
@@ -121,6 +126,9 @@ class Area:
         if self.kind == 'point':
             return math.pi * (self.radius ** 2) if self.radius else None
         if self.region is not None and self.region.boundary_id:
+            if self.buffer:
+                shape = self.geometry().transform(EPSG_CALIFORNIA_ALBERS, clone=True)
+                return shape.area / METERS_PER_MILE ** 2
             return self.region.boundary.area
         return None
 
@@ -145,7 +153,7 @@ class Area:
     def cache_key(self):
         """Stable identity for this area, for keying its cached all-years aggregates."""
         if self.kind == 'region':
-            return f'region:{self.region.pk}'
+            return f'region:{self.region.pk}:{self.buffer}' if self.buffer else f'region:{self.region.pk}'
         return f'point:{self.point.y:.4f}:{self.point.x:.4f}:{self.radius}'
 
     def notices(self):
@@ -157,7 +165,7 @@ class Area:
         if county is not None:
             return area_filter(PesticideNotice.objects.all(), county=county)
         if self.kind == 'region':
-            return area_filter(PesticideNotice.objects.all(), region=self.region)
+            return area_filter(PesticideNotice.objects.all(), region=self.region, buffer=self.buffer)
         return area_filter(PesticideNotice.objects.all(), point=self.point, radius=self.radius)
 
     def area_params(self):
@@ -165,7 +173,10 @@ class Area:
         if county is not None:
             return {'county': county.slug}
         if self.kind == 'region':
-            return {'region': self.region.sqid}
+            params = {'region': self.region.sqid}
+            if self.buffer:
+                params['buffer'] = self.buffer
+            return params
         return {'lat': self.point.y, 'lng': self.point.x, 'radius': self.radius}
 
     def records_url(self, year, all_years=False, concern=False):
@@ -185,18 +196,24 @@ class Area:
         """
         The ground this place covers, in EPSG:4326: a region's boundary, or a
         radius's circle (drawn in California Albers, so a mile is a mile).
+        A widened region is its boundary plus `buffer` miles.
         """
         if self.kind == 'point':
             circle = self.point.transform(3310, clone=True).buffer(self.radius * METERS_PER_MILE, quadsegs=16)
             circle.transform(4326)
             return circle
+        if self.buffer:
+            return shapes.region_shape(self.region, self.buffer)
         return self.region.boundary.geometry
 
     def locations_area(self):
         """This place as the locations endpoint's area parameters."""
         if self.kind == 'point':
             return {'lat': f'{self.point.y:.5f}', 'lng': f'{self.point.x:.5f}', 'radius': self.radius}
-        return {'region': self.region.sqid}
+        params = {'region': self.region.sqid}
+        if self.buffer:
+            params['buffer'] = self.buffer
+        return params
 
     def locations(self):
         """The schools and child care centers inside this place."""
@@ -206,7 +223,7 @@ class Area:
                 point__bboverlaps=radius_bbox(self.point.y, self.point.x, self.radius),
                 point__distance_lte=(self.point, D(mi=self.radius)),
             )
-        return Location.objects.filter(point__within=self.region.boundary.geometry)
+        return Location.objects.filter(point__within=self.geometry())
 
     def map_kwargs(self):
         if self.kind == 'point':
@@ -257,8 +274,11 @@ def regions_within(region):
     return nearby.regions_within(region, url_method='get_pesticides_url', cache_prefix=WITHIN_KEY)
 
 
-def region_area(region):
+def region_area(region, buffer=0):
+    """The place for a region, its shape widened by `buffer` miles (0, 1, 3 or 5)."""
     cache_key = f'pesticides:area-sections:{region.pk}'
+    if buffer:
+        cache_key = f'{cache_key}:{buffer}'
     section_pks = cache.get(cache_key)
     if section_pks is None:
         if region.boundary_id:
@@ -266,7 +286,7 @@ def region_area(region):
                 Region.objects.filter(
                     type=Region.Type.MTRS,
                     boundary__isnull=False,
-                    boundary__geometry__intersects=region.boundary.geometry,
+                    boundary__geometry__intersects=shapes.region_shape(region, buffer) if buffer else region.boundary.geometry,
                 )
                 .order_by('pk')
                 .values_list('pk', flat=True)
@@ -276,7 +296,7 @@ def region_area(region):
         cache.set(cache_key, section_pks, AREA_SECTIONS_TTL)
 
     label = _REGION_LABEL_PREFIX.get(region.type, '') + region.name
-    return Area(label=label, kind='region', region=region, section_pks=section_pks)
+    return Area(label=label, kind='region', region=region, section_pks=section_pks, buffer=buffer)
 
 
 def schools_nearby(region, year, all_years=False, concern=False):
@@ -362,7 +382,7 @@ def area_schools(area, year, all_years=False, concern=False):
     they stand, then what else sits inside it); anywhere else it's every
     site inside the place, as `others`. Cached a day per place and year.
     """
-    if area.kind == 'region' and area.region.type == Region.Type.SCHOOL_DISTRICT:
+    if area.kind == 'region' and area.region.type == Region.Type.SCHOOL_DISTRICT and not area.buffer:
         return schools_nearby(area.region, year, all_years, concern=concern)
 
     key = ':'.join([
