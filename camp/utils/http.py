@@ -41,6 +41,11 @@ def stream_to_disk(url: str, dest: Path, verify: bool = True) -> Path:
     response = session.get(url, headers=headers, verify=verify, stream=True, timeout=(15, 600))
     response.raise_for_status()
 
+    # A WAF/CDN error page can come back as a 200 (Census's "Request Rejected"
+    # page, cached by Cloudflare under the dataset URL); never save it as the file.
+    if response.headers.get('content-type', '').startswith('text/html'):
+        raise ValueError(f'Expected a file but got an HTML page from {url}')
+
     tmp = dest.with_suffix(dest.suffix + ".part")
     total = int(response.headers.get('content-length', 0))
 
