@@ -9,7 +9,7 @@ from django.utils.translation import gettext_lazy as _
 from django_sqids import SqidsField, shuffle_alphabet
 from model_utils.models import TimeStampedModel
 
-from camp.apps.regions.managers import RegionManager
+from camp.apps.regions.managers import CurrentRegionManager, RegionManager
 from camp.apps.regions.querysets import BoundaryQuerySet, LocationQuerySet
 from camp.utils import gis
 from camp.utils.encoders import JSONEncoder
@@ -101,7 +101,28 @@ class Region(TimeStampedModel):
     metadata = models.JSONField(blank=True, default=dict, encoder=JSONEncoder)
     boundary = models.OneToOneField('Boundary', null=True, blank=True, on_delete=models.SET_NULL, related_name='current_for',)
 
-    objects = RegionManager()
+    # Codes (type + external_id) are a permanent public reference, so a region
+    # is retired rather than deleted. Retired rows stay in the table and are
+    # hidden from `objects`; `all_objects` sees everything.
+    retired_at = models.DateField(null=True, blank=True, db_index=True)
+    replaced_by = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='replaces')
+
+    all_objects = RegionManager()
+    objects = CurrentRegionManager()
+
+    @property
+    def is_retired(self):
+        return self.retired_at is not None
+
+    def retire(self, since, replaced_by=None):
+        self.retired_at = since
+        self.replaced_by = replaced_by
+        self.save(update_fields=['retired_at', 'replaced_by'])
+
+    def unretire(self):
+        self.retired_at = None
+        self.replaced_by = None
+        self.save(update_fields=['retired_at', 'replaced_by'])
 
     @property
     def short_name(self):
@@ -121,6 +142,8 @@ class Region(TimeStampedModel):
         ]
         ordering = ['type', 'name']
         unique_together = ('external_id', 'type')
+        default_manager_name = 'all_objects'
+        base_manager_name = 'all_objects'
 
     def __str__(self):
         return f'{self.name} ({self.get_type_display()})'
