@@ -214,8 +214,13 @@ def get_catalog():
 
 
 def dataset_entry_types(dataset_id):
-    """Entry-type ids of one dataset; empty for an unknown dataset id."""
-    for dataset in get_catalog()['datasets']:
-        if dataset['id'] == dataset_id:
-            return [e['id'] for e in dataset['entry_types']]
+    """
+    Entry-type ids of one dataset; empty for an unknown dataset id.
+    Built without the catalog's DefaultCalibration query (that only sets
+    `available`, never which ids are listed), so it is cheap per request.
+    """
+    if dataset_id in ('air-quality', 'weather'):
+        return [m.entry_type for m in _monitor_entry_models(weather=dataset_id == 'weather')]
+    if dataset_id in STATIC_DATASETS:
+        return [e['id'] for e in STATIC_DATASETS[dataset_id]()['entry_types']]
     return []

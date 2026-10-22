@@ -65,6 +65,11 @@ class DatasetCatalogTests(TestCase):
         assert catalog.dataset_entry_types('pesticide-use') == ['pounds-applied', 'acres-treated']
         assert catalog.dataset_entry_types('nope') == []
 
+    def test_dataset_entry_types_match_catalog_without_queries(self):
+        listed = {d['id']: [e['id'] for e in d['entry_types']] for d in self.get()['datasets']}
+        with self.assertNumQueries(0):
+            assert {i: catalog.dataset_entry_types(i) for i in catalog.DATASET_IDS} == listed
+
     def test_licenses_only_asserted_for_federal_works(self):
         licenses = {d['id']: d['license'] for d in self.get()['datasets']}
         assert {k for k, v in licenses.items() if v} == {'hms-smoke', 'hms-fire', 'tempo'}
