@@ -62,7 +62,7 @@ def get_entry_filterset(EntryModel):
 
         # Zone-less values mean Pacific wall time; aware values ("Z" or an
         # offset) are taken as that instant.
-        timestamp__exact = TimezoneDateTimeFilter(field_name='timestamp', lookup_expr='exact')
+        timestamp = TimezoneDateTimeFilter(field_name='timestamp', lookup_expr='exact')
         timestamp__lt = TimezoneDateTimeFilter(field_name='timestamp', lookup_expr='lt')
         timestamp__lte = TimezoneDateTimeFilter(field_name='timestamp', lookup_expr='lte')
         timestamp__gt = TimezoneDateTimeFilter(field_name='timestamp', lookup_expr='gt')

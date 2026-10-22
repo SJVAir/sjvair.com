@@ -941,6 +941,26 @@ class ZoneAwareTimestampTests(TestCase):
     def test_lte_accepts_offset(self):
         assert self.entry_values(timestamp__lte=self.BOUNDARY_PARAMS['offset']) == [Decimal('12.0')]
 
+    def test_exact_lt_gt_accept_aware_and_zoneless(self):
+        # Entries sit 1 minute either side of the boundary, so an exact
+        # match on the boundary finds nothing and lt/gt split them.
+        for key in ('utc', 'offset', 'zoneless'):
+            value = self.BOUNDARY_PARAMS[key]
+            assert self.entry_values(timestamp__lt=value) == [Decimal('12.0')], key
+            assert self.entry_values(timestamp__gt=value) == [Decimal('999.0')], key
+            assert self.entry_values(timestamp=value) == [], key
+
+    def test_exact_matches_entry_instant(self):
+        for value in ('2026-10-22T07:01:00Z', '2026-10-22T00:01:00-07:00', '2026-10-22 00:01:00'):
+            assert self.entry_values(timestamp=value) == [Decimal('999.0')], value
+
+    def test_lt_gt_zoneless_pacific_whatever_the_active_zone(self):
+        with timezone.override(None):
+            value = self.BOUNDARY_PARAMS['zoneless']
+            assert self.entry_values(timestamp__lt=value) == [Decimal('12.0')]
+            assert self.entry_values(timestamp__gt=value) == [Decimal('999.0')]
+            assert self.entry_values(timestamp='2026-10-22 00:01:00') == [Decimal('999.0')]
+
     def test_zoneless_filter_is_pacific_whatever_the_active_zone(self):
         for active in (timezone.get_current_timezone(), None):
             with timezone.override(active):
