@@ -852,6 +852,14 @@ class PublishedEntryTypeTests(TestCase):
         assert entries['pm25']['published'] is False
 
 
+class MonitorMetaAvailablePollutantsTests(TestCase):
+    fixtures = ['default-calibrations.yaml']
+
+    def test_monitor_meta_lists_available_pollutants(self):
+        data = get_response_data(monitor_meta(RequestFactory().get('/')))
+        assert data['data']['available_pollutants'] == ['o3', 'pm25']
+
+
 class PublishedFixtureTests(TestCase):
     fixtures = ['default-calibrations.yaml']
 

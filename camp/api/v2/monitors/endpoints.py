@@ -105,11 +105,8 @@ class MonitorMetaEndpoint(Endpoint):
             return display
         return 'pm25'
 
-    def get_monitors(self):
+    def get_monitors(self, published):
         payload = {}
-
-        from camp.apps.calibrations.models import DefaultCalibration
-        published = set(DefaultCalibration.objects.values_list('monitor_type', 'entry_type'))
 
         monitor_subclasses = sorted(Monitor.get_enabled_subclasses(), key=lambda c: c.monitor_type)
         for monitor_model in monitor_subclasses:
@@ -150,9 +147,12 @@ class MonitorMetaEndpoint(Endpoint):
         return payload
 
     def get(self, request, *args, **kwargs):
+        from camp.apps.calibrations.models import DefaultCalibration
+        published = DefaultCalibration.objects.published_pairs()
         return {'data': {
             'default_pollutant': self.get_default_pollutant(),
-            'monitors': self.get_monitors(),
+            'available_pollutants': DefaultCalibration.objects.available_pollutants(published),
+            'monitors': self.get_monitors(published),
             'entries': self.get_entries()
         }}
 

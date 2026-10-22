@@ -21,6 +21,22 @@ class DefaultCalibrationManager(models.Manager):
     def get_by_natural_key(self, monitor_type, entry_type):
         return self.get(monitor_type=monitor_type, entry_type=entry_type)
 
+    def published_pairs(self):
+        """All (monitor_type, entry_type) pairs shown on the map."""
+        return set(self.values_list('monitor_type', 'entry_type'))
+
+    def available_pollutants(self, published=None):
+        """
+        Sorted entry-type keys published by at least one enabled monitor type.
+        Pass an already-fetched `published_pairs()` set to skip the query.
+        """
+        from camp.apps.monitors.models import Monitor
+
+        if published is None:
+            published = self.published_pairs()
+        enabled = {m.monitor_type for m in Monitor.get_enabled_subclasses()}
+        return sorted({entry for monitor, entry in published if monitor in enabled})
+
 
 class DefaultCalibration(models.Model):
     """
