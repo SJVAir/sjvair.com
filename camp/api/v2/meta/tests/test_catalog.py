@@ -64,3 +64,13 @@ class DatasetCatalogTests(TestCase):
     def test_dataset_entry_types(self):
         assert catalog.dataset_entry_types('pesticide-use') == ['pounds-applied', 'acres-treated']
         assert catalog.dataset_entry_types('nope') == []
+
+    def test_licenses_only_asserted_for_federal_works(self):
+        licenses = {d['id']: d['license'] for d in self.get()['datasets']}
+        assert {k for k, v in licenses.items() if v} == {'hms-smoke', 'hms-fire', 'tempo'}
+
+    def test_emissions_entry_types_match_api(self):
+        ids = catalog.dataset_entry_types('emissions')
+        assert 'facility-nox' in ids and 'methane-emission-rate' in ids
+        assert self.entry('emissions', 'facility-nox')['units'] == 'tons/yr'
+        assert self.entry('emissions', 'methane-emission-rate')['units'] == 'kg/h'

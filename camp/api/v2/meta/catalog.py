@@ -60,6 +60,13 @@ def _dataset(id, label, description, source, license, geographies, entry_types, 
     }
 
 
+# Criteria pollutants and ammonia from camp.apps.emissions.pollutants (tons/yr).
+# Individual toxics (lbs/yr, rows in the database) are not listed.
+FACILITY_POLLUTANTS = [
+    ('nox', 'NOx'), ('rog', 'ROG'), ('pm', 'Total PM'), ('pm10', 'PM10'),
+    ('sox', 'SOx'), ('co', 'CO'), ('tog', 'TOG'), ('nh3', 'NH3'),
+]
+
 STATIC_DATASETS = {
     'hms-smoke': lambda: _dataset(
         'hms-smoke', 'Wildfire Smoke',
@@ -76,7 +83,7 @@ STATIC_DATASETS = {
     'pesticide-use': lambda: _dataset(
         'pesticide-use', 'Pesticide Use',
         'Reported agricultural pesticide applications, summed by region.',
-        'California DPR Pesticide Use Reporting (PUR)', 'Public records', ['region'],
+        'California DPR Pesticide Use Reporting (PUR)', '', ['region'],
         [
             _other('pounds-applied', 'Pounds Applied', 'lbs', ['month', 'year']),
             _other('acres-treated', 'Acres Treated', 'acres', ['month', 'year']),
@@ -85,32 +92,36 @@ STATIC_DATASETS = {
     'pesticide-notices': lambda: _dataset(
         'pesticide-notices', 'Pesticide Spray Notices',
         'Advance notices of planned restricted-use pesticide applications.',
-        'SprayDays (California DPR)', 'Public records', ['point'],
+        'SprayDays (California DPR)', '', ['point'],
         [_other('spray-notice', 'Spray Notices', '', ['day'])],
     ),
     'forecasts': lambda: _dataset(
         'forecasts', 'Air Quality Forecasts',
         'Daily air quality index forecasts for each forecast zone.',
-        'San Joaquin Valley Air Pollution Control District', 'Public records', ['zone'],
+        'San Joaquin Valley Air Pollution Control District', '', ['zone'],
         [_other('aqi-forecast', 'AQI Forecast', 'AQI', ['day'])],
     ),
     'calheatscore': lambda: _dataset(
         'calheatscore', 'CalHeatScore',
         'Daily heat health risk score by ZIP code.',
-        'OEHHA CalHeatScore', 'Public records', ['zip'],
+        'OEHHA CalHeatScore', '', ['zip'],
         [_other('heat-score', 'Heat Score', '', ['day'])],
     ),
     'calenviroscreen': lambda: _dataset(
         'calenviroscreen', 'CalEnviroScreen',
         'Cumulative pollution burden and vulnerability percentile by census tract.',
-        'OEHHA CalEnviroScreen', 'Public records', ['tract'],
+        'OEHHA CalEnviroScreen', '', ['tract'],
         [_other('ces-score', 'CalEnviroScreen Score', 'percentile', [])],
     ),
     'emissions': lambda: _dataset(
-        'emissions', 'Facility Emissions',
-        'Annual reported emissions from permitted facilities.',
-        'CARB and U.S. EPA', 'Public records', ['point'],
-        [_other('facility-emissions', 'Facility Emissions', 'tons/yr', ['year'])],
+        'emissions', 'Emissions',
+        'Annual facility emissions of criteria pollutants and ammonia, and satellite-detected methane source rates.',
+        'CARB CEIDARS facility inventory, Carbon Mapper', '', ['point', 'region'],
+        [
+            *(_other(f'facility-{key}', f'{label} (facilities)', 'tons/yr', ['year'])
+              for key, label in FACILITY_POLLUTANTS),
+            _other('methane-emission-rate', 'Methane Emission Rate', 'kg/h', ['raw']),
+        ],
     ),
     'tempo': lambda: _dataset(
         'tempo', 'NASA TEMPO Satellite',
@@ -177,7 +188,7 @@ def _air_quality():
     return _dataset(
         'air-quality', 'Air Quality',
         'Air quality measurements from SJVAir sensors and partner monitoring networks.',
-        'SJVAir sensors, AirNow, AQview, AQLite', 'CC BY 4.0', ['monitor', 'region'],
+        'SJVAir sensors, AirNow, AQview, AQLite', '', ['monitor', 'region'],
         _monitor_entry_types(weather=False),
         meta_url=reverse('api:v2:monitors:monitor-meta'),
     )
@@ -187,7 +198,7 @@ def _weather():
     return _dataset(
         'weather', 'Weather',
         'Hourly weather observations from agricultural weather stations.',
-        'California Irrigation Management Information System (CIMIS)', 'Public records',
+        'California Irrigation Management Information System (CIMIS)', '',
         ['monitor'],
         _monitor_entry_types(weather=True),
         meta_url=reverse('api:v2:monitors:monitor-meta'),
