@@ -99,13 +99,22 @@ def fetch_forecasts():
         for item in root.iter('item'):
             zone_name = (item.findtext('county') or '').strip()
             region_type_name = ZONE_TO_REGION.get(zone_name)
+            # Both skips below are logged at ERROR, like malformed items, so a
+            # zone that stops matching shows up as a Sentry issue instead of
+            # silently going without forecasts.
             if region_type_name is None:
-                continue  # unrecognized zone (feed added something new)
+                logger.error('Skipping unrecognized forecast zone %r: not in ZONE_TO_REGION', zone_name)
+                continue
 
             region_type, region_name = region_type_name
             region = Region.objects.filter(type=region_type, name=region_name).first()
             if region is None:
-                continue  # region not yet imported
+                logger.error(
+                    'Skipping forecast zone %r: no matching region (%s %r); '
+                    'see the import_forecast_zones command for the custom zones',
+                    zone_name, region_type, region_name,
+                )
+                continue
 
             try:
                 # A nested atomic() creates a savepoint for this zone alone, so a

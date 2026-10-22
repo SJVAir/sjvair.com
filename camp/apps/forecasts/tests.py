@@ -308,6 +308,37 @@ class FetchForecastsTests(TestCase):
         assert Forecast.objects.count() == count
 
     @patch('camp.apps.forecasts.tasks.requests.get')
+    def test_zone_without_region_is_logged(self, mock_get):
+        # A feed zone that maps to a region that hasn't been imported used to be
+        # skipped silently; production went months without three zones' forecasts.
+        Region.objects.filter(type=Region.Type.CUSTOM, name='Sequoia National Park and Forest').delete()
+        mock_get.return_value = mock_response()
+
+        with self.assertLogs('camp.apps.forecasts.tasks', level='ERROR') as logs:
+            fetch_forecasts.call_local()
+
+        assert any('Sequoia National Park and Forest' in line and 'no matching region' in line for line in logs.output)
+        assert Forecast.objects.count() == 16  # the other 8 zones still import
+
+    @patch('camp.apps.forecasts.tasks.requests.get')
+    def test_unrecognized_zone_is_logged(self, mock_get):
+        renamed_xml = SAMPLE_FEED_XML.replace(b'<county>Kings</county>', b'<county>Kings County</county>')
+        assert renamed_xml != SAMPLE_FEED_XML
+        mock_get.return_value = mock_response(renamed_xml)
+
+        with self.assertLogs('camp.apps.forecasts.tasks', level='ERROR') as logs:
+            fetch_forecasts.call_local()
+
+        assert any("'Kings County'" in line and 'unrecognized' in line for line in logs.output)
+        assert Forecast.objects.count() == 16
+
+    @patch('camp.apps.forecasts.tasks.requests.get')
+    def test_fully_mapped_feed_logs_no_errors(self, mock_get):
+        mock_get.return_value = mock_response()
+        with self.assertNoLogs('camp.apps.forecasts.tasks', level='ERROR'):
+            fetch_forecasts.call_local()
+
+    @patch('camp.apps.forecasts.tasks.requests.get')
     def test_malformed_zone_is_skipped_without_aborting_the_run(self, mock_get):
         # Kings' <AQI:today> text no longer matches AQI_TEXT_RE, simulating a
         # plausible "Unavailable" feed state. This should only drop Kings'
