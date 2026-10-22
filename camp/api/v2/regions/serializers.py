@@ -68,3 +68,24 @@ class RegionListSerializer(serializers.Serializer):
         ('retired', retired_json),
         ('boundary', lambda r: BoundaryListSerializer(r.boundary).serialize() if r.boundary else None),
     )
+
+
+def _region_ref(region):
+    return {'type': region.type, 'external_id': region.external_id} if region else None
+
+
+class LocationSerializer(serializers.Serializer):
+    fields = (
+        ('id', lambda l: l.sqid),
+        'source',
+        'external_id',
+        ('aliases', lambda l: [n for n in l.facility_numbers if n != l.external_id]),
+        'type',
+        'name',
+        'address',
+        'city_name',
+        'zip',
+        ('point', lambda l: {'lat': l.point.y, 'lng': l.point.x}),
+        ('regions', lambda l: {field: _region_ref(getattr(l, field)) for field in l.REGION_FIELDS}),
+        ('retired', retired_json),
+    )

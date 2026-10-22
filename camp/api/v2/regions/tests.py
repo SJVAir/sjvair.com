@@ -5,14 +5,15 @@ from django.contrib.gis.geos import GEOSGeometry
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
 
-from camp.api.v2.regions.endpoints import RegionDetail, RegionGeoJSON, RegionList, RegionMetaEndpoint
-from camp.apps.regions.models import Boundary, Region
+from camp.api.v2.regions.endpoints import LocationList, RegionDetail, RegionGeoJSON, RegionList, RegionMetaEndpoint
+from camp.apps.regions.models import Boundary, Location, Region
 from camp.utils.test import get_response_data
 
 region_list = RegionList.as_view()
 region_detail = RegionDetail.as_view()
 region_meta = RegionMetaEndpoint.as_view()
 region_geojson = RegionGeoJSON.as_view()
+location_list = LocationList.as_view()
 
 
 class RegionListTests(TestCase):
@@ -677,3 +678,85 @@ class RegionCodeLookupTests(TestCase):
         response = region_geojson(self.factory.get('/', {'type': 'county', 'simplify': '1'}))
         props = get_response_data(response)['features'][0]['properties']
         assert 'external_id' in props and 'retired' in props
+
+
+class LocationLookupTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        from django.core.cache import cache
+        from django.contrib.gis.geos import Point
+        cache.clear()
+        self.factory = RequestFactory()
+        self.county = Region.objects.filter(type='county').first()
+        self.school = Location.all_objects.create(
+            type=Location.Type.PUBLIC_SCHOOL, source='cde-public', external_id='15634380000001',
+            name='Test Elementary', address='1 Main St', city_name='Bakersfield', zip='93301',
+            point=Point(-119.0, 35.4, srid=4326), county=self.county)
+        self.child_care = Location.all_objects.create(
+            type=Location.Type.CHILD_CARE, source='cdss-ccl', external_id='153400001',
+            name='Little Ones', point=Point(-119.1, 35.5, srid=4326),
+            metadata={'facility_numbers': ['153400001', '153400002']})
+
+    def get(self, params):
+        response = location_list(self.factory.get('/', params))
+        return response, get_response_data(response)
+
+    def test_lookup_by_code(self):
+        response, data = self.get({'source': 'cde-public', 'external_id': self.school.external_id})
+        assert response.status_code == 200
+        (item,) = data['data']
+        assert item['id'] == self.school.sqid
+        assert item['source'] == 'cde-public'
+        assert item['external_id'] == '15634380000001'
+        assert item['aliases'] == []
+        assert item['type'] == 'public_school'
+        assert item['name'] == 'Test Elementary'
+        assert item['city_name'] == 'Bakersfield'
+        assert item['zip'] == '93301'
+        assert item['point'] == {'lat': 35.4, 'lng': -119.0}
+        assert item['regions']['county'] == {'type': 'county', 'external_id': self.county.external_id}
+        assert item['regions']['city'] is None
+        assert item['retired'] is None
+
+    def test_lookup_by_non_key_license_number(self):
+        _, data = self.get({'source': 'cdss-ccl', 'external_id': '153400002'})
+        (item,) = data['data']
+        assert item['external_id'] == '153400001'
+        assert item['aliases'] == ['153400002']
+
+    def test_two_codes_for_one_site_return_it_once(self):
+        _, data = self.get({'source': 'cdss-ccl', 'external_id': '153400001,153400002'})
+        assert len(data['data']) == 1
+
+    def test_retired_is_returned_flagged(self):
+        self.school.retire(date(2026, 10, 1))
+        _, data = self.get({'source': 'cde-public', 'external_id': self.school.external_id})
+        assert data['data'][0]['retired'] == {'since': '2026-10-01', 'replaced_by': None}
+
+    def test_unknown_code_is_absent(self):
+        _, data = self.get({'source': 'cde-public', 'external_id': '000'})
+        assert data['data'] == []
+
+    def test_source_scopes_the_lookup(self):
+        _, data = self.get({'source': 'cde-private', 'external_id': self.school.external_id})
+        assert data['data'] == []
+
+    def test_missing_params_are_400(self):
+        assert self.get({'external_id': '1'})[0].status_code == 400
+        assert self.get({'source': 'cde-public'})[0].status_code == 400
+        assert self.get({})[0].status_code == 400
+
+    def test_unknown_source_is_400(self):
+        assert self.get({'source': 'nope', 'external_id': '1'})[0].status_code == 400
+
+    def test_caps_codes(self):
+        codes = ','.join(str(n) for n in range(101))
+        assert self.get({'source': 'cde-public', 'external_id': codes})[0].status_code == 400
+        codes = ','.join(str(n) for n in range(100))
+        assert self.get({'source': 'cde-public', 'external_id': codes})[0].status_code == 200
+
+    def test_url_is_not_swallowed_by_region_id(self):
+        response = self.client.get(reverse('api:v2:regions:location-list'),
+            {'source': 'cde-public', 'external_id': self.school.external_id})
+        assert response.status_code == 200

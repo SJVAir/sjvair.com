@@ -5,11 +5,14 @@ from django import forms
 from resticus import generics, http
 
 from camp.apps.regions import shapes
-from camp.apps.regions.models import Region
+from django.db.models import Q
+
+from camp.apps.regions.locations import SOURCES
+from camp.apps.regions.models import Location, Region
 from camp.utils.views import CachedEndpointMixin
 
 from .filters import LOOKUP_MAX_CODES, RegionFilter, parse_codes
-from .serializers import RegionListSerializer, RegionSerializer
+from .serializers import LocationSerializer, RegionListSerializer, RegionSerializer
 
 
 class PlaceQueryForm(forms.Form):
@@ -140,6 +143,45 @@ class RegionDetail(RegionMixin, generics.DetailEndpoint):
             boundary['geometry'] = json.loads(shape.geojson)
             boundary['bbox'] = list(shape.extent)
         return response
+
+
+class LocationList(generics.ListEndpoint):
+    """
+    Schools and child-care sites by official code: ?source= and ?external_id=
+    (comma-separated), both required. A child-care site also answers to any of
+    its other license numbers. Retired sites are included, flagged.
+    """
+    # Only ever a by-code lookup, never a full listing; all_objects so that
+    # retired rows still resolve.
+    queryset = Location.all_objects.all()
+    serializer_class = LocationSerializer
+    paginate = False
+
+    def lookup_error(self):
+        source = self.request.GET.get('source', '').strip()
+        codes = parse_codes(self.request.GET.get('external_id', ''))
+        if not source or not codes:
+            return http.Http400({'error': 'The source and external_id parameters are required.'})
+        if source not in SOURCES:
+            return http.Http400({'error': f'Unknown source: {source}.'})
+        if len(codes) > LOOKUP_MAX_CODES:
+            return http.Http400({'error': f'At most {LOOKUP_MAX_CODES} codes can be looked up at once.'})
+        return None
+
+    def get(self, request, *args, **kwargs):
+        return self.lookup_error() or super().get(request, *args, **kwargs)
+
+    def get_queryset(self):
+        codes = parse_codes(self.request.GET.get('external_id', ''))
+        match = Q()
+        for code in codes:
+            match |= Q(external_id=code) | Q(metadata__facility_numbers__contains=[code])
+        return (
+            Location.all_objects
+            .select_related('county', 'city', 'zipcode', 'school_district', 'replaced_by')
+            .filter(source=self.request.GET.get('source', '').strip())
+            .filter(match)
+        )
 
 
 class RegionMetaEndpoint(generics.Endpoint):

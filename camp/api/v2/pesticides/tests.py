@@ -528,7 +528,7 @@ class PesticideRegionSummaryTests(TestCase):
         data = self.client.get(self.url).json()
         assert set(data.keys()) == {'region', 'data', 'count'}
         assert data['count'] == 1
-        assert set(data['region'].keys()) == {'id', 'name', 'slug', 'type'}
+        assert set(data['region'].keys()) == {'id', 'name', 'slug', 'type', 'external_id', 'retired'}
         item = data['data'][0]
         assert set(item.keys()) == {'year', 'chemical', 'commodity', 'total_lbs', 'total_acres', 'application_count'}
 
