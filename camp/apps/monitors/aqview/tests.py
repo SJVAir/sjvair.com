@@ -1,10 +1,17 @@
+import hashlib
+import io
 import os
 import tempfile
 import zipfile
 from datetime import datetime, timezone as dt_timezone
 from decimal import Decimal
 
+from unittest.mock import patch
+
+import pytest
+
 from django.contrib.gis.geos import Point
+from django.core.management import CommandError, call_command
 from django.test import TestCase
 
 from camp.apps.entries import models as entry_models
@@ -224,3 +231,51 @@ class ImportHistoryTests(TestCase):
         history.import_aqview_history([archive])
 
         assert len(self.get_entries('raw')) == 1
+
+
+class ImportHistoryStdinTests(TestCase):
+    """Reading the download from stdin: `heroku run --no-tty -- ... import_aqview_history - < file.zip`."""
+
+    setUp = ImportHistoryTests.setUp
+    write_csv = ImportHistoryTests.write_csv
+    get_entries = ImportHistoryTests.get_entries
+
+    def make_zip(self, *rows):
+        csv_path = self.write_csv(*rows)
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w') as handle:
+            handle.write(csv_path, 'Hourly-Records.csv')
+        return buffer.getvalue()
+
+    def run_with_stdin(self, data, *args):
+        stdout = io.StringIO()
+        with patch('sys.stdin', io.TextIOWrapper(io.BytesIO(data))):
+            call_command('import_aqview_history', '-', *args, stdout=stdout)
+        return stdout.getvalue()
+
+    def test_imports_a_zip_from_stdin(self):
+        data = self.make_zip(csv_row('2026-10-22 07:00:00', '7.20'))
+
+        output = self.run_with_stdin(data, '--sha256', hashlib.sha256(data).hexdigest())
+
+        assert f'Read {len(data)} bytes from stdin, sha256 {hashlib.sha256(data).hexdigest()}' in output
+        assert len(self.get_entries('raw')) == 1
+
+    def test_imports_a_csv_from_stdin(self):
+        data = open(self.write_csv(csv_row('2026-10-22 07:00:00', '7.20')), 'rb').read()
+
+        self.run_with_stdin(data)
+
+        assert len(self.get_entries('raw')) == 1
+
+    def test_checksum_mismatch_imports_nothing(self):
+        data = self.make_zip(csv_row('2026-10-22 07:00:00', '7.20'))
+
+        with pytest.raises(CommandError, match='does not match'):
+            self.run_with_stdin(data, '--sha256', '0' * 64)
+
+        assert not entry_models.PM25.objects.exists()
+
+    def test_empty_stdin(self):
+        with pytest.raises(CommandError, match='Nothing was read'):
+            self.run_with_stdin(b'')

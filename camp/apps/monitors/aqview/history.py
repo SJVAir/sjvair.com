@@ -32,18 +32,27 @@ INVALID_FLAG = 'Invalid'
 BATCH_SIZE = 5000
 
 
-def read_files(path):
-    '''Yield (name, rows) for a download-tool CSV, or for each CSV in a zip, one file at a time.'''
-    if zipfile.is_zipfile(path):
-        with zipfile.ZipFile(path) as archive:
-            for name in sorted(archive.namelist()):
-                if name.lower().endswith('.csv'):
-                    with archive.open(name) as handle:
-                        yield name, csv.DictReader(io.TextIOWrapper(handle, encoding='utf-8-sig'))
+def read_files(source, name=None):
+    '''
+    Yield (name, rows) for a download-tool CSV, or for each CSV in a zip, one file at a time.
+    `source` is a path or a binary file object (e.g. a piped-in download).
+    '''
+    name = name or str(source)
+    if zipfile.is_zipfile(source):
+        with zipfile.ZipFile(source) as archive:
+            for member in sorted(archive.namelist()):
+                if member.lower().endswith('.csv'):
+                    with archive.open(member) as handle:
+                        yield member, csv.DictReader(io.TextIOWrapper(handle, encoding='utf-8-sig'))
         return
 
-    with open(path, encoding='utf-8-sig', newline='') as handle:
-        yield path, csv.DictReader(handle)
+    if hasattr(source, 'read'):
+        source.seek(0)
+        yield name, csv.DictReader(io.TextIOWrapper(source, encoding='utf-8-sig', newline=''))
+        return
+
+    with open(source, encoding='utf-8-sig', newline='') as handle:
+        yield name, csv.DictReader(handle)
 
 
 def parse_timestamp(value):
@@ -141,11 +150,13 @@ def replace_monitor_range(monitor, start, end, hours):
     return {'raw': len(raws), 'cleaned': len(cleaned), 'invalid': invalid, 'removed': removed}
 
 
-def import_aqview_history(paths, log=None):
+def import_aqview_history(sources, log=None):
+    '''`sources` are paths, or (name, binary file object) pairs.'''
     log = log or (lambda msg: None)
     totals = defaultdict(int)
-    for path in paths:
-        for name, rows in read_files(path):
+    for source in sources:
+        label, source = source if isinstance(source, tuple) else (None, source)
+        for name, rows in read_files(source, name=label):
             sites = group_by_site(rows)
             if not sites:
                 log(f'{name}: no AQview PM2.5 rows for the valley')
