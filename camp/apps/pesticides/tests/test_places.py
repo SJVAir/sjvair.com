@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.contrib.gis.geos import Point
 import math
 from unittest import mock
@@ -408,6 +410,22 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         assert entry['section_sqid'] is None and entry['section_mtrs'] is None
         assert entry['display_name'] == 'Away Child Care'
         assert entry['is_run_by'] is False
+
+    def test_schools_nearby_leaves_out_retired_locations(self):
+        # Both groups: run_by lists through Location.objects, others through
+        # the district's reverse relation, which sees every row.
+        closed = self.make_location(
+            'Closed Elementary', type=Location.Type.PUBLIC_SCHOOL, source='cde-public',
+            metadata={'district_code': '1062117'})
+        closed_care = self.make_location('CLOSED CHILD CARE')
+        closed.retire(date(2026, 10, 1))
+        closed_care.retire(date(2026, 10, 1))
+
+        groups = places.schools_nearby(self.district, 2023)
+
+        listed = [row['location'].pk for group in ('run_by', 'others') for row in groups[group]]
+        assert closed.pk not in listed and closed_care.pk not in listed
+        assert self.inside.pk in listed and self.away.pk in listed
 
     def test_page_renders_one_table(self):
         response = self.client.get(self.url)

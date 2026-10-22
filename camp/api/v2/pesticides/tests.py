@@ -1503,6 +1503,11 @@ class LocationEndpointTests(TestCase):
     def test_unknown_county_returns_nothing(self):
         assert self.features(bbox='-120.0,35.0,-119.0,37.0', county='nope') == []
 
+    def test_retired_locations_are_left_out(self):
+        self.daycare.retire(timezone.localdate())
+        names = [f['properties']['name'] for f in self.features(bbox='-119.9,36.6,-119.7,36.8')]
+        assert names == ['Alpha Elementary']
+
     def test_cached(self):
         assert len(self.features(bbox='-119.9,36.6,-119.7,36.8')) == 2
         Location.objects.all().delete()

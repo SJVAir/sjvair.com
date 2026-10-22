@@ -305,7 +305,8 @@ def schools_nearby(region, year, all_years=False, concern=False):
     """
     key = ':'.join([
         # v4: entries link the district that runs them.
-        'pesticides:schools-nearby:v8',
+        # v9: a place stands as its lowest code (not pk); retired locations left out.
+        'pesticides:schools-nearby:v9',
         str(region.pk),
         stats.year_param(year, all_years) or 'none',
         concern or '',
@@ -327,7 +328,10 @@ def schools_nearby(region, year, all_years=False, concern=False):
             .select_related('city')
             .order_by('name', 'pk')
         ) if district_code else []
+        # A reverse relation sees every row (Location's base manager is
+        # all_objects), so leave out the retired ones here.
         others = list(region.district_locations
+            .filter(retired_at__isnull=True)
             .exclude(pk__in=[location.pk for location in run_by])
             .one_per_place()
             .select_related('city', 'school_district')
@@ -366,7 +370,8 @@ def area_schools(area, year, all_years=False, concern=False):
         return schools_nearby(area.region, year, all_years, concern=concern)
 
     key = ':'.join([
-        'pesticides:area-schools:v6',
+        # v7: a place stands as its lowest code (not pk).
+        'pesticides:area-schools:v7',
         area.cache_key(),
         stats.year_param(year, all_years) or 'none',
         concern or '',

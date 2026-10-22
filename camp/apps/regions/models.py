@@ -9,8 +9,8 @@ from django.utils.translation import gettext_lazy as _
 from django_sqids import SqidsField, shuffle_alphabet
 from model_utils.models import TimeStampedModel
 
-from camp.apps.regions.managers import CurrentRegionManager, RegionManager
-from camp.apps.regions.querysets import BoundaryQuerySet, LocationQuerySet
+from camp.apps.regions.managers import CurrentLocationManager, CurrentRegionManager, LocationManager, RegionManager
+from camp.apps.regions.querysets import BoundaryQuerySet
 from camp.utils import gis
 from camp.utils.encoders import JSONEncoder
 
@@ -342,7 +342,13 @@ class Location(TimeStampedModel):
     metadata = models.JSONField(blank=True, default=dict, encoder=JSONEncoder)
     imported_at = models.DateTimeField(_('Imported At'), default=timezone.now)
 
-    objects = LocationQuerySet.as_manager()
+    # Codes (source + external_id) are a permanent public reference, so a
+    # location that closes is retired rather than deleted (see Region).
+    retired_at = models.DateField(null=True, blank=True, db_index=True)
+    replaced_by = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='replaces')
+
+    all_objects = LocationManager()
+    objects = CurrentLocationManager()
 
     # The region links resolve_regions() fills in, in the order it fills them.
     REGION_FIELDS = ('county', 'city', 'zipcode', 'school_district')
@@ -350,6 +356,8 @@ class Location(TimeStampedModel):
     class Meta:
         ordering = ['name']
         unique_together = ('source', 'external_id')
+        default_manager_name = 'all_objects'
+        base_manager_name = 'all_objects'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -373,6 +381,25 @@ class Location(TimeStampedModel):
 
     def __str__(self):
         return self.name
+
+    @property
+    def is_retired(self):
+        return self.retired_at is not None
+
+    def retire(self, since, replaced_by=None):
+        self.retired_at = since
+        self.replaced_by = replaced_by
+        self.save(update_fields=['retired_at', 'replaced_by'])
+
+    def unretire(self):
+        self.retired_at = None
+        self.replaced_by = None
+        self.save(update_fields=['retired_at', 'replaced_by'])
+
+    @property
+    def facility_numbers(self) -> list[str]:
+        """A child-care site's license numbers (its code is one of them, or one that has since closed); [] for schools."""
+        return (self.metadata or {}).get('facility_numbers') or []
 
     def save(self, *args, **kwargs):
         """

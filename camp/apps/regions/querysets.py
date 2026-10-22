@@ -135,7 +135,7 @@ class LocationQuerySet(models.QuerySet):
     SAME_PLACE_DEGREES = 0.00135
 
     def _same_place(self):
-        """The child-care licenses at the outer row's place (its own included): same name, case and spacing aside, within SAME_PLACE_DEGREES."""
+        """The current child-care licenses at the outer row's place (its own included): same name, case and spacing aside, within SAME_PLACE_DEGREES."""
         from camp.apps.regions.models import Location
         return (
             Location.objects.annotate(name_key=Lower(Trim('name')))
@@ -145,9 +145,13 @@ class LocationQuerySet(models.QuerySet):
     def one_per_place(self):
         """
         One row per place: a child-care center's several licenses (_same_place)
-        stand as their first (lowest pk), the rest left out, every row
+        stand as the one with the lowest code, the rest left out, every row
         annotated `licenses` -- how many it stands for (1 for schools and a
         single license). A school and a child-care center on one site stay two.
+
+        The lowest code rather than the lowest pk, so the representative is
+        the same in every environment. Facility numbers are fixed-width
+        digit strings, so string order is numeric order.
         """
         from camp.apps.regions.models import Location
         same = self._same_place()
@@ -155,6 +159,6 @@ class LocationQuerySet(models.QuerySet):
         count = Subquery(same.order_by().values('type').annotate(n=Count('pk')).values('n')[:1], output_field=models.IntegerField())
         return (
             self.annotate(name_key=Lower(Trim('name')))
-            .exclude(child_care & models.Exists(same.filter(pk__lt=OuterRef('pk'))))
+            .exclude(child_care & models.Exists(same.filter(external_id__lt=OuterRef('external_id'))))
             .annotate(licenses=models.Case(models.When(child_care, then=count), default=models.Value(1), output_field=models.IntegerField()))
         )

@@ -8,7 +8,7 @@ from django.db.models.expressions import ExpressionWrapper
 from django.db.models.fields import FloatField
 
 from camp.apps.regions.counties import SJV_COUNTIES
-from camp.apps.regions.querysets import RegionQuerySet
+from camp.apps.regions.querysets import LocationQuerySet, RegionQuerySet
 from camp.utils.gis import to_multipolygon
 
 
@@ -155,6 +155,17 @@ class RegionManager(models.Manager.from_queryset(RegionQuerySet)):
 
 class CurrentRegionManager(RegionManager):
     """`Region.objects`: RegionManager minus retired regions."""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(retired_at__isnull=True)
+
+
+class LocationManager(models.Manager.from_queryset(LocationQuerySet)):
+    """`Location.all_objects`: every location, retired ones included."""
+
+
+class CurrentLocationManager(LocationManager):
+    """`Location.objects`: LocationManager minus retired locations."""
 
     def get_queryset(self):
         return super().get_queryset().filter(retired_at__isnull=True)
