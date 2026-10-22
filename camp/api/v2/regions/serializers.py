@@ -3,6 +3,24 @@ import json
 from resticus import serializers
 
 
+def retired_json(obj):
+    """
+    The public "this record was retired" marker, or None for a current one.
+    `replaced_by` names the replacement by its permanent code: {type,
+    external_id} for a Region, {source, external_id} for a Location.
+    """
+    if obj.retired_at is None:
+        return None
+    replacement = obj.replaced_by
+    if replacement is None:
+        replaced_by = None
+    elif hasattr(replacement, 'source'):
+        replaced_by = {'source': replacement.source, 'external_id': replacement.external_id}
+    else:
+        replaced_by = {'type': replacement.type, 'external_id': replacement.external_id}
+    return {'since': obj.retired_at.isoformat(), 'replaced_by': replaced_by}
+
+
 class BoundarySerializer(serializers.Serializer):
     fields = (
         ('id', lambda b: b.sqid),
@@ -34,6 +52,8 @@ class RegionSerializer(serializers.Serializer):
         'name',
         'slug',
         'type',
+        'external_id',
+        ('retired', retired_json),
         ('boundary', lambda r: BoundarySerializer(r.boundary).serialize() if r.boundary else None),
     )
 
@@ -44,5 +64,7 @@ class RegionListSerializer(serializers.Serializer):
         'name',
         'slug',
         'type',
+        'external_id',
+        ('retired', retired_json),
         ('boundary', lambda r: BoundaryListSerializer(r.boundary).serialize() if r.boundary else None),
     )

@@ -31,7 +31,7 @@ class RegionListTests(TestCase):
         response = region_list(request)
         data = get_response_data(response)
         assert len(data['data']) > 0
-        assert set(data['data'][0].keys()) == {'id', 'name', 'slug', 'type', 'boundary'}
+        assert set(data['data'][0].keys()) == {'id', 'name', 'slug', 'type', 'boundary', 'external_id', 'retired'}
 
     def test_list_boundary_omits_geometry(self):
         request = self.factory.get(reverse('api:v2:regions:region-list'))
@@ -151,7 +151,7 @@ class RegionDetailTests(TestCase):
         request = self.factory.get('/')
         response = region_detail(request, region_id=self.region.sqid)
         data = get_response_data(response)
-        assert set(data['data'].keys()) == {'id', 'name', 'slug', 'type', 'boundary'}
+        assert set(data['data'].keys()) == {'id', 'name', 'slug', 'type', 'boundary', 'external_id', 'retired'}
 
 
 
@@ -228,6 +228,10 @@ class TestPlaceSearch(TestCase):
         names = [r['name'] for r in response.json()['data']]
         assert 'Fresno' in names
 
+    def test_results_carry_code_and_retired(self):
+        result = self.client.get(self.url, {'q': 'Fresno'}).json()['data'][0]
+        assert 'external_id' in result and result['retired'] is None
+
     def test_case_insensitive(self):
         response = self.client.get(self.url, {'q': 'fresno'})
         names = [r['name'] for r in response.json()['data']]
@@ -266,6 +270,8 @@ class TestPlaceLookup(TestCase):
         assert response.status_code == 200
         assert response.json()['data']['name'] == 'Fresno'
         assert response.json()['data']['type'] == Region.Type.CITY
+        assert 'external_id' in response.json()['data']
+        assert response.json()['data']['retired'] is None
 
     def test_case_insensitive(self):
         response = self.client.get(self.url, {'q': 'fresno'})
@@ -354,7 +360,7 @@ class RegionGeoJSONTests(TestCase):
         feature = data['features'][0]
         assert feature['type'] == 'Feature'
         assert feature['id'] == feature['properties']['id']
-        assert set(feature['properties']) == {'id', 'name', 'slug', 'type'}
+        assert set(feature['properties']) == {'id', 'name', 'slug', 'type', 'external_id', 'retired'}
         assert feature['properties']['type'] == 'county'
         assert feature['geometry']['type'] == 'MultiPolygon'
         names = [f['properties']['name'] for f in data['features']]
@@ -594,3 +600,80 @@ class RetiredRegionTests(TestCase):
 
     def test_place_lookup_skips_retired(self):
         assert Region.objects.resolve_place(self.region.name, type=self.region.type) != self.region
+
+
+class RegionCodeLookupTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.factory = RequestFactory()
+
+    def get(self, params):
+        response = region_list(self.factory.get('/', params))
+        return response, get_response_data(response)
+
+    def test_lookup_by_several_codes(self):
+        counties = list(Region.objects.filter(type='county')[:2])
+        codes = ','.join(c.external_id for c in counties)
+        _, data = self.get({'type': 'county', 'external_id': codes})
+        assert {r['external_id'] for r in data['data']} == {c.external_id for c in counties}
+
+    def test_lookup_cleans_the_list(self):
+        c = Region.objects.filter(type='county').first()
+        _, data = self.get({'type': 'county', 'external_id': f' {c.external_id}, ,{c.external_id}'})
+        assert [r['external_id'] for r in data['data']] == [c.external_id]
+
+    def test_lookup_returns_retired_flagged_and_skips_unknown(self):
+        c = Region.objects.filter(type='county').first()
+        c.retire(date(2026, 10, 1))
+        _, data = self.get({'type': 'county', 'external_id': f'{c.external_id},99999'})
+        assert len(data['data']) == 1
+        assert data['data'][0]['retired'] == {'since': '2026-10-01', 'replaced_by': None}
+
+    def test_lookup_names_the_replacement_by_code(self):
+        old, new = list(Region.objects.filter(type='county')[:2])
+        old.retire(date(2026, 10, 1), replaced_by=new)
+        _, data = self.get({'type': 'county', 'external_id': old.external_id})
+        assert data['data'][0]['retired']['replaced_by'] == {'type': 'county', 'external_id': new.external_id}
+
+    def test_current_region_is_not_flagged(self):
+        c = Region.objects.filter(type='county').first()
+        _, data = self.get({'type': 'county', 'external_id': c.external_id})
+        assert data['data'][0]['retired'] is None
+
+    def test_lookup_only_matches_the_given_type(self):
+        c = Region.objects.filter(type='county').first()
+        _, data = self.get({'type': 'zipcode', 'external_id': c.external_id})
+        assert data['data'] == []
+
+    def test_lookup_requires_type(self):
+        response, data = self.get({'external_id': '06019'})
+        assert response.status_code == 400
+        assert data['error'] == 'The type parameter is required with external_id.'
+
+    def test_lookup_refuses_land_use(self):
+        response, data = self.get({'type': 'land_use', 'external_id': '1'})
+        assert response.status_code == 400
+        assert data['error'] == "Land-use regions can't be looked up by code yet."
+
+    def test_lookup_caps_codes(self):
+        codes = ','.join(str(n) for n in range(101))
+        response, _ = self.get({'type': 'county', 'external_id': codes})
+        assert response.status_code == 400
+        codes = ','.join(str(n) for n in range(100))
+        response, _ = self.get({'type': 'county', 'external_id': codes})
+        assert response.status_code == 200
+
+    def test_geojson_properties_include_code(self):
+        c = Region.objects.filter(type='county').exclude(boundary=None).first()
+        response = region_geojson(self.factory.get('/', {'type': 'county'}))
+        props = {f['id']: f['properties'] for f in get_response_data(response)['features']}[c.sqid]
+        assert props['external_id'] == c.external_id
+        assert props['retired'] is None
+
+    def test_simplified_geojson_properties_include_code(self):
+        response = region_geojson(self.factory.get('/', {'type': 'county', 'simplify': '1'}))
+        props = get_response_data(response)['features'][0]['properties']
+        assert 'external_id' in props and 'retired' in props

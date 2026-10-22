@@ -8,7 +8,7 @@ from camp.apps.regions import shapes
 from camp.apps.regions.models import Region
 from camp.utils.views import CachedEndpointMixin
 
-from .filters import RegionFilter
+from .filters import LOOKUP_MAX_CODES, RegionFilter, parse_codes
 from .serializers import RegionListSerializer, RegionSerializer
 
 
@@ -22,7 +22,7 @@ class RegionMixin:
     serializer_class = RegionSerializer
 
     def get_queryset(self):
-        return super().get_queryset().select_related('boundary')
+        return super().get_queryset().select_related('boundary', 'replaced_by')
 
 
 class RegionList(RegionMixin, generics.ListEndpoint):
@@ -33,8 +33,30 @@ class RegionList(RegionMixin, generics.ListEndpoint):
     paginate = False
     serializer_class = RegionListSerializer
 
+    def lookup_error(self):
+        """The 400 for a malformed ?external_id= lookup, or None."""
+        if 'external_id' not in self.request.GET:
+            return None
+        region_type = self.request.GET.get('type', '').strip()
+        if not region_type:
+            return http.Http400({'error': 'The type parameter is required with external_id.'})
+        if region_type == Region.Type.LAND_USE:
+            return http.Http400({'error': "Land-use regions can't be looked up by code yet."})
+        if len(parse_codes(self.request.GET['external_id'])) > LOOKUP_MAX_CODES:
+            return http.Http400({'error': f'At most {LOOKUP_MAX_CODES} codes can be looked up at once.'})
+        return None
+
+    def get(self, request, *args, **kwargs):
+        return self.lookup_error() or super().get(request, *args, **kwargs)
+
     def get_queryset(self):
         qs = super().get_queryset()
+        if 'external_id' in self.request.GET:
+            # A lookup by code: retired regions are answered too (flagged),
+            # since a stored code must keep resolving. Unknown codes just
+            # don't appear.
+            codes = parse_codes(self.request.GET['external_id'])
+            qs = Region.all_objects.select_related('boundary', 'replaced_by').filter(external_id__in=codes)
         within_ids = [value for value in self.request.GET.getlist('within') if value.strip()]
         if within_ids:
             # Parents are named by id, so a retired one still narrows.
@@ -53,7 +75,7 @@ class RegionGeoJSONBase(RegionList):
     """
     The region list's filters, answered as a GeoJSON FeatureCollection for a
     map to draw: one MultiPolygon feature per region with a boundary, keyed
-    and propertied {id, name, slug, type}, coordinates rounded to ~1 m.
+    and propertied {id, name, slug, type, external_id, retired}, coordinates rounded to ~1 m.
 
     The get() lives on this un-cached base so CachedEndpointMixin.get() on
     RegionGeoJSON is the one dispatched to.
@@ -65,6 +87,8 @@ class RegionGeoJSONBase(RegionList):
         region_type = request.GET.get('type', '').strip()
         if not region_type:
             return http.Http400({'error': 'The type parameter is required.'})
+        if error := self.lookup_error():
+            return error
         regions = (
             self.filter_queryset(self.get_queryset())
             .exclude(boundary=None).current_vintage().order_by('name')
@@ -86,7 +110,7 @@ class RegionGeoJSON(CachedEndpointMixin, RegionGeoJSONBase):
     ?simplify=1 returns shapes simplified together (for area maps)."""
     # Boundaries change only when an import runs; ?_cc=1 clears one early.
     cache_timeout = 60 * 60 * 24
-    cache_key_version = 2
+    cache_key_version = 3
 
     def is_cacheable(self, response):
         # simplify=1's per-type shapes are already cached (compressed) by
