@@ -47,6 +47,11 @@ class BoundaryListSerializer(serializers.Serializer):
 
 
 class RegionSerializer(serializers.Serializer):
+    """
+    A region. `external_id` is the official code for permanent region types,
+    but for `land_use` regions it is NOT a permanent code, so the
+    `external_id` lookup refuses them.
+    """
     fields = (
         ('id', lambda r: r.sqid),
         'name',

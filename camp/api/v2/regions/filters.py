@@ -22,7 +22,10 @@ class RegionFilter(FilterSet):
     within = django_filters.CharFilter(method='noop', help_text='Parent region id; repeatable.')
 
     external_id = django_filters.CharFilter(
-        method='noop', help_text='Comma-separated official codes; requires type. Retired regions are included, flagged.')
+        method='noop', help_text=(
+            'Comma-separated official codes; requires type. Retired regions are included, flagged. '
+            'Lookups refuse type=land_use: a land-use region\'s external_id is not a permanent code.'
+        ))
 
     def noop(self, queryset, name, value):
         return queryset

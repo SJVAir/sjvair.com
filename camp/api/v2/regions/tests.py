@@ -659,6 +659,13 @@ class RegionCodeLookupTests(TestCase):
         assert response.status_code == 400
         assert data['error'] == "Land-use regions can't be looked up by code yet."
 
+    def test_docs_say_land_use_codes_are_not_permanent(self):
+        from camp.api.v2.regions.filters import RegionFilter
+        from camp.api.v2.regions.serializers import RegionSerializer
+        help_text = RegionFilter.base_filters['external_id'].extra['help_text']
+        assert 'land_use' in help_text and 'not a permanent code' in help_text
+        assert 'NOT a permanent code' in ' '.join(RegionSerializer.__doc__.split())
+
     def test_lookup_caps_codes(self):
         codes = ','.join(str(n) for n in range(101))
         response, _ = self.get({'type': 'county', 'external_id': codes})
