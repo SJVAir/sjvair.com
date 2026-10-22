@@ -3,6 +3,7 @@ from datetime import date, datetime
 from django.conf import settings
 from django.contrib.gis.geos import MultiPolygon, Polygon
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -25,7 +26,7 @@ from camp.apps.monitors.models import Monitor
 from camp.apps.pesticides import views as pesticide_views
 from camp.apps.pesticides.models import PesticideNotice, PesticideUse
 from camp.apps.pesticides.views import resolve_related
-from camp.apps.regions.models import Boundary, Region
+from camp.apps.regions.models import Boundary, Location, Region
 from camp.apps.summaries.tasks import summarize_region_hour
 from camp.apps.tempo.models import Granule
 from camp.utils.test import get_response_data
@@ -210,3 +211,88 @@ class RegionAdminRetirementTests(TestCase):
         assert self.region.retired_at == date(2026, 10, 1)
         assert self.region.replaced_by == other
         assert self.region.name == 'Fresno County'
+
+
+class RetirementValidationTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        self.region = Region.objects.get(name='Fresno County')
+        self.other = Region.objects.get(name='Kern County')
+        self.location = Location.objects.create(
+            name='A', type=Location.Type.PUBLIC_SCHOOL, source='cde-public', external_id='A1',
+            point='POINT(-119.8 36.7)',
+        )
+        self.other_location = Location.objects.create(
+            name='B', type=Location.Type.PUBLIC_SCHOOL, source='cde-public', external_id='B1',
+            point='POINT(-119.7 36.7)',
+        )
+
+    def pairs(self):
+        return [(self.region, self.other), (self.location, self.other_location)]
+
+    def test_retire_refuses_self_replacement(self):
+        for row, _ in self.pairs():
+            with self.assertRaises(ValueError):
+                row.retire(date(2026, 10, 1), replaced_by=row)
+            row.refresh_from_db()
+            assert row.retired_at is None
+
+    def test_retire_accepts_other_replacement(self):
+        for row, other in self.pairs():
+            row.retire(date(2026, 10, 1), replaced_by=other)
+            row.refresh_from_db()
+            assert row.replaced_by == other
+
+    def test_clean_rejects_self_replacement(self):
+        for row, _ in self.pairs():
+            row.retired_at = date(2026, 10, 1)
+            row.replaced_by = row
+            with self.assertRaises(ValidationError) as ctx:
+                row.clean()
+            assert 'replaced_by' in ctx.exception.message_dict
+
+    def test_clean_rejects_replacement_without_retired_at(self):
+        for row, other in self.pairs():
+            row.retired_at = None
+            row.replaced_by = other
+            with self.assertRaises(ValidationError) as ctx:
+                row.clean()
+            assert 'replaced_by' in ctx.exception.message_dict
+
+    def test_clean_accepts_valid_states(self):
+        for row, other in self.pairs():
+            row.retired_at, row.replaced_by = None, None
+            row.clean()
+            row.retired_at = date(2026, 10, 1)
+            row.clean()
+            row.replaced_by = other
+            row.clean()
+
+    def test_admin_form_rejects_self_replacement(self):
+        user = User.objects.create_superuser(
+            email='admin2@example.com', password='password', phone='+15595551235', full_name='Admin',
+        )
+        self.client.force_login(user)
+        url = reverse('admin:regions_region_change', args=[self.region.pk])
+        response = self.client.post(url, {
+            'retired_at': '2026-10-01', 'replaced_by': self.region.pk,
+            'boundaries-TOTAL_FORMS': 0, 'boundaries-INITIAL_FORMS': 0,
+        })
+        assert response.status_code == 200
+        assert 'replaced_by' in response.context['adminform'].form.errors
+        self.region.refresh_from_db()
+        assert self.region.retired_at is None
+
+    def test_admin_form_rejects_replacement_without_retired_at(self):
+        user = User.objects.create_superuser(
+            email='admin3@example.com', password='password', phone='+15595551236', full_name='Admin',
+        )
+        self.client.force_login(user)
+        url = reverse('admin:regions_region_change', args=[self.region.pk])
+        response = self.client.post(url, {
+            'retired_at': '', 'replaced_by': self.other.pk,
+            'boundaries-TOTAL_FORMS': 0, 'boundaries-INITIAL_FORMS': 0,
+        })
+        assert response.status_code == 200
+        assert 'replaced_by' in response.context['adminform'].form.errors

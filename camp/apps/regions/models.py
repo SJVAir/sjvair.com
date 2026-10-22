@@ -1,6 +1,7 @@
 from typing import Literal, Optional
 
 from django.contrib.gis.db import models
+from django.core.exceptions import ValidationError
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.functional import cached_property
@@ -114,7 +115,19 @@ class Region(TimeStampedModel):
     def is_retired(self):
         return self.retired_at is not None
 
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.replaced_by_id is not None and self.pk is not None and self.replaced_by_id == self.pk:
+            errors['replaced_by'] = 'A row cannot replace itself.'
+        elif self.replaced_by_id is not None and self.retired_at is None:
+            errors['replaced_by'] = 'Only a retired row can have a replacement; set retired_at too.'
+        if errors:
+            raise ValidationError(errors)
+
     def retire(self, since, replaced_by=None):
+        if replaced_by is not None and replaced_by.pk == self.pk:
+            raise ValueError('A row cannot be replaced by itself.')
         self.retired_at = since
         self.replaced_by = replaced_by
         self.save(update_fields=['retired_at', 'replaced_by'])
@@ -386,7 +399,19 @@ class Location(TimeStampedModel):
     def is_retired(self):
         return self.retired_at is not None
 
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.replaced_by_id is not None and self.pk is not None and self.replaced_by_id == self.pk:
+            errors['replaced_by'] = 'A row cannot replace itself.'
+        elif self.replaced_by_id is not None and self.retired_at is None:
+            errors['replaced_by'] = 'Only a retired row can have a replacement; set retired_at too.'
+        if errors:
+            raise ValidationError(errors)
+
     def retire(self, since, replaced_by=None):
+        if replaced_by is not None and replaced_by.pk == self.pk:
+            raise ValueError('A row cannot be replaced by itself.')
         self.retired_at = since
         self.replaced_by = replaced_by
         self.save(update_fields=['retired_at', 'replaced_by'])
