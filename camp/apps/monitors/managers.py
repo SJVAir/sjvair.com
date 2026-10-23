@@ -85,7 +85,7 @@ class MonitorQuerySet(InheritanceQuerySet):
     def get_inactive(self, seconds=None):
         seconds = seconds or self.model.LAST_ACTIVE_LIMIT
         cutoff = timezone.now() - timedelta(seconds=seconds)
-        return self.filter(Q(latest_entries__isnull=True) | Q(latest__timestamp__lt=cutoff))
+        return self.exclude(latest_entries__timestamp__gte=cutoff)
 
     def get_public(self):
         """Monitors visible to the public API: not hidden, and of an enabled type."""
