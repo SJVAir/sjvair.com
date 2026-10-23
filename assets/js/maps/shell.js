@@ -389,7 +389,7 @@
   // list, sets it to the map's current style, and swaps the style live on a
   // change (no diff, so onStyleLoad's addLayers() puts the module's own
   // layers back from its cached data). `changed()` runs after the swap for
-  // whatever the module still needs of its own (recolouring, syncUrl) --
+  // whatever the module still needs of its own (recoloring, syncUrl) --
   // the shell only knows the style itself. Called fresh from onChrome
   // (including after an adopt, whose new chrome is fresh DOM), so no bound
   // guard: same convention as the facility map's own Ramp select.
@@ -488,7 +488,7 @@
   };
 
   // Home goes back to what the page is about: the module's own framing when
-  // it has one, else the page's centre, else its bounds, else the default view.
+  // it has one, else the page's center, else its bounds, else the default view.
   Shell.prototype.home = function () {
     var animate = !this.reducedMotion;
     var target = this.module.home ? this.module.home() : null;
@@ -594,6 +594,7 @@
   // fetch still in flight is let go of (its ticket is no longer current).
   Shell.prototype.destroy = function () {
     if (this.expanded) M.chrome.setExpanded(this, false);
+    M.chrome.unbindFilters(this);
     M.chrome.unbindDocument(this);
     this.unbindWheelZoom();
     this.tickets += 1;

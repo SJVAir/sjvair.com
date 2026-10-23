@@ -1,6 +1,6 @@
 """
 The area page header both explorers share (regions/includes/area-header.html):
-the grey line beside a region's name and the links that go with it. Built
+the gray line beside a region's name and the links that go with it. Built
 here so the pesticides and emissions headers always read the same; each
 explorer passes the `Region` method that links to its own pages.
 """
@@ -19,7 +19,7 @@ def region_header(region, *, url_method, tab='overview', scope_qs=''):
     """
     {'kind', 'header_links', 'county'} for a region's page:
 
-    kind          the grey line: its type (not for a county, whose name says
+    kind          the gray line: its type (not for a county, whose name says
                   so), an AB 617 community's CARB selection year, the county
                   it sits in, its population
     header_links  an AB 617 community's own page and story map (new tab), and
@@ -58,5 +58,5 @@ def region_header(region, *, url_method, tab='overview', scope_qs=''):
 
 
 def point_kind(radius):
-    """The grey line for a near-me page: 'Within 3 miles'."""
+    """The gray line for a near-me page: 'Within 3 miles'."""
     return f'Within {radius} mile{"" if radius == 1 else "s"}'

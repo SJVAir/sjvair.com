@@ -77,7 +77,7 @@
   var ALL_SECTIONS_REDRAW_MS = 600;
   // Below this zoom, sections drawn at township level (the lens, "all
   // sections") are a few pixels each: their hairline strokes would outweigh
-  // the fills and grey the map, so they draw fill-only.
+  // the fills and gray the map, so they draw fill-only.
   var SECTION_LINES_MIN_ZOOM = 10;
 
   var METRIC_UNITS = {
@@ -190,7 +190,7 @@
     breaks.push(0);
     for (var c = 0; c < bounds.length; c++) breaks.push(bounds[c]);
 
-    // Both halves include the centre stop then drop it, so the sides mirror
+    // Both halves include the center stop then drop it, so the sides mirror
     // and the neutral class keeps the ramp's middle.
     var colors = sampleRamp(DIVERGING_RAMP.slice(0, DIVERGING_CENTER + 1), perSide + 1).slice(0, -1);
     colors.push(neutral);
@@ -212,17 +212,17 @@
   }
 
   function divergingIndexFor(classes, value) {
-    var centre = classes.bounds.length;
-    if (!value || !classes.bounds.length) return centre;
+    var center = classes.bounds.length;
+    if (!value || !classes.bounds.length) return center;
     var i = classes.bounds.length - 1;
     for (var k = 0; k < classes.bounds.length; k++) {
       if (Math.abs(value) <= classes.bounds[k]) { i = k; break; }
     }
-    return value < 0 ? centre - 1 - i : centre + 1 + i;
+    return value < 0 ? center - 1 - i : center + 1 + i;
   }
 
-  // null means neither year had rows: no data, grey. 0 is a real "no
-  // change" and takes the neutral centre -- collapsing the two would claim
+  // null means neither year had rows: no data, gray. 0 is a real "no
+  // change" and takes the neutral center -- collapsing the two would claim
   // a section was unsprayed in both years when nothing was reported.
   function divergingColorFor(classes, delta) {
     if (delta === null || delta === undefined) return NO_DATA_COLOR;
@@ -259,7 +259,7 @@
   }
 
   // Decreases, "No change", increases, then no data. The signed ranges make
-  // the direction readable without the colour, which matters because a
+  // the direction readable without the color, which matters because a
   // diverging ramp can't be luminance-monotonic.
   function renderDivergingLegend(el, classes, unit, caption) {
     el.innerHTML = '';
@@ -269,12 +269,12 @@
       head.textContent = caption;
       el.appendChild(head);
     }
-    var centre = classes.bounds.length;
+    var center = classes.bounds.length;
     for (var i = 0; i < classes.members.length; i++) {
       var values = classes.members[i];
-      if (i !== centre && !values.length) continue;
+      if (i !== center && !values.length) continue;
       var label;
-      if (i === centre) {
+      if (i === center) {
         label = 'No change';
       } else {
         var low = values[0];
@@ -401,8 +401,8 @@
   // out past SECTION_LINES_MIN_ZOOM the sections are a pixel or two:
   // no-data sections draw nothing at all (their pale wash would veil the
   // basemap across every section without use), and the rest get a hairline
-  // seam in their own fill colour, which closes the gaps between
-  // neighbouring fills without the grey a grid line would add.
+  // seam in their own fill color, which closes the gaps between
+  // neighboring fills without the gray a grid line would add.
   function sectionsFillPaint() {
     return {
       'fill-color': ['get', 'fill'],
@@ -438,13 +438,13 @@
   var RADIUS_CIRCLE_POINTS = 64;
 
   // -- markers --
-  // Orange is the notices colour throughout the explorer (the tab icon, the
+  // Orange is the notices color throughout the explorer (the tab icon, the
   // chemicals-of-concern toggle, these markers).
   var NOTICE_COLOR = '#d35400';
   // Schools and child care markers (see loadLocations). Schools are slate,
   // child care teal; both are ringed in white like the notice markers so
   // they stay legible over a dark section fill. Teal rather than purple:
-  // purple is the Chemicals section's colour, and a purple dot on a map of
+  // purple is the Chemicals section's color, and a purple dot on a map of
   // chemical use reads as a chemical, not a day care.
   var LOCATION_COLORS = {
     public_school: '#5a6b7b',
@@ -466,7 +466,7 @@
   var NOTICE_GROUP_RADIUS = 11;
   // At the township level a township's notices share one bubble on its
   // square, carrying how many there are (a section's marker would sit on
-  // its neighbours' otherwise); at the section level each section has its
+  // its neighbors' otherwise); at the section level each section has its
   // own marker again.
   var NOTICE_TOWNSHIP = { small: 13, large: 16, largeFrom: 10 };
   // Under the lens a township's bubble gives way to its sections' markers,
@@ -502,8 +502,8 @@
   var NOTICES_PAST_CAP_NOTE = 'Too many past notices to map here \u2014 zoom in or pick a month.';
   var NOTICES_CAP_NOTE = 'Too many notices to map here \u2014 zoom in.';
   // "Within about a mile": a school's own square-mile section plus the ring
-  // around it -- the sections whose centre is within 1.5 miles of that
-  // section's centre. Same rule as stats.block_totals on the server.
+  // around it -- the sections whose center is within 1.5 miles of that
+  // section's center. Same rule as stats.block_totals on the server.
   var BLOCK_MILES = 1.5;
   var BLOCK_METERS = 2414;
   var SPRAYDAYS_URL = 'https://spraydays.cdpr.ca.gov/';
@@ -626,7 +626,7 @@
     return [[feature.bbox[0], feature.bbox[1]], [feature.bbox[2], feature.bbox[3]]];
   }
 
-  // The popup HTML carries its centre the Leaflet way ({lat, lng}).
+  // The popup HTML carries its center the Leaflet way ({lat, lng}).
   function latLngOf(lngLat) {
     return { lat: lngLat[1], lng: lngLat[0] };
   }
@@ -659,7 +659,7 @@
     return [lngLat[0] - pad.lng, lngLat[1] - pad.lat, lngLat[0] + pad.lng, lngLat[1] + pad.lat].join(',');
   }
 
-  // Great-circle metres between two [lng, lat] points (Leaflet's
+  // Great-circle meters between two [lng, lat] points (Leaflet's
   // distanceTo: haversine on a 6371 km sphere).
   function distanceMeters(a, b) {
     var rad = Math.PI / 180;
@@ -672,8 +672,8 @@
   }
 
   // Sum the nine sections around [lng, lat] out of a sections response: the
-  // section the point falls in, plus every section whose centre is within
-  // 1.5 miles of that section's centre (stats.block_sections, client-side).
+  // section the point falls in, plus every section whose center is within
+  // 1.5 miles of that section's center (stats.block_sections, client-side).
   function blockTotals(geojson, lngLat) {
     var features = ((geojson && geojson.features) || []).filter(function (f) { return f.geometry; });
     var measured = [];
@@ -703,7 +703,7 @@
   }
 
   // A circle of `meters` around [lng, lat] as a polygon feature: the SDK has
-  // no circle geometry, and a circle layer is sized in pixels, not metres.
+  // no circle geometry, and a circle layer is sized in pixels, not meters.
   function circlePolygon(center, meters, id) {
     var latRadians = center[1] * Math.PI / 180;
     var dLat = meters / 111320;
@@ -828,7 +828,7 @@
     // The hovered feature id per source (a township and one of the lens
     // sections over it can both be hovered).
     this.hoverIds = {};
-    // The lens: the hovered township (id and feature), its neighbourhood
+    // The lens: the hovered township (id and feature), its neighborhood
     // (the hosts), the sections drawn and their classes, the rest and
     // clear timers, when it was last drawn, and whether a ring prefetch is
     // in flight (see showLens).
@@ -883,8 +883,9 @@
 
     // The filter form only knows its own fields; the map's view settings
     // (metric, notices, all sections) ride along so the URL it lands on
-    // still says how the map is being viewed.
-    var form = wrap.querySelector('.map-toolbar-filters');
+    // still says how the map is being viewed. It's the filter box beside
+    // the map (map-filters.html), outside the map's wrapper.
+    var form = document.querySelector('form[data-map-filters]');
     if (form && !form.getAttribute('data-view-bound')) {
       form.setAttribute('data-view-bound', '1');
       form.addEventListener('htmx:configRequest', function (event) {
@@ -921,7 +922,7 @@
         if (input) input.addEventListener('change', handler.bind(self));
         return input;
       };
-      // Experiment controls: basemap style, colour ramp and bins, applied
+      // Experiment controls: basemap style, color ramp and bins, applied
       // live and written to the URL (?tiles=, ?ramp=, ?bins=).
       var fill = function (select, pairs) {
         pairs.forEach(function (pair) {
@@ -965,6 +966,7 @@
     Array.prototype.forEach.call(wrap.querySelectorAll('input[name="metric"]'), function (radio) {
       radio.checked = radio.value === metric;
     });
+    this.labelMetric();
     var set = function (selector, prop, value) {
       var input = wrap.querySelector(selector);
       if (input) input[prop] = value;
@@ -1141,7 +1143,7 @@
       },
     });
     // Every section in view at the township zoom ("all sections"), and the
-    // lens (the hovered township's neighbourhood, see showLens): the same
+    // lens (the hovered township's neighborhood, see showLens): the same
     // paint, see sectionsFillPaint/sectionsLinePaint.
     this.ensureLayer({ id: 'all-sections-fill', type: 'fill', source: 'all-sections', paint: sectionsFillPaint() });
     this.ensureLayer({ id: 'all-sections-line', type: 'line', source: 'all-sections', paint: sectionsLinePaint() });
@@ -1199,13 +1201,13 @@
       paint: { 'line-color': OUTLINE_COLOR, 'line-width': 2.5, 'line-opacity': 0.9 },
     });
     // The edge of the buffer a clipped page reaches (dashed, in the
-    // region outline's colour); nothing at buffer 0.
+    // region outline's color); nothing at buffer 0.
     this.ensureLayer({
       id: 'buffer-line', type: 'line', source: 'buffer-outline',
       layout: { 'line-join': 'round' },
       paint: { 'line-color': OUTLINE_COLOR, 'line-width': 1.5, 'line-opacity': 0.9, 'line-dasharray': [3, 3] },
     });
-    // The markers: schools and child care (coloured by type), and over
+    // The markers: schools and child care (colored by type), and over
     // them the notices of intent. Both sit over the grid and outlines and
     // under the reader's located position. Under each marker layer is its hit
     // disc: invisible, wide enough for a finger, taking the same hover and
@@ -1302,7 +1304,7 @@
   // Home goes back to what the page is about: its own region when it has
   // one (the counties around it are context, not the subject), then its
   // county, then the whole valley; before the counties load, the shell's
-  // fallback (the page's centre and zoom).
+  // fallback (the page's center and zoom).
   SectionMap.prototype.home = function () {
     var bounds = this.clipBounds || this.outlineBounds || this.countyBounds[this.data.county] || this.valleyBounds;
     return bounds ? { bounds: bounds, padding: (this.clipBounds || this.outlineBounds) ? 24 : 20 } : null;
@@ -1657,8 +1659,21 @@
 
   SectionMap.prototype.onMetricChange = function (event) {
     this.metric = event.target.value;
+    this.labelMetric();
+    M.chrome.closeDropdowns(this.shell, null);
     this.restyle();
     this.syncViewParams();
+  };
+
+  // The Shade by dropdown's button names the current choice (map-metric.html).
+  SectionMap.prototype.labelMetric = function () {
+    var wrap = this.wrapEl;
+    if (!wrap) return;
+    var name = this.metric === 'applications' ? 'applications' : 'pounds';
+    var label = wrap.querySelector('.map-metric-label');
+    if (label) label.textContent = 'Shade by ' + name;
+    var button = wrap.querySelector('.map-metric .dropdown-trigger .button');
+    if (button) button.setAttribute('aria-label', 'Shade by: ' + name);
   };
 
   // The basemap style is part of the map's style, so swapping it rebuilds
@@ -1669,7 +1684,7 @@
   // menu's Clusters setting: Off by default (each section's own marker,
   // a dot until it fits); Auto merges only on the valley-wide map. (A
   // section's notices always share one marker: they're all pinned to its
-  // centre.)
+  // center.)
   SectionMap.prototype.noticesClustered = function () {
     return this.shell.clustered(this.data.sectionsFixed === '1' || !!parseFloat(this.data.radius));
   };
@@ -1806,7 +1821,7 @@
 
   // The zoom at which this viewport can show sections: SECTION_ZOOM, or
   // closer when the map is wide enough that zoom 11 would put more sections
-  // in view than one request can return. Web Mercator: metres per pixel at
+  // in view than one request can return. Web Mercator: meters per pixel at
   // zoom z is 156543 * cos(lat) / 2^z.
   SectionMap.prototype.sectionZoom = function () {
     var canvas = this.map.getCanvas();
@@ -2144,7 +2159,7 @@
 
   // Named once above the rows rather than repeated on each: "Change, 2022 to
   // 2023". In order, so a signed range never has to be read against the
-  // colour alone -- a diverging ramp can't be luminance-monotonic.
+  // color alone -- a diverging ramp can't be luminance-monotonic.
   SectionMap.prototype.legendCaption = function () {
     if (!this.compare) return '';
     return 'Change, ' + this.compare + ' to ' + this.data.year;
@@ -2264,7 +2279,7 @@
       if (self.level === 'township') {
         // Hovering a township brings up its lens; the pointer is still
         // over the township while it's over one of the lens sections, so
-        // a scheduled clear is cancelled here as well as there.
+        // a scheduled clear is canceled here as well as there.
         self.cancelLensClear();
         if (self.lensId !== id) {
           var feature = self.gridById[id];
@@ -2280,18 +2295,18 @@
       if (self.level === 'township' && self.lensId) self.scheduleLensClear();
     });
     // The lens sections cover the townships, so this is where a move into
-    // a neighbouring township is noticed too: recentre the lens on it.
+    // a neighboring township is noticed too: recenter the lens on it.
     map.on('mousemove', 'lens-fill', function (event) {
       self.cancelLensClear();
       var feature = findFeature(self.lensFeatures, event.features[0].id);
-      if (!feature || self.recentreLens(feature)) return;
+      if (!feature || self.recenterLens(feature)) return;
       self.setHover('lens', event.features[0].id);
     });
     map.on('mouseleave', 'lens-fill', function () {
       self.clearHover('lens');
       // Delegated listeners run in binding order within one event, so on
       // a move from a lens section straight onto a township outside the
-      // block the grid handler above has already recentred the lens on it
+      // block the grid handler above has already recentered the lens on it
       // (and hovered it) by the time this runs; scheduling a clear then
       // would drop the new lens once the pointer rests (nothing cancels
       // it). Leaving the grid altogether clears the township hover first
@@ -2357,13 +2372,13 @@
 
   // -- popups --
   // One popup at a time, in the SDK's popup with the Leaflet popups' class
-  // hooks, rising from the cell's centre. It stays until its close button
+  // hooks, rising from the cell's center. It stays until its close button
   // or another cell is clicked; clicking empty map (or a pan that ends on
   // it) doesn't dismiss it. `key` (openGridId, openAllSectionsId,
   // openLensId, openNoticeId, openLocationId) records whose popup is up so
   // a rebuilt layer can put it back (see reopenGridPopup,
   // reopenSelectedSection, renderNotices, renderLocations). `offset` lifts
-  // the popup off a marker (pixels); a cell's popup sits on its centre.
+  // the popup off a marker (pixels); a cell's popup sits on its center.
   SectionMap.prototype.openPopup = function (lngLat, html, key, id, offset) {
     var self = this;
     if (this.popupKey && this[this.popupKey] === this.popupId) this[this.popupKey] = null;
@@ -2415,7 +2430,7 @@
   // side of its point has room, so one wider than that room has no stable
   // side: the nudge panPopupIntoView gives it can flip the anchor and put
   // it off the other edge. Inside the room, a nudge is at most the margin
-  // and never crosses the band where the SDK centres it.
+  // and never crosses the band where the SDK centers it.
   SectionMap.prototype.popupMaxWidth = function () { return this.shell.popupMaxWidth(); };
 
   // Pans the map, by as little as it takes, so the open popup is clear of
@@ -2810,7 +2825,7 @@
     // Uncached townships are tiled into a fixed 5x5-township grid of
     // blocks, so a valley-wide view is ~36 requests of ~25 townships each
     // (well under the endpoint's cap) rather than a request per hover-sized
-    // neighbourhood.
+    // neighborhood.
     var tiles = {};
     var blocks = [];
     var tileLng = TOWNSHIP_DEGREES.lng * 5;
@@ -2977,7 +2992,7 @@
   };
 
   // Whether two class sets shade a feature identically: same breaks, same
-  // colours. Only the numbers matter -- the members are counts.
+  // colors. Only the numbers matter -- the members are counts.
   function sameClasses(a, b) {
     if (!a || !b || !a.breaks || !b.breaks) return false;
     if (a.breaks.length !== b.breaks.length || a.colors.length !== b.colors.length) return false;
@@ -3074,7 +3089,7 @@
 
   // -- the lens --
   // Zoomed out, hovering a township shows the sections of that township
-  // and its neighbours (its Moore neighborhood, a 3x3 block), shaded by the
+  // and its neighbors (its Moore neighborhood, a 3x3 block), shaded by the
   // same metric with quantile classes over the block, so the reader can
   // see where within the neighborhood the use concentrates. Each section
   // can be hovered and clicked like the zoomed-in grid. The sections come
@@ -3084,7 +3099,7 @@
 
   // The townships whose bounds touch the hovered one (itself included): a
   // 3x3 block in the regular grid, fewer at the valley edge. `reach` is in
-  // townships from the centre: 1.5 is the 3x3 block, 2.5 the 5x5 block
+  // townships from the center: 1.5 is the 3x3 block, 2.5 the 5x5 block
   // around it (used to prefetch the ring beyond the lens). Measured over
   // the township grid on the map (each feature's bounds are measured once,
   // see featureBounds); nothing at any other level.
@@ -3094,10 +3109,10 @@
     var bounds = host ? featureBounds(host) : null;
     if (!bounds) return hosts;
     reach = reach || 1.5;
-    // Neighbours by centre distance rather than touching bounds: diagonal
+    // Neighbors by center distance rather than touching bounds: diagonal
     // townships meet the hovered one only at a corner, and survey offsets
     // between ranges leave small gaps, so an intersection test drops them.
-    // Anything whose centre is within `reach` townships on both axes is in;
+    // Anything whose center is within `reach` townships on both axes is in;
     // the next ring starts a whole township further out.
     var center = boundsCenter(bounds);
     // A partial township (county edge, survey gap) has small bounds, so the
@@ -3118,7 +3133,7 @@
     if (!this.data.sectionsUrl) return;
     var id = feature.properties.id;
     // While one of the lens sections has its popup open the lens is pinned:
-    // hovering a neighbouring township mustn't pull it (and the popup) away.
+    // hovering a neighboring township mustn't pull it (and the popup) away.
     if (this.openLensId) return;
     this.clearLens();
     this.lensId = id;
@@ -3130,7 +3145,7 @@
     var ids = hosts.map(function (host) { return host.properties.id; });
     var draw = function () {
       // The lens has moved on (or gone) meanwhile: nothing to draw, and the
-      // ring to prefetch is the new centre's, not this one's.
+      // ring to prefetch is the new center's, not this one's.
       if (self.lensId !== id) return;
       self.drawLens(id, self.cachedLensSections(ids));
       self.prefetchRing(id);
@@ -3164,7 +3179,7 @@
   // Once the lens is drawn, warm the cache for the ring of townships one
   // step beyond it, in idle time, so recentring the lens in any direction
   // draws without waiting on the network. One prefetch at a time; a lens
-  // that has moved on by the time it runs prefetches around its new centre
+  // that has moved on by the time it runs prefetches around its new center
   // instead.
   SectionMap.prototype.prefetchRing = function (hostId) {
     if (this.prefetching || !this.data.sectionsUrl) return;
@@ -3219,10 +3234,10 @@
     this.setSourceData('lens-outline', data);
   };
 
-  // Keeps the township under the pointer at the centre of the lens. Returns
+  // Keeps the township under the pointer at the center of the lens. Returns
   // true when the lens was redrawn around a different township (the caller's
   // section is gone by then). A pinned lens (popup open) stays put.
-  SectionMap.prototype.recentreLens = function (section) {
+  SectionMap.prototype.recenterLens = function (section) {
     var mtrs = section.properties.mtrs || '';
     var townshipId = mtrs.slice(0, mtrs.lastIndexOf('-'));
     if (!townshipId || townshipId === this.lensId || this.openLensId || this.level !== 'township') return false;
@@ -3268,7 +3283,7 @@
     this.lensClearTimer = setTimeout(function () {
       self.lensClearTimer = null;
       // Keep the lens while one of its section popups is open, or when it
-      // was redrawn (recentred) after this clear was scheduled: that
+      // was redrawn (recentered) after this clear was scheduled: that
       // mouseleave came from a section the redraw removed.
       if (self.openLensId) return;
       if (self.lensDrawnAt && self.lensDrawnAt >= scheduledAt) return;
@@ -3388,7 +3403,7 @@
         if (self.noticesAbort !== abort) return; // stale response
         // The toggle (or a page swap) can turn the markers off while the
         // request is in the air; AbortController isn't everywhere, and an
-        // already-resolved response isn't cancelled by aborting either.
+        // already-resolved response isn't canceled by aborting either.
         if (!self.showNotices) return;
         self.loadedNoticeBounds = bounds;
         self.clearNoticesCapNote();
@@ -3454,7 +3469,7 @@
   };
 
   // SprayDays only places a notice to its section, and the API pins every
-  // one at the section's centre, so a section's notices share a point.
+  // one at the section's center, so a section's notices share a point.
   // Group them by section (a notice with none stands alone), soonest first.
   SectionMap.prototype.groupNotices = function (features) {
     var groups = {};
@@ -3678,8 +3693,8 @@
     );
   };
 
-  // A notice popup in the section popup's idiom: title, grey subline,
-  // headline, labelled lists, pill actions.
+  // A notice popup in the section popup's idiom: title, gray subline,
+  // headline, labeled lists, pill actions.
   SectionMap.prototype.noticePopupHtml = function (props) {
     var self = this;
     var list = function (items) {
@@ -3885,7 +3900,7 @@
       });
   };
 
-  // A school or child care popup in the section popup's idiom: name, grey
+  // A school or child care popup in the section popup's idiom: name, gray
   // subline, the block headline, pill actions.
   SectionMap.prototype.locationPopupHtml = function (props, block) {
     // type · address, city. The district is already a pill action below, so

@@ -132,6 +132,17 @@ def latest_year():
     return years[-1] if years else None
 
 
+def facility_count(year):
+    """How many facilities reported to CARB in `year`, minor sources included (the About page's figure)."""
+    if year is None:
+        return 0
+    return cache.get_or_set(
+        f'{prefix()}:facility-count:{year}',
+        lambda: EmissionsRecord.objects.filter(year=year).values('facility').distinct().count(),
+        60 * 60,
+    )
+
+
 def comparable_baseline(value, unit):
     """
     Whether a compared-year value (already converted to `unit`) clears

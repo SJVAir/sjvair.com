@@ -3,18 +3,26 @@
 {% load humanize pesticides_explorer emissions_explorer %}
 {% comment %}
 An area's Facilities tab (views.RegionFacilities / NearMeFacilities) in the
-shared tab skeleton (regions/area-tab.html): how many facilities and how many are
-tracked by EPA, the facility map, the facility list's filters, count and
-sortable table with its CSV (the area fixed by the page), and on a county the
-largest greenhouse-gas reporters.
+shared tab skeleton (regions/area-tab.html), in two views with the same
+filters. Summary: how many facilities and how many are tracked by EPA, the
+facility map with the filters beside it, the largest facilities and the
+total by sector, all under the filters; on a county, the largest
+greenhouse-gas reporters. Table: the count and sortable table with its CSV
+(the area fixed by the page).
 {% endcomment %}
 
 {% block tab-stats %}
 <div class="level is-mobile stat-row box is-grid-mobile" id="facilities">
+    {% if filtered_totals %}
+    {# Under the filters: what matches, and nothing compared with the unfiltered whole. #}
+    <div class="level-item has-text-centered"><div><p class="heading">Matching facilities in {{ year }}</p><p class="title">{{ filtered_totals.facilities|intcomma }}</p><p class="stat-note">{{ filtered_totals.reporting|intcomma }} reported {{ pollutant.label }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">{% if pollutant.weighted %}Their share of the Valley's {{ pollutant.label|lower }} toxics{% else %}Their {{ pollutant.name }}{% endif %}</p><p class="title">{{ filtered_totals.total|amount:pollutant }}{% if not pollutant.weighted %} <span class="is-size-5">{{ pollutant.unit_label }}</span>{% endif %}</p><p class="stat-note">of {{ total|amount:pollutant }}{% if not pollutant.weighted %} {{ pollutant.unit_label }}{% endif %} from every facility here</p></div></div>
+    {% else %}
     <div class="level-item has-text-centered"><div><p class="heading">Facilities in {{ year }}</p><p class="title">{{ totals.facilities|intcomma }}</p><p class="stat-note">{{ reporting|intcomma }} reported {{ pollutant.label }}</p></div></div>
     <div class="level-item has-text-centered"><div><p class="heading">{% if pollutant.weighted %}Share of the Valley's {{ pollutant.label|lower }} toxics{% else %}{{ pollutant.name }}{% endif %}</p><p class="title">{{ total|amount:pollutant }}{% if not pollutant.weighted %} <span class="is-size-5">{{ pollutant.unit_label }}</span>{% endif %}</p><p class="stat-note">{{ by_year|year_change:year }}</p></div></div>
     {% if county_share is not None and county_region != area.region %}
     <div class="level-item has-text-centered"><div><p class="heading">Share of {{ county_region.name }}</p><p class="title">{{ county_share|percent }}</p><p class="stat-note">of its facilities' {{ pollutant.label }}</p></div></div>
+    {% endif %}
     {% endif %}
     {% if compliance_line %}
     <div class="level-item has-text-centered"><div><p class="heading">Tracked by EPA</p><p class="title">{{ compliance_line.tracked|intcomma }}</p><p class="stat-note"><a href="{{ compliance_line.url }}">{{ compliance_line.unaddressed|intcomma }} with an unaddressed violation</a></p></div></div>
@@ -24,44 +32,47 @@ largest greenhouse-gas reporters.
 
 {% block tab-map %}{% include 'emissions/includes/facility-map.html' %}{% endblock %}
 
-{% block tab-table %}
-{# The table's filters sit on it, not beside the map: they narrow the table and its map, and nothing in the side column leaves the map a short strip. #}
-<form class="table-filters box" method="get" hx-trigger="submit, change delay:250ms">
+{% block tab-filters %}
+{# Beside the map on the Summary and the table on the Table: the same filters narrow both. #}
+<div class="explorer-filters box">
+<div class="field">
+    <label class="label" for="facility-q">Search</label>
+    <div class="control has-icons-left">
+        <input class="input" type="search" id="facility-q" name="q" value="{{ filters.q|default:'' }}" placeholder="Facility name"
+            hx-get="{{ request.path }}" hx-include="#facility-filters" form="facility-filters" hx-trigger="keyup changed delay:500ms, search">
+        <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
+    </div>
+</div>
+{% if find_field %}{% include 'regions/includes/find-field.html' %}{% endif %}
+<form method="get" id="facility-filters" hx-trigger="submit, change delay:250ms">
     {% for key, value in point_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
     {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
     <input type="hidden" name="sort" value="{{ sort }}">
-    <div class="columns is-variable is-3 is-multiline">
-        <div class="column is-12-tablet is-4-desktop field">
-            <label class="label" for="facility-q">Search</label>
-            <div class="control has-icons-left">
-                <input class="input" type="search" id="facility-q" name="q" value="{{ filters.q|default:'' }}" placeholder="Facility name"
-                    hx-get="{{ request.path }}" hx-include="closest form" hx-trigger="keyup changed delay:500ms, search">
-                <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
-            </div>
-        </div>
-        <div class="column is-6-tablet is-4-desktop field">
-            <label class="label" for="facility-sector">Sector</label>
-            <div class="control"><div class="select is-fullwidth"><select id="facility-sector" name="sector">
-                <option value="">All sectors</option>
-                {% for value, label in sector_options %}<option value="{{ value }}"{% if filters.sector == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
-            </select></div></div>
-        </div>
-        <div class="column is-6-tablet is-4-desktop field">
-            <label class="label" for="facility-compliance">EPA compliance
-                <a class="note-help has-tooltip-multiline has-tooltip-arrow" href="{% url 'emissions:about' %}#compliance" data-tooltip="EPA tracks about 660 of the largest sources. What this covers." aria-label="What EPA compliance covers"><span class="fa-regular fa-fw fa-circle-question" aria-hidden="true"></span></a>
-            </label>
-            <div class="control"><div class="select is-fullwidth"><select id="facility-compliance" name="compliance">
-                {% for value, label in compliance_options %}<option value="{{ value }}"{% if filters.compliance == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
-            </select></div></div>
-        </div>
+    <div class="field">
+        <label class="label" for="facility-sector">Sector</label>
+        <div class="control"><div class="select is-fullwidth"><select id="facility-sector" name="sector">
+            <option value="">All sectors</option>
+            {% for value, label in sector_options %}<option value="{{ value }}"{% if filters.sector == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></div></div>
     </div>
+    <div class="field">
+        <label class="label" for="facility-compliance">EPA compliance</label>
+        <div class="control"><div class="select is-fullwidth"><select id="facility-compliance" name="compliance">
+            {% for value, label in compliance_options %}<option value="{{ value }}"{% if filters.compliance == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></div></div>
+        <p class="help">About 660 large sources; <a href="{% url 'emissions:about' %}#compliance">what this covers</a>.</p>
+    </div>
+    {# Every field applies itself as it changes; there's nothing to Apply. #}
+    {% if filters.q or filters.sector or filters.compliance %}<p class="filters-clear"><a href="{{ clear_filters_url }}">Clear filters</a></p>{% endif %}
 </form>
+</div>
+{% endblock %}
 
-{# How many match, and the same rows as a CSV, where the eye lands before the table. Every field applies itself as it changes; there's nothing to Apply. #}
+{% block tab-table %}
+{# How many match, and the same rows as a CSV, where the eye lands before the table. #}
 <div class="table-toolbar">
     <p class="table-count">
         {% if page_obj.paginator.count %}Showing {{ page_obj.start_index|intcomma }}&ndash;{{ page_obj.end_index|intcomma }} of {{ page_obj.paginator.count|intcomma }} facilit{{ page_obj.paginator.count|pluralize:"y,ies" }}{% else %}No facilities match{% endif %}
-        {% if filters.q or filters.sector or filters.compliance %}&middot; <a class="filters-clear" href="{{ clear_filters_url }}">Clear filters</a>{% endif %}
     </p>
     {% if page_obj.paginator.count %}<a class="button is-small" href="{% qs_replace format='csv' page=None %}" hx-boost="false" download><span class="icon"><span class="fa-regular fa-fw fa-download" aria-hidden="true"></span></span><span>Download CSV</span></a>{% endif %}
 </div>
@@ -69,7 +80,13 @@ largest greenhouse-gas reporters.
 {% include 'pesticides/includes/pagination.html' %}
 {% endblock %}
 
-{# No trend or sectors here: the Overview (and the Valley's home page) has both, and neither follows the table's filters. #}
+{% block tab-charts %}
+{# The largest facilities and the total by sector, under the filters; the trend stays on the Overview, which has no filters. #}
+<div class="columns mt-5">
+    <div class="column is-half-tablet">{% for v in subviews %}{% if v.key == 'table' %}{% include 'emissions/includes/rank-card.html' with title='Largest facilities' rows=facility_card view_all_url=v.url %}{% endif %}{% endfor %}</div>
+    {% if sector_card %}<div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='By sector' rows=sector_card view_all_url=None %}</div>{% endif %}
+</div>
+{% endblock %}
 
 {% block tab-related %}
 {% if ghg_table.rows %}{% include 'emissions/includes/ghg-table.html' %}{% endif %}

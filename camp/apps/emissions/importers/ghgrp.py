@@ -46,17 +46,36 @@ def frs_url(frs_id):
     return f'{BASE}/frs_program_facility/registry_id/{frs_id}/JSON'
 
 
-def fetch_json(url, retries=3):
-    """The one network call. Envirofacts throttles; back off and retry."""
+PAUSE = 0.5         # seconds before every request; Envirofacts 429s bursts
+MAX_BACKOFF = 120
+
+
+def retry_delay(response, attempt):
+    """Seconds to wait before retry `attempt`: Retry-After when sent, else 10s, 20s, 40s... capped."""
+    if response is not None:
+        try:
+            return min(float(response.headers['Retry-After']), MAX_BACKOFF)
+        except (KeyError, ValueError):
+            pass
+    return min(10 * 2 ** attempt, MAX_BACKOFF)
+
+
+def fetch_json(url, retries=6):
+    """
+    The one network call. Envirofacts throttles a steady stream of requests
+    with 429s that last tens of seconds, so pace every call and back off long
+    enough to outlast the throttle (about five minutes in all) before giving up.
+    """
     for attempt in range(retries):
+        time.sleep(PAUSE)
         try:
             response = requests.get(url, timeout=120)
             response.raise_for_status()
             return response.json()
-        except (requests.RequestException, ValueError):
+        except (requests.RequestException, ValueError) as err:
             if attempt == retries - 1:
                 raise
-            time.sleep(2 ** attempt)
+            time.sleep(retry_delay(getattr(err, 'response', None), attempt))
 
 
 def gas_totals(rows):

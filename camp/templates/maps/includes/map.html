@@ -1,7 +1,9 @@
 {% comment %}
 One interactive map and its chrome (assets/js/maps/*): the container, whose
-data-* attributes carry the map's config, then the toolbar row (the map's own
-filters, an optional end group, an Options dropdown, Expand), the status pill, and the Legend card.
+data-* attributes carry the map's config, then the toolbar row (a Filters
+button for when the page's filter box is out of sight, the map's own view
+controls, an optional end group, an Options dropdown, Expand), the filters
+slide-out and chips, the status pill, and the Legend card.
 Everything sits inside the wrapper so it comes along in expanded mode. The
 script unhides what it binds, reading which chrome is here from the container's
 data-features (what's rendered wins over the map module's own spec).
@@ -11,6 +13,12 @@ Context: `map`, a camp.utils.mapconfig.map_config().
     {# The toolbar comes first in the DOM so keyboard focus reaches it before the map's attribution links; it's positioned over the map, so the order is invisible. #}
     {% if map.features.toolbar %}
     <div class="map-toolbar" hidden>
+        {# The page's filter box, on a phone or in expanded mode (where it's off-screen): chrome.js shows this button only then, with how many filters are on, and moves the box itself into the slide-out below. #}
+        <button type="button" class="button map-filters-toggle" aria-expanded="false"{% if map.container_id %} aria-controls="{{ map.container_id }}-filters"{% endif %} hidden>
+            <span class="icon"><span class="fa-regular fa-fw fa-filter" aria-hidden="true"></span></span>
+            <span class="map-toolbar-label">Filters</span>
+            <span class="tag is-rounded is-link map-filters-count" hidden></span>
+        </button>
         {% if map.toolbar_template %}{% include map.toolbar_template %}{% endif %}
         <div class="map-toolbar-end">
             {% if map.toolbar_end_template %}{% include map.toolbar_end_template %}{% endif %}
@@ -39,8 +47,19 @@ Context: `map`, a camp.utils.mapconfig.map_config().
     </div>
     {% endif %}
     <div class="{{ map.container_class }} map-canvas"{% if map.container_id %} id="{{ map.container_id }}"{% endif %}{% for key, value in map.data.items %} data-{{ key }}="{{ value }}"{% endfor %}></div>
+    {% if map.features.toolbar %}
+    {# The filter box's slide-out (the box is moved in, not copied) and, while the box is out of sight, what's on. #}
+    <div class="map-filters-panel"{% if map.container_id %} id="{{ map.container_id }}-filters"{% endif %} role="dialog" aria-label="Filters" hidden>
+        <div class="map-filters-panel-head">
+            <span class="map-filters-panel-title">Filters</span>
+            <button type="button" class="delete map-filters-close" aria-label="Close the filters"></button>
+        </div>
+        <div class="map-filters-slot"></div>
+    </div>
+    <div class="map-filter-chips" aria-label="Filters on" hidden></div>
+    {% endif %}
     {% if map.features.status %}
-    {# What the map is doing (a load, a locate), as a pill at the bottom centre; hidden while empty. #}
+    {# What the map is doing (a load, a locate), as a pill at the bottom center; hidden while empty. #}
     <span class="map-status" aria-live="polite"></span>
     {% endif %}
     {% if map.features.legend %}

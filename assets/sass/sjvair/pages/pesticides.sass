@@ -29,12 +29,12 @@ body.pesticides
     a.mtrs-code
         white-space: nowrap
 
-    // Links inside running text are told apart from it by more than colour
+    // Links inside running text are told apart from it by more than color
     // (WCAG 1.4.1); navigation, tabs, buttons, tables and boards stay bare.
     p.is-size-7 a:not(:has(.icon)), .help a:not(:has(.icon)), .sources a:not(:has(.icon)), .data-notes a:not(:has(.icon)), .school-kind a:not(:has(.icon)), .chart-note a:not(:has(.icon))
         text-decoration: underline
 
-    // Flag tags: Bulma's derived text colours on the orange/amber tints came
+    // Flag tags: Bulma's derived text colors on the orange/amber tints came
     // out at 3.4-4.4:1. Prop 65 and fumigant text, and IARC's white-on-orange.
     .tag.is-danger.is-light
         color: #a84300
@@ -68,7 +68,7 @@ body.pesticides
         .explorer-nav.tabs
             margin-top: $size-6
             margin-bottom: 0
-            // Seven boxed tabs don't fit a phone; the coloured icons carry
+            // Seven boxed tabs don't fit a phone; the colored icons carry
             // them, and the current one keeps its name so the page says
             // where you are.
             +mobile
@@ -107,7 +107,7 @@ body.pesticides
                     background-color: rgba($white, 0.24)
                     border-bottom-color: transparent
 
-    // Duotone icon colours for the explorer's sections (same palette on the
+    // Duotone icon colors for the explorer's sections (same palette on the
     // landing cards and the tab bar).
     .explorer-icon
         --fa-secondary-opacity: 1
@@ -136,7 +136,7 @@ body.pesticides
             --fa-primary-color: #d35400
             --fa-secondary-color: #ffc078
         // The tab row's link to the same place in the emissions explorer, in
-        // that explorer's Facilities colours.
+        // that explorer's Facilities colors.
         &.is-emissions
             --fa-primary-color: #d35400
             --fa-secondary-color: #ffc078
@@ -200,7 +200,7 @@ body.pesticides
             background-color: $link
             color: $white
             // Its muted secondary text (a pollutant's full name) stays muted,
-            // in white, rather than grey on the blue. Bulma's text helpers are
+            // in white, rather than gray on the blue. Bulma's text helpers are
             // !important, so this has to be too.
             .has-text-grey, .has-text-grey-light
                 color: rgba($white, 0.75) !important
@@ -218,7 +218,7 @@ body.pesticides
         --fa-secondary-color: #{$grey-light}
     // The chemicals-of-concern toggle sits with the pickers, with the link to
     // its definition beside it. When it's on it fills with the notices orange
-    // and shows a check, so the state doesn't ride on colour alone.
+    // and shows a check, so the state doesn't ride on color alone.
     .explorer-scope-concern
         display: inline-flex
         align-items: center
@@ -238,7 +238,7 @@ body.pesticides
                 background-color: #b94800
                 border-color: #b94800
                 color: $white
-        // On a phone the scope bar has no room for three labelled controls:
+        // On a phone the scope bar has no room for three labeled controls:
         // the toggle keeps its icon, and the tooltip and aria-label still
         // say what it is.
         +mobile
@@ -360,7 +360,7 @@ body.pesticides
         max-width: 32rem
     // A place's Overview (as the emissions explorer's): the trend has the
     // wide column to itself, and the top-five cards stacked beside it keep
-    // their own height rather than stretching to a neighbour's.
+    // their own height rather than stretching to a neighbor's.
     .overview-columns
         .trend-chart
             max-width: none
@@ -578,8 +578,8 @@ body.pesticides
                 color: $white
                 font-weight: 600
         // The row and its county on the map, hovered together
-        // (js/pesticides/county-hover.js). A tint rather than a grey: the
-        // rows are already striped in greys.
+        // (js/pesticides/county-hover.js). A tint rather than a gray: the
+        // rows are already striped in grays.
         tbody tr:hover, tbody tr:focus-within, tbody tr.is-hovered
             background-color: rgba($link, 0.1)
 
@@ -589,29 +589,6 @@ body.pesticides
     +mobile
         .intro .is-size-5
             font-size: $size-6 !important
-
-    // About: a readable measure, with its contents beside it on a desktop.
-    .about-layout
-        .explainer
-            max-width: 46rem
-            h3
-                scroll-margin-top: 5rem
-            h4
-                scroll-margin-top: 5rem
-        +desktop
-            // The text at its measure and the contents right beside it, not
-            // across the empty half of a wide screen.
-            .about-main
-                flex: 0 1 48rem
-            .about-toc
-                order: 2
-                align-self: flex-start
-                position: sticky
-                top: 5rem
-        +touch
-            .about-toc
-                border-bottom: 1px solid $grey-lighter
-                margin-bottom: 1rem
 
     .explorer-filters, .records-filters, .notice-filters
         padding: 1.25rem
@@ -784,7 +761,7 @@ body.pesticides
             @extend .has-text-grey-dark
             white-space: nowrap
             // The up/down arrows only say "sortable"; show them on the sorted
-            // column (in the link colour) and when a header is hovered or
+            // column (in the link color) and when a header is hovered or
             // focused. opacity, not display, so the column doesn't resize.
             .icon
                 color: $text-grey
@@ -885,8 +862,11 @@ body.pesticides
                 margin-top: 0.25rem
                 margin-bottom: 0.75rem
             font-size: $size-7
+            // A name never splits ("San / Joaquin", "Arvin, / Lamont"); the
+            // row wraps after a separator (<wbr>) instead.
             a
                 font-weight: 600
+                white-space: nowrap
             .find-area-sep
                 color: $grey-light
                 margin: 0 0.15rem
@@ -931,7 +911,7 @@ body.pesticides
         &:hover
             color: $link
         // With words in front of it the icon is the affordance, not the
-        // whole control, so the text carries the colour.
+        // whole control, so the text carries the color.
         .note-help-label
             margin-right: 0.25rem
             color: $grey
@@ -972,7 +952,7 @@ body.pesticides
     // trend lines outright (stats.series_label), so sitting under the pounds
     // column doesn't read as describing those numbers.
     // The line under each figure in a stat row. Always rendered, even when a
-    // figure has nothing to add, so one subtext doesn't lift its neighbour
+    // figure has nothing to add, so one subtext doesn't lift its neighbor
     // off the row's baseline.
     .stat-note
         min-height: 1.15rem
@@ -1010,7 +990,7 @@ body.pesticides
         thead th
             white-space: nowrap
         // The rank column, styled like the landing boards' counters: a
-        // narrow grey "1." hugging the name.
+        // narrow gray "1." hugging the name.
         .rank
             width: 1%
             white-space: nowrap
@@ -1021,7 +1001,7 @@ body.pesticides
             font-variant-numeric: tabular-nums
         // Badges sit in the line, not under it: Bulma's tag groups carry
         // bottom margins for wrapping rows, which here only make a badged row
-        // taller than its neighbours. A tag is 2em of 0.75rem, exactly the
+        // taller than its neighbors. A tag is 2em of 0.75rem, exactly the
         // line box, so with the margins gone the rows all come out even.
         .tags.is-inline
             display: inline-flex
@@ -1047,7 +1027,7 @@ body.pesticides
             letter-spacing: 0.03em
             color: $grey
 
-    // The by-year shape beside each leaderboard row: grey enough to read as
+    // The by-year shape beside each leaderboard row: gray enough to read as
     // context rather than data, and it disappears on a phone, where the row
     // needs its width for the name.
     .spark

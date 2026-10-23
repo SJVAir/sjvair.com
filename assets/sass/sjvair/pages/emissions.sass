@@ -26,7 +26,7 @@ body.emissions
     // for the white title over a bright sky.
     background-image: linear-gradient(180deg, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0.6) 100%), url('/static/img/pumpjacks-san-joaquin-valley.jpg')
     background-position: center 60%
-  // Duotone colours for the emissions explorer's own icons (the tabs and the
+  // Duotone colors for the emissions explorer's own icons (the tabs and the
   // map toolbar), alongside the shared palette in pesticides.sass.
   .explorer-icon
     &.is-schools
@@ -68,10 +68,14 @@ body.emissions
       --fa-secondary-color: #d9a679
     // The cow (the Dairies tabs): the size classes' amber-brown. These sat
     // nested under the About rule above, a selector nothing matched, so the
-    // cow took the text colour -- link blue when its tab was current.
+    // cow took the text color -- link blue when its tab was current.
     &.is-dairies
       --fa-primary-color: #b45309
       --fa-secondary-color: #fcd34d
+    // Methane (the Methane tabs): a plume's slate violet, the methane overlay's cool end.
+    &.is-methane
+      --fa-primary-color: #6d5bd0
+      --fa-secondary-color: #c4b5fd
   // The scope bar's two toggles, while off (on, they go white on the orange
   // fill): toxics in a warning red, minor sources in a fuel-pump gold.
   .explorer-scope-toggle:not(.is-set) .explorer-icon
@@ -85,8 +89,11 @@ body.emissions
   .facility-map-view .button.is-link .explorer-icon
     --fa-primary-color: #fff
     --fa-secondary-color: rgba(255, 255, 255, 0.6)
-  // Scope options that don't apply on a page (the Dairies tab): shown, not links.
-  .explorer-scope-picker .dropdown-item.is-disabled
+  // Scope options that don't apply on a page (the Dairies tab), and a map
+  // toolbar's measure that doesn't apply at the level picked (the Dairies
+  // map's emissions, by county only): shown, grayed, not links.
+  .explorer-scope-picker .dropdown-item.is-disabled,
+  .map-toolbar-dropdown .dropdown-item.is-disabled
     color: $grey-light
     cursor: not-allowed
     &:hover
@@ -219,21 +226,6 @@ body.emissions
       margin-top: 0.5rem
   .oil-gas-callout
     margin: 0.5rem 0 1rem
-  // The About page's sections are h2s (the pesticides About's are h3s):
-  // clear of the sticky scope bar when a contents link jumps to one.
-  .about-layout .explainer h2
-    scroll-margin-top: 5rem
-  // Sixteen sections: on a phone the contents list is two tight columns,
-  // not a screen of links before the text starts.
-  +mobile
-    .about-toc .menu-list
-      columns: 2
-      column-gap: 1rem
-      font-size: $size-7
-      // Tight, but each link still a 24px target (WCAG 2.5.8).
-      a
-        padding: 0.2rem 0
-        min-height: 1.5rem
   // A card's rows past its first five (rank-card.html), until its View all
   // (explorer.js's [data-reveal-toggle]) reveals them.
   [data-reveal-scope] .is-collapsed:not(.is-revealed)
@@ -246,7 +238,7 @@ body.emissions
     font-size: 0.8rem
     font-weight: 600
   // The dairy headline's second, smaller tier (dairy-stats.html): estimates
-  // and funding, labelled, left-aligned, a step down from the herd's numbers.
+  // and funding, labeled, left-aligned, a step down from the herd's numbers.
   .dairy-estimates
     margin-top: -0.5rem
     padding: 1rem 1.25rem
@@ -348,28 +340,6 @@ body.emissions
       vertical-align: -0.1em
   .facility-regulator a[href^="tel:"]
     white-space: nowrap
-  // Home: the 4 entry cards under the stats row (Facilities, Dairies, Oil &
-  // gas, Schools) -- the whole card is the link.
-  .entry-cards
-    margin-top: 0.5rem
-    .entry-card
-      display: block
-      height: 100%
-      color: $text
-      transition: box-shadow 0.15s ease, transform 0.15s ease
-      &:hover, &:focus
-        box-shadow: 0 0.5em 1em -0.125em rgba(10, 10, 10, 0.15), 0 0 0 1px rgba(10, 10, 10, 0.02)
-        transform: translateY(-1px)
-    .entry-card-icon
-      margin-bottom: 0.25rem
-    .entry-card-value
-      margin: 0.1rem 0 0.35rem
-      .entry-card-label
-        margin-left: 0.3rem
-    .entry-card-sentence
-      font-size: $size-7
-      margin: 0
-
   // Home: "Search by location" and "Find a facility" side by side, the same height.
   .find-row
     .box
@@ -453,35 +423,11 @@ body.emissions
         content: attr(data-label) ": "
         color: $grey
   // The Facilities tab's header (facilities-header.html): the title and its
-  // place line, with the By facility / By sector switch at its right; under
-  // it on a phone.
+  // place line, its Summary | Table | Sectors row close under it.
   .facilities-header
-    display: flex
-    flex-wrap: wrap
-    align-items: center
-    justify-content: space-between
-    gap: 0.75rem 1.5rem
-    margin-bottom: 1.5rem
+    margin-bottom: 0.75rem
     .area-header
       margin-bottom: 0 !important
-    .facility-view-switch
-      margin-bottom: 0
-      a
-        font-weight: 600
-  // A Facilities tab's filters, a row on the table they narrow.
-  .table-filters
-    padding: 1rem 1.25rem
-    margin-bottom: 1rem
-    .columns
-      margin-bottom: -0.75rem
-    .field
-      margin-bottom: 0
-    .label
-      font-size: $size-7
-      text-transform: uppercase
-      letter-spacing: 0.04em
-      color: $grey
-      margin-bottom: 0.35rem
   // How many rows match, and the CSV, over the table.
   .table-toolbar
     display: flex
@@ -492,3 +438,16 @@ body.emissions
     margin-bottom: 0.5rem
     .table-count
       color: $grey-dark
+  // A well's WellSTAR and Well Finder buttons (well-links.html, the map's well popup):
+  // on one line in the wells table's last column.
+  .well-links
+    margin: 0.35rem 0 0
+    .button
+      margin-bottom: 0
+  .well-table .cell-links
+    white-space: nowrap
+    vertical-align: middle
+    .well-links
+      margin: 0
+      flex-wrap: nowrap
+

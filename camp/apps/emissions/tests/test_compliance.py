@@ -163,7 +163,7 @@ class PageTests(ComplianceTestCase):
     def test_about_and_integrations(self):
         from django.urls import reverse
         content = self.client.get(reverse('emissions:about')).content.decode()
-        assert '<h2 id="compliance">Compliance</h2>' in content
+        assert '<section class="about-section" id="compliance">' in content
         assert 'Only large sources are here.' in content and 'No compliance data has been imported yet.' in content
         from camp.apps.emissions.models import SourceImport
         SourceImport.objects.create(source='icis-air', data_through=date(2025, 12, 31))

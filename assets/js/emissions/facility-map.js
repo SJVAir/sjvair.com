@@ -5,8 +5,8 @@
  * Two views, one at a time:
  *   Facilities  one circle per permitted facility: area scaled by the
  *               selected pollutant (square root, so the largest emitter
- *               doesn't bury the rest), colour by a fixed log-scale class;
- *               facilities that reported none are small hollow grey rings.
+ *               doesn't bury the rest), color by a fixed log-scale class;
+ *               facilities that reported none are small hollow gray rings.
  *   Areas       counties, ZIP areas or 2020 census tracts shaded by the
  *               facilities inside them: per square mile, total, or per
  *               1,000 residents (fixed log-scale classes). Shapes come from
@@ -55,7 +55,7 @@
   // 'steelblue'/'rdbu7' are this map's original defaults (ColorBrewer Blues
   // without its palest step, which vanishes on the basemap; ColorBrewer
   // RdBu at this map's own 7-class fixed breaks) -- sampling either at its
-  // native length reproduces the exact original colours.
+  // native length reproduces the exact original colors.
   var DEFAULT_RAMP = 'steelblue';
   var DEFAULT_DRAMP = 'rdbu7';
   var sampleRamp = M.sampleRamp;
@@ -74,9 +74,18 @@
   };
   var AREA_FIELDS = { density: 'per_sq_mi', total: 'total', per_resident: 'per_1k_residents' };
   var AREA_SUFFIX = { density: ' per sq mi', total: '', per_resident: ' per 1,000 people' };
+  // An Oil & gas map's Areas view (data-areas-kind="wells") shades the wells'
+  // own counts (/api/2.0/emissions/wells/areas/): its measures' fields,
+  // fixed classes (from the Valley's spread: most tracts hold a handful of
+  // wells, a few oil-field tracts thousands) and legend titles.
+  var WELL_AREA_FIELDS = { density: 'per_sq_mi', total: 'wells', active: 'active', hpz_share: 'hpz_share' };
+  var WELL_AREA_BREAKS = { density: [0.5, 2, 10, 50], total: [5, 25, 100, 1000], active: [5, 25, 100, 1000], hpz_share: [0.1, 0.25, 0.5, 0.75] };
+  var WELL_AREA_TITLES = {
+    density: 'Wells per sq mi', total: 'Wells', active: 'Active wells', hpz_share: 'Share of wells in a health-protection zone',
+  };
   // Compare mode: the Areas view shades the selected measure's percent
   // change instead of its value, on a fixed diverging scale (ColorBrewer
-  // RdBu) -- blue for a fall, red for a rise, pale grey near zero. Fixed
+  // RdBu) -- blue for a fall, red for a rise, pale gray near zero. Fixed
   // rather than data-driven, like CLASS_BREAKS/AREA_BREAKS: stable classes
   // across a measure, county or year change, at the cost of an outlier
   // pinning the top bucket.
@@ -84,7 +93,7 @@
   var CHANGE_RAMP = sampleRamp(M.ramps.diverging[DEFAULT_DRAMP], CHANGE_BREAKS.length + 1);
   var LEVEL_NAMES = { county: '', zipcode: 'ZIP ', tract: 'Tract ' };
   var EMPTY_COLOR = '#8a94a3';
-  // A facility circle with nothing to colour it by: grey, outlined darker.
+  // A facility circle with nothing to color it by: gray, outlined darker.
   var EMPTY_FILL = '#c9ced6';
   var EMPTY_STROKE = '#6b7480';
   var HIGHLIGHT_COLOR = '#d35400';
@@ -101,7 +110,7 @@
 
   // The Oil & gas wells overlay (CalGEM WellSTAR, /api/2.0/emissions/wells/geojson/):
   // one point per well, clustered by the GeoJSON source until CLUSTER_MAX_ZOOM.
-  // Status colours; a red ring marks a verified health protection zone.
+  // Status colors; a red ring marks a verified health protection zone.
   var WELL_COLORS = { Active: '#b45309', Idle: '#6b7280', New: '#2563eb' };
   var WELL_HPZ_COLOR = '#dc2626';
   var CLUSTER_COLOR = '#7c2d12';
@@ -116,7 +125,6 @@
   // methane sources), the pesticides map's: a small dot in a thin white ring.
   var LOCATION_RADIUS = 4;
   var LOCATION_STROKE = 1;
-  var LOCATION_EMPTY_RADIUS = 3;
   var LOCATION_WELL_COLORS = { Active: '#1e293b', Idle: '#64748b', New: '#cbd5e1' };
   var LOCATION_CLUSTER_COLOR = '#334155';
   var POINT_LAYERS = [
@@ -145,7 +153,7 @@
     },
   ];
   // The Schools tab's `nearby` dots carry the same `kind` as the locations
-  // map's schools point layer, so they share its colours and legend key.
+  // map's schools point layer, so they share its colors and legend key.
   var SCHOOLS_POINT_LAYER = POINT_LAYERS.filter(function (spec) { return spec.key === 'schools'; })[0];
   var CLUSTER_MAX_ZOOM = 11;
   var CLUSTER_RADIUS = 40;
@@ -185,8 +193,8 @@
 
   // The Compare legend's size key (three sample circles at max/10/100 of
   // it). Empty when there's nothing to scale. `color` is the circles'
-  // stroke, the stylesheet's grey when unset: under Compare the circles'
-  // colour means change rather than size.
+  // stroke, the stylesheet's gray when unset: under Compare the circles'
+  // color means change rather than size.
   function sizeKeyHtml(max, color, round) {
     if (!max) return '';
     return '<div class="legend-sizes">' + [max, max / 10, max / 100].map(function (value) {
@@ -194,12 +202,12 @@
     }).join('') + '</div>';
   }
 
-  // The plain Facilities legend's one key: size and colour both follow the
-  // value there, so each colour class shows as a circle in its colour at
+  // The plain Facilities legend's one key: size and color both follow the
+  // value there, so each color class shows as a circle in its color at
   // the size of the class's top (the largest facility's for the top class).
   // Classes above the largest facility have no circles on the map and are
   // left out. Under Compare the two part ways (size is this year's value,
-  // colour the change), so that legend keeps a size key and colour classes.
+  // color the change), so that legend keeps a size key and color classes.
   function valueKeyHtml(max, breaks, round) {
     var box = 2 * MAX_RADIUS + 2;
     var top = classIndex(max, breaks);
@@ -276,7 +284,7 @@
   // Precompute each circle so the layer's paint is plain `get`s. `compare`
   // (a loaded year, from the geojson's own properties.compare) keeps the
   // circle's size by this year's value -- still a useful scale -- but
-  // colours it by the percent change from that year instead, on the same
+  // colors it by the percent change from that year instead, on the same
   // diverging ramp as the Areas view.
   function prepare(collection, unit, compare, uniform) {
     var features = collection.features || [];
@@ -288,16 +296,15 @@
       var p = feature.properties;
       var sized = p.value > 0 && max > 0;
       var change = compare ? changeFraction(p.value, p.value_prev) : null;
-      var coloured = compare ? change !== null : sized;
-      // In locations mode a "none reported" facility (the grey ring) draws
-      // smaller than a reporting one, so it doesn't compete for attention
-      // with the dots that actually carry a value in the marker soup.
-      p._radius = uniform ? (sized ? LOCATION_RADIUS : LOCATION_EMPTY_RADIUS) : (sized ? radiusFor(p.value, max) : MIN_RADIUS);
-      p._color = coloured ? ramp[classIndex(compare ? change : p.value, breaks)] : EMPTY_FILL;
+      var colored = compare ? change !== null : sized;
+      // In locations mode every facility is the one point marker; a "none
+      // reported" one is told apart by its gray, not its size.
+      p._radius = uniform ? LOCATION_RADIUS : (sized ? radiusFor(p.value, max) : MIN_RADIUS);
+      p._color = colored ? ramp[classIndex(compare ? change : p.value, breaks)] : EMPTY_FILL;
       // Each circle's outline is a darker shade of its own fill, so two
       // overlapping circles read as two rather than one half-bordered one.
-      p._stroke = coloured ? darken(p._color, 0.35) : EMPTY_STROKE;
-      p._empty = coloured ? 0 : 1;
+      p._stroke = colored ? darken(p._color, 0.35) : EMPTY_STROKE;
+      p._empty = colored ? 0 : 1;
       p._sort = sized ? p.value : 0;
       p._change = change;
     });
@@ -323,7 +330,7 @@
     return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [WORLD_RING].concat(rings) } };
   }
 
-  // A `miles` circle around [lng, lat] as a polygon (the SDK has no circles in metres).
+  // A `miles` circle around [lng, lat] as a polygon (the SDK has no circles in meters).
   function circle(center, miles) {
     var meters = miles * METERS_PER_MILE;
     var dLat = meters / 111320;
@@ -359,7 +366,7 @@
     // the click popup already carries the values (M.hover.controller, shared
     // with the dairy map's counties).
     this.areaHover = M.hover.controller(this.map, 'areas');
-    // The Options menu's experiment controls: basemap style and colour
+    // The Options menu's experiment controls: basemap style and color
     // ramp, applied live and written to the URL (?tiles=, ?ramp=, ?dramp=).
     // Not page scope (readViewState), so they survive a scope swap
     // untouched. The shell already resolved the basemap style from
@@ -397,16 +404,16 @@
     this.noFacilities = this.data.mainLayer === 'none';
     this.mainLayer = !this.noFacilities && this.data.mainLayer !== '0';
     this.methane = window.EmissionsMethaneOverlay ? new window.EmissionsMethaneOverlay(this, { before: 'facilities' }) : null;
-    // The scope bar's links (year, pollutant, toggles) and the near-me radius
-    // buttons were rendered before
-    // the reader switched view, level, measure or sector here, and carry the
-    // page's original values. Rewrite the boosted request's URL (htmx reads
-    // detail.path back after this event) so the next page opens the way the
-    // map is now; defaults are left out.
+    // The scope bar's links (year, pollutant, toggles), the near-me radius
+    // buttons and the filter box were rendered before the reader switched
+    // view, level or measure here, and carry the page's original values.
+    // Rewrite the boosted request's URL (htmx reads detail.path back after
+    // this event) so the next page opens the way the map is now; defaults
+    // are left out.
     this.onConfigRequest = function (event) {
       var detail = event.detail;
       var elt = detail && detail.elt;
-      if (!elt || !elt.closest || !elt.closest('.explorer-scope, .radius-switcher') || typeof detail.path !== 'string') return;
+      if (!elt || !elt.closest || !elt.closest('.explorer-scope, .radius-switcher, .explorer-filters') || typeof detail.path !== 'string') return;
       if (!self.areasEnabled && self.data.mode !== 'full') return;
       var path = M.rewriteQuery(detail.path, self.writeState.bind(self));
       if (path !== null) detail.path = path;
@@ -424,14 +431,15 @@
     this.level = this.data.level || this.defaultLevel;
     this.measure = this.data.measure || 'density';
     // A weighted toxics measure is a share: only Total means anything (the
-    // server renders density and per-resident disabled).
-    if (this.data.unit === 'share') this.measure = 'total';
+    // server renders density and per-resident disabled). Not for the wells'
+    // areas, which are counts whatever the pollutant.
+    if (this.data.unit === 'share' && !this.wellsAreas()) this.measure = 'total';
     // The year Compare shades the change against, in both views, or ''
     // for plain values; a toolbar control, not part of the page's scope.
     this.compare = this.data.compare || '';
     // A shared link asking for density (or per-resident) on a share opens as
     // Total; the address bar says so too.
-    if (this.areasEnabled && this.data.unit === 'share' && /[?&]measure=(?!total(&|$))/.test(window.location.search)) this.syncUrl();
+    if (this.areasEnabled && !this.wellsAreas() && this.data.unit === 'share' && /[?&]measure=(?!total(&|$))/.test(window.location.search)) this.syncUrl();
     // The wells overlay: offered where the page gave a URL; its default is the
     // page's (Kern County, the oil-gas sector), the URL may override it.
     this.wellsEnabled = !!this.data.wellsUrl;
@@ -496,7 +504,7 @@
       paint: { 'line-color': DISTRICT_COLOR, 'line-width': 2, 'line-dasharray': [3, 2] },
     });
     // Wells: clustered until CLUSTER_MAX_ZOOM (by the Tweaks menu's Clusters
-    // setting, wellsClustered); cluster size by count, colour by its active
+    // setting, wellsClustered); cluster size by count, color by its active
     // share; single wells by status, ringed when in a verified HPZ.
     this.shell.ensureSource('wells', {
       cluster: this.wellsClustered(), clusterMaxZoom: CLUSTER_MAX_ZOOM, clusterRadius: CLUSTER_RADIUS,
@@ -554,7 +562,7 @@
       id: 'nearby', type: 'circle', source: 'nearby',
       // The facility page's dots have no `kind` (NEARBY_COLOR, its fixed
       // green) -- the Schools tab's do, and take the schools point layer's
-      // public/private/child-care colours instead.
+      // public/private/child-care colors instead.
       paint: { 'circle-radius': LOCATION_RADIUS, 'circle-color': nearbyColorMatch(), 'circle-stroke-color': '#ffffff', 'circle-stroke-width': LOCATION_STROKE },
     });
     this.shell.ensureLayer({
@@ -589,7 +597,7 @@
     if (this.methane) this.methane.addLayers();
   };
 
-  // Every circle outlined in a darker shade of its fill (grey for "none
+  // Every circle outlined in a darker shade of its fill (gray for "none
   // reported"); with a highlighted facility (a facility page), it gets an
   // orange ring and everything else fades.
   FacilityMap.prototype.applyHighlight = function () {
@@ -626,8 +634,16 @@
       // mainLayer: the legend's checkbox for the pollutant's own layer, off
       // to see an overlay (plumes, wells) alone.
       set(this.map, 'facilities', !areas && this.mainLayer);
-      set(this.map, 'areas-fill', areas && this.mainLayer);
-      set(this.map, 'areas-line', areas && this.mainLayer);
+      // The wells' areas are the wells, drawn another way: shown whatever the
+      // (absent) facilities layer says, with the wells' own points hidden under them.
+      var shaded = areas && (this.mainLayer || this.wellsAreas());
+      set(this.map, 'areas-fill', shaded);
+      set(this.map, 'areas-line', shaded);
+      if (this.wellsAreas()) {
+        var wellsOn = !areas && this.wellsEnabled && this.wells;
+        set(this.map, 'wells', wellsOn);
+        set(this.map, 'wells-clusters', wellsOn);
+      }
     }
     Array.prototype.forEach.call(this.shell.controls('[data-view]'), function (button) {
       var on = button.getAttribute('data-view') === (areas ? 'areas' : 'facilities');
@@ -710,7 +726,18 @@
     this.el.dataset.loaded = '1';
   };
 
+  // An Oil & gas map: its Areas view shades the wells, not the facilities.
+  FacilityMap.prototype.wellsAreas = function () {
+    return this.data.areasKind === 'wells';
+  };
+
   FacilityMap.prototype.areasUrl = function () {
+    if (this.wellsAreas()) {
+      // The wells' own filters (status, HPZ...), as their overlay's URL carries them.
+      var wellsParams = new URLSearchParams((this.data.wellsUrl || '').split('?')[1] || '');
+      wellsParams.set('level', this.level);
+      return this.data.areasUrl + '?' + wellsParams.toString();
+    }
     var params = new URLSearchParams(this.data.query || '');
     params.set('level', this.level);
     if (this.compare) params.set('compare', this.compare); else params.delete('compare');
@@ -745,7 +772,7 @@
       });
   };
 
-  // Joins the values to the shapes and colours them by the current measure
+  // Joins the values to the shapes and colors them by the current measure
   // (a measure change re-runs this without fetching) -- or, in Compare mode,
   // by that measure's percent change from the compared year (both years came
   // with the fetch, so switching the measure or clearing Compare still needs
@@ -757,8 +784,9 @@
     var compare = this.compare && data.values.compare;
     var byId = {};
     data.values.areas.forEach(function (area) { byId[area.id] = area; });
-    var field = AREA_FIELDS[this.measure] || AREA_FIELDS.density;
-    var breaks = compare ? CHANGE_BREAKS : areaBreaksFor(this.measure, data.values.unit);
+    var wellsAreas = this.wellsAreas();
+    var field = wellsAreas ? (WELL_AREA_FIELDS[this.measure] || WELL_AREA_FIELDS.density) : (AREA_FIELDS[this.measure] || AREA_FIELDS.density);
+    var breaks = compare ? CHANGE_BREAKS : (wellsAreas ? (WELL_AREA_BREAKS[this.measure] || WELL_AREA_BREAKS.density) : areaBreaksFor(this.measure, data.values.unit));
     var ramp = compare ? CHANGE_RAMP : RAMP;
     var features = (data.shapes.features || []).map(function (feature) {
       var area = byId[feature.id];
@@ -777,6 +805,10 @@
           total_prev: area ? area.total_prev : null,
           per_sq_mi_prev: area ? area.per_sq_mi_prev : null,
           per_1k_residents_prev: area ? area.per_1k_residents_prev : null,
+          wells: area ? area.wells : 0,
+          active: area ? area.active : 0,
+          hpz: area ? area.hpz : 0,
+          hpz_share: area ? area.hpz_share : null,
           _change: change,
           _color: shaded ? ramp[classIndex(compare ? change : value, breaks)] : EMPTY_COLOR,
           _empty: shaded ? 0 : 1,
@@ -851,9 +883,10 @@
 
   // The overlay's layers follow `this.wells`; the legend's checkbox too.
   FacilityMap.prototype.applyWells = function () {
-    var on = this.wellsEnabled && this.wells;
+    // In an Oil & gas map's Areas view the shading is the wells: their points stay under it.
+    var on = this.wellsEnabled && this.wells && !(this.wellsAreas() && this.view === 'areas');
     if (this.map && this.map.getLayer('wells')) {
-      // A page swap can move between a locations map and an Oil & gas one: the colours follow.
+      // A page swap can move between a locations map and an Oil & gas one: the colors follow.
       var colors = this.wellColors();
       this.map.setPaintProperty('wells', 'circle-color', ['match', ['get', 's'], 'Active', colors.Active, 'Idle', colors.Idle, 'New', colors.New, colors.Idle]);
       this.map.setPaintProperty('wells-clusters', 'circle-color', this.locations ? LOCATION_CLUSTER_COLOR : CLUSTER_COLOR);
@@ -937,6 +970,13 @@
     if (result && typeof result.then === 'function') result.then(go).catch(function (err) { logError('cluster zoom', err); });
   };
 
+  // A small rounded button to one of a well's CalGEM pages, in a new tab.
+  function wellLink(url, label) {
+    return '<a class="button is-rounded" href="' + escapeHtml(url) + '" target="_blank" rel="noopener"><span>' + escapeHtml(label) + '</span>' +
+      '<span class="icon is-small"><span class="fa-regular fa-arrow-up-right-from-square" aria-hidden="true"></span></span>' +
+      '<span class="is-sr-only"> (opens in a new tab)</span></a>';
+  }
+
   FacilityMap.prototype.openWellPopup = function (feature, lngLat) {
     var self = this;
     var id = feature.properties.id;
@@ -950,7 +990,8 @@
           (well.operator ? '<p>' + escapeHtml(well.operator) + (well.field ? ', ' + escapeHtml(well.field) + ' field' : '') + '</p>' : '') +
           '<p>' + (well.spud_year ? 'Drilled ' + escapeHtml(String(well.spud_year)) + ' · ' : '') + escapeHtml(well.in_hpz || 'HPZ status unknown') + '</p>' +
           '<p class="is-size-7 has-text-grey">' + escapeHtml(self.wellsAsOf('Current status')) + '</p>' +
-          '<p><a href="' + escapeHtml(well.url) + '">CalGEM record →</a></p>' +
+          // The well's two CalGEM pages, as on the wells table (well-links.html).
+          '<div class="buttons are-small well-links">' + wellLink(well.url, 'WellSTAR') + (well.map_url ? wellLink(well.map_url, 'Well Finder') : '') + '</div>' +
           '</div>');
         if (self.shell.panPopupIntoView) self.shell.panPopupIntoView(popup);
       })
@@ -1018,7 +1059,7 @@
     return ['case', ['==', ['get', 'h'], 1], 2, LOCATION_STROKE];
   };
 
-  // The wells' status colours: purple shades on a locations map, else their own.
+  // The wells' status colors: purple shades on a locations map, else their own.
   FacilityMap.prototype.wellColors = function () {
     return this.locations ? LOCATION_WELL_COLORS : WELL_COLORS;
   };
@@ -1128,7 +1169,7 @@
 
   // The schools and child care listed on a facility page, from the
   // container's own attributes (no fetch): the dots and the 1/4-mile ring
-  // around the page's centre. Empty on every other page.
+  // around the page's center. Empty on every other page.
   FacilityMap.prototype.showNearby = function () {
     var collection = M.EMPTY;
     if (this.data.nearby) {
@@ -1158,7 +1199,7 @@
   };
 
   // Frame the facilities, unless the page framed the map itself (a facility
-  // page's centre, the covered counties' bounds, or the page's area). A page
+  // page's center, the covered counties' bounds, or the page's area). A page
   // that asks (data-fit, a sector page) frames its facilities over the bounds.
   FacilityMap.prototype.fit = function (collection) {
     if (M.parseCenter(this.data.center) || this.data.outlineUrl) return;
@@ -1208,6 +1249,7 @@
   FacilityMap.prototype.openAreaPopup = function (feature, lngLat) {
     var self = this;
     var p = feature.properties;
+    if (this.wellsAreas()) return this.openWellAreaPopup(feature, lngLat);
     var count = Number(p.facilities) || 0;
     var share = this.data.unit === 'share';
     var name = (LEVEL_NAMES[this.level] || '') + p.name;
@@ -1247,20 +1289,53 @@
     }
   };
 
+  // An Oil & gas map's area: its wells by status and how many sit in a
+  // health-protection zone, and a button back to them on the map.
+  FacilityMap.prototype.openWellAreaPopup = function (feature, lngLat) {
+    var self = this;
+    var p = feature.properties;
+    var count = Number(p.wells) || 0;
+    var name = (LEVEL_NAMES[this.level] || '') + p.name;
+    var number = function (value) { return Number(value || 0).toLocaleString('en-US'); };
+    var html = '<div class="facility-popup area-popup">' +
+      '<p class="facility-popup-name">' + escapeHtml(name) + '</p>' +
+      '<p><strong>' + number(count) + '</strong> well' + (count === 1 ? '' : 's') + (count ? ' · ' + number(p.active) + ' active' : '') + '</p>' +
+      (count ? '<p>Per square mile: <strong>' + (p.per_sq_mi === null || p.per_sq_mi === undefined ? '—' : Number(p.per_sq_mi).toLocaleString('en-US', { maximumFractionDigits: 1 })) + '</strong></p>' +
+        '<p>In a health-protection zone: <strong>' + number(p.hpz) + '</strong>' + (p.hpz_share !== null && p.hpz_share !== undefined ? ' (' + sharePct(p.hpz_share) + ')' : '') + '</p>' : '') +
+      (count ? '<p><button type="button" class="button is-small is-link is-light" data-show-facilities>Show wells</button></p>' : '') +
+      '</div>';
+    var popup = this.shell.placePopup(html, lngLat);
+    var button = popup.getElement().querySelector('[data-show-facilities]');
+    if (button) {
+      button.addEventListener('click', function () {
+        var shape = (self.areaData && self.areaData.shapes.features || []).filter(function (f) { return f.id === p.id; })[0];
+        popup.remove();
+        self.setView('facilities');
+        var bounds = shape && M.geometryBounds(shape.geometry);
+        if (bounds) self.map.fitBounds(bounds, { padding: 24, animate: !self.shell.reducedMotion });
+      });
+    }
+  };
+
   // The legend card follows the view. It stays hidden until there's
   // something to put in it.
   FacilityMap.prototype.legend = function (body) {
     var legend = body.querySelector('.facility-map-legend');
     if (!legend) return;
     if (this.noFacilities) {
-      // Only the overlays: their own checkboxes and keys, no facility key.
+      // Only the overlays: their own checkboxes and keys, no facility key --
+      // or, in the wells' Areas view, the areas' key with them.
       if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = false;
+      if (this.wellsAreas() && this.view === 'areas' && this.areaData) {
+        this.areaLegend(legend);
+        return;
+      }
       legend.innerHTML = this.overlaysLegendHtml();
       return;
     }
     this.renderLegend(body, legend);
     // The checkbox says which layer it is, "Facilities", with the pollutant
-    // title after it in small grey.
+    // title after it in small gray.
     legend.innerHTML = M.mainLayerToggle(legend.innerHTML.replace(/^<p class="legend-title">([\s\S]*?)<\/p>/,
       '<p class="legend-title">Facilities <small class="legend-title-detail">$1</small></p>'), this.mainLayer);
   };
@@ -1277,7 +1352,7 @@
     var max = this.legendData.max;
     if (this.legendData.compare) {
       // Circles still size by this year's value, a useful scale on its own,
-      // so the key stays; the colour classes swap to the change ramp instead.
+      // so the key stays; the color classes swap to the change ramp instead.
       var changeTitle = escapeHtml(this.data.label) + ', change ' + escapeHtml(String(this.legendData.compare)) +
         ' to ' + escapeHtml(this.data.year || '');
       legend.innerHTML = '<p class="legend-title">' + changeTitle + '</p>' + (this.locations ? '' : sizeKeyHtml(max, undefined, round)) +
@@ -1296,7 +1371,7 @@
       return;
     }
     legend.innerHTML = '<p class="legend-title">' + label + '</p>' +
-      // A locations map's points are all one size: its key is the colour classes alone.
+      // A locations map's points are all one size: its key is the color classes alone.
       (this.locations ? facilityBins(breaks, undefined, round) : valueKeyHtml(max, breaks, round)) +
       '<p class="legend-empty"><span class="legend-ring"></span>None reported</p>' +
       (share ? '<p class="legend-note">Pounds × OEHHA toxicity, relative to the Valley total. Not a health risk: stack height, weather and distance are ignored.</p>' : '') +
@@ -1319,6 +1394,15 @@
     var share = data.values.unit === 'share';
     var breaks = data.breaks;
     var missing = Number(data.values.facilities_without_point) || 0;
+    if (this.wellsAreas()) {
+      legend.innerHTML = '<p class="legend-title">' + escapeHtml(WELL_AREA_TITLES[this.measure] || WELL_AREA_TITLES.density) + '</p>' +
+        facilityBins(breaks, 'is-area', this.measure === 'hpz_share' ? sharePct : undefined) +
+        '<p class="legend-empty"><span class="legend-swatch is-area is-none"></span>No wells</p>' +
+        '<p class="legend-note">' + this.wellsAsOf('Today\'s wells') + ': CalGEM records, not emissions.</p>' +
+        // The other overlays; not the wells' own row, whose points the shading stands in for.
+        this.pointsLegendHtml(['dairies']) + this.pointsLegendHtml(['schools']) + this.methaneLegendHtml();
+      return;
+    }
     if (data.compareActive) {
       var title = escapeHtml(this.data.label) + (share ? '' : (AREA_SUFFIX[this.measure] || '')) + ', change ' +
         escapeHtml(String(data.compareActive)) + ' to ' + escapeHtml(this.data.year || '');
@@ -1348,7 +1432,6 @@
     var self = this;
     if (this.shell.legendPanelEl && !this.legendData && !this.areaData) this.shell.legendPanelEl.hidden = true;
     var shell = this.shell;
-    shell.bindControls('[data-sector]', function (item) { self.setSector(item.getAttribute('data-sector'), item.textContent.trim()); });
     shell.bindControls('[data-view]', function (item) { self.setView(item.getAttribute('data-view')); });
     shell.bindControls('[data-level]', function (item) { self.setLevel(item.getAttribute('data-level'), item.textContent.trim()); });
     shell.bindControls('[data-measure]', function (item) { self.setMeasure(item.getAttribute('data-measure'), item.textContent.trim()); });
@@ -1368,7 +1451,7 @@
     }
     if (this.methane) this.methane.bind(legendBody);
 
-    // The Options menu's experiment controls (basemap style, colour ramp),
+    // The Options menu's experiment controls (basemap style, color ramp),
     // same pattern as the pesticides section map: fill the selects, apply
     // a change live and write it to the URL.
     this.optionsEl = wrap.querySelector('.facility-map-options');
@@ -1430,9 +1513,8 @@
   };
 
   // Sets the map's state on `params` (a URLSearchParams), defaults left out:
-  // view `facilities`, the page's default level, measure `density`, and no
-  // sector. The sector is only the map's to write on the full map, where the
-  // reader picks it (a sector page's own sector is the page, not a filter).
+  // view `facilities`, the page's default level and measure `density`. Which
+  // facilities (the sector, the search) is the filter box's, never written here.
   FacilityMap.prototype.writeState = function (params) {
     if (this.areasEnabled) {
       var areas = this.view === 'areas';
@@ -1443,11 +1525,7 @@
       // written whenever it's set, not only in Areas.
       if (this.compare) params.set('compare', this.compare); else params.delete('compare');
     }
-    if (this.data.mode === 'full') {
-      var sector = new URLSearchParams(this.data.query || '').get('sector');
-      if (sector) params.set('sector', sector); else params.delete('sector');
-    }
-    // The Options menu's experiment controls (basemap style, colour ramp);
+    // The Options menu's experiment controls (basemap style, color ramp);
     // not page scope, so every map with a toolbar writes these regardless
     // of mode. `dramp` is kept apart from `ramp` (rather than one name
     // reused across both tables) so toggling Compare on and off never
@@ -1487,7 +1565,7 @@
     this.shell.updateLegend();
     // The status pill speaks for the view on screen.
     if (this.view === 'facilities') {
-      this.shell.setStatus(this.el.dataset.loaded === '1' ? '' : 'Loading facilities…');
+      this.shell.setStatus(this.el.dataset.loaded === '1' || this.wellsAreas() ? '' : 'Loading facilities…');
     } else {
       this.shell.setStatus('');
     }
@@ -1531,7 +1609,7 @@
     // chosen for whichever table is live now.
     if (this.fillRampOptions) this.fillRampOptions();
     // Facilities always shade by the change when it's on; areas only need
-    // the refetch while that view is up (same pattern as setSector) --
+    // the refetch while that view is up (the same guard as a filter change's) --
     // otherwise leave a stale areaData behind for setView('areas') to
     // reuse and refetch itself.
     this.loadFacilities();
@@ -1550,10 +1628,10 @@
   // the data this map already has cached (facilities, areas, outline), so
   // nothing here needs to refetch.
 
-  // Recolours the facilities layer (Facilities view) and/or the areas
+  // Recolors the facilities layer (Facilities view) and/or the areas
   // choropleth (Areas view) after RAMP or CHANGE_RAMP changes, from data
-  // already on hand -- no refetch. The change ramp also recolours the
-  // Facilities circles while Compare is on (prepare() colours them by the
+  // already on hand -- no refetch. The change ramp also recolors the
+  // Facilities circles while Compare is on (prepare() colors them by the
   // change too, see `compare` there).
   FacilityMap.prototype.recolor = function () {
     if (this.legendData) {
@@ -1569,7 +1647,7 @@
   // the sequential table normally, the diverging one while Compare is on
   // (see fillRampOptions). Each is sampled to the class count its view
   // uses, so the fixed breaks (CLASS_BREAKS/AREA_BREAKS, CHANGE_BREAKS)
-  // are unaffected -- only the colours change.
+  // are unaffected -- only the colors change.
   FacilityMap.prototype.onRampChange = function (event) {
     var name = event.target.value;
     if (this.compare) {
@@ -1595,38 +1673,10 @@
     });
   };
 
-  // The sector filter narrows both views without a page swap; the address
-  // bar follows so the view can be shared.
-  FacilityMap.prototype.setSector = function (sector, label) {
-    var params = new URLSearchParams(this.data.query || '');
-    if (sector) params.set('sector', sector); else params.delete('sector');
-    this.data.query = params.toString();
-    this.clearHover();
-    this.syncUrl();
-    var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.facility-map-sector');
-    if (dropdown) {
-      dropdown.classList.toggle('is-set', !!sector);
-      setToolbarLabel(dropdown, label || 'All sectors');
-      Array.prototype.forEach.call(dropdown.querySelectorAll('[data-sector]'), function (item) {
-        item.classList.toggle('is-active', item.getAttribute('data-sector') === (sector || ''));
-      });
-    }
-    this.loadFacilities();
-    if (this.view === 'areas') {
-      this.loadAreas();
-    } else {
-      // A sector change made while off the areas view must not leave a
-      // stale areaData behind: setView('areas') would otherwise reuse it
-      // because the level still matches.
-      this.areaData = null;
-      this.areaRequest++;
-    }
-  };
-
   // A swap brought a new page: drop what belonged to the old one (its
   // popup, the located dot, its area values and outline), take the new
   // page's view, frame it, and reload.
-  FacilityMap.prototype.onAdopt = function () {
+  FacilityMap.prototype.onAdopt = function (changed) {
     this.shell.closePopup();
     // The new page's legend card waits for its own data, as on a first build.
     this.legendData = null;
@@ -1654,8 +1704,14 @@
     this.applyPoints();
     if (this.wells) this.loadWells();
     if (this.methane) this.methane.onAdopt();
-    this.fitted = false;
-    this.shell.frame();
+    // Only the filters changed (a search, a sector): the reader's view stays.
+    // A new place, point or frame reframes.
+    var framing = ['bounds', 'outlineUrl', 'center', 'zoom', 'radius', 'highlight', 'highlightPoint', 'fit'];
+    var reframe = !changed || changed.some(function (key) { return framing.indexOf(key) !== -1; });
+    if (reframe) {
+      this.fitted = false;
+      this.shell.frame();
+    }
     this.showHighlightPin();
     this.applyHighlight();
     this.load();

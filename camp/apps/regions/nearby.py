@@ -30,7 +30,7 @@ def regions_within(region, *, url_method, cache_prefix, ab617=False):
     `url_method` is the name of the `Region` method that builds each
     entry's link ('get_pesticides_url' or 'get_emissions_url'). `ab617`
     (the emissions explorer only -- pesticides has no AB 617 pages) folds
-    AB 617 communities into the 'communities' group too, labelled with
+    AB 617 communities into the 'communities' group too, labeled with
     their own `type_label` ("AB 617 Community"): the AB 617 community a
     region overlaps, or, on an AB 617 community's own page, the city/county
     it's in (already covered by 'communities'/'counties').

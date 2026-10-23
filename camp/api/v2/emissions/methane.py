@@ -1,6 +1,6 @@
 """
 The public API side of Carbon Mapper's methane data (camp/apps/emissions/methane.py
-does the reading, models.py the licence text): the sources GeoJSON the maps'
+does the reading, models.py the license text): the sources GeoJSON the maps'
 overlay used to fetch same-origin, plus a source's plumes for the popup's
 image stepper. Carbon Mapper's terms are non-commercial with share-alike
 redistribution, so every response here carries MethaneSource.ATTRIBUTION and
@@ -40,6 +40,10 @@ class MethaneGeoJSONBase(generics.Endpoint):
             collection = dict(collection, features=[
                 feature for feature in collection['features'] if inside.contains(Point(*feature['geometry']['coordinates'], srid=4326))
             ])
+        # The Methane tab's sector groups (methane.table_filters), so its map shows what its table lists.
+        groups = methane.table_filters(request.GET)['groups']
+        if groups is not None:
+            collection = dict(collection, features=[feature for feature in collection['features'] if feature['properties']['group'] in groups])
         return collection
 
 
@@ -48,7 +52,9 @@ class MethaneGeoJSON(MethaneCachedEndpointMixin, MethaneGeoJSONBase):
     Every CH4 source Carbon Mapper has published for the covered counties,
     as GeoJSON points for the map overlay: sector group, Carbon Mapper's
     rate estimate and uncertainty, and detection counts; ?region= or
-    ?lat=&lng=&radius= (with ?buffer=) narrows them to an area page's. The
+    ?lat=&lng=&radius= (with ?buffer=) narrows them to an area page's, and
+    ?sector= (comma-joined groups: oil-gas, livestock, waste, other) to
+    Carbon Mapper's sector groups. The
     collection's properties carry MethaneSource.ATTRIBUTION and LICENSE.
     404 until an import has run. Cached a day; a re-import
     (methane.clear_caches) invalidates it.

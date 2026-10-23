@@ -10,7 +10,7 @@ from django_sqids import SqidsField, shuffle_alphabet
 from model_utils.models import TimeStampedModel
 
 from camp.apps.regions.managers import RegionManager
-from camp.apps.regions.querysets import BoundaryQuerySet
+from camp.apps.regions.querysets import BoundaryQuerySet, LocationQuerySet
 from camp.utils import gis
 from camp.utils.encoders import JSONEncoder
 
@@ -318,6 +318,8 @@ class Location(TimeStampedModel):
 
     metadata = models.JSONField(blank=True, default=dict, encoder=JSONEncoder)
     imported_at = models.DateTimeField(_('Imported At'), default=timezone.now)
+
+    objects = LocationQuerySet.as_manager()
 
     # The region links resolve_regions() fills in, in the order it fills them.
     REGION_FIELDS = ('county', 'city', 'zipcode', 'school_district')

@@ -45,7 +45,7 @@ def facility_for_key(key):
 
 
 def candidates_near(point, km=MATCH_KM):
-    """Facilities with a trusted point within `km` of `point`, nearest first (geodetic, metres on a sphere)."""
+    """Facilities with a trusted point within `km` of `point`, nearest first (geodetic, meters on a sphere)."""
     return (
         Facility.objects
         .filter(point__isnull=False, point_source__in=Facility.TRUSTED_POINT_SOURCES)

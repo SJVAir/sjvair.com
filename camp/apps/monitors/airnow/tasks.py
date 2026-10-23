@@ -13,6 +13,25 @@ from camp.apps.regions.models import Region
 from camp.utils import gis
 
 
+def get_or_create_monitor(item, geometry):
+    try:
+        # Look up the monitor by name...
+        return AirNow.objects.get(name=item['SiteName'])
+    except AirNow.DoesNotExist:
+        # ...but it doesn't exist, so create it...
+        latlon = Point(item['Longitude'], item['Latitude'], srid=gis.EPSG_LATLON)
+        if not geometry.contains(latlon):
+            # ...unless it's outside the area!
+            return None
+
+        return AirNow.objects.create(
+            name=item['SiteName'],
+            position=latlon,
+            data_provider=item.get('AgencyName', ''),
+            location=AirNow.LOCATION.outside
+        )
+
+
 @db_periodic_task(crontab(minute='*/15'), priority=50)
 def import_airnow_data(start_date=None, end_date=None):
     if settings.AIRNOW_API_KEY is None:
@@ -49,22 +68,8 @@ def import_airnow_data(start_date=None, end_date=None):
             end_date=end_date,
         )
         for item in data:
-            try:
-                # Look up the monitor by name...
-                monitor = AirNow.objects.get(name=item['SiteName'])
-            except AirNow.DoesNotExist:
-                # ...but it doesn't exist, so create it...
-                latlon = Point(item['Longitude'], item['Latitude'], srid=gis.EPSG_LATLON)
-                if not county.boundary.geometry.contains(latlon):
-                    # ...unless it's outside the county!
-                    continue
-
-                monitor = AirNow.objects.create(
-                    name=item['SiteName'],
-                    position=latlon,
-                    data_provider=item.get('AgencyName', ''),
-                    location=AirNow.LOCATION.outside
-                )
+            if (monitor := get_or_create_monitor(item, county.boundary.geometry)) is None:
+                continue
 
             if entry := monitor.handle_payload(item):
                 cleaned = monitor.process_entry_ng(entry)

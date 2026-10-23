@@ -37,6 +37,12 @@ class DairyPageTestCase(TestCase):
         assert response.status_code == 200, response.status_code
         return response
 
+    def table(self, params=None):
+        """The tab's Table (views.SUBVIEWS): its URL plus table/."""
+        response = self.client.get(self.url + 'table/', params or {})
+        assert response.status_code == 200, response.status_code
+        return response
+
 
 class DairyMapSearchTests(DairyPageTestCase):
     def test_the_map_follows_the_name_search(self):
@@ -108,34 +114,46 @@ class DairyTabContentTests(DairyPageTestCase):
         assert '69% of 1,750 cattle' in content
         assert 'CAFO' not in content.split('stat-row')[1].split('</div>\n</div>')[0]
 
+    def test_summary_and_table_share_the_filters(self):
+        summary = self.get({'sizes': 'large'}).content.decode()
+        # The Summary's tiles follow the filters; its switch keeps them on the way to the Table.
+        assert '<p class="heading">Dairies</p><p class="title">1</p>' in summary and 'dairy-table' not in summary
+        switch = summary[summary.index('subview-tabs'):summary.index('</nav>', summary.index('subview-tabs'))]
+        assert f'href="{self.url}table/?' in switch and 'sizes=large' in switch
+        table = self.table({'sizes': 'large'}).content.decode()
+        assert 'BIG DAIRY' in table and 'SMALL DAIRY' not in table and 'Download CSV' in table and 'map-canvas' not in table
+        assert dairies.trend(filters={'sizes': ['large']})[-1]['dairies'] == 1
+
     def test_the_county_narrows_the_numbers_the_table_and_the_map(self):
         content = self.get({'county': 'kern'}).content.decode()
-        assert 'SMALL DAIRY' in content and 'BIG DAIRY' not in content
         assert '<p class="heading">Dairies</p><p class="title">1</p>' in content
         assert dairy_map_data(content, 'county') == 'kern'
+        table = self.table({'county': 'kern'}).content.decode()
+        assert 'SMALL DAIRY' in table and 'BIG DAIRY' not in table
 
     def test_table(self):
-        content = self.get().content.decode()
+        content = self.table().content.decode()
         assert content.index('BIG DAIRY') < content.index('SMALL DAIRY')
         assert 'CLOSED DAIRY' not in content
-        assert f'class="dairy-zoom" data-dairy="{self.big.sqid}" data-lng="-119.78500" data-lat="36.73500"' in content
+        # No map on the Table, so names don't zoom one.
+        assert 'class="dairy-zoom"' not in content
         assert '<th>Digester since</th>' in content and 'data-label="Digester since">2019</td>' in content
-        assert '>Mature dairy cows</a>' in content and '<th>EPA size</th>' in content
-        big_row = content[content.index('BIG DAIRY</a>'):]
+        assert '>Mature dairy cows <span class="icon' in content and '<th>EPA size</th>' in content
+        big_row = content[content.index('BIG DAIRY</td>'):]
         big_row = big_row[:big_row.index('</tr>')]
         assert re.findall(r'<td[^>]*>([^<]*)</td>', big_row)[1:4] == ['1,300', '300', 'Large']
         assert f'href="{self.fresno.get_emissions_dairies_url()}?year=2023&amp;pollutant=rog"' in content
-        content = self.get({'sort': 'name'}).content.decode()
+        content = self.table({'sort': 'name'}).content.decode()
         assert content.index('BIG DAIRY') < content.index('SMALL DAIRY')
         assert 'sort=-mature_cows' in content
-        content = self.get({'q': 'small'}).content.decode()
+        content = self.table({'q': 'small'}).content.decode()
         assert 'SMALL DAIRY' in content and 'BIG DAIRY' not in content
 
     def test_digester_with_unknown_start_year(self):
         # A handful of CADD's AgSTAR digesters carry no recorded start year.
         make_dairy(4, 'AGSTAR DAIRY', IN_KERN, self.kern, herds={2023: {'milk_cows': 50}}, digesters=[(None, None)])
         dairies.clear_caches()
-        content = self.get().content.decode()
+        content = self.table().content.decode()
         assert '<span title="Start year unknown">yes</span>' in content
         assert 'since None' not in content and 'since null' not in content
 
@@ -151,7 +169,7 @@ class DairyTabContentTests(DairyPageTestCase):
     def test_an_unknown_region_renders_unfiltered(self):
         retired = make(Region.Type.TRACT, '06019000199', AROUND_PLANT, version='2010')
         for sqid in ('nope', retired.sqid):
-            content = self.get({'region': sqid}).content.decode()
+            content = self.table({'region': sqid}).content.decode()
             assert 'BIG DAIRY' in content and 'SMALL DAIRY' in content
 
     def test_an_unknown_region_falls_back_to_a_valid_point(self):
@@ -168,7 +186,7 @@ class DairyTabContentTests(DairyPageTestCase):
         assert response.status_code == 301
         assert response['Location'] == f"{reverse('emissions:near-me-dairies')}?lat=36.737&lng=-119.787&radius=1&label=near+Tower+District&year=2023"
         # A radius near-me doesn't offer is no filter at all: the tab renders.
-        content = self.get({**params, 'radius': '2'}).content.decode()
+        content = self.table({**params, 'radius': '2'}).content.decode()
         assert 'BIG DAIRY' in content and 'SMALL DAIRY' in content
 
     def test_redirect_drops_the_page_number(self):
@@ -225,14 +243,14 @@ class DairyTabContentTests(DairyPageTestCase):
 
     def test_map(self):
         content = self.get().content.decode()
-        assert (dairy_map_data(content, 'view'), dairy_map_data(content, 'measure')) == ('dairies', 'mature_cows')
+        assert (dairy_map_data(content, 'view'), dairy_map_data(content, 'measure')) == ('dairies', 'mature_cows_per_sq_mi')
         assert dairy_map_data(content, 'geojson-url') == '/api/2.0/emissions/dairies/geojson/?year=2023'
         assert 'data-view="counties"' in content and 'data-measure="mature_cows_per_sq_mi"' in content
         assert 'Mature dairy cows per sq mi' in content
         content = self.get({'view': 'counties', 'measure': 'emissions'}).content.decode()
         assert (dairy_map_data(content, 'view'), dairy_map_data(content, 'measure')) == ('counties', 'emissions')
         content = self.get({'view': 'bogus', 'measure': 'x'}).content.decode()
-        assert (dairy_map_data(content, 'view'), dairy_map_data(content, 'measure')) == ('dairies', 'mature_cows')
+        assert (dairy_map_data(content, 'view'), dairy_map_data(content, 'measure')) == ('dairies', 'mature_cows_per_sq_mi')
 
     def test_map_config(self):
         scope, _ = dairies.resolve_scope({'county': 'kern', 'pollutant': 'pm10'})
@@ -376,7 +394,7 @@ class AreaTabTests(DairyPageTestCase):
     def test_a_near_me_facilities_form_keeps_its_point(self):
         params = {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'year': '2023'}
         content = self.page(reverse('emissions:near-me-facilities'), params)
-        form = content[content.index('class="table-filters box"'):content.index('</form>')]
+        form = content[content.index('class="explorer-filters box"'):content.index('</form>')]
         for name, value in (('lat', '36.7370'), ('lng', '-119.7870'), ('radius', '1')):
             assert f'<input type="hidden" name="{name}" value="{value}">' in form
         # And its CSV.
@@ -396,12 +414,16 @@ class AreaTabTests(DairyPageTestCase):
         # In and around (the old Community tab) closes the Overview.
         assert 'Top facilities' in overview and overview.index('Top facilities') < overview.index('id="in-and-around"')
         facilities = self.page(self.fresno.get_emissions_tab_url('facilities'), {'year': '2023'})
-        # The shared tab layout: stats, map, then the filters on a sortable table with its count and CSV.
+        # The shared tab layout. Summary: stats, the filters beside the map, the largest facilities and the sectors.
         assert '<p class="heading">Facilities in 2023</p>' in facilities and 'Top facilities' not in facilities
-        assert 'facility-map map-canvas' in facilities and 'class="table-filters box"' in facilities
-        assert facilities.index('facility-map map-canvas') < facilities.index('class="table-filters box"') < facilities.index('facility-table')
-        assert 'sort=-value' in facilities or 'sort=value' in facilities
-        assert 'class="table-count"' in facilities and 'Download CSV' in facilities
+        assert 'facility-map map-canvas' in facilities and 'class="explorer-filters box"' in facilities
+        assert facilities.index('class="explorer-filters box"') < facilities.index('facility-map map-canvas') < facilities.index('Largest facilities')
+        assert 'facility-table' not in facilities and 'card-header-title">By sector' in facilities
+        # Table: the filters beside a sortable table with its count and CSV.
+        table = self.page(self.fresno.get_emissions_tab_url('facilities') + 'table/', {'year': '2023'})
+        assert table.index('class="explorer-filters box"') < table.index('facility-table')
+        assert 'sort=-value' in table or 'sort=value' in table
+        assert 'class="table-count"' in table and 'Download CSV' in table
 
 
 class DairyChartPageTests(DairyPageTestCase):
@@ -478,17 +500,17 @@ class DairyAboutTests(DairyPageTestCase):
         content = self.client.get(reverse('emissions:about')).content.decode()
         assert 'id="dairies"' in content
         assert 'https://www.ecfr.gov/current/title-40/chapter-I/subchapter-D/part-122/subpart-B/section-122.23' in content
-        assert '<li><strong>Large</strong>: 700 or more mature dairy cows, or 1,000 or more other cattle.</li>' in content
-        assert '<li><strong>Medium</strong>: 200–699 mature dairy cows, or 300–999 other cattle.</li>' in content
-        assert '<strong>Small</strong>: Fewer than 200 mature dairy cows and 300 other cattle (at least one head of cattle).' in content
+        assert '<tr><th scope="row">Large</th><td>700 or more mature dairy cows, or 1,000 or more other cattle</td></tr>' in content
+        assert '<tr><th scope="row">Medium</th><td>200–699 mature dairy cows, or 300–999 other cattle</td></tr>' in content
+        assert '<tr><th scope="row">Small</th><td>Fewer than 200 mature dairy cows and 300 other cattle (at least one head of cattle)</td></tr>' in content
         assert 'Feed and silage are left out' in content and '2019' in content and 'reference code' in content
         # The two always-true assertions from the original brief (the tab link
         # is on every page, and "CEPAM 2019" already makes '2019' true) are
         # replaced with the section's own markup.
         assert f'<a href="{reverse("emissions:dairy-list")}">Dairies</a> tab covers what the facility inventory barely sees' in content
         # dairy_count is every imported Dairy row (3), not just the ones with a counted herd.
-        assert 'locates every dairy CARB tracks, 3 of them in the eight Valley counties.' in content
-        assert "<strong>Coverage grew in 2019.</strong> CADD has herds for 1 Valley dairies in 2018 and 1 in 2019. The two years aren't a like-for-like comparison." in content
+        assert 'locates every dairy CARB tracks, 3 of them in the Valley' in content
+        assert "<summary>Coverage grew in 2019</summary>" in content and "CADD has herds for 1 Valley dairies in 2018 and 1 in 2019. The two years aren't a like-for-like comparison." in content
         assert 'https://ww2.arb.ca.gov/california-dairy-livestock-database-cadd' in content
 
     def test_integrations_list_cadd(self):
@@ -505,7 +527,7 @@ class DairyTableCityLinkTests(DairyPageTestCase):
         self.small.address = dict(self.small.address, city='Nowhere Special')
         self.small.save(update_fields=['address'])
         cache.clear()
-        content = self.get({'year': 2023}).content.decode()
+        content = self.table({'year': 2023}).content.decode()
         # The city wins over a CDP of the same name; a city without a page stays text.
         # The link carries the tab's scope, like the county link beside it.
         assert f'<a href="{city.get_emissions_dairies_url()}?year=2023&amp;pollutant=rog">Dairyville</a>' in content
@@ -516,7 +538,7 @@ class DairyTableCityLinkTests(DairyPageTestCase):
         self.big.address = dict(self.big.address, city='Hilmar')
         self.big.save(update_fields=['address'])
         cache.clear()
-        content = self.get({'year': 2023}).content.decode()
+        content = self.table({'year': 2023}).content.decode()
         assert f'<a href="{cdp.get_emissions_dairies_url()}?year=2023&amp;pollutant=rog">Hilmar</a>' in content
 
 
@@ -533,7 +555,7 @@ class DairyIncludeTests(DairyPageTestCase):
             'carb_estimate': {'tons': 730.0, 'share': 0.25, 'place': 'Fresno County'},
             'ddrdp_totals': {'amount': 75198899, 'grants': 50, 'reduction': 819590},
         })
-        # The estimates are a labelled second tier, under the herd's row.
+        # The estimates are a labeled second tier, under the herd's row.
         assert 'Estimates &amp; funding, Fresno County' in html
         assert '<dt>Dairy cattle ROG, CARB</dt>' in html and '<strong>730</strong> tons/yr' in html
         assert "25% of the county's ROG" in html

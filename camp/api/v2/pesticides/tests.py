@@ -1744,7 +1744,7 @@ class RegionClipTests(TestCase):
     def test_sections_clip_to_the_region(self):
         assert self.section_ids(region=self.region.sqid) == {self.inside_section.sqid}
 
-    def test_sections_buffer_adds_the_neighbours(self):
+    def test_sections_buffer_adds_the_neighbors(self):
         ids = self.section_ids(region=self.region.sqid, buffer=1)
         assert ids == {self.inside_section.sqid, self.near.sqid}
 
@@ -1778,7 +1778,7 @@ class RegionClipTests(TestCase):
     def test_townships_clip_to_the_region(self):
         assert self.township_ids(region=self.region.sqid) == {'MDM-T14S-R20E'}
 
-    def test_townships_buffer_adds_the_neighbours(self):
+    def test_townships_buffer_adds_the_neighbors(self):
         assert self.township_ids(region=self.region.sqid, buffer=1) == {'MDM-T14S-R20E', 'MDM-T14S-R21E'}
 
     def test_townships_clip_intersects_the_bbox(self):

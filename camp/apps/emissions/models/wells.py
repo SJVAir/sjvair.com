@@ -7,7 +7,7 @@ from django_sqids import SqidsField, shuffle_alphabet
 class Well(models.Model):
     """
     An oil or gas well in CalGEM's WellSTAR that is active, idle or newly
-    permitted (plugged and cancelled wells aren't kept), where it is and who
+    permitted (plugged and canceled wells aren't kept), where it is and who
     operates it. A regulatory record, not an emission: nothing here says what
     a well emits. `in_hpz` is CalGEM's own flag for SB 1137's 3,200-ft health
     protection zone around homes, schools and other sensitive receptors,
@@ -55,4 +55,10 @@ class Well(models.Model):
 
     @property
     def calgem_url(self):
-        return f'https://wellstar-public.conservation.ca.gov/WellSearch/Details?api={self.api}'
+        """The well's WellSTAR record (by way of WellSTAR's one-click public entry, which keeps the address)."""
+        return f'https://wellstar-public.conservation.ca.gov/Well/Well/Detail?api={self.api}'
+
+    @property
+    def well_finder_url(self):
+        """The well selected and zoomed to on CalGEM's Well Finder map."""
+        return f"https://maps.conservation.ca.gov/calgem/findwells/#data_s=where%3AdataSource_2-Well-0%3AAPI%20IN%20('{self.api}')&zoom_to_selection=true"

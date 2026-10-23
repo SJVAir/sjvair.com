@@ -164,7 +164,7 @@ class DigesterGrant(models.Model):
     A CDFA Dairy Digester Research and Development Program (DDRDP) grant,
     from CDFA's project-level PDF: the dairy, the developer, the award, the
     biogas end use and CDFA's estimate of the annual reduction. Matched to a
-    Dairy by normalised name and city, then by ddrdp_crosswalk; unmatched
+    Dairy by normalized name and city, then by ddrdp_crosswalk; unmatched
     rows are kept (their county still counts them). The reduction is CDFA's
     claim, shown as such.
     """

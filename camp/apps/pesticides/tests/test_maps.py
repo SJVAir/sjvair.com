@@ -126,7 +126,7 @@ class CountyMapTests(TestCase):
     def test_shading(self):
         html = maps.county_map(self.rows)
         assert maps.RAMP[-1] in html      # the only county with data gets the darkest step
-        assert maps.NO_DATA in html       # a county with no rows is grey
+        assert maps.NO_DATA in html       # a county with no rows is gray
 
     def test_none_without_geometries(self):
         Region.objects.filter(type='county').update(boundary=None)
@@ -137,7 +137,7 @@ class CountyMapTests(TestCase):
         assert 'Fresno County: 150 lbs' in html
         assert 'Kern County: no data' in html
 
-    def test_rank_counties_sorts_by_the_metric_and_carries_the_map_colour(self):
+    def test_rank_counties_sorts_by_the_metric_and_carries_the_map_color(self):
         rows = self.rows + [
             {'county_id': 9002, 'county_name': 'Kern County', 'county_slug': 'kern', 'lbs': 20.0, 'acres': 200, 'applications': 1},
         ]

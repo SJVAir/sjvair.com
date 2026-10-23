@@ -1,0 +1,151 @@
+// The explorers' About pages (emissions/about.html, pesticides/about.html):
+// a few facts up top, then sections that each lead with a sentence or two and
+// fold their details into headlines that open. Everything else is Bulma's:
+// the facts a level in a box, the caveats messages, the lists tables and boxes.
+
+.about-layout
+  .explainer
+    max-width: 46rem
+  // Each section a band of its own, the anchor landing under the sticky navbar.
+  .about-section
+    scroll-margin-top: 5rem
+    padding-top: 2rem
+    margin-top: 2rem
+    border-top: 1px solid $grey-lighter
+    &:first-of-type
+      border-top: 0
+      margin-top: 0
+      padding-top: 0
+    h2, h3, h4, [id]
+      scroll-margin-top: 5rem
+    > h2
+      font-size: $size-4
+      margin-bottom: 0.75rem
+    > h3
+      font-size: $size-5
+      margin: 1.5rem 0 0.75rem
+  // The one or two sentences a section opens with: the part to read if
+  // nothing else.
+  .about-lead
+    font-size: $size-5
+    line-height: 1.5
+    color: $grey-darker
+  +desktop
+    // The text at its measure and the contents right beside it, not
+    // across the empty half of a wide screen.
+    .about-main
+      flex: 0 1 48rem
+    .about-toc
+      order: 2
+      align-self: flex-start
+      position: sticky
+      top: 5rem
+      max-height: calc(100vh - 6rem)
+      overflow-y: auto
+
+// The contents, in groups. On a phone the groups sit two across, so the
+// text starts after a short block of links rather than a screen of them.
+.about-toc
+  .about-toc-groups > div + div, .menu-label:not(:first-child)
+    margin-top: 1rem
+  .menu-list a
+    padding: 0.2rem 0.5rem
+  +touch
+    border-bottom: 1px solid $grey-lighter
+    margin-bottom: 1rem
+  +mobile
+    .about-toc-groups
+      display: grid
+      grid-template-columns: 1fr 1fr
+      gap: 0 1rem
+      font-size: $size-7
+      > div + div, .menu-label:not(:first-child)
+        margin-top: 0
+      // The third and fourth groups under the first two.
+      > div:nth-child(n+3)
+        margin-top: 0.75rem
+      // Tight, but each link still a 24px target (WCAG 2.5.8).
+      .menu-list a
+        padding: 0.2rem 0
+        min-height: 1.5rem
+
+// The facts at the top: a stat row (a level in a box), two by two on a phone.
+.about-glance
+  +mobile
+    flex-wrap: wrap
+    .level-item
+      flex-basis: 50%
+      margin-bottom: 0.75rem
+
+// A box's list (what a source covers and doesn't) sits tight under its title.
+.about-scope .box ul
+  margin: 0 0 0 1.1rem
+
+// Boxes in a row of columns as tall as each other.
+.about-cards .column > .box
+  height: 100%
+
+// The pesticides Schools section's block of nine sections, as a small grid.
+.content table.about-block
+  width: auto
+  td
+    width: 6rem
+    height: 3rem
+    padding: 0.25rem
+    text-align: center
+    vertical-align: middle
+    font-size: $size-7
+
+// The toxics caveats' own panel inside a message: no second box.
+.message .toxics-caveats
+  margin: 0
+
+// A list of points as headlines that open: the bold first sentence of each
+// is the summary, the rest under it. Read the headlines to get the gist.
+.about-points
+  margin: 0.75rem 0 1.25rem
+  details
+    border-bottom: 1px solid $grey-lightest
+    &:first-child
+      border-top: 1px solid $grey-lightest
+  summary
+    cursor: pointer
+    padding: 0.5rem 0
+    font-weight: 600
+    color: $grey-darker
+    list-style: none
+    display: flex
+    gap: 0.5rem
+    align-items: baseline
+    &::-webkit-details-marker
+      display: none
+    // A chevron that turns when the point opens.
+    &::before
+      content: ""
+      flex: none
+      width: 0.45em
+      height: 0.45em
+      border-right: 2px solid $grey
+      border-bottom: 2px solid $grey
+      transform: rotate(-45deg)
+      transition: transform 0.15s
+      position: relative
+      top: -0.1em
+    &:hover
+      color: $link
+    &:focus-visible
+      outline: 2px solid $link
+      outline-offset: 2px
+  details[open] summary::before
+    transform: rotate(45deg)
+  .about-point-body
+    padding: 0 0 0.75rem 1.1rem
+    > :last-child
+      margin-bottom: 0
+
+
+.about-layout .content table.about-table
+  font-size: $size-6
+  margin: 0.75rem 0 1.25rem
+  th
+    white-space: nowrap

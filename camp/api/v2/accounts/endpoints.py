@@ -40,7 +40,12 @@ class AlertList(generics.ListEndpoint):
     login_required = True
     # 'id'/'latest' omitted: both are now sequential ints post-sqids
     # migration (Alert/AlertUpdate no longer use opaque UUID PKs).
-    fields = ['sqid', 'created', 'modified', 'monitor', 'entry_type', 'start_time', 'end_time']
+    fields = [
+        'sqid', 'created', 'modified', 'monitor', 'entry_type', 'start_time', 'end_time',
+        # The latest AlertUpdate's level key (e.g. 'unhealthy'), looked up in
+        # the entry type's levels from monitors/meta/.
+        ('level', lambda alert: alert.latest.level if alert.latest else None),
+    ]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -49,7 +54,7 @@ class AlertList(generics.ListEndpoint):
                 monitor__subscriptions__user_id=self.request.user.pk,
                 end_time__isnull=True
             )
-            .select_related('monitor')
+            .select_related('monitor', 'latest')
             .distinct()
         )
         return queryset

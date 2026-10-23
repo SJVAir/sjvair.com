@@ -4,6 +4,7 @@ SJU, facid 598), fetched 2026-09-28:
   curl 'https://www.arb.ca.gov/app/emsinv/iframe/facinfo/facdet_output.csv?&dbyr=2024&ab_=SJV&dis_=SJU&co_=10&sort=T&facid_=598'
 health-values.json is `import_health_values --dump` of the 2024-12-17 table.
 """
+import io
 import json
 from decimal import Decimal
 from pathlib import Path
@@ -49,7 +50,7 @@ class ImportToxicsTests(TestCase):
         self.cement = Facility.objects.get(name='TEST CEMENT')    # Kern, KER, facid 2
         self.gas = Facility.objects.get(name='TEST GAS STATION')  # Kern, SJU, facid 2
 
-    def run_import(self, rows_by_facid, county=None, failing=(), urls=None):
+    def run_import(self, rows_by_facid, county=None, failing=(), urls=None, stdout=None):
         stub = facdet(rows_by_facid, failing)
 
         def get(url, **kwargs):
@@ -61,6 +62,8 @@ class ImportToxicsTests(TestCase):
             kwargs = {'year': 2024, 'workers': 2}
             if county:
                 kwargs['county'] = county
+            if stdout is not None:
+                kwargs['stdout'] = stdout
             call_command('import_toxics', **kwargs)
 
     def test_replaces_a_facilitys_rows_and_creates_unknown_pollutants(self):
@@ -103,6 +106,12 @@ class ImportToxicsTests(TestCase):
         assert self.plant.toxic_emissions.get(year=2024, pollutant__carb_id='71432').lbs == Decimal('3.5')
         assert set(self.cement.toxic_emissions.values_list('pk', flat=True)) == before
         assert SourceImport.latest('ceidars-toxics').notes['failed'] == 2
+
+    def test_a_log_gets_whole_lines(self):
+        out = io.StringIO()
+        self.run_import({1: HEADER}, county='fresno', stdout=out)
+        assert '\r' not in out.getvalue()
+        assert '\033[K' not in out.getvalue()
 
     def test_import_bumps_the_cache_generation(self):
         before = stats.generation()

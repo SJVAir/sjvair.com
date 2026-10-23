@@ -49,10 +49,11 @@ docker compose run --rm web python manage.py import_comptox --phase hazard
 #    (site uses JS bot-protection that blocks server-side downloads)
 docker compose run --rm web python manage.py import_prop65 --path /path/to/p65chemicalslist.csv
 
-# 4. Apply CARB Toxic Air Contaminant classifications from the consolidated health values PDF
-#    Can download automatically or provide a local file (URL changes when CARB updates it)
-docker compose run --rm web python manage.py import_carbtac --url
-docker compose run --rm web python manage.py import_carbtac --path /path/to/contable.pdf
+# 4. Apply CARB Toxic Air Contaminant classifications (17 CCR 93000/93001) from the
+#    curated list in datafiles/toxic-air-contaminants.yaml; tags listed chemicals and
+#    untags the rest. Not CARB's health-values table: most of its substances aren't TACs.
+docker compose run --rm web python manage.py import_carbtac --dry-run
+docker compose run --rm web python manage.py import_carbtac
 ```
 
 Steps 2–4 are idempotent and safe to re-run. Re-running `import_pur` for a given year

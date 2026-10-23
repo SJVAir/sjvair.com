@@ -4,13 +4,13 @@ PDF, parsed into DigesterGrant rows: which dairy each grant went to, the
 developer, the award, the biogas end use and CDFA's own estimate of the
 annual GHG reduction. The PDF carries no separate "dairy name" column --
 only "Project Title" (usually a dairy's name plus "Digester"/"Biogas..."),
-so `dairy_name` is a copy of `project_name`; normalise_name() strips the
+so `dairy_name` is a copy of `project_name`; normalize_name() strips the
 generic words so name variants ("Lakeside Dairy, LLC", "Lakeside Digester")
 can meet.
 
-Matching (match()) tries, in order: the project's or the dairy's normalised
+Matching (match()) tries, in order: the project's or the dairy's normalized
 name plus its mailing city against a CADD Dairy's name and city; failing
-that, a normalised name that's unique Valley-wide; failing that,
+that, a normalized name that's unique Valley-wide; failing that,
 ddrdp_crosswalk.CROSSWALK (hand-kept, extended from import_ddrdp's
 unmatched-projects printout). Unmatched rows are kept, not dropped -- their
 county still counts toward dairies.grant_totals().
@@ -34,7 +34,7 @@ from camp.apps.emissions.models import Dairy, DigesterGrant, SourceImport
 URL = 'https://www.cdfa.ca.gov/oefi/DDRDP/docs/DDRDP_Project_Level_Data.pdf'
 SOURCE = 'ddrdp'
 
-# Words normalise_name() drops so name variants ("Lakeside Dairy, LLC",
+# Words normalize_name() drops so name variants ("Lakeside Dairy, LLC",
 # "LAKESIDE DAIRY") meet -- unless dropping them would leave nothing, in
 # which case the full word list is kept.
 # CDFA's project titles add grant words to the dairy's name ("Scheenstra
@@ -67,7 +67,7 @@ class DDRDPFormatError(Exception):
     """The PDF's layout doesn't match what parse() expects."""
 
 
-def normalise_name(name):
+def normalize_name(name):
     words = re.sub(r'[^a-z0-9 ]', ' ', (name or '').lower().replace('&', ' ')).split()
     core = [w for w in words if w not in STOP_WORDS]
     return ' '.join(core) if core else ' '.join(words)
@@ -129,7 +129,7 @@ def parse(path):
     field names (project_name, dairy_name, city, county, developer,
     grant_amount, end_use, est_reduction_tco2e, awarded, operational).
     `version`: the PDF's own "Updated <date>" line on page 1, ISO, or '' if
-    it can't be found. A handful of terminated/cancelled projects carry a
+    it can't be found. A handful of terminated/canceled projects carry a
     note instead of a GHG figure and have no city/county/dates -- they're
     kept (grant_amount and the project/dairy name are still there; only
     dairies.grant_totals(), which needs county, leaves them out).
@@ -177,15 +177,15 @@ def match(rows):
     """
     `rows` with 'dairy' (a Dairy or None) and 'match_method' ('auto' |
     'manual' | '') filled in. Tried in order: the project's or the dairy's
-    normalised name plus its mailing city against a Dairy's name and
-    mailing city (both exactly); a normalised name that's unique
-    Valley-wide; ddrdp_crosswalk.CROSSWALK, keyed by the normalised project
+    normalized name plus its mailing city against a Dairy's name and
+    mailing city (both exactly); a normalized name that's unique
+    Valley-wide; ddrdp_crosswalk.CROSSWALK, keyed by the normalized project
     or dairy name, to a CADD id.
     """
     by_name_city = {}
     by_name = {}
     for dairy in Dairy.objects.all():
-        key_name = normalise_name(dairy.name)
+        key_name = normalize_name(dairy.name)
         key_city = cities.lookup_key(dairy.address.get('city'))
         by_name_city.setdefault((key_name, key_city), dairy)
         by_name.setdefault(key_name, []).append(dairy)
@@ -193,8 +193,8 @@ def match(rows):
     matched = []
     for row in rows:
         row = dict(row)
-        project_key = normalise_name(row['project_name'])
-        dairy_key = normalise_name(row['dairy_name'])
+        project_key = normalize_name(row['project_name'])
+        dairy_key = normalize_name(row['dairy_name'])
         city_key = cities.lookup_key(row.get('city'))
 
         dairy = by_name_city.get((project_key, city_key)) or by_name_city.get((dairy_key, city_key))

@@ -1,4 +1,5 @@
 import calendar
+import csv
 import hashlib
 import math
 import random
@@ -13,7 +14,7 @@ from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db.models import Case, CharField, Count, F, FloatField, IntegerField, Min, OuterRef, Prefetch, Q, Subquery, Sum, Value, When
 from django.db.models.functions import Coalesce, Concat, Lower, TruncMonth
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import timezone
@@ -549,7 +550,7 @@ FIND_AREA_PLACES_TTL = 60 * 60 * 24
 # Short, human labels for the "Search by location" dropdown. Region.Type's own
 # labels read a little long there ("ZIP Code"), and the dropdown shows the
 # type as a trailing tag: "93725 · ZIP". Each community layer (city, urban
-# area, CDP) is listed as-is, labelled: "Fresno · City", "Fresno · Urban area".
+# area, CDP) is listed as-is, labeled: "Fresno · City", "Fresno · Urban area".
 FIND_AREA_TYPE_LABELS = {
     Region.Type.COUNTY: 'County',
     **Region.COMMUNITY_LABELS,
@@ -583,6 +584,27 @@ def find_area_place_list():
         } for sqid, slug, name, region_type in regions]
         cache.set(FIND_AREA_PLACES_CACHE_KEY, place_list, FIND_AREA_PLACES_TTL)
     return place_list
+
+
+def find_field_context(tab, query=''):
+    """
+    The "Search by location" field at the head of a map tab's filter box
+    (regions/includes/find-field.html, shared with the emissions explorer):
+    a place, or a point, lands on the same `tab` of that place ('overview'
+    for its page itself), carrying the scope `query` ('?year=2023' or '').
+    """
+    # A place's tab is its page's URL plus the tab (Region.get_pesticides_tab_url).
+    suffix = '' if tab == 'overview' else f'{tab}/'
+    place_list = [{**place, 'url': f"{place['url']}{suffix}"} for place in find_area_place_list()]
+    return {
+        'find_field': True,
+        'find_area_places': place_list,
+        'find_area_counties': [place for place in place_list if place['type'] == Region.Type.COUNTY],
+        'find_area_ab617': [place for place in place_list if place['type'] == Region.Type.AB617_COMMUNITY],
+        'find_area_qs': query,
+        'find_near_url': reverse('pesticides:near-me' if tab == 'overview' else f'pesticides:near-me-{tab}'),
+        'maptiler_key': settings.MAPTILER_API_KEY,
+    }
 
 
 class Home(vanilla.TemplateView):
@@ -622,6 +644,7 @@ class Home(vanilla.TemplateView):
             product_list_url=reverse('pesticides:product-list') + scope_qs,
             chemical_list_url=reverse('pesticides:chemical-list') + scope_qs,
             commodity_list_url=reverse('pesticides:commodity-list') + scope_qs,
+            records_url=reverse('pesticides:records') + scope_qs,
             concern_chemical_list_url=reverse('pesticides:chemical-list') + concern_scope_qs,
             find_area_counties=[
                 place for place in find_area_places
@@ -657,8 +680,7 @@ class About(vanilla.TemplateView):
             section='about',
             **scope,
             years=stats.years_loaded(),
-            api_docs_url=API_DOCS_URL,
-            client_docs_url=CLIENT_DOCS_URL,
+            county_count=Region.objects.counties().count(),
             **kwargs,
         )
 
@@ -1175,7 +1197,7 @@ def page_url_pattern(name):
     return unquote(reverse(name, kwargs={'sqid': '{id}'}))
 
 
-# MapTiler's neutral grey "dataviz" vector style, as on the map figures
+# MapTiler's neutral gray "dataviz" vector style, as on the map figures
 # (camp.utils.mapfigure): a quiet ground for the choropleth.
 MAP_STYLE = mapfigure.MAP_STYLE
 
@@ -1259,9 +1281,9 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         'center': center or SJV_CENTER,
         'zoom': zoom or SJV_ZOOM,
         # With nothing else framing the map (a place's radius or outline, a
-        # highlighted section, an explicit centre), it opens fitted to the
+        # highlighted section, an explicit center), it opens fitted to the
         # county outlines once they load, so the whole valley is in view at
-        # any aspect ratio; the fixed centre/zoom only covers the wait.
+        # any aspect ratio; the fixed center/zoom only covers the wait.
         'fit': '' if any((center, zoom, radius, highlight, outline_url)) else 'valley',
         # The page frames a section, place or point: a county filter's fit
         # (section-map.js fitCounty) mustn't zoom out over it.
@@ -1298,18 +1320,19 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # on the county outlines (see `fit`).
         data={**{key.replace('_', '-'): value for key, value in config.items()}, 'bounds': ''},
         features={'toolbar': True, 'expand': True, 'legend': True, 'status': True},
-        # The filter pickers only on the map page; Shade by, Tweaks and Expand everywhere.
-        # On a region's area tabs, only the buffer picker.
-        toolbar_template=(
-            'pesticides/includes/map-toolbar.html' if toolbar
-            else 'pesticides/includes/buffer-toolbar.html' if clip_region else None
-        ),
-        # Shade by on every section map; the experiment selects live in Tweaks.
-        toolbar_end_template='pesticides/includes/map-metric.html',
+        # Shade by starts every section map's toolbar (map-toolbar-start.html);
+        # Tweaks and Expand end it. The experiment selects live in Tweaks.
+        toolbar_template='pesticides/includes/map-toolbar-start.html',
         options_template='pesticides/includes/map-options.html',
         options_label='Tweaks',
         options_icon='fa-flask-gear',
         legend_template='pesticides/includes/map-legend.html',
+    )
+    # After Shade by: Compare on the valley map, the boundary picker on a
+    # region's area tabs.
+    config['map']['start_template'] = (
+        'pesticides/includes/map-toolbar.html' if toolbar
+        else 'pesticides/includes/buffer-toolbar.html' if clip_region else None
     )
     return config
 
@@ -1373,12 +1396,9 @@ class MapPage(vanilla.TemplateView):
             map_config=map_config,
             filters=filters,
             related=resolved,
-            # Products before chemicals; icons match the explorer's tab icons.
-            toolbar_kinds=[
-                ('product', 'Product', 'fa-spray-can-sparkles', 'is-products'),
-                ('chemical', 'Chemical', 'fa-flask', 'is-chemicals'),
-                ('commodity', 'Commodity', 'fa-seedling', 'is-commodities'),
-            ],
+            # The filter box beside the map (map-filters.html) also searches
+            # by location, landing on a place's page.
+            **find_field_context('overview', stats.scope_query(year, all_years, None, concern)),
             no_matches=no_matches,
             county_map=county_map,
             compare=compare,
@@ -1389,13 +1409,14 @@ class MapPage(vanilla.TemplateView):
         )
 
 
-def area_filter(queryset, *, county=None, region=None, section=None, point=None, radius=None, field_prefix=''):
+def area_filter(queryset, *, county=None, region=None, section=None, point=None, radius=None, buffer=0, field_prefix=''):
     """
     Restrict `queryset` (PesticideUse or PesticideNotice -- both have
     `county`/`mtrs` FKs) to an area. `county` combines with any of the other
     three, but only one of region/section/point applies (section wins over
     region over point). `field_prefix` lets callers reach these fields
-    through a relation (e.g. 'monitor__').
+    through a relation (e.g. 'monitor__'). `buffer` widens a region by that
+    many miles (a widened county is no longer the county).
     """
     def field(name):
         return f'{field_prefix}{name}'
@@ -1406,13 +1427,13 @@ def area_filter(queryset, *, county=None, region=None, section=None, point=None,
     if section is not None:
         queryset = queryset.filter(**{field('mtrs'): section})
     elif region is not None:
-        if region.type == Region.Type.COUNTY:
+        if region.type == Region.Type.COUNTY and not buffer:
             queryset = queryset.filter(**{field('county'): region})
         else:
             # The cached section pks for the region, rather than a spatial
             # join evaluated per row: places.region_area() computes the
             # intersection once and caches it.
-            pks = places.region_area(region).section_pks
+            pks = places.region_area(region, buffer).section_pks
             if not pks:
                 return queryset.none()
             queryset = queryset.filter(**{field('mtrs_id__in'): pks})
@@ -1492,6 +1513,8 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
         self.county = self._get_county()
         self.concern = scope_concern(request)
         self.point, self.radius = self._get_point_and_radius()
+        # A region filter plus ?buffer= is the region widened by that many miles.
+        self.region_buffer = shapes.buffer_param(request.GET)
 
     def _default_range(self):
         """
@@ -1580,6 +1603,7 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
             section=self.related.get('section'),
             point=self.point,
             radius=self.radius,
+            buffer=self.region_buffer,
         )
 
         if data.get('method'):
@@ -1654,6 +1678,7 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
             'method': data.get('method'),
             'fume_method': data.get('fume_method'),
             'region': self.request.GET.get('region', ''),
+            'buffer': self.region_buffer,
             'section': self.request.GET.get('section', ''),
             'chemical': self.request.GET.get('chemical', ''),
             'product': self.request.GET.get('product', ''),
@@ -1665,7 +1690,7 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
         }
         normalized = sorted((key, str(value)) for key, value in params.items())
         digest = hashlib.sha1(repr(normalized).encode()).hexdigest()
-        return f'pesticides:records-totals:v3:{digest}'
+        return f'pesticides:records-totals:v4:{digest}'
 
     def get_totals(self):
         key = self._totals_cache_key()
@@ -1709,6 +1734,7 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
         rows = stats.in_year(PesticideUseRollup.objects.filter(month__gte=1), self.year, self.all_years)
         rows = area_filter(
             rows, county=self.county, region=self.related.get('region'), section=self.related.get('section'),
+            buffer=self.region_buffer,
         )
         if data.get('method'):
             rows = rows.filter(method='' if data['method'] == NO_METHOD else data['method'])
@@ -1874,6 +1900,7 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
             map_config=self.get_map_config(),
             map_unfiltered=self.get_map_unfiltered(),
             county_map=county_map,
+            **find_field_context('records', stats.scope_query(self.year, self.all_years, None, self.concern)),
             # The entity pickers render the resolved objects; an unresolved
             # sqid has nothing to show, so it stays a plain hidden value.
             related={k: v for k, v in self.related.items() if v is not MISSING},
@@ -2071,6 +2098,7 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
         self.county = scope_county(request)
         self.concern = scope_concern(request)
         self.point, self.radius = resolve_point_and_radius(self.form.cleaned_data)
+        self.region_buffer = shapes.buffer_param(request.GET)
         self.mode = 'past' if self.form.cleaned_data.get('past') else 'active'
         # The archive's year and month mean nothing to the active notices; a
         # stale one in the address (Scheduled chosen after a month) is ignored.
@@ -2109,6 +2137,7 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
             section=self.related.get('section'),
             point=self.point,
             radius=self.radius,
+            buffer=self.region_buffer,
         )
 
         data = self.form.cleaned_data
@@ -2264,6 +2293,7 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
             filter_all_months=self.archive_all,
             filter_month_defaulted=self.archive_defaulted,
             filter_month_label=f'{calendar.month_name[self.archive_month]} {self.archive_year}' if self.archive_year and self.archive_month else '',
+            **find_field_context('notices', stats.scope_query(None, False, None, self.concern)),
             **year_ctx,
             **kwargs,
         )
@@ -2341,8 +2371,8 @@ class NoticeDetail(vanilla.DetailView):
 # own URL (region/<sqid>/<slug>/<key>/, near/<key>/), Overview the page itself.
 AREA_TABS = (
     ('overview', 'Overview', 'fa-map', 'is-map'),
-    ('notices', 'Notices', 'fa-calendar-clock', 'is-notices'),
     ('records', 'Records', 'fa-table-list', 'is-records'),
+    ('notices', 'Notices', 'fa-calendar-clock', 'is-notices'),
     ('schools', 'Schools', 'fa-school', 'is-commodities'),
 )
 # A pesticides tab and the emissions tab for the same thing; any other opens its Overview.
@@ -2392,7 +2422,7 @@ class AreaPageMixin:
         return query
 
     def available_tabs(self):
-        """Which tabs this area has something for; Overview, Notices and Records always do."""
+        """Which tabs this area has something for; Overview, Records and Notices always do."""
         return {
             'overview': True,
             'notices': True,
@@ -2415,7 +2445,7 @@ class AreaPageMixin:
         if area.kind == 'point':
             kind, links = headers.point_kind(area.radius), []
         else:
-            # The same grey line and links as the emissions header.
+            # The same gray line and links as the emissions header.
             query = self.scope_query()
             scope_qs = f'?{query}' if query else ''
             header = headers.region_header(area.region, url_method='get_pesticides_tab_url', tab=self.tab, scope_qs=scope_qs)
@@ -2474,13 +2504,19 @@ class RegionAreaMixin(AreaPageMixin):
         return shapes.buffer_param(self.request.GET)
 
     def get_area(self):
-        return places.region_area(self.region)
+        return places.region_area(self.region, self.buffer)
 
     def map_clip(self):
         return {'clip_region': self.region.sqid, 'buffer': self.buffer}
 
     def buffer_context(self):
-        return {'buffer': self.buffer, 'buffer_options': shapes.buffer_options(self.request, self.buffer, params=getattr(self, 'original_query', None))}
+        params = getattr(self, 'original_query', None)
+        return {
+            'buffer': self.buffer,
+            'buffer_options': shapes.buffer_options(self.request, self.buffer, params=params),
+            # The numbers on every tab cover the widened region; the header says so.
+            'buffer_note': shapes.buffer_note(self.request, self.buffer, params=params),
+        }
 
     def area_tab_url(self, key):
         url = self.region.get_pesticides_tab_url(key)
@@ -2661,6 +2697,8 @@ class AreaNoticesMixin(AreaNarrowedListMixin):
             section=None,
             area=self.area,
             tab_label='Notices',
+            # The page is the place: no Search by location (NoticeList's).
+            find_field=False,
             # What the list below it adds up to: its mode, month and filters.
             notice_stats=stats.notice_summary(self.get_queryset()),
             **self.header_context(),
@@ -2692,6 +2730,8 @@ class AreaRecordsMixin(AreaNarrowedListMixin):
             section=None,
             area=self.area,
             tab_label='Records',
+            # The page is the place: no Search by location (RecordsBrowser's).
+            find_field=False,
             **self.header_context(),
             **self.tab_scope_context(),
         )
@@ -2700,17 +2740,49 @@ class AreaRecordsMixin(AreaNarrowedListMixin):
 
 class AreaSchoolsMixin:
     """
-    A place page's Schools tab: the schools and child care centres in it,
+    A place page's Schools tab: the schools and child care centers in it,
     each with the use reported around it, on the map with them on. A school
     district's page adds who goes to school there and its run-by filter;
     anywhere else, the school districts the place overlaps.
     """
     template_name = 'pesticides/area-schools.html'
 
+    def get(self, request, *args, **kwargs):
+        if request.GET.get('format') == 'csv':
+            return self.schools_csv()
+        return super().get(request, *args, **kwargs)
+
+    def district(self):
+        """The school district this page is, or None (and None past its boundary: the page is then more than the district)."""
+        area = self.area
+        if self.buffer:
+            return None
+        return area.region if area.kind == 'region' and area.region.type == Region.Type.SCHOOL_DISTRICT else None
+
+    def schools_csv(self):
+        """Every site the table's filters and sort match, as CSV: not just the page of it."""
+        year, all_years, concern = self.scope
+        groups = places.area_schools(self.area, year, all_years, concern=concern)
+        rows = places.schools_panel(groups, self.request.GET, district=self.district())['rows']
+        place = self.area.region.slug if self.area.kind == 'region' else 'near-me'
+        period = 'all-years' if all_years else str(year)
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="schools-{place}-{period}.csv"'
+        writer = csv.writer(response)
+        writer.writerow(['name', 'type', 'licenses', 'city', 'district', 'lbs_nearby', 'applications_nearby', 'section', 'latitude', 'longitude'])
+        for row in rows:
+            point = row['location'].point
+            writer.writerow([
+                row['display_name'], row['type_label'], row['licenses'], row['display_city'], row['run_by_name'],
+                '' if row['lbs'] is None else round(row['lbs'], 1), row['applications'] or 0,
+                row['section_mtrs'] or '', f'{point.y:.5f}', f'{point.x:.5f}',
+            ])
+        return response
+
     def get_context_data(self, **kwargs):
         year, all_years, concern = self.scope
         area = self.area
-        district = area.region if area.kind == 'region' and area.region.type == Region.Type.SCHOOL_DISTRICT else None
+        district = self.district()
         groups = places.area_schools(area, year, all_years, concern=concern)
         schools = places.schools_panel(groups, self.request.GET, district=district)
         # A page of the table at a time, like the other browsers; get_page

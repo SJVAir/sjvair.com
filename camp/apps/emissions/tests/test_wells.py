@@ -61,6 +61,16 @@ class AreaSummaryTests(WellsTestCase):
         assert wells.area_summary(area)['total'] == 4
 
 
+class FilterOptionsTests(WellsTestCase):
+    def test_operators_and_fields_list_a_to_z(self):
+        # The most wells (ZETA's two) don't come first: the filters read A to Z, any case.
+        Well.objects.filter(pk=self.a.pk).update(operator_name='ZETA OIL', field_name='Zeta Field')
+        Well.objects.filter(pk=self.b.pk).update(operator_name='ZETA OIL', field_name='Zeta Field')
+        Well.objects.filter(pk=self.c.pk).update(operator_name='alpha energy', field_name='Buena Vista')
+        options = wells.filter_options(areas.RegionArea(self.kern))
+        assert options == {'operators': ['alpha energy', 'ZETA OIL'], 'fields': ['Buena Vista', 'Zeta Field']}
+
+
 class SchoolsNearWellsTests(WellsTestCase):
     def setUp(self):
         super().setUp()

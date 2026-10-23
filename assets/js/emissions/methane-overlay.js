@@ -4,14 +4,14 @@
  * (/api/2.0/emissions/methane/geojson/) drawn as its newest plume image, all
  * of them painted onto one canvas that spans the view (a single MapLibre
  * canvas source, redrawn after each pan or zoom, rather than hundreds of
- * image layers). A plume is a few hundred metres across, so zoomed out each
- * is drawn at least PLUME_MIN_PX wide, centred on its box, and at its true
+ * image layers). A plume is a few hundred meters across, so zoomed out each
+ * is drawn at least PLUME_MIN_PX wide, centered on its box, and at its true
  * footprint once that's bigger. An invisible circle per source takes the
  * clicks; a source with no stored image is a small dot. A legend checkbox
  * row toggles it and ?methane= carries it. The source carries a MapLibre
  * attribution, so the map's attribution control shows "Data by Carbon
  * Mapper®" whenever the layer is on; the popup repeats it with the
- * non-commercial terms. Nothing here is ours: every rate is labelled a
+ * non-commercial terms. Nothing here is ours: every rate is labeled a
  * Carbon Mapper estimate.
  *
  * Opening a source's popup also fetches its plumes (data-methane-plumes-url,

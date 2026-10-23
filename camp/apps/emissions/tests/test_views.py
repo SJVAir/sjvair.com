@@ -42,6 +42,14 @@ class ViewTestCase(TestCase):
 
 
 class HomeTests(ViewTestCase):
+    def test_the_stats_row_is_derived_not_counts(self):
+        # The entry cards carry the counts; the stats row the total, its change, and its concentration.
+        content = self.get('home').content.decode()
+        row = content[content.index('class="level stat-row box"'):]
+        row = row[:row.index('<hr') if '<hr' in row[:4000] else row.index('home-counties')]
+        assert "Top 10 facilities' share" in row and "Largest sector's share" in row and "Largest county's share" in row
+        assert 'Facilities reporting' not in row and 'Tracked by EPA' not in row
+
     def test_renders_for_every_scope(self):
         for params in ({}, {'year': 2023}, {'county': 'fresno'}, {'county': 'kern', 'toxics': 1},
                        {'minor': 1}, {'pollutant': 'pm'}, {'year': 1900, 'pollutant': 'bogus'},
@@ -93,7 +101,7 @@ class HomeTests(ViewTestCase):
         assert [row['county'] for row in rows[:2]] == [kern, fresno]
         assert rows[0]['value'] == 100 and rows[1]['value'] == 6
         assert {row['county'] for row in rows} == set(Region.objects.counties())
-        # Darkest for the most; the no-data grey for any county with none.
+        # Darkest for the most; the no-data gray for any county with none.
         assert rows[0]['color'] != rows[1]['color']
         assert all(row['value'] == 0 and row['color'] == '#f0f0f0' for row in rows[2:])
         content = response.content.decode()
@@ -289,16 +297,26 @@ class MapTests(ViewTestCase):
         assert 'class="facility-map map-canvas"' in content
         assert 'data-mode="full"' in content
         assert '/api/2.0/emissions/facilities/geojson/' in content
-        assert 'class="dropdown-item is-active" data-sector="glass"' in content
-        assert '<span class="map-toolbar-label">Glass manufacturing</span>' in content
-        # The core's chrome: the sector filter, expand button and legend card.
+        # Which facilities is the filter box's: search, Search by location, then the sector.
+        box = content[content.index('class="explorer-filters box"'):content.index('</form>', content.index('class="explorer-filters box"'))]
+        assert box.index('id="map-q"') < box.index('Search by location') < box.index('id="map-sector"')
+        assert '<option value="glass" selected>' in box
+        assert 'sector=glass' in content  # the map's data query
+        assert 'data-sector=' not in content  # no sector dropdown in the toolbar
+        # The core's chrome: the toolbar, expand button and legend card, and
+        # (for when the filter box is out of sight) the Filters button, its slide-out and chips.
         assert 'class="map-toolbar-filters"' in content
+        assert 'class="button map-filters-toggle"' in content and 'class="map-filters-panel"' in content and 'class="map-filter-chips"' in content
         assert 'class="button map-expand"' in content
         assert 'map-legend-panel' in content
         assert 'class="facility-map-legend"' in content
         # The options dropdown is named as on the pesticides maps.
         assert '<span class="map-toolbar-label">Tweaks</span>' in content
         assert 'fa-flask-gear' in content
+
+    def test_map_page_search_narrows_the_facilities(self):
+        content = self.get('map', params={'q': 'cement'}).content.decode()
+        assert 'q=cement' in content and 'value="cement"' in content
 
     def test_map_page_has_the_areas_controls(self):
         content = self.get('map', params={'view': 'areas', 'level': 'tract'}).content.decode()

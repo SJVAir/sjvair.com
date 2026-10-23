@@ -579,3 +579,25 @@ class AlertListTests(TestCase):
         assert 'id' not in alert_data
         assert 'latest' not in alert_data
 
+
+    def get_alert_data(self):
+        url = reverse('api:v2:account:alert-list')
+        request = self.factory.get(url)
+        request.user = self.user
+        response = endpoints.AlertList.as_view()(request)
+        assert response.status_code == 200
+        return get_response_data(response)['data'][0]
+
+    def test_alert_list_level_is_latest_update_level(self):
+        from datetime import timedelta
+        from django.utils import timezone
+
+        now = timezone.now()
+        Levels = self.alert.entry_model.Levels
+        self.alert.create_update(Levels.MODERATE, timestamp=now - timedelta(hours=2))
+        self.alert.create_update(Levels.UNHEALTHY, timestamp=now - timedelta(hours=1))
+
+        assert self.get_alert_data()['level'] == 'unhealthy'
+
+    def test_alert_list_level_is_null_without_updates(self):
+        assert self.get_alert_data()['level'] is None

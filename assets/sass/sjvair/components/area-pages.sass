@@ -5,7 +5,7 @@
 // sideways on a phone rather than wrapping (Bulma's .tabs).
 .area-header
   margin-bottom: 1rem !important
-  // The name with its grey kind line under it, and the same town on
+  // The name with its gray kind line under it, and the same town on
   // its other layer (city limits <-> urban area) as a small button at the
   // right. Wraps under the name on a phone.
   .area-title
@@ -13,17 +13,63 @@
     flex-wrap: wrap
     align-items: center
     gap: 0.5rem 1rem
-  .area-switch
+  // The other layer's switch and the other explorer's link, at the title line's right.
+  .area-title-links
     margin-left: auto
     align-self: center
-    text-decoration: none
+    display: flex
+    flex-wrap: wrap
+    gap: 0.5rem
+    &:empty
+      display: none
+    .button
+      text-decoration: none
+// The tab row, with a data tab's Summary | Table toggle at its right end
+// (subview-toggle.html) on the same underline; on a phone the toggle drops
+// under the row (which scrolls sideways) rather than scrolling off with it.
+.area-tabs-row
+  display: flex
+  flex-wrap: wrap
+  align-items: stretch
+  margin-bottom: 1.5rem
+  .area-tabs
+    flex: 1 1 auto
+    min-width: 0
+    margin-bottom: 0 !important
+  .subview-toggle
+    display: flex
+    align-items: center
+    padding-left: 1rem
+    border-bottom: 1px solid $border
+    .buttons
+      margin-bottom: 0
+      flex-wrap: nowrap
+    .button
+      margin-bottom: 0
+      // Bulma's light buttons drop their border; the current view keeps one, in the link color, so the pair reads as one control.
+      &.is-selected
+        border-color: $link
+  @media screen and (max-width: $tablet - 1px)
+    .subview-toggle
+      flex-basis: 100%
+      padding: 0.5rem 0 0
+      border-bottom: none
 .area-tabs
   margin-bottom: 1.5rem
   a
     font-weight: 600
-  // The same place in another explorer, at the row's right end.
-  .is-cross-link
-    margin-left: auto
+
+// A data tab's Summary | Table switch (subview-tabs.html): the tab row's
+// style, a size down, its icons in the link color.
+.subview-tabs
+  margin-bottom: 1.5rem
+  font-size: $size-6
+  a
+    font-weight: 600
+  .icon
+    color: $grey
+  .is-active .icon
+    color: $link
 
 // A gap between a data tab's stat row and its map.
 .tab-stats > :last-child
@@ -74,15 +120,6 @@
         display: none
         &.is-revealed
           display: list-item
-  .school-districts-toggle
-    padding-left: 0
-    margin-top: 0.25rem
-
-// The Community card's tract links sit in sentences and short lists: a 24px
-// tall target each (WCAG 2.5.8) rather than the 14px of bare text.
-.community-card li a
-  display: inline-block
-  padding: 0.2rem 0
 
 // "In and around <place>" (regions/includes/within.html), on both explorers'
 // Overview: the counties, communities, school districts and ZIPs nearby.
@@ -96,15 +133,17 @@
   // Past the first few, hidden until "Show all" (explorer.js).
   .is-collapsed:not(.is-revealed)
     display: none
-  // A text button that lines up with the list: its padding stays (so the
-  // focus box doesn't crowd the words), pulled back by a matching margin.
-  .within-toggle
+// A text button that lines up with the list above it ("Show all" / "Show
+// fewer": In and around's, the school districts box's): its padding stays
+// (so the focus box doesn't crowd the words), pulled back by a matching margin.
+.within, .school-districts-box
+  .within-toggle, .school-districts-toggle
     margin-top: 0.25rem
     margin-left: -0.5em
     padding: 0 0.5em
     text-decoration: none
     color: $link
-    // Bulma's grey box and dark text belong to keyboard focus, not a click.
+    // Bulma's gray box and dark text belong to keyboard focus, not a click.
     &:hover, &:focus:not(:focus-visible), &:active
       background: transparent
       border-color: transparent
@@ -140,8 +179,8 @@
     max-width: 24rem
     .tags
       gap: 0.3rem
-      // Links, so they read as links: link colour and an underline
-      // rather than the grey of a label.
+      // Links, so they read as links: link color and an underline
+      // rather than the gray of a label.
       .tag
         font-variant-numeric: tabular-nums
         background: $white
@@ -150,3 +189,21 @@
         text-decoration: underline
         &:hover, &:focus-visible
           border-color: $link
+
+// A sortable column's note (sort_link's `note`: "(1,000 ft)"), on its own
+// line under the label and its icon, in the header's color, lighter.
+.sort-link .sort-note
+  display: block
+  font-weight: normal
+  opacity: 0.8
+
+// How many rows match, and the CSV, over a tab's table.
+.table-toolbar
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  justify-content: space-between
+  gap: 0.5rem 1rem
+  margin-bottom: 0.75rem
+  .table-count
+    color: $grey-dark

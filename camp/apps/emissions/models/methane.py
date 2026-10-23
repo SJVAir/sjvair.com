@@ -19,7 +19,7 @@ class MethaneSource(models.Model):
     from proximity, so the explorer shows a source by its own location and
     Carbon Mapper's sector only.
 
-    Licence: Carbon Mapper's custom non-commercial terms (LICENSE). The data
+    License: Carbon Mapper's custom non-commercial terms (LICENSE). The data
     is shown only on our own pages, never re-licensed or offered as a
     download, and every rendering carries ATTRIBUTION.
     """
@@ -40,7 +40,7 @@ class MethaneSource(models.Model):
         OTHER = 'other', _('Other')
 
     # IPCC 2006 source categories as Carbon Mapper codes them, longest
-    # prefix wins: the map's colour group and the label shown for the sector.
+    # prefix wins: the map's color group and the label shown for the sector.
     # Only the code is stored (ipcc_sector); the label comes from here, so
     # rewording one is an edit, not a re-import. Where a category matches one
     # of the explorer's facility sectors exactly it borrows that name; the two
@@ -137,7 +137,7 @@ class MethanePlume(models.Model):
     plume's point (carbonmapper.py's `nearest`). A plume can be left
     unmatched (source NULL) when nothing is that close.
 
-    Licence: Carbon Mapper's custom non-commercial terms, same as
+    License: Carbon Mapper's custom non-commercial terms, same as
     MethaneSource (see its docstring) -- every rendering carries
     MethaneSource.ATTRIBUTION.
     """

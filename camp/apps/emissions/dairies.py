@@ -59,12 +59,18 @@ HERD_CLASSES = (
 )
 TABLE_SORTS = ('name', '-name', 'city', '-city', 'county', '-county', 'mature_cows', '-mature_cows')
 DEFAULT_SORT = '-mature_cows'
-# The Dairies tab map's views and its Counties measures.
+# The Dairies tab map's views ('counties' is the Areas view, its name kept
+# for links) and the Areas view's levels and measures.
 VIEWS = ('dairies', 'counties')
 DEFAULT_VIEW = 'dairies'
-MEASURES = ('emissions', 'emissions_per_sq_mi', 'mature_cows', 'mature_cows_per_sq_mi')
-# Herd counts by default: CARB's county estimate is flat for most years (flat_since).
-DEFAULT_MEASURE = 'mature_cows'
+AREA_LEVELS = areas.LEVELS
+DEFAULT_LEVEL = Region.Type.COUNTY
+MEASURES = ('mature_cows_per_sq_mi', 'mature_cows', 'dairies', 'emissions', 'emissions_per_sq_mi')
+# CARB's dairy emissions estimate is by county only: no ZIP code or tract has one.
+COUNTY_ONLY_MEASURES = ('emissions', 'emissions_per_sq_mi')
+# Herd density by default: a count favors a big area, and CARB's county
+# estimate is flat for most years (flat_since).
+DEFAULT_MEASURE = 'mature_cows_per_sq_mi'
 # A counted herd: at least one head of cattle.
 COUNTED = Q(mature_cows__gt=0) | Q(other_cattle__gt=0)
 # The EPA size classes with their thresholds, largest first (the maps' legends
@@ -204,15 +210,54 @@ def _operating(year):
     return Digester.objects.operating_in(year).filter(dairy=OuterRef('dairy'))
 
 
-def summary(year, *, county=None, area=None):
+def _operating_that_year():
+    """The digesters operating at the outer herd's dairy in the herd's own year (Digester.operating_in, per row)."""
+    return Digester.objects.filter(dairy=OuterRef('dairy')).filter(
+        Q(operational_year__isnull=True) | Q(operational_year__lte=OuterRef('year')),
+        Q(shutdown_year__isnull=True) | Q(shutdown_year__gt=OuterRef('year')),
+    )
+
+
+def narrow(queryset, *, q=None, sizes=None, digester='', **ignored):
+    """
+    Herds narrowed by the Dairies filter box (dairy_views.search_filters, its
+    sort ignored): a name, EPA size classes (None for all) and whether the
+    dairy ran a digester that year ('yes', 'no', '' for either).
+    """
+    if q:
+        queryset = queryset.filter(dairy__name__icontains=q)
+    if sizes is not None:
+        queryset = queryset.filter(size_class__in=sizes)
+    if digester in ('yes', 'no'):
+        running = Exists(_operating_that_year())
+        queryset = queryset.filter(running if digester == 'yes' else ~running)
+    return queryset
+
+
+def _cached(name, where, filters, compute):
+    """
+    `compute()` cached under `name` and `where`, and the filter box's size
+    classes and digester choice; a name search runs uncached (every spelling
+    would be its own entry, and narrowed that far it's quick).
+    """
+    filters = filters or {}
+    if filters.get('q'):
+        return compute()
+    sizes = filters.get('sizes')
+    parts = [f"sizes={','.join(sorted(sizes))}" if sizes is not None else '', f"digester={filters.get('digester') or ''}"]
+    return cache.get_or_set(key(name, where, *parts), compute, stats.CACHE_TIMEOUT)
+
+
+def summary(year, *, county=None, area=None, filters=None):
     """
     The year's counted dairies and how many are Large CAFOs; their milk cows,
     mature dairy cows and all cattle (mature dairy cows plus other cattle);
     how many ran a digester; milk cows as a share of all cattle and
-    digesters as a share of the dairies.
+    digesters as a share of the dairies. `filters` (the filter box's) narrows
+    it, for a Dairies Summary.
     """
     def compute():
-        queryset = herds(year, county=county, area=area)
+        queryset = narrow(herds(year, county=county, area=area), **(filters or {}))
         row = queryset.aggregate(
             dairies=Count('pk'), mature_cows=Sum('mature_cows'), other_cattle=Sum('other_cattle'),
             milk_cows=Sum('milk_cows'), large=Count('pk', filter=Q(size_class=SizeClass.LARGE)),
@@ -229,13 +274,15 @@ def summary(year, *, county=None, area=None):
             'digesters': digesters,
             'digester_share': digesters / row['dairies'] if row['dairies'] else None,
         }
-    return cache.get_or_set(key('summary', year, _where(county, area)), compute, stats.CACHE_TIMEOUT)
+    return _cached('summary', f'{year}:{_where(county, area)}', filters, compute)
 
 
-def table(year, *, county=None, area=None, q=None, sort=DEFAULT_SORT):
+def table(year, *, county=None, area=None, q=None, sizes=None, digester='', sort=DEFAULT_SORT):
     """
     The year's counted herds with their dairies, `digester` and
-    `digester_since` annotated, in a TABLE_SORTS order.
+    `digester_since` annotated, in a TABLE_SORTS order; narrowed to a name
+    (`q`), EPA size classes (`sizes`, None for all) and digester ('yes',
+    'no' or '' for either), as the map is.
     """
     operating = _operating(year) if year is not None else Digester.objects.none()
     queryset = (
@@ -248,6 +295,10 @@ def table(year, *, county=None, area=None, q=None, sort=DEFAULT_SORT):
     )
     if q:
         queryset = queryset.filter(dairy__name__icontains=q)
+    if sizes is not None:
+        queryset = queryset.filter(size_class__in=sizes)
+    if digester in ('yes', 'no'):
+        queryset = queryset.filter(digester=digester == 'yes')
     sort = sort if sort in TABLE_SORTS else DEFAULT_SORT
     expression = {
         'name': Lower('dairy__name'),
@@ -259,10 +310,10 @@ def table(year, *, county=None, area=None, q=None, sort=DEFAULT_SORT):
     return queryset.order_by(ordered, Lower('dairy__name'))
 
 
-def trend(*, county=None, area=None):
-    """Counted dairies, mature dairy cows and other cattle for every CADD year."""
+def trend(*, county=None, area=None, filters=None):
+    """Counted dairies, mature dairy cows and other cattle for every CADD year, under the filter box's `filters`."""
     def compute():
-        queryset = DairyHerd.objects.filter(COUNTED)
+        queryset = narrow(DairyHerd.objects.filter(COUNTED), **(filters or {}))
         if county is not None:
             queryset = queryset.filter(dairy__county=county)
         if area is not None:
@@ -278,7 +329,7 @@ def trend(*, county=None, area=None):
             'mature_cows': row['mature_cows'] or 0,
             'other_cattle': row['other_cattle'] or 0,
         } for row in rows]
-    return cache.get_or_set(key('trend', _where(county, area)), compute, stats.CACHE_TIMEOUT)
+    return _cached('trend', _where(county, area), filters, compute)
 
 
 def cepam_rows(counties):
@@ -351,33 +402,30 @@ def flat_since(points):
     return since if since < rows[-1]['year'] else None
 
 
-def digester_trend(*, county=None, area=None):
+def digester_trend(*, county=None, area=None, filters=None):
     """
     For every CADD year, the counted dairies that ran a digester that year
-    (Digester.operating_in: an unknown start year counts as operating).
+    (Digester.operating_in: an unknown start year counts as operating),
+    under the filter box's `filters`.
     """
     def compute():
-        queryset = DairyHerd.objects.filter(COUNTED)
+        queryset = narrow(DairyHerd.objects.filter(COUNTED), **(filters or {}))
         if county is not None:
             queryset = queryset.filter(dairy__county=county)
         if area is not None:
             queryset = queryset.filter(area.dairy_q())
-        operating = Digester.objects.filter(dairy=OuterRef('dairy')).filter(
-            Q(operational_year__isnull=True) | Q(operational_year__lte=OuterRef('year')),
-            Q(shutdown_year__isnull=True) | Q(shutdown_year__gt=OuterRef('year')),
-        )
         rows = (
-            queryset.annotate(digester=Exists(operating))
+            queryset.annotate(digester=Exists(_operating_that_year()))
             .values('year').annotate(digesters=Count('pk', filter=Q(digester=True)))
             .order_by('year')
         )
         return [{'year': row['year'], 'digesters': row['digesters']} for row in rows]
-    return cache.get_or_set(key('digester-trend', _where(county, area)), compute, stats.CACHE_TIMEOUT)
+    return _cached('digester-trend', _where(county, area), filters, compute)
 
 
-def digester_chart_points(*, county=None, area=None):
+def digester_chart_points(*, county=None, area=None, filters=None):
     """digester_trend(), or [] when no year had a digester (so there's no chart)."""
-    rows = digester_trend(county=county, area=area)
+    rows = digester_trend(county=county, area=area, filters=filters)
     return rows if any(row['digesters'] for row in rows) else []
 
 
@@ -386,10 +434,12 @@ def county_values(year, pollutant):
     def compute():
         miles = areas.region_sq_miles(Region.Type.COUNTY)
         emissions = county_emissions(year, pollutant)
-        cows = dict(
-            herds(year).values('dairy__county').annotate(total=Sum('mature_cows'))
-            .values_list('dairy__county', 'total')
-        )
+        cows, counts = {}, {}
+        for county, total, dairies in (
+            herds(year).values('dairy__county').annotate(total=Sum('mature_cows'), dairies=Count('dairy', distinct=True))
+            .values_list('dairy__county', 'total', 'dairies')
+        ):
+            cows[county], counts[county] = total, dairies
         rows = []
         for county in Region.objects.counties().order_by('name'):
             tons = emissions.get(county.pk)
@@ -402,9 +452,40 @@ def county_values(year, pollutant):
                 'emissions_per_sq_mi': areas._per(tons, miles.get(county.pk)),
                 'mature_cows': herd,
                 'mature_cows_per_sq_mi': areas._per(herd, miles.get(county.pk)),
+                'dairies': counts.get(county.pk) or 0,
             })
         return rows
-    return cache.get_or_set(key('county-values', year, pollutant.key), compute, stats.CACHE_TIMEOUT)
+    return cache.get_or_set(key('county-values', 2, year, pollutant.key), compute, stats.CACHE_TIMEOUT)
+
+
+def area_values(year, pollutant, level):
+    """
+    The Areas view's rows for `level` (AREA_LEVELS): every covered county
+    (county_values, with CARB's emissions), or each ZIP code or tract with a
+    counted herd -- its dairies, mature dairy cows and cows per square mile,
+    by where the dairy's point falls (region_index); no emissions there.
+    """
+    if level == Region.Type.COUNTY:
+        return county_values(year, pollutant)
+
+    def compute():
+        index = region_index(level)
+        cows, counts = {}, {}
+        for dairy, mature in herds(year).values_list('dairy', 'mature_cows'):
+            region = index.get(dairy)
+            if region is None:
+                continue
+            cows[region] = cows.get(region, 0) + (mature or 0)
+            counts[region] = counts.get(region, 0) + 1
+        miles = areas.region_sq_miles(level)
+        return [{
+            'id': sqid, 'slug': slug, 'name': name,
+            'emissions': None, 'emissions_per_sq_mi': None,
+            'mature_cows': cows[pk],
+            'mature_cows_per_sq_mi': areas._per(cows[pk], miles.get(pk)),
+            'dairies': counts[pk],
+        } for pk, sqid, slug, name in Region.objects.filter(pk__in=counts).order_by('name').values_list('pk', 'sqid', 'slug', 'name')]
+    return cache.get_or_set(key('area-values', level, year), compute, stats.CACHE_TIMEOUT)
 
 
 def dairy_areas(dairy):

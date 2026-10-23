@@ -4,7 +4,7 @@
 prop65:
   title: Proposition 65
   summary: California lists this chemical as known to cause cancer, birth defects, or other reproductive harm. Being on the list means the state has evidence of a hazard, not that any particular exposure will hurt you.
-  detail: Proposition 65 (the Safe Drinking Water and Toxic Enforcement Act of 1986) requires the state to keep a public list of chemicals with evidence of causing cancer or reproductive harm. Here the badge appears when the Department of Pesticide Regulation tags the chemical as a carcinogen, reproductive toxin, or developmental toxin.
+  detail: Proposition 65 (the Safe Drinking Water and Toxic Enforcement Act of 1986) requires the state to keep a public list of chemicals with evidence of causing cancer or reproductive harm. Here the badge appears when the chemical is on OEHHA's list, by its CAS number or under a group listing such as cadmium compounds.
   source_url: https://oehha.ca.gov/proposition-65/proposition-65-list
 iarc_1:
   title: IARC Group 1
@@ -28,7 +28,7 @@ carb_tac:
   source_url: https://ww2.arb.ca.gov/resources/documents/carb-identified-toxic-air-contaminants
 fumigant:
   title: Fumigant
-  summary: A fumigant is applied as a gas to soil or stored crops and can drift beyond the field. Fumigant applications need extra setbacks and buffer zones, and they are the notices SprayDays publishes 48 hours ahead.
+  summary: A fumigant is applied to soil or stored crops and becomes a gas that can drift beyond the field. Fumigant applications need extra setbacks and buffer zones, and they are the notices SprayDays publishes 48 hours ahead.
   source_url: https://spraydays.cdpr.ca.gov/Home/About
 cholinesterase_inhibitor:
   title: Cholinesterase inhibitor
@@ -66,7 +66,7 @@ ab617:
   source_url: https://ww2.arb.ca.gov/capp
 pur_lag:
   title: Why the newest data is a year or more old
-  summary: Growers report applications to the county, which sends them to the state, which checks and publishes them one to two years later. The most recent full year here is the newest the state has released, so the newest records are always at least a year old.
+  summary: Growers report applications to the county, which sends them to the state, which checks and publishes them a year or two later, sometimes longer. The most recent full year here is the newest the state has released, so the newest records are always more than a year old.
   source_url: https://www.cdpr.ca.gov/pesticide-use-in-california/pesticide-use-reporting/
 shades:
   title: What the shades mean

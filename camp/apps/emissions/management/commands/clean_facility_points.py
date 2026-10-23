@@ -1,8 +1,7 @@
 from django.core.management.base import BaseCommand
 
-from camp.apps.emissions import locations
+from camp.apps.emissions import audit
 from camp.apps.emissions.models import Facility
-from camp.apps.regions.models import Region
 
 
 class Command(BaseCommand):
@@ -17,17 +16,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         dry_run = options['dry_run']
-        cleared = []
-
-        for county in Region.objects.counties().select_related('boundary').order_by('name'):
-            area = locations.county_area(county)
-            facilities = Facility.objects.filter(county=county, point__isnull=False)
-            outside = facilities.exclude(point__within=area) if area is not None else facilities.none()
-            cleared.extend(outside)
-            cleared.extend(
-                facility for facility in facilities.exclude(pk__in=outside.values('pk'))
-                if not locations.is_geocodable(facility.address)
-            )
+        cleared = audit.points_to_clear()
 
         for facility in cleared:
             self.stdout.write(f'  {facility.name} ({facility.get_county()}): {facility.address}')

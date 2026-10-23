@@ -10,7 +10,7 @@ the darkest bin and everyone else in the lightest. Quantiles rank the
 counties so the whole ramp is always used; the legend shows the real pound
 range each shade covers so close-but-different shades are not misread. The
 ramp is single-hue, sequential, and luminance-monotonic (colorblind and
-grayscale safe); no-data counties are drawn grey and kept out of the classes.
+grayscale safe); no-data counties are drawn gray and kept out of the classes.
 """
 import math
 from dataclasses import dataclass, field

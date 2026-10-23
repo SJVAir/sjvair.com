@@ -179,14 +179,32 @@ FILTER_REGION_TYPES = {
 
 @dataclass(frozen=True)
 class RegionArea:
-    """A Scope narrowed to one region (a region page)."""
+    """
+    A Scope narrowed to one region (a region page), or to the region and
+    `buffer` miles past its boundary (?buffer=): everything within the
+    widened shape by point, plus everything the exact region counts.
+    """
     region: Region
+    buffer: int = 0
 
     @property
     def key(self):
-        return f'region-{self.region.pk}'
+        return f'region-{self.region.pk}' + (f'-buffer-{self.buffer}' if self.buffer else '')
+
+    @property
+    def geometry(self):
+        """The region's boundary, widened by `buffer` miles (EPSG:4326)."""
+        return shapes.region_shape(self.region, self.buffer) if self.buffer else self.region.boundary.geometry
+
+    def point_q(self, field):
+        """A Q for `field` (a point) inside the widened shape, or None unbuffered."""
+        return Q(**{f'{field}__intersects': self.geometry}) if self.buffer else None
 
     def q(self):
+        exact = self._exact_q()
+        return exact | self.point_q('facility__point') if self.buffer else exact
+
+    def _exact_q(self):
         region = self.region
         if region.type == Region.Type.COUNTY:
             return Q(facility__county=region)
@@ -202,6 +220,10 @@ class RegionArea:
         city (Dairy.address['city']) resolving to the region (cities.resolve(),
         aliases included), and every other type, urban areas too, by point alone.
         """
+        exact = self._exact_dairy_q()
+        return exact | self.point_q('dairy__point') if self.buffer else exact
+
+    def _exact_dairy_q(self):
         from camp.apps.emissions import dairies  # dairies imports this module
 
         region = self.region
@@ -218,14 +240,15 @@ class RegionArea:
 
     @property
     def sq_miles(self):
-        if self.region.type in LEVELS:
+        if self.region.type in LEVELS and not self.buffer:
             return region_sq_miles(self.region.type).get(self.region.pk)
-        geometry = self.region.boundary.geometry.transform(EPSG_CALIFORNIA_ALBERS, clone=True)
+        geometry = self.geometry.transform(EPSG_CALIFORNIA_ALBERS, clone=True)
         return geometry.area / SQ_METERS_PER_SQ_MILE
 
     @property
     def population(self):
-        return (self.region.metadata or {}).get('population')
+        # The region's residents; nobody counts the band past it.
+        return None if self.buffer else (self.region.metadata or {}).get('population')
 
 
 @dataclass(frozen=True)
@@ -326,7 +349,7 @@ def map_shape(area, buffer=0):
     regions.shapes.
     """
     if isinstance(area, RegionArea):
-        return shapes.region_shape(area.region, buffer)
+        return shapes.region_shape(area.region, buffer or area.buffer)
     if not buffer:
         return area.geometry
 

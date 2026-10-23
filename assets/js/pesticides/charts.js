@@ -10,7 +10,7 @@
  * Two kinds: `line` (the by-year trend, optionally with a dashed second
  * series `y2`, tip `labels`, per-year tip `notes`, a marked year
  * `marker` and `whole` for counts) and `bars` (the by-month totals).
- * Colours come from CSS custom properties on `.explorer-chart`, so the Sass
+ * Colors come from CSS custom properties on `.explorer-chart`, so the Sass
  * stays the one place the palette lives.
  */
 (function () {
@@ -323,7 +323,7 @@
         Object.assign(axisBase(colors), {
           grid: {show: false},
           splits: function () { return indexes; },
-          // Every bar labelled; a slot too narrow for "2010" gets "’10".
+          // Every bar labeled; a slot too narrow for "2010" gets "’10".
           values: function (u, splits) {
             var slot = u.bbox.width / (window.devicePixelRatio || 1) / x.length;
             return splits.map(function (index) {
@@ -381,7 +381,7 @@
       cursor: {x: false, y: false, drag: {x: false, y: false}, points: {show: false}},
       scales: {
         // Ordinal, padded half a slot each side so the first and last bars
-        // sit inside the plot instead of centred on its edges.
+        // sit inside the plot instead of centered on its edges.
         x: {time: false, distr: 2, range: function (u, min, max) { return [min - 0.5, max + 0.5]; }},
         y: {range: function (u, min, max) { return [0, (max || 1) * 1.08]; }},
       },

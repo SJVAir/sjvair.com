@@ -59,17 +59,29 @@ class CollectionTests(MethaneTestCase):
         assert methane.collection()['properties']['sources'] == 2
 
 
-class OilGasListTests(MethaneTestCase):
-    def test_oil_gas_sources_by_carbon_mappers_sector(self):
-        rows = methane.oil_gas_sources()
+class AreaRowsTests(MethaneTestCase):
+    def test_sources_by_carbon_mappers_sector(self):
+        from camp.apps.emissions import areas
+        rows = methane.area_rows(areas.ValleyArea(), groups=[MethaneSource.Group.OIL_GAS])
         assert [(r['source'].source_name, r['county'].slug) for r in rows] == [('og', 'kern')]
-        assert 'facility' not in rows[0]
+        # Never tied to a facility or dairy: a source is its place and Carbon Mapper's sector.
+        assert 'facility' not in rows[0] and 'dairy' not in rows[0]
+
+    def test_the_oil_gas_tab_links_the_methane_tab(self):
+        from camp.apps.regions.models import Region
+        from camp.apps.emissions.tests.test_wells import make_well
+        kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
+        make_well('0402900001', (-119.02, 35.37), kern)
+        content = self.client.get(kern.get_emissions_tab_url('oil-gas')).content.decode()
+        assert f'href="{kern.get_emissions_tab_url("methane")}?sector=oil-gas">1 oil &amp; gas methane source seen here' in content
+        valley = self.client.get(reverse('emissions:oil-gas')).content.decode()
+        assert 'href="/tools/emissions/methane/?sector=oil-gas">1 oil &amp; gas methane source seen in the covered counties' in valley
 
 
 class ViewTests(MethaneTestCase):
     def test_the_old_same_origin_route_is_gone(self):
         # Moved to /api/2.0/emissions/methane/geojson/ (camp/api/v2/emissions/tests.py
-        # pins the new route and its attribution/licence).
+        # pins the new route and its attribution/license).
         with pytest.raises(NoReverseMatch):
             reverse('emissions:methane-geojson')
         assert self.client.get('/tools/emissions/methane/geojson/').status_code == 404
@@ -78,10 +90,13 @@ class ViewTests(MethaneTestCase):
 class OverlayConfigTests(MethaneTestCase):
     def test_methane_overlay_helper(self):
         from camp.apps.emissions import views
-        assert views.methane_overlay({}) == {'on': False, 'default': False}
-        assert views.methane_overlay({'methane': '1'}) == {'on': True, 'default': False}
-        assert views.methane_overlay({'methane': '0'}, default=True) == {'on': False, 'default': True}
-        assert views.methane_overlay({'methane': 'x'}) == {'on': False, 'default': False}
+        assert views.methane_overlay({}) == {'on': False, 'default': False, 'params': {}}
+        assert views.methane_overlay({'methane': '1'}) == {'on': True, 'default': False, 'params': {}}
+        assert views.methane_overlay({'methane': '0'}, default=True) == {'on': False, 'default': True, 'params': {}}
+        assert views.methane_overlay({'methane': 'x'}) == {'on': False, 'default': False, 'params': {}}
+        # The Methane pages narrow it to the table's sector groups; elsewhere they're ignored.
+        assert views.methane_overlay({'sector': 'oil-gas,waste'}, filtered=True)['params'] == {'sector': 'oil-gas,waste'}
+        assert views.methane_overlay({'sector': 'oil-gas'})['params'] == {}
         MethaneSource.objects.all().delete()
         from camp.apps.emissions.models import SourceImport
         SourceImport.objects.filter(source='carbon-mapper').delete()
@@ -126,6 +141,75 @@ class OverlayConfigTests(MethaneTestCase):
 
     def test_about_has_the_methane_section(self):
         content = self.client.get(reverse('emissions:about')).content.decode()
-        assert '<h2 id="methane">Methane</h2>' in content
+        assert '<section class="about-section" id="methane">' in content
         assert 'Data by Carbon Mapper®' in content and 'https://carbonmapper.org/terms' in content
         assert 'not an annual total' in content and 'Methane is a climate pollutant, not a direct local toxic' in content
+
+
+class MethaneTabTests(MethaneTestCase):
+    """The Methane tab (views.MethanePage, RegionMethane, NearMeMethane): Summary and Table under the sector filter."""
+
+    def get(self, url, params=None):
+        response = self.client.get(url, params or {})
+        assert response.status_code == 200, response.status_code
+        return response.content.decode()
+
+    def test_the_valley_summary(self):
+        from camp.apps.emissions.tests.test_areas_pages import map_data
+        content = self.get(reverse('emissions:methane'))
+        # The explorer's own tab, the Summary | Table switch, the stats, a methane-only map and the cards.
+        assert 'is-active"><a href="/tools/emissions/methane/' in content
+        assert 'subview-tabs' in content and 'href="/tools/emissions/methane/table/"' in content
+        assert '<p class="heading">Methane sources</p><p class="title">3</p>' in content
+        assert map_data(content, 'main-layer') == 'none' and map_data(content, 'methane') == '1'
+        assert 'card-header-title">Sources by sector' in content and 'card-header-title">Highest estimated rates' in content
+        assert 'methane-table' not in content
+        # Every sector ticked; the filter starts at Search by location (a source has no name to search).
+        assert content.count('type="checkbox" name="sector"') == 4 and 'id="methane-q"' not in content
+
+    def test_the_sector_filter_narrows_the_map_and_the_table(self):
+        from camp.apps.emissions.tests.test_areas_pages import map_data
+        content = self.get(reverse('emissions:methane'), {'sector': 'oil-gas'})
+        assert '<p class="heading">Methane sources</p><p class="title">1</p>' in content
+        assert 'sector=oil-gas' in map_data(content, 'methane-url')
+        api = self.client.get(reverse('api:v2:emissions:methane-geojson'), {'sector': 'oil-gas,waste'}).json()
+        assert sorted(feature['properties']['name'] for feature in api['features']) == ['lone', 'og']
+        table = self.get(reverse('emissions:methane-table'), {'sector': ['livestock', 'waste']})
+        rows = table[table.index('methane-table'):table.index('</table>', table.index('methane-table'))]
+        assert rows.count('<tr>') == 3  # header + two Fresno sources
+        assert 'Waste' in rows and 'Oil &amp; gas' not in rows
+
+    def test_the_table(self):
+        table = self.get(reverse('emissions:methane-table'))
+        rows = table[table.index('methane-table'):table.index('</table>', table.index('methane-table'))]
+        # The highest rate first; the Valley's table has a County column; no map and no CSV (Carbon Mapper's terms).
+        assert rows.index('500 ± 150 kg/h') < rows.index('120 ± 40 kg/h') < rows.index('30 ± 9 kg/h')
+        assert '>County <span class="icon' in rows and 'map-canvas' not in table
+        assert 'format=csv' not in table and 'Showing 1&ndash;3 of 3 sources' in table
+        by_rate = self.get(reverse('emissions:methane-table'), {'sort': 'rate'})
+        assert by_rate.index('30 ± 9 kg/h') < by_rate.index('500 ± 150 kg/h')
+
+    def test_an_area_tab(self):
+        from camp.apps.regions.models import Region
+        fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        url = fresno.get_emissions_tab_url('methane')
+        content = self.get(url)
+        # In the area's tab row, current; its own sources only.
+        assert f'href="{url}' in content and '<p class="heading">Methane sources</p><p class="title">2</p>' in content
+        table = self.get(url + 'table/')
+        rows = table[table.index('methane-table'):table.index('</table>', table.index('methane-table'))]
+        # A county's own table drops the County column.
+        assert rows.count('<tr>') == 3 and '>County <span class="icon' not in rows
+        assert 'Methane' in self.get(fresno.get_emissions_url())
+
+    def test_a_county_in_the_scope_bar_goes_to_its_own_tab(self):
+        from camp.apps.regions.models import Region
+        kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
+        response = self.client.get(reverse('emissions:methane-table'), {'county': 'kern'})
+        assert response.status_code == 302 and response['Location'].startswith(kern.get_emissions_tab_url('methane') + 'table/')
+
+    def test_before_any_import(self):
+        from camp.apps.emissions.models import SourceImport
+        SourceImport.objects.filter(source='carbon-mapper').delete()
+        cache.clear()
+        assert 'No methane data has been imported yet.' in self.get(reverse('emissions:methane'))

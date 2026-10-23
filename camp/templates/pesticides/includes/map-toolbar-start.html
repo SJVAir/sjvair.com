@@ -1,0 +1,11 @@
+{% comment %}
+The start of every section map's toolbar: Shade by (map-metric.html), then
+the map's own pickers where it has them -- Compare on the valley map
+(map-toolbar.html), the boundary picker on a region's tabs
+(buffer-toolbar.html), named by map.start_template. All of it is how the map
+draws; what it shows is the filter box beside it.
+{% endcomment %}
+<div class="map-toolbar-start">
+    {% include 'pesticides/includes/map-metric.html' %}
+    {% if map.start_template %}{% include map.start_template %}{% endif %}
+</div>

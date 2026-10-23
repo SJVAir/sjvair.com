@@ -317,10 +317,250 @@
         button.setAttribute('aria-label', on ? 'Back to the page' : 'Expand the map');
       }
     }
+    // In expanded mode the page's filter box is off-screen: into the slide-out with it (and back out after).
+    syncFilters(shell);
     if (!on && was) window.scrollTo(0, shell.scrollBeforeExpand || 0);
     // Resize once the new layout has applied, so the moveend that follows
     // measures the new size.
     setTimeout(function () { if (shell.map) shell.map.resize(); }, 0);
+  }
+
+  // -- the page's filter box, when it's out of sight: on a phone (stacked
+  // above the map) or in expanded mode (off-screen), a Filters button first
+  // in the toolbar, with how many are on, opens a slide-out with the box
+  // itself in it -- moved there, never copied, so its form, its htmx and the
+  // location search's bindings come along -- and chips over the map say
+  // what's on. On a desktop page the box sits beside the map, as it's laid
+  // out. Which box: the one in the map's own row (.columns). --
+
+  var NARROW = '(max-width: 768px)';
+
+  function filterBox(shell) {
+    var row = shell.wrap && shell.wrap.closest('.columns');
+    if (!row) return null;
+    // `.explorer-filters`, or any box marked data-filter-box (pesticides' notices and records boxes).
+    var boxes = Array.prototype.filter.call(row.querySelectorAll('.explorer-filters, [data-filter-box]'), function (box) {
+      return !box.closest('.map-wrap') || box.closest('.map-filters-slot');
+    });
+    return boxes[0] || null;
+  }
+
+  function filtersTucked(shell) {
+    return !!shell.expanded || !!(window.matchMedia && window.matchMedia(NARROW).matches);
+  }
+
+  // A field's label: its <label for>, its fieldset's legend, or its name.
+  function fieldLabel(box, field) {
+    var label = field.id ? box.querySelector('label[for="' + field.id + '"]') : null;
+    if (!label) {
+      var fieldset = field.closest('fieldset');
+      label = fieldset ? fieldset.querySelector('legend') : null;
+    }
+    return label ? label.textContent.replace(/\s+/g, ' ').trim() : field.name;
+  }
+
+  // What's on in the box, each with how to turn it off: a search's text, a
+  // select away from its first (the "all") option, a single checkbox ticked,
+  // or a group of checkboxes with some left off.
+  function activeFilters(box) {
+    var chips = [];
+    var groups = {};
+    Array.prototype.forEach.call(box.querySelectorAll('input[name], select[name]'), function (field) {
+      if (field.disabled) return;
+      if (field.type === 'hidden') {
+        // A picker (pesticides' entity-picker.html): the value is a hidden
+        // id, what's picked a tag beside it. Other hidden fields are scope.
+        var picker = field.value && field.closest('.field');
+        var picked = picker && picker.querySelector('.tag');
+        if (picked) {
+          var label = picker.querySelector('.label');
+          chips.push({
+            text: (label ? label.textContent.trim() + ': ' : '') + picked.textContent.trim(),
+            clear: function () { field.value = ''; },
+          });
+        }
+        return;
+      }
+      if (field.tagName === 'SELECT') {
+        if (field.selectedIndex > 0) {
+          chips.push({ text: fieldLabel(box, field) + ': ' + field.options[field.selectedIndex].text, clear: function () { field.selectedIndex = 0; } });
+        }
+      } else if (field.type === 'checkbox') {
+        (groups[field.name] = groups[field.name] || []).push(field);
+      } else if (field.type === 'radio') {
+        // A switch (Scheduled | Past): on when anything but its first choice is picked.
+        var group = box.querySelectorAll('input[type="radio"][name="' + field.name + '"]');
+        if (field.checked && group[0] !== field) {
+          var first = group[0];
+          var text = field.closest('label') ? field.closest('label').textContent.trim() : field.value;
+          chips.push({ text: fieldLabel(box, field) + ': ' + text, clear: function () { first.checked = true; } });
+        }
+      } else if (field.value.trim()) {
+        chips.push({ text: fieldLabel(box, field) + ': ' + field.value.trim(), clear: function () { field.value = ''; } });
+      }
+    });
+    Object.keys(groups).forEach(function (name) {
+      var boxes = groups[name];
+      if (boxes.length === 1) {
+        var only = boxes[0];
+        if (only.checked) {
+          var text = only.closest('label') ? only.closest('label').textContent.trim() : fieldLabel(box, only);
+          chips.push({ text: text, clear: function () { only.checked = false; } });
+        }
+        return;
+      }
+      var on = boxes.filter(function (b) { return b.checked; });
+      if (on.length && on.length < boxes.length) {
+        chips.push({
+          text: fieldLabel(box, boxes[0]) + ': ' + on.map(function (b) { return b.closest('label') ? b.closest('label').textContent.trim() : b.value; }).join(', '),
+          clear: function () { boxes.forEach(function (b) { b.checked = true; }); },
+        });
+      }
+    });
+    return chips;
+  }
+
+  // Applies the box's form after a chip cleared a field: the box's own
+  // submit, so its htmx (and the map's view-carrying) runs as if the reader did it.
+  function submitBox(box) {
+    var form = box.tagName === 'FORM' ? box : box.querySelector('form');
+    if (!form) return;
+    if (form.requestSubmit) form.requestSubmit(); else form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  }
+
+  function renderChips(shell, box, tucked) {
+    var chipsEl = shell.wrap.querySelector('.map-filter-chips');
+    var count = shell.wrap.querySelector('.map-filters-count');
+    var chips = box ? activeFilters(box) : [];
+    if (count) {
+      count.textContent = chips.length ? String(chips.length) : '';
+      count.hidden = !chips.length;
+    }
+    if (!chipsEl) return;
+    chipsEl.innerHTML = '';
+    // While the slide-out is open, the box itself says what's on.
+    chipsEl.hidden = !(tucked && chips.length && !shell.filtersOpen);
+    chips.forEach(function (chip) {
+      var tag = document.createElement('span');
+      tag.className = 'tag is-white map-filter-chip';
+      tag.title = chip.text;
+      var text = document.createElement('span');
+      text.className = 'map-filter-chip-text';
+      text.textContent = chip.text;
+      tag.appendChild(text);
+      var remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'delete is-small';
+      remove.setAttribute('aria-label', 'Remove the filter: ' + chip.text);
+      remove.addEventListener('click', function () { chip.clear(); submitBox(box); });
+      tag.appendChild(remove);
+      chipsEl.appendChild(tag);
+    });
+  }
+
+  function setFiltersOpen(shell, open) {
+    shell.filtersOpen = !!open;
+    var chipsEl = shell.wrap && shell.wrap.querySelector('.map-filter-chips');
+    if (chipsEl) chipsEl.hidden = shell.filtersOpen || !chipsEl.children.length || !filtersTucked(shell);
+    var panel = shell.wrap && shell.wrap.querySelector('.map-filters-panel');
+    var toggle = shell.wrap && shell.wrap.querySelector('.map-filters-toggle');
+    if (panel) panel.hidden = !shell.filtersOpen;
+    if (toggle) {
+      toggle.setAttribute('aria-expanded', shell.filtersOpen ? 'true' : 'false');
+      toggle.classList.toggle('is-selected', shell.filtersOpen);
+    }
+  }
+
+  // Puts the box where it belongs now: in the slide-out while it'd be out of
+  // sight, back in its own place (marked when first moved) otherwise. Keeps
+  // the focus of a field being typed in across the move.
+  function syncFilters(shell) {
+    if (!shell.wrap) return;
+    var toggle = shell.wrap.querySelector('.map-filters-toggle');
+    var slot = shell.wrap.querySelector('.map-filters-slot');
+    var box = filterBox(shell);
+    var tucked = !!(box && slot && filtersTucked(shell));
+    if (toggle) toggle.hidden = !tucked;
+    if (box) {
+      var active = document.activeElement;
+      var focused = active && box.contains(active) ? active : null;
+      var caret = focused && typeof focused.selectionStart === 'number' ? focused.selectionStart : null;
+      if (tucked && box.parentNode !== slot) {
+        if (!box.mapFiltersHome) {
+          box.mapFiltersHome = document.createComment('map filters');
+          box.parentNode.insertBefore(box.mapFiltersHome, box);
+        }
+        slot.appendChild(box);
+      } else if (!tucked && box.mapFiltersHome && box.parentNode === slot) {
+        box.mapFiltersHome.parentNode.insertBefore(box, box.mapFiltersHome);
+      }
+      if (focused && document.activeElement !== focused) {
+        focused.focus({ preventScroll: true });
+        if (caret !== null && focused.setSelectionRange) focused.setSelectionRange(caret, caret);
+      }
+    }
+    if (!tucked) setFiltersOpen(shell, false);
+    else setFiltersOpen(shell, shell.filtersOpen);
+    renderChips(shell, box, tucked);
+    placeUnderToolbar(shell);
+  }
+
+  // The slide-out and the chips start just under the toolbar, however many rows it wrapped to.
+  function placeUnderToolbar(shell) {
+    if (!shell.toolbarEl || !shell.wrap) return;
+    var top = shell.toolbarEl.getBoundingClientRect().bottom - shell.wrap.getBoundingClientRect().top;
+    if (!(top > 0)) return;
+    ['.map-filters-panel', '.map-filter-chips'].forEach(function (selector) {
+      var el = shell.wrap.querySelector(selector);
+      if (el) el.style.top = Math.round(top + 8) + 'px';
+    });
+  }
+
+  function bindFilters(shell) {
+    var toggle = shell.wrap.querySelector('.map-filters-toggle');
+    if (toggle && !toggle.getAttribute('data-bound')) {
+      toggle.setAttribute('data-bound', '1');
+      toggle.addEventListener('click', function () {
+        setFiltersOpen(shell, !shell.filtersOpen);
+        placeUnderToolbar(shell);
+      });
+    }
+    var close = shell.wrap.querySelector('.map-filters-close');
+    if (close && !close.getAttribute('data-bound')) {
+      close.setAttribute('data-bound', '1');
+      close.addEventListener('click', function () {
+        setFiltersOpen(shell, false);
+        if (toggle) toggle.focus();
+      });
+    }
+    var panel = shell.wrap.querySelector('.map-filters-panel');
+    if (panel && !panel.getAttribute('data-bound')) {
+      panel.setAttribute('data-bound', '1');
+      panel.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+          event.stopPropagation();
+          setFiltersOpen(shell, false);
+          if (toggle) toggle.focus();
+        }
+      });
+      // A field changed in the slide-out: the count and chips follow before the swap does.
+      panel.addEventListener('change', function () { renderChips(shell, filterBox(shell), filtersTucked(shell)); });
+    }
+    // A phone turned sideways, a window resized past the breakpoint.
+    if (!shell.filtersMedia && window.matchMedia) {
+      shell.filtersMedia = window.matchMedia(NARROW);
+      shell.onFiltersMedia = function () { syncFilters(shell); };
+      if (shell.filtersMedia.addEventListener) shell.filtersMedia.addEventListener('change', shell.onFiltersMedia);
+      else if (shell.filtersMedia.addListener) shell.filtersMedia.addListener(shell.onFiltersMedia);
+    }
+    syncFilters(shell);
+  }
+
+  function unbindFilters(shell) {
+    if (!shell.filtersMedia) return;
+    if (shell.filtersMedia.removeEventListener) shell.filtersMedia.removeEventListener('change', shell.onFiltersMedia);
+    else if (shell.filtersMedia.removeListener) shell.filtersMedia.removeListener(shell.onFiltersMedia);
+    shell.filtersMedia = null;
   }
 
   // (Re)finds the chrome around the container and binds what's new.
@@ -356,6 +596,7 @@
     }
     // An adopted map keeps its expanded state on the new page's chrome.
     if (features.expand && shell.expanded) setExpanded(shell, true);
+    if (shell.toolbarEl) bindFilters(shell);
   }
 
   // -- popups --
@@ -457,6 +698,8 @@
     setLoading: setLoading,
     fitPanels: fitPanels,
     setExpanded: setExpanded,
+    syncFilters: syncFilters,
+    unbindFilters: unbindFilters,
     fitBelowNavbar: fitBelowNavbar,
     popupMaxWidth: popupMaxWidth,
     panPopupIntoView: panPopupIntoView,

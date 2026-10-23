@@ -33,12 +33,13 @@ def gradient(a, b, steps):
 
 
 pm_colors = (
-    (0, 12, hex_to_rgb('78FA4C')),
-    (12.1, 35.4, hex_to_rgb('FFFE54')),
+    # EPA's 2024 PM2.5 AQI breakpoints (see entries.levels.PM25).
+    (0, 9.0, hex_to_rgb('78FA4C')),
+    (9.1, 35.4, hex_to_rgb('FFFE54')),
     (35.5, 55.4, hex_to_rgb('D4712B')),
-    (55.5, 150.4, hex_to_rgb('C3281C')),
-    (150.5, 250.4, hex_to_rgb('66567E')),
-    (250.5, 999999, hex_to_rgb('653734')),
+    (55.5, 125.4, hex_to_rgb('C3281C')),
+    (125.5, 225.4, hex_to_rgb('66567E')),
+    (225.5, 999999, hex_to_rgb('653734')),
 )
 
 def pm_color(pm):

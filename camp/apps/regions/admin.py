@@ -191,7 +191,7 @@ class RegionAdmin(MapFigureMixin, ReadOnlyAdminMixin, GISModelAdmin):
                 figure.add(mapfigure.Area(
                     geometry=county.geometry,
                     fill_color='white',
-                    border_color='dimgrey',
+                    border_color='dimgray',
                     fill_opacity=.5,
                 ))
 

@@ -58,7 +58,7 @@ def current_model():
 
 
 def _sq_m(value):
-    """An Area annotation as square metres (a measure on PostGIS; a bare number elsewhere; None for no row)."""
+    """An Area annotation as square meters (a measure on PostGIS; a bare number elsewhere; None for no row)."""
     if value is None:
         return 0.0
     return float(getattr(value, 'sq_m', value))

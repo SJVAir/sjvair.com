@@ -20,13 +20,17 @@ from camp.apps.emissions import areas, dairies, nei, stats, views
 from camp.apps.emissions.models import HERD_FIELDS
 from camp.apps.emissions.pollutants import CRITERIA
 from camp.apps.emissions.views import AREA_PAGE_TYPES, ScopeMixin, radius_area, region_page_title, region_title
+from camp.apps.regions import shapes
 from camp.apps.regions.models import Region
 from camp.utils import mapconfig
 
-VIEW_OPTIONS = (('dairies', 'Dairies'), ('counties', 'Counties'))
+# 'counties' is the Areas view (counties, ZIP codes or tracts); its name is kept for links.
+VIEW_OPTIONS = (('dairies', 'Dairies'), ('counties', 'Areas'))
+LEVEL_OPTIONS = (('county', 'Counties'), ('zipcode', 'ZIP codes'), ('tract', 'Census tracts'))
 MEASURE_OPTIONS = (
-    ('mature_cows', 'Mature dairy cows'),
     ('mature_cows_per_sq_mi', 'Mature dairy cows per sq mi'),
+    ('mature_cows', 'Mature dairy cows'),
+    ('dairies', 'Dairies'),
     ('emissions', 'Dairy emissions'),
     ('emissions_per_sq_mi', 'Dairy emissions per sq mi'),
 )
@@ -39,11 +43,33 @@ DIGESTER_OPTIONS = (('', 'All dairies'), ('yes', 'With a digester'), ('no', 'Wit
 DIGESTER_VALUES = frozenset(value for value, label in DIGESTER_OPTIONS if value)
 
 
+def parse_sizes(get):
+    """
+    The EPA size classes picked, in SIZE_OPTIONS order: `sizes` absent means
+    all three; present, exactly what's listed (the filter box's checkboxes
+    repeat it, a shared link may join them with commas), unknown values
+    dropped -- so a link can name none of them.
+    """
+    if 'sizes' not in get:
+        return [value for value, label in SIZE_OPTIONS]
+    raws = get.getlist('sizes') if hasattr(get, 'getlist') else [get['sizes']]
+    picked = {token for raw in raws for token in (raw or '').split(',')}
+    return [value for value, label in SIZE_OPTIONS if value in picked]
+
+
 def search_filters(get):
-    """The table's own filters, validated: a name search and the sort."""
+    """
+    The filter box's filters, validated, which narrow the map and the table
+    alike: a name search, the EPA size classes (None for all three) and a
+    digester choice; and the table's sort.
+    """
     sort = get.get('sort')
+    sizes = parse_sizes(get)
+    digester = get.get('digester')
     return {
         'q': (get.get('q') or '').strip() or None,
+        'sizes': None if len(sizes) == len(SIZE_OPTIONS) else sizes,
+        'digester': digester if digester in DIGESTER_VALUES else '',
         'sort': sort if sort in dairies.TABLE_SORTS else dairies.DEFAULT_SORT,
     }
 
@@ -75,13 +101,19 @@ def dairy_map_view(get):
     unknown values dropped -- so a link can name none of them.
     """
     view = get.get('view')
+    level = get.get('level')
+    level = level if level in dairies.AREA_LEVELS else dairies.DEFAULT_LEVEL
     measure = get.get('measure')
-    raw_sizes = get.get('sizes')
-    sizes = SIZE_VALUES if raw_sizes is None else {value for value in raw_sizes.split(',') if value in SIZE_VALUES}
+    measure = measure if measure in dairies.MEASURES else dairies.DEFAULT_MEASURE
+    if level != dairies.DEFAULT_LEVEL and measure in dairies.COUNTY_ONLY_MEASURES:
+        # CARB's estimate is by county: a finer level shades the herds.
+        measure = dairies.DEFAULT_MEASURE
+    sizes = set(parse_sizes(get))
     digester = get.get('digester')
     return {
         'view': view if view in dairies.VIEWS else dairies.DEFAULT_VIEW,
-        'measure': measure if measure in dairies.MEASURES else dairies.DEFAULT_MEASURE,
+        'level': level,
+        'measure': measure,
         'sizes': sizes,
         'digester': digester if digester in DIGESTER_VALUES else '',
     }
@@ -111,7 +143,8 @@ def csv_response(rows, filename):
     return response
 
 
-def dairy_map_config(scope, view, *, area_params=None, outline_url='', center='', zoom='', radius='', methane=None, q=None):
+def dairy_map_config(scope, view, *, area_params=None, outline_url='', center='', zoom='', radius='', methane=None, q=None,
+                     buffer_options=None):
     """
     The data-* attributes of a `.dairy-map` (see assets/js/emissions/dairy-map.js):
     the Dairies tab's, or a dairy area page's with `area_params` (the GeoJSON
@@ -122,6 +155,8 @@ def dairy_map_config(scope, view, *, area_params=None, outline_url='', center=''
     `methane` (views.methane_overlay's return, or None) offers the Methane
     sources (Carbon Mapper) overlay and its initial state. `q` (the table's
     name search) narrows the points to the dairies the table lists.
+    `buffer_options` (a region page's) offers the map past the boundary, as
+    the facility map does; `area_params` then carries the ?buffer= it reaches.
     """
     area = area_params is not None
     year_qs = urlencode({'year': scope.year})
@@ -138,17 +173,27 @@ def dairy_map_config(scope, view, *, area_params=None, outline_url='', center=''
         'label': scope.pollutant.label,
         'unit': scope.pollutant.unit,
         'view': 'dairies' if area else view['view'],
+        'level': view.get('level', dairies.DEFAULT_LEVEL),
+        'default_level': dairies.DEFAULT_LEVEL,
         'measure': view['measure'],
+        # Measures a finer level than counties can't shade (CARB's estimate is by county).
+        'county_only_measures': ','.join(dairies.COUNTY_ONLY_MEASURES),
         'source_note': dairies.CEPAM_NOTE,
         # The year CARB's Valley dairy estimate stops changing ('' when it doesn't).
         'flat_since': dairies.flat_since(dairies.emissions_trend(scope.pollutant)) or '',
         # The region or circle the page is about (dairy region pages, near-me).
         'outline_url': outline_url,
+        # The widened edge to draw, when the map reaches past the region (?buffer=).
+        'buffer_url': views.with_query(reverse('api:v2:regions:region-detail', args=[area_params['region']]), {'buffer': area_params['buffer']})
+        if (area_params or {}).get('buffer') else '',
+        'area_query': urlencode(area_params or {}),
+        'buffer_options': buffer_options or [],
         'center': center,
         'zoom': zoom,
         'radius': radius,
         'view_options': () if area else VIEW_OPTIONS,
         'measure_options': MEASURE_OPTIONS,
+        'level_options': LEVEL_OPTIONS,
         # Canonical (small, medium, large) order, whatever order the query named them in.
         'sizes': [value for value, label in SIZE_OPTIONS if value in view['sizes']],
         'digester': view['digester'],
@@ -166,7 +211,7 @@ def dairy_map_config(scope, view, *, area_params=None, outline_url='', center=''
     # The options (and the labels built from them) are for the toolbar
     # template, which reads them off map_config; `sizes` goes to the
     # container as a comma-joined string, same as every other data-* value.
-    template_only = {'view_options', 'measure_options', 'size_options', 'digester_options', 'size_label', 'digester_label'}
+    template_only = {'view_options', 'measure_options', 'level_options', 'size_options', 'digester_options', 'size_label', 'digester_label', 'buffer_options'}
     data = {key.replace('_', '-'): value for key, value in config.items() if key not in template_only}
     # `sizes` is a list above (so the template can test membership); the
     # container wants it the same shape as the `sizes=` URL param.
@@ -182,7 +227,7 @@ def dairy_map_config(scope, view, *, area_params=None, outline_url='', center=''
         features={'toolbar': True, 'expand': True, 'legend': True},
         toolbar_template='emissions/includes/dairy-map-toolbar.html',
         # Shared with the facility map (emissions/includes/map-options.html),
-        # Tiles only: the dairy colours are the fixed EPA size classes, no
+        # Tiles only: the dairy colors are the fixed EPA size classes, no
         # ramp to pick.
         options_template='emissions/includes/map-options.html',
         # Named as on the pesticides maps.
@@ -242,7 +287,13 @@ class DairyScopeMixin(ScopeMixin):
 
 
 class DairyList(DairyScopeMixin, vanilla.TemplateView):
+    """
+    The top-level Dairies tab: an area's dairy page (dairy-area.html) for the
+    whole Valley, or the county the scope bar picks, in its Summary and
+    Table (views.SUBVIEWS).
+    """
     template_name = 'emissions/dairy-list.html'
+    subview = 'summary'
 
     def get(self, request, *args, **kwargs):
         response = self.redirect_to_area(request)
@@ -290,31 +341,38 @@ class DairyList(DairyScopeMixin, vanilla.TemplateView):
     def get_context_data(self, **kwargs):
         scope = self.get_scope()
         filters = search_filters(self.request.GET)
-        page = views.page_of(dairies.table(scope.year, county=scope.county, **filters), self.request.GET.get('page'))
-        # The find box: every page type's dairy page, and the county jump
-        # links; the links carry the scope less the county (the page is the
-        # county), the same as the home page's.
-        places = views.find_area_places('emissions:region-dairies')
+        county = scope.county
+        if self.subview == 'table':
+            page = views.page_of(dairies.table(scope.year, county=county, **filters), self.request.GET.get('page'))
+            kwargs.update(rows=page.object_list, page_obj=page, is_paginated=page.has_other_pages())
+        else:
+            kwargs.update(
+                trend=dairies.trend(county=county, filters=filters),
+                # CARB's estimate is by county: the scope's county, else all of them.
+                emissions_trend=dairies.emissions_trend(scope.pollutant, county=county),
+                digester_trend=dairies.digester_chart_points(county=county, filters=filters),
+                map_config=dairy_map_config(
+                    scope, dairy_map_view(self.request.GET), methane=views.methane_overlay(self.request.GET, default=True),
+                    q=filters['q'],
+                ) if dairies.years() else None,
+            )
+        name = county.name if county else 'San Joaquin Valley'
         return super().get_context_data(
-            summary=dairies.summary(scope.year, county=scope.county),
-            rows=page.object_list,
-            page_obj=page,
-            is_paginated=page.has_other_pages(),
+            summary=dairies.summary(scope.year, county=county, filters=filters),
+            has_dairies=bool(dairies.summary(scope.year, county=county)['dairies']),
+            has_history=True,
             sort=filters['sort'],
             filters=filters,
-            trend=dairies.trend(county=scope.county),
-            # CARB's estimate is by county: the scope's county, else all of them.
-            emissions_trend=dairies.emissions_trend(scope.pollutant, county=scope.county),
-            digester_trend=dairies.digester_chart_points(county=scope.county),
-            map_config=dairy_map_config(
-                scope, dairy_map_view(self.request.GET), methane=views.methane_overlay(self.request.GET, default=True),
-                q=filters['q'],
-            ) if dairies.years() else None,
-            find_area_places=places,
-            find_area_counties=[p for p in places if p['type'] == Region.Type.COUNTY],
-            find_area_qs=scope.query(county=None),
-            find_near_url=reverse('emissions:near-me-dairies'),
-            maptiler_key=settings.MAPTILER_API_KEY,
+            county_region=county,
+            # The shared area-tab skeleton and header (regions/area-tab.html), as the Valley's Oil & gas tab.
+            explorer_base='emissions/base.html', area_crumbs=[], tab_label='Dairies',
+            name=name, kind='County' if county else 'All covered counties', tab_title_suffix=f'in {name}',
+            header_links=[], tabs=[], tab_links=[], within=None,
+            subview=self.subview, subviews=views.subview_links(self.request, self.subview),
+            # Search by location: every page type's dairy page, the county jump
+            # links carrying the scope less the county, as the home page's.
+            **views.find_field_context('dairies', scope.query(county=None), self.subview),
+            size_options=SIZE_OPTIONS, digester_options=DIGESTER_OPTIONS,
             **kwargs,
         )
 
@@ -328,6 +386,7 @@ class DairyAreaPage(DairyScopeMixin, vanilla.TemplateView):
     template_name = 'emissions/dairy-area.html'
     # An area's page, one tab of it: no main explorer tab lights, as on its Overview.
     section = None
+    subview = 'summary'
 
     def get(self, request, *args, **kwargs):
         # The page is the area: a stray ?county= would ride along on every
@@ -366,9 +425,12 @@ class DairyAreaPage(DairyScopeMixin, vanilla.TemplateView):
         area = self.get_area()
         county = self.carb_county()
         filters = search_filters(self.request.GET)
-        page = views.page_of(self.rows(), self.request.GET.get('page'))
+        # Whether there's anything to show at all, whatever the filters.
         summary = dairies.summary(scope.year, area=area)
         trend = dairies.trend(area=area)
+        if self.subview == 'table':
+            page = views.page_of(self.rows(), self.request.GET.get('page'))
+            kwargs.update(rows=page.object_list, page_obj=page, is_paginated=page.has_other_pages())
         # [] off county pages and for a pollutant CARB doesn't report (the
         # scope has already fallen back to one it does, so a county page
         # always has the chart when CEPAM has the county).
@@ -380,29 +442,33 @@ class DairyAreaPage(DairyScopeMixin, vanilla.TemplateView):
         kwargs.setdefault('within', None)
         context = super().get_context_data(
             area=area,
-            summary=summary,
+            # The Summary's stats and charts under the filters.
+            summary=dairies.summary(scope.year, area=area, filters=filters),
             has_dairies=bool(summary['dairies']),
             # The charts stay while any CADD year had a counted herd here (a dairy that closed).
             has_history=bool(trend),
-            rows=page.object_list,
-            page_obj=page,
-            is_paginated=page.has_other_pages(),
             sort=filters['sort'],
             filters=filters,
-            trend=trend,
+            trend=dairies.trend(area=area, filters=filters),
             emissions_trend=emissions_trend,
-            digester_trend=dairies.digester_chart_points(area=area),
+            digester_trend=dairies.digester_chart_points(area=area, filters=filters),
             carb_estimate={'tons': this_year['value'], 'share': this_year['share'], 'place': county.name, 'flat_since': flat_since if flat_since and scope.year >= flat_since else None} if this_year else None,
             nei_dairy=nei.dairy_tile(county) if county is not None else None,
             ddrdp_totals=dairies.grant_totals(county) if county is not None else None,
             hide_county=county is not None,
-            map_config=self.get_map_config(scope) if dairies.years() else None,
+            map_config=self.get_map_config(scope) if dairies.years() and self.subview != 'table' else None,
+            subview=self.subview,
+            subviews=views.subview_links(self.request, self.subview),
             tab='dairies',
             tab_label='Dairies',
             tabs=views.area_tabs(self, area, 'dairies'),
             overview_url=self.area_tab_url('overview', self.tab_query('overview')),
-            # The page is the area: no county picker.
+            # The page is the area: no county picker, and no Search by location.
             county_options=[],
+            # Its filter form keeps where the page is (a point, or a region's buffer).
+            point_params=self.point_params(),
+            clear_filters_url=views.with_query(self.request.path, {**page_params(scope), **self.point_params()}),
+            size_options=SIZE_OPTIONS, digester_options=DIGESTER_OPTIONS,
             **kwargs,
         )
         context.update(views.area_header(context))
@@ -425,21 +491,23 @@ class RegionDairies(views.RegionLookupMixin, DairyAreaPage):
         return super().get(request, sqid=sqid, slug=slug)
 
     def get_area(self):
-        return areas.RegionArea(self.region)
+        return areas.RegionArea(self.region, self.buffer)
 
     def carb_county(self):
         return self.region if self.region.type == Region.Type.COUNTY else None
 
     def get_map_config(self, scope):
+        buffer = self.buffer
         return dairy_map_config(
-            scope, dairy_map_view(self.request.GET), area_params={'region': self.region.sqid},
+            scope, dairy_map_view(self.request.GET), area_params=views.area_map_params(areas.RegionArea(self.region), buffer),
+            buffer_options=shapes.buffer_options(self.request, buffer),
             outline_url=reverse('api:v2:regions:region-detail', args=[self.region.sqid]),
             methane=views.methane_overlay(self.request.GET, default=True),
             q=search_filters(self.request.GET)['q'],
         )
 
     def csv_name(self, year):
-        return f'dairies-{self.region.slug}-{year}.csv'
+        return f'dairies-{self.region.slug}{f"-plus-{self.buffer}mi" if self.buffer else ""}-{year}.csv'
 
     def get_context_data(self, **kwargs):
         region = self.region
@@ -457,6 +525,7 @@ class RegionDairies(views.RegionLookupMixin, DairyAreaPage):
             county_dairies_url=county.get_emissions_dairies_url() if county is not None and county != region else None,
             within=views.region_within_dairies(region),
             ab617=views.ab617_notice(region),
+            buffer_note=self.buffer_note(),
             **kwargs,
         )
 

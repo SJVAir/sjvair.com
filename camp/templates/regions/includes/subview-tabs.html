@@ -1,0 +1,11 @@
+{% comment %}
+A data tab's Summary | Table switch (emissions.views.SUBVIEWS), under the
+area's tab row and in its style: the map and what sums it up, or the table
+with its CSV, the filters kept either way. `subviews` [{label, icon, url,
+current}].
+{% endcomment %}
+<nav class="tabs subview-tabs" aria-label="View">
+    <ul>
+        {% for v in subviews %}<li{% if v.current %} class="is-active"{% endif %}><a href="{{ v.url }}"{% if v.current %} aria-current="page"{% endif %}><span class="icon is-small"><span class="fa-duotone fa-fw {{ v.icon }}" aria-hidden="true"></span></span><span>{{ v.label }}</span></a></li>{% endfor %}
+    </ul>
+</nav>

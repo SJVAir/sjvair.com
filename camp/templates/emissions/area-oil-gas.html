@@ -3,14 +3,17 @@
 {% load humanize pesticides_explorer emissions_explorer %}
 {% comment %}
 An area's Oil & gas tab (views.RegionOilGas / NearMeOilGas) in the shared
-tab skeleton (regions/area-tab.html): CalGEM's wells here by status and how many are
-in a verified health protection zone, with the snapshot caveat (and Kern's
-callout); the map with the wells on; the wells themselves, filtered, sorted,
-paged and downloadable; the wells drilled by year; the operators and oil
-fields with the most wells (each a link filtering the table) and the types; and the
-schools near wells, the area's oil & gas permit groupings and the methane
-observed at oil & gas sites. CalGEM's list is today's: nothing here is a
-history of wells in service.
+tab skeleton (regions/area-tab.html), in two views with the same filters.
+Summary: CalGEM's wells by status and how many are in a verified health
+protection zone, with the snapshot caveat (and Kern's callout); the map with
+the wells on, the filters beside it; the operators and oil fields with the most
+wells (each a link narrowing the page to it), the types and the wells drilled
+by year, all under the filters; then, for the whole area, the oil & gas permit
+groupings, the schools near wells and how many oil & gas methane sources
+the Methane tab has.
+Table: the wells themselves, sorted, paged and downloadable, each with its
+CalGEM links. CalGEM's list is the current one: nothing here is a history of
+wells in service.
 {% endcomment %}
 
 {% block tab-body %}
@@ -21,18 +24,22 @@ history of wells in service.
 
 {% block tab-stats %}
 <div class="wells-block" id="wells">
-    {% with s=wells_block.summary %}
+    {% with s=well_summary %}
+    {% if not s %}
+    <p class="box has-text-grey">No wells match these filters.</p>
+    {% else %}
     <div class="level is-mobile stat-row box wells-line is-grid-mobile" aria-label="{{ s.active|intcomma }} active · {{ s.idle|intcomma }} idle{% if s.new %} · {{ s.new|intcomma }} new{% endif %} · {{ s.hpz|intcomma }} in a verified health-protection zone (3,200 ft of homes or schools)">
         <div class="level-item has-text-centered"><div><p class="heading">Active wells</p><p class="title">{{ s.active|intcomma }}</p><p class="stat-note"></p></div></div>
         <div class="level-item has-text-centered"><div><p class="heading">Idle wells</p><p class="title">{{ s.idle|intcomma }}</p><p class="stat-note">can still leak</p></div></div>
         {% if s.new %}<div class="level-item has-text-centered"><div><p class="heading">New wells</p><p class="title">{{ s.new|intcomma }}</p><p class="stat-note">permitted, not yet drilled or producing</p></div></div>{% endif %}
         <div class="level-item has-text-centered"><div><p class="heading">In a health-protection zone</p><p class="title">{{ s.hpz|intcomma }}</p><p class="stat-note">3,200 ft of homes or schools</p></div></div>
     </div>
+    {% endif %}
     {% endwith %}
     {% with imported=wells_block.stamp.imported_at|date:"N j, Y" %}
     <div class="notification is-warning is-light wells-snapshot">
         {% if wells_block.past_year %}
-        <p><strong>These are today's wells, not {{ wells_block.year }}'s.</strong> CalGEM's current list of active, idle and new wells{% if imported %}, as of {{ imported }}{% endif %}. It isn't broken down by year: wells plugged or abandoned before then aren't shown, and a well drilled after {{ wells_block.year }} still appears. The emissions figures on this page are for {{ wells_block.year }}.</p>
+        <p><strong>These are current wells, not {{ wells_block.year }}'s.</strong> CalGEM's current list of active, idle and new wells{% if imported %}, as of {{ imported }}{% endif %}. It isn't broken down by year: wells plugged or abandoned before then aren't shown, and a well drilled after {{ wells_block.year }} still appears. The emissions figures on this page are for {{ wells_block.year }}.</p>
         {% else %}
         <p><strong>Current wells{% if imported %}, as of {{ imported }}{% endif %}.</strong> CalGEM's list of active, idle and new wells. It has no history by year; plugged wells aren't shown.</p>
         {% endif %}
@@ -45,28 +52,36 @@ history of wells in service.
 {% block tab-map %}{% include 'emissions/includes/facility-map.html' %}{% endblock %}
 
 {% block tab-filters %}
-{# The Valley's tab (OilGasPage, `find_field`) leads its filter box with "Search by location", beside the form: Enter there would submit it. #}
+{# Beside the map on the Summary and the table on the Table, as on the pesticides maps: the same filters narrow both. #}
 <div class="explorer-filters box">
-{% if find_field %}{% include 'emissions/includes/find-field.html' %}{% endif %}
-<form method="get" hx-trigger="submit, change delay:250ms">
+<div class="field">
+    <label class="label" for="well-q">Search</label>
+    <div class="control has-icons-left">
+        <input class="input" type="search" id="well-q" name="q" value="{{ filters.q|default:'' }}" placeholder="Lease or API number"
+            hx-get="{{ request.path }}" hx-include="#well-filters" form="well-filters" hx-trigger="keyup changed delay:500ms, search">
+        <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
+    </div>
+</div>
+{% if find_field %}{% include 'regions/includes/find-field.html' %}{% endif %}
+<form method="get" id="well-filters" hx-trigger="submit, change delay:250ms">
     {% for key, value in point_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
     {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
     <input type="hidden" name="sort" value="{{ sort }}">
-    <div class="field">
-        <label class="label" for="well-q">Search</label>
-        <div class="control has-icons-left">
-            <input class="input" type="search" id="well-q" name="q" value="{{ filters.q|default:'' }}" placeholder="Lease or API number"
-                hx-get="{{ request.path }}" hx-include="closest form" hx-trigger="keyup changed delay:500ms, search">
-            <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
-        </div>
-    </div>
-    <div class="field">
-        <label class="label" for="well-status">Status</label>
-        <div class="control"><div class="select is-fullwidth"><select id="well-status" name="status">
-            <option value="">Active, idle and new</option>
-            {% for value, label in status_options %}<option value="{{ value }}"{% if filters.status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
-        </select></div></div>
-    </div>
+    {# Ticked together they're every well; untick to leave a status out. #}
+    <fieldset class="field">
+        <legend class="label">Status</legend>
+        {% for value, label in status_options %}
+        <label class="checkbox mr-3"><input type="checkbox" name="status" value="{{ value }}"{% if not filters.status or value in filters.status %} checked{% endif %}> {{ label }}</label>
+        {% endfor %}
+    </fieldset>
+    {# CalGEM's 18 well types in four groups by what a well does (wells.TYPE_GROUPS). #}
+    <fieldset class="field">
+        <legend class="label">Type</legend>
+        {% for value, label in type_options %}
+        <label class="checkbox is-block mb-1"><input type="checkbox" name="type" value="{{ value }}"{% if not filters.types or value in filters.types %} checked{% endif %}> {{ label }}</label>
+        {% endfor %}
+        <p class="help">Injecting: steam, water or air pumped down to push oil toward other wells. <a href="{% url 'emissions:about' %}#well-types">What the types are</a></p>
+    </fieldset>
     {% if well_options.operators|length > 1 %}
     <div class="field">
         <label class="label" for="well-operator">Operator</label>
@@ -89,12 +104,53 @@ history of wells in service.
         <label class="checkbox"><input type="checkbox" name="hpz" value="1"{% if filters.hpz %} checked{% endif %}> In a health-protection zone</label>
     </div>
     {# Every field applies itself as it changes; there's nothing to Apply. #}
-    {% if filters.q or filters.status or filters.operator or filters.field or filters.hpz %}<p class="filters-clear"><a href="{{ clear_filters_url }}">Clear filters</a></p>{% endif %}
+    {% if filters.q or filters.status or filters.types or filters.operator or filters.field or filters.hpz %}<p class="filters-clear"><a href="{{ clear_filters_url }}">Clear filters</a></p>{% endif %}
 </form>
 </div>
 {% endblock %}
 
 {% block tab-table %}
+{# How many match, and the same rows as a CSV, where the eye lands before the table. #}
+<div class="table-toolbar">
+    <p class="table-count">
+        {% if page_obj.paginator.count %}Showing {{ page_obj.start_index|intcomma }}&ndash;{{ page_obj.end_index|intcomma }} of {{ page_obj.paginator.count|intcomma }} well{{ page_obj.paginator.count|pluralize }}{% else %}No wells match{% endif %}
+    </p>
+    {% if page_obj.paginator.count %}<a class="button is-small" href="{% qs_replace format='csv' page=None %}" hx-boost="false" download><span class="icon"><span class="fa-regular fa-fw fa-download" aria-hidden="true"></span></span><span>Download CSV</span></a>{% endif %}
+</div>
+<div class="table-container">
+<table class="table is-fullwidth is-hoverable is-narrow well-table is-stacked-mobile">
+    <thead><tr>
+        <th {% aria_sort 'label' %}>{% sort_link 'label' 'Well' %}</th>
+        <th {% aria_sort 'operator' %}>{% sort_link 'operator' 'Operator' %}</th>
+        <th {% aria_sort 'field' %}>{% sort_link 'field' 'Field' %}</th>
+        <th {% aria_sort 'status' %}>{% sort_link 'status' 'Status' %}</th>
+        <th {% aria_sort 'spud' %}>{% sort_link 'spud' 'Drilled' %}</th>
+        <th><span class="is-sr-only">CalGEM links</span></th>
+    </tr></thead>
+    <tbody>
+    {% for well in well_rows %}
+    <tr>
+        <td class="cell-name">{{ well.label }}{% if well.in_hpz == 'Verified HPZ' %} <span class="tag is-warning is-light" title="In a verified health-protection zone (3,200 ft of homes or schools)">HPZ</span>{% endif %}<br><span class="has-text-grey is-size-7">{{ well.well_type_label }} &middot; API {{ well.api }}</span></td>
+        <td class="cell-meta">{{ well.operator_name }}</td>
+        <td class="cell-meta">{{ well.field_name }}</td>
+        <td class="cell-meta" data-label="Status">{{ well.get_status_display }}</td>
+        <td class="cell-meta{% if not well.spud_date %} is-none{% endif %}" data-label="Drilled">{{ well.spud_date.year|default:"—" }}</td>
+        <td class="cell-links">{% include 'emissions/includes/well-links.html' %}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="6">No wells match.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% include 'pesticides/includes/pagination.html' %}
+
+{% endblock %}
+
+{% block tab-charts %}
+{# Who, where, what and when, under the filters. #}
+{% if well_summary %}
+<div class="mt-5">
 {% if well_leaders.operators or well_leaders.fields %}
 <div class="columns">
     <div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='Top operators' rows=well_leaders.operators count_label='Wells' view_all_url=None %}</div>
@@ -114,62 +170,50 @@ history of wells in service.
         </div>
     </div>
     {% endif %}
-    <div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='Oil & gas permit groupings' rows=oil_gas_card view_all_url=oil_gas_facilities_url %}</div>
+    <div class="column is-half-tablet">{% well_spud_chart spud total=well_summary.total heading="Drilled by year" %}</div>
 </div>
-{% with schools=wells_block.schools %}
-<section class="mb-5" id="schools-near-wells">
-    <h2 class="title is-4">Schools and child care near wells</h2>
-    {% if schools.count %}
-    <p><strong>{{ schools.count|intcomma }}</strong> {% if schools.count == 1 %}school or child-care center here has{% else %}schools and child-care centers here have{% endif %} an active or idle well within 3,200 ft{% if schools.top|length < schools.count %} (the {{ schools.top|length }} with the most wells){% endif %}:</p>
-    <div class="table-container">
-    <table class="table is-fullwidth is-narrow wells-schools is-stacked-mobile">
-        <thead><tr><th>School or child care</th><th>Type</th><th class="has-text-right">Wells within 3,200 ft</th></tr></thead>
-        <tbody>
-        {% for row in schools.top %}<tr><td class="cell-name">{% include 'regions/includes/school-name-cell.html' %}</td><td class="cell-meta">{{ row.type_label }}</td><td class="has-text-right cell-value" data-unit="well{{ row.wells|pluralize }}">{{ row.wells|intcomma }}</td></tr>{% endfor %}
-        </tbody>
-    </table>
-    </div>
-    {% else %}
-    <p>No school or child-care center here has a well within 3,200 ft.</p>
-    {% endif %}
-</section>
-{% endwith %}
-<h2 class="title is-4" id="wells-table">Wells</h2>
-<p class="has-text-grey mb-3">{{ wells_block.summary.active|intcomma }} active, {{ wells_block.summary.idle|intcomma }} idle{% if wells_block.summary.new %} and {{ wells_block.summary.new|intcomma }} new{% endif %} wells &middot; showing {{ page_obj.paginator.count|intcomma }}</p>
-<div class="table-container">
-<table class="table is-fullwidth is-hoverable is-narrow well-table is-stacked-mobile">
-    <thead><tr>
-        <th {% aria_sort 'label' %}>{% sort_link 'label' 'Well' %}</th>
-        <th {% aria_sort 'operator' %}>{% sort_link 'operator' 'Operator' %}</th>
-        <th {% aria_sort 'field' %}>{% sort_link 'field' 'Field' %}</th>
-        <th {% aria_sort 'status' %}>{% sort_link 'status' 'Status' %}</th>
-        <th {% aria_sort 'spud' %}>{% sort_link 'spud' 'Drilled' %}</th>
-    </tr></thead>
-    <tbody>
-    {% for well in well_rows %}
-    <tr>
-        <td class="cell-name"><a href="{{ well.calgem_url }}">{{ well.label }}</a>{% if well.in_hpz == 'Verified HPZ' %} <span class="tag is-warning is-light" title="In a verified health-protection zone (3,200 ft of homes or schools)">HPZ</span>{% endif %}<br><span class="has-text-grey is-size-7">{{ well.well_type_label }}</span></td>
-        <td class="cell-meta">{{ well.operator_name }}</td>
-        <td class="cell-meta">{{ well.field_name }}</td>
-        <td class="cell-meta" data-label="Status">{{ well.get_status_display }}</td>
-        <td class="cell-meta{% if not well.spud_date %} is-none{% endif %}" data-label="Drilled">{{ well.spud_date.year|default:"—" }}</td>
-    </tr>
-    {% empty %}
-    <tr><td colspan="5">No wells match.</td></tr>
-    {% endfor %}
-    </tbody>
-</table>
 </div>
-{% include 'pesticides/includes/pagination.html' %}
-<p class="mt-3"><a href="{% qs_replace format='csv' page=None %}" hx-boost="false" download>Download these wells (CSV)</a></p>
-{% endblock %}
-
-{% block tab-charts %}
-<div class="mt-5">{% well_spud_chart spud total=wells_block.summary.total heading="Drilled by year" %}</div>
+{% endif %}
 {% endblock %}
 
 {% block tab-related %}
-{% include 'emissions/includes/methane-oil-gas.html' with here=methane_list_here %}
+{# The whole area's, whatever the filters. #}
+{% with schools=wells_block.schools %}
+{# The schools and child care with a well within 3,200 ft: the most wells first, the rest on the area's Schools tab (or folded in the card, on the Valley's). #}
+<div class="columns mt-5" id="schools-near-wells">
+    <div class="column is-half-tablet">
+        <div class="card related-card"{% if not schools_near_wells_url %} data-reveal-scope{% endif %}>
+            <header class="card-header">
+                <p class="card-header-title">Schools and child care near wells</p>
+                {% if schools_near_wells_url and schools.count %}<a class="card-header-icon view-all" href="{{ schools_near_wells_url }}">View all</a>
+                {% elif schools.top|length > 5 %}<button type="button" class="card-header-icon view-all button is-text" data-reveal-toggle aria-expanded="false" data-show-label="View all" data-hide-label="Show fewer">View all</button>{% endif %}
+            </header>
+            <div class="card-content">
+                {% if schools.count %}
+                <p class="is-size-7 mb-2"><strong>{{ schools.count|intcomma }}</strong> {% if schools.count == 1 %}has{% else %}have{% endif %} an active or idle well within 3,200 ft.</p>
+                <table class="table is-fullwidth is-narrow is-striped wells-schools">
+                    <thead><tr><th class="rank"><span class="is-sr-only">Rank</span></th><th>School or child care</th><th class="has-text-right">Wells</th></tr></thead>
+                    <tbody>
+                    {# Five, the rest a View all away: on the Schools tab, or (the Valley's) folded here. #}
+                    {% for row in schools.top %}{% if forloop.counter <= 5 or not schools_near_wells_url %}
+                    <tr{% if forloop.counter > 5 %} class="is-collapsed"{% endif %}><td class="rank">{{ forloop.counter }}.</td><td>{% include 'regions/includes/school-name-cell.html' %}</td><td class="has-text-right">{{ row.wells|intcomma }}</td></tr>
+                    {% endif %}{% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="has-text-grey">No school or child-care center here has a well within 3,200 ft.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="column is-half-tablet">{% include 'emissions/includes/rank-card.html' with title='Oil & gas permit groupings' rows=oil_gas_card view_all_url=oil_gas_facilities_url %}</div>
+</div>
+{% endwith %}
+{% if methane_oil_gas %}
+<p class="mt-5" id="methane"><span class="icon"><span class="fa-duotone fa-fw fa-smoke explorer-icon is-methane" aria-hidden="true"></span></span>
+{% if methane_oil_gas.count %}<a href="{{ methane_oil_gas.url }}">{{ methane_oil_gas.count|intcomma }} oil &amp; gas methane source{{ methane_oil_gas.count|pluralize }} seen {% if area.region or area.radius %}here{% else %}in the covered counties{% endif %} →</a> <span class="has-text-grey is-size-7">on the Methane tab</span>
+{% else %}<span class="has-text-grey">No oil &amp; gas methane sources seen {% if area.region or area.radius %}here{% else %}in the covered counties{% endif %}.</span>{% endif %}</p>
+{% endif %}
 {% endblock %}
 
 {% block tab-notes %}

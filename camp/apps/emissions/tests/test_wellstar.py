@@ -92,7 +92,7 @@ class ParseTests(TestCase):
             assert 8 <= len(row['api']) <= 14 and row['status'] in wellstar.STATUSES
             assert row['county_name'] in ('Kern', 'Fresno') and 34 < row['point'].y < 38
         assert any(row['spud_date'] for row in rows), 'no SpudDate parsed: check its encoding in the sample'
-        assert any(row['in_hpz'] for row in rows), 'no inHPZ value recognised: check Well.HPZ against the sample'
+        assert any(row['in_hpz'] for row in rows), 'no inHPZ value recognized: check Well.HPZ against the sample'
 
 
 class PagesTests(TestCase):
@@ -116,7 +116,8 @@ class ApplyTests(TestCase):
         assert Well.objects.count() == 4
         idle = Well.objects.get(api='0402900002')
         assert idle.county == self.kern and idle.status == 'Idle' and idle.in_hpz == Well.HPZ.VERIFIED and idle.directional
-        assert idle.label == 'KERN RIVER 002' and idle.calgem_url.endswith('api=0402900002') and idle.sqid
+        assert idle.label == 'KERN RIVER 002' and idle.calgem_url.endswith('/Well/Well/Detail?api=0402900002')
+        assert "API%20IN%20('0402900002')" in idle.well_finder_url and idle.sqid
         assert Well.objects.get(api='0401900004').county == self.fresno
         assert (report.fetched, report.created, report.skipped) == (8, 4, 4)
         stamp = SourceImport.latest('wellstar')

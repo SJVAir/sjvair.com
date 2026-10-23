@@ -19,7 +19,7 @@ class FacilityHeaderTests(TestCase):
 
     def test_identity_where_and_regulator(self):
         content = self.detail('TEST PLANT')
-        # One grey line, as an area page's: the sector (linking its page), the place, the SIC code.
+        # One gray line, as an area page's: the sector (linking its page), the place, the SIC code.
         line = content[content.index('class="identifiers has-text-grey"'):]
         line = line[:line.index('</p>')]
         assert 'href="/tools/emissions/facilities/sectors/glass/' in line and 'Fresno, Fresno County' in line and 'SIC 3221' in line
@@ -218,7 +218,7 @@ class SchoolsCardTests(TestCase):
     def test_about_page_explains_the_distances(self):
         from django.urls import reverse
         content = self.client.get(reverse('emissions:about')).content.decode()
-        assert '<h2 id="schools">' in content
+        assert '<section class="about-section" id="schools">' in content
         assert 'Health &amp; Safety Code 42301.6' in content and 'Education Code 17213' in content
         assert 'Child care covers licensed centers only, not family child-care homes.' in content
 

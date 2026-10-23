@@ -12,7 +12,7 @@ monthly, so a rejected key (401/403) is dropped for the rest of the run and
 the request retried without it, with a warning (_get). Never log or
 otherwise surface the key's value.
 
-Licence: custom non-commercial terms (MethaneSource.LICENSE). Every import
+License: custom non-commercial terms (MethaneSource.LICENSE). Every import
 records them in SourceImport.notes; the pages carry the attribution.
 """
 import csv
@@ -155,10 +155,10 @@ def county_for(point, index):
 
 
 def nearest(queryset, point):
-    """(pk, metres) of the queryset's nearest row within MATCH_METERS of `point`, or (None, None). `point` is the model's PointField name."""
+    """(pk, meters) of the queryset's nearest row within MATCH_METERS of `point`, or (None, None). `point` is the model's PointField name."""
     match = (
         queryset.filter(point__dwithin=(point, COARSE_DEGREES), point__distance_lte=(point, D(m=MATCH_METERS)))
-        .annotate(metres=Distance('point', point)).order_by('metres').values_list('pk', 'metres').first()
+        .annotate(meters=Distance('point', point)).order_by('meters').values_list('pk', 'meters').first()
     )
     if match is None:
         return None, None
@@ -186,7 +186,7 @@ class Report:
 def apply(rows):
     """
     Upsert every CH4 source inside a covered county on `source_name`, delete
-    the rest, stamp SourceImport(SOURCE) with the licence, and bump the
+    the rest, stamp SourceImport(SOURCE) with the license, and bump the
     methane cache generation. `rows` is the whole bbox: a partial list would
     delete the rest.
     """
@@ -422,4 +422,8 @@ def apply_plumes(items):
                 if plume.image:
                     plume.image.delete(save=False)
             report.deleted, _ = stale.delete()
+    # The overlay's GeoJSON carries each source's newest plume image: apply()
+    # cleared it before the plumes landed, so it would serve sources with none.
+    from camp.apps.emissions import methane
+    methane.clear_caches()
     return report

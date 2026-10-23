@@ -30,10 +30,10 @@ class TextContrastTests(SimpleTestCase):
     def test_white_on_link_blue_passes(self):
         assert contrast('#ffffff', sass_var('link-blue')) >= 4.5
 
-    def test_grey_text_passes(self):
-        grey = sass_var('text-grey')
+    def test_gray_text_passes(self):
+        gray = sass_var('text-grey')
         for background in ('#ffffff', '#fafafa'):
-            assert contrast(grey, background) >= 4.5, background
+            assert contrast(gray, background) >= 4.5, background
 
     def test_flag_tags_pass(self):
         # Colours set in pages/pesticides.sass under `.tag`.

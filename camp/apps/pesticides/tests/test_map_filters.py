@@ -111,3 +111,52 @@ class ValleyMapLayersTests(RollupTestMixin, TestCase):
     def test_records_map_keeps_schools_off(self):
         config = self.client.get(reverse('pesticides:records'), {'year': 2023}).context['map_config']
         assert config['show_locations'] == '0'
+
+
+class FilterBoxOrderTests(RollupTestMixin, TestCase):
+    """
+    A Valley-wide map tab's filter box: the search (where there is one),
+    Search by location, then the filters. A place's own tab has no Search by
+    location: the page is the place.
+    """
+    fixtures = ['pesticides-explorer']
+
+    def html(self, url, **params):
+        return self.client.get(url, params).content.decode()
+
+    def test_records_and_notices_lead_with_location_search(self):
+        fresno = Region.objects.get(pk=9001)
+        for url, form_id, tab in (
+            (reverse('pesticides:records'), 'records-filter-form', 'records'),
+            (reverse('pesticides:notice-list'), 'notice-filter-form', 'notices'),
+        ):
+            html = self.html(url, year=2023)
+            assert html.index('find-area-query') < html.index(f'id="{form_id}"'), url
+            assert f'data-near-url="{reverse(f"pesticides:near-me-{tab}")}"' in html, url
+            assert f'"url": "{fresno.get_pesticides_tab_url(tab)}"' in html, url
+
+    def test_a_place_tab_has_no_location_search(self):
+        fresno = Region.objects.get(pk=9001)
+        for tab, form_id in (('records', 'records-filter-form'), ('notices', 'notice-filter-form'), ('schools', 'schools-filter-form')):
+            html = self.html(fresno.get_pesticides_tab_url(tab), year=2023)
+            assert f'id="{form_id}"' in html and 'find-area-query' not in html, tab
+
+    def test_schools_search_then_filters(self):
+        fresno = Region.objects.get(pk=9001)
+        html = self.html(fresno.get_pesticides_tab_url('schools'))
+        assert html.index('id="id_schools_q"') < html.index('id="schools-filter-form"')
+        # The search sits outside the form but still submits with it.
+        assert 'form="schools-filter-form"' in html and 'hx-include="#schools-filter-form"' in html
+
+    def test_valley_map_filters_beside_it_and_its_toolbar_only_draws(self):
+        html = self.html(reverse('pesticides:map'), year=2023)
+        box = html[html.index('class="explorer-filters map-filters box"'):html.index('id="map-filter-form"')]
+        assert 'find-area-query' in box
+        form = html[html.index('id="map-filter-form"'):html.index('</form>', html.index('id="map-filter-form"'))]
+        for kind in ('product', 'chemical', 'commodity'):
+            assert f'data-kind="{kind}"' in form or f'name="{kind}"' in form, kind
+        # Products before chemicals.
+        assert form.index('Product') < form.index('Chemical')
+        toolbar = html[html.index('class="map-toolbar-filters"'):html.index('map-canvas')]
+        assert 'name="product"' not in toolbar and 'name="chemical"' not in toolbar and 'name="commodity"' not in toolbar
+        assert f'data-near-url="{reverse("pesticides:near-me")}"' in html

@@ -560,7 +560,7 @@ class TownshipListBase(generics.Endpoint):
         with_geometry = params.get('geometry') != '0'
 
         # A county filter narrows the geometry as well as the numbers: keep
-        # the townships whose centre is in the county, plus any with use
+        # the townships whose center is in the county, plus any with use
         # filed under it (a border township whose records say this county).
         boundary = county_boundary(params['county']) if params.get('county') else None
 

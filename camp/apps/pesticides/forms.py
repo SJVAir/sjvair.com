@@ -28,11 +28,19 @@ class SearchForm(forms.Form):
         return {'true': True, 'false': False}.get(value)
 
 
+# DPR's annual-report categories no import assigns (the PUR archive doesn't
+# carry them), so a filter on one would always come back empty.
+UNASSIGNED_CATEGORIES = {
+    Chemical.Category.BIOPESTICIDE, Chemical.Category.CHOLINESTERASE_INHIBITOR,
+    Chemical.Category.GROUNDWATER_CONTAMINANT, Chemical.Category.OIL,
+}
+
+
 class ChemicalFilterForm(SearchForm):
     category = forms.MultipleChoiceField(
         label=_('Category'),
         required=False,
-        choices=Chemical.Category.choices,
+        choices=[(value, label) for value, label in Chemical.Category.choices if value not in UNASSIGNED_CATEGORIES],
         widget=forms.CheckboxSelectMultiple,
     )
     iarc_group = forms.ChoiceField(
@@ -125,7 +133,7 @@ class RecordsFilterForm(forms.Form):
         self.fields['fume_method'].choices = [('', _('Any'))] + [(str(m.code), m.name) for m in used]
 
     def set_bounds(self, low, high):
-        """Bound the date inputs to the scope's range (the browser's picker greys out the rest)."""
+        """Bound the date inputs to the scope's range (the browser's picker grays out the rest)."""
         for name in ('start', 'end'):
             attrs = self.fields[name].widget.attrs
             if low is not None:

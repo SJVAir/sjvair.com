@@ -29,15 +29,33 @@ class DairyAreaTestCase(TestCase):
         self.fresno_city = Region.objects.get(type=Region.Type.CITY, slug='fresno')
         self.big, self.small, self.closed = make_dairies()
 
-    def get(self, region, params=None, status=200):
-        response = self.client.get(region.get_emissions_dairies_url(), params or {})
+    def get(self, region, params=None, status=200, table=False):
+        """The region's dairy page: its Summary, or with `table` its Table (views.SUBVIEWS)."""
+        response = self.client.get(region.get_emissions_dairies_url() + ('table/' if table else ''), params or {})
         assert response.status_code == status, response.status_code
         return response
 
-    def near(self, params=None, status=200):
-        response = self.client.get(reverse('emissions:near-me-dairies'), params or {})
+    def near(self, params=None, status=200, table=False):
+        response = self.client.get(reverse('emissions:near-me-dairies-table' if table else 'emissions:near-me-dairies'), params or {})
         assert response.status_code == status, response.status_code
         return response
+
+
+class BufferTests(DairyAreaTestCase):
+    """A region's dairy map reaches past the boundary on request, as its facility map does (?buffer=)."""
+
+    def test_the_boundary_option(self):
+        map_data = dairy_map_data
+        content = self.get(self.fresno_city, {'year': '2023'}).content.decode()
+        assert 'facility-map-buffer' in content and 'is-set' not in content[content.index('facility-map-buffer') - 60:content.index('facility-map-buffer') + 30]
+        assert map_data(content, 'buffer-url') == ''
+        widened = self.get(self.fresno_city, {'year': '2023', 'buffer': '3'}).content.decode()
+        # The points and the methane overlay reach the widened area; the dashed edge comes from the regions endpoint.
+        assert 'buffer=3' in map_data(widened, 'geojson-url') and 'buffer=3' in map_data(widened, 'buffer-url')
+        assert 'facility-map-buffer is-set' in widened
+        # A near-me page is a circle already: no boundary option.
+        near = self.near({'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'year': '2023'}).content.decode()
+        assert 'facility-map-buffer' not in near
 
 
 class RouteTests(DairyAreaTestCase):
@@ -50,7 +68,7 @@ class RouteTests(DairyAreaTestCase):
         zipcode = make(Region.Type.ZIPCODE, '93656', AROUND_PLANT)
         tract = make(Region.Type.TRACT, '06019000100', AROUND_PLANT)
         for region in (self.fresno, self.fresno_city, cdp, zipcode, tract):
-            content = self.get(region, {'year': '2023'}).content.decode()
+            content = self.get(region, {'year': '2023'}, table=True).content.decode()
             assert 'BIG DAIRY' in content, region
             assert 'SMALL DAIRY' not in content, region
         # An area's tab, not the Dairies tab: no main explorer tab lights (its own tab row marks Dairies).
@@ -72,7 +90,7 @@ class RouteTests(DairyAreaTestCase):
         assert response.status_code == 301 and response['Location'] == target
 
     def test_near_me(self):
-        content = self.near({'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'label': 'near Home', 'year': '2023'}).content.decode()
+        content = self.near({'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'label': 'near Home', 'year': '2023'}, table=True).content.decode()
         assert 'Within 1 mile of Home' in content and 'BIG DAIRY' in content
         assert 'class="within' not in content
         assert '3 mi</a>' in content
@@ -136,7 +154,8 @@ class ContentTests(DairyAreaTestCase):
         assert EMISSIONS_TITLE in content and HERD_TITLE in content and DIGESTER_TITLE in content
         # (Not the vacuous '<th>County</th>' check: the header is a sort_link
         # anchor, never a bare <th>County</th>, so that string can never appear.)
-        assert '>County <span class="icon' not in content and 'Other cattle' in content
+        table = self.get(self.fresno, {'year': '2023', 'pollutant': 'rog'}, table=True).content.decode()
+        assert '>County <span class="icon' not in table and 'Other cattle' in table
         assert 'CARB estimates dairy emissions by county' not in content
 
     def test_city_page_has_no_carb_figure_and_links_the_county(self):
@@ -149,7 +168,7 @@ class ContentTests(DairyAreaTestCase):
         assert HERD_TITLE in content and DIGESTER_TITLE in content
         assert f'CARB estimates dairy emissions by county: <a href="{self.fresno.get_emissions_dairies_url()}?year=2023&amp;pollutant=rog">Fresno County dairies →</a>' in content
         # (The column header is sortable, so it's a sort_link anchor, not a bare <th>County</th>.)
-        assert '>County <span class="icon' in content
+        assert '>County <span class="icon' in self.get(self.fresno_city, {'year': '2023', 'pollutant': 'rog'}, table=True).content.decode()
 
     def test_county_page_hides_the_county_column(self):
         dairy_inventory(self.fresno, rog=2.0)
@@ -194,17 +213,18 @@ class ContentTests(DairyAreaTestCase):
         for n in range(10, 70):
             make_dairy(n, f'DAIRY {n}', (-119.786, 36.736), self.fresno, herds={2023: {'milk_cows': n}})
         dairies.clear_caches()
-        content = self.get(self.fresno, {'year': '2023'}).content.decode()
+        content = self.get(self.fresno, table=True, params={'year': '2023'}).content.decode()
         assert content.index('BIG DAIRY') < content.index('DAIRY 69')
         assert 'page=2' in content
-        assert f'class="dairy-zoom" data-dairy="{self.big.sqid}"' in content
-        content = self.get(self.fresno, {'year': '2023', 'sort': 'name'}).content.decode()
+        # No map on the Table, so names don't zoom one.
+        assert 'class="dairy-zoom"' not in content
+        content = self.get(self.fresno, table=True, params={'year': '2023', 'sort': 'name'}).content.decode()
         assert content.index('BIG DAIRY') < content.index('DAIRY 10')
         # The inactive Mature dairy cows header (not a TEXT_SORT_KEY) links
         # to its own descending default first, same as test_dairies_pages.py's
         # tab equivalent.
         assert 'sort=-mature_cows' in content
-        content = self.get(self.fresno, {'year': '2023', 'q': 'big'}).content.decode()
+        content = self.get(self.fresno, table=True, params={'year': '2023', 'q': 'big'}).content.decode()
         assert 'BIG DAIRY' in content and 'DAIRY 10' not in content
         # (Not a bare "entity-picker" substring check: base.html always
         # links entity-picker.js; the area page's own filter form has no
@@ -302,7 +322,10 @@ class MapConfigTests(DairyAreaTestCase):
         assert dairy_map_data(content, 'outline-url') == reverse('api:v2:regions:region-detail', args=[self.fresno.sqid])
         assert dairy_map_data(content, 'geojson-url') == f'/api/2.0/emissions/dairies/geojson/?year=2023&amp;region={self.fresno.sqid}'
         assert dairy_map_data(content, 'county') in ('', None)
-        assert 'data-size="large"' in content and 'data-digester="yes"' in content
+        # The size and digester filters are the filter box's, not the map toolbar's.
+        box = content[content.index('class="explorer-filters box"'):content.index('</form>', content.index('class="explorer-filters box"'))]
+        assert 'name="sizes" value="large"' in box and 'name="digester"' in box
+        assert 'data-size="' not in content and 'data-digester="yes"' not in content  # no toolbar controls (the container keeps data-sizes / data-digester)
 
     def test_near_me_map(self):
         content = self.near({'lat': '36.737', 'lng': '-119.787', 'radius': '3', 'year': '2023'}).content.decode()
@@ -318,3 +341,44 @@ class MapConfigTests(DairyAreaTestCase):
         assert config['map']['data']['outline-url'] == '/o/'
         tab = dairy_views.dairy_map_config(scope, dairy_views.dairy_map_view({'view': 'counties'}))
         assert tab['view'] == 'counties' and tab['view_options'] == dairy_views.VIEW_OPTIONS
+
+
+class DairyFilterBoxTests(TestCase):
+    """The size and digester filters narrow the table as well as the map."""
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def setUp(self):
+        from camp.apps.emissions.tests.test_dairies import make_dairies
+        make_dairies()
+        cache.clear()
+
+    def names(self, **params):
+        content = self.client.get(reverse('emissions:dairy-list-table'), {'year': '2023', **params}).content.decode()
+        return {name for name in ('BIG DAIRY', 'SMALL DAIRY') if name.lower() in content.lower()}
+
+    def test_sizes_and_digester_narrow_the_table(self):
+        assert self.names() == {'BIG DAIRY', 'SMALL DAIRY'}
+        assert self.names(sizes='large') == {'BIG DAIRY'}
+        assert self.names(digester='yes') == {'BIG DAIRY'}
+        assert self.names(digester='no') == {'SMALL DAIRY'}
+
+    def test_the_checkboxes_repeat_sizes(self):
+        from django.http import QueryDict
+        from camp.apps.emissions import dairy_views
+        assert dairy_views.parse_sizes(QueryDict('sizes=large&sizes=small')) == ['small', 'large']
+        assert dairy_views.parse_sizes(QueryDict('sizes=small,large')) == ['small', 'large']
+        assert dairy_views.parse_sizes(QueryDict('')) == ['small', 'medium', 'large']
+
+
+class DairyAreasLevelTests(TestCase):
+    """The Dairies map's Areas view: a level picker, CARB's emissions measures at the county level only."""
+
+    def test_levels_and_county_only_measures(self):
+        view = dairy_views.dairy_map_view
+        assert view({})['level'] == 'county' and view({})['measure'] == 'mature_cows_per_sq_mi'
+        assert (view({'level': 'tract', 'measure': 'dairies'})['level'], view({'level': 'tract', 'measure': 'dairies'})['measure']) == ('tract', 'dairies')
+        # Emissions at a tract: back to the herds.
+        assert view({'level': 'tract', 'measure': 'emissions'})['measure'] == 'mature_cows_per_sq_mi'
+        assert view({'level': 'county', 'measure': 'emissions'})['measure'] == 'emissions'
+        assert view({'level': 'bogus'})['level'] == 'county'
+

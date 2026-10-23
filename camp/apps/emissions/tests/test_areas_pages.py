@@ -266,6 +266,49 @@ class SharedHeaderTests(TestCase):
         assert 'Within 3 miles' in line[:line.index('</p>')] and 'Near me' not in line[:line.index('</p>')]
 
 
+class FilterBoxOrderTests(TestCase):
+    """
+    A Valley-wide map tab's filter box: its search, then Search by location
+    into the same tab of a place, then its own filters. A place's own tab has
+    no Search by location: the page is the place.
+    """
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def box(self, url):
+        content = self.client.get(url, {'year': '2023'}).content.decode()
+        start = content.index('class="explorer-filters box"')
+        return content, content[start:content.index('</form>', start)]
+
+    def test_the_valley_tab_searches_then_finds_a_place(self):
+        fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        content, box = self.box(reverse('emissions:facility-list'))
+        assert box.index('id="facility-q"') < box.index('Search by location') < box.index('id="facility-sector"')
+        assert f'data-near-url="{reverse("emissions:near-me-facilities")}"' in box
+        assert fresno.get_emissions_tab_url('facilities') in content  # the places land on their own Facilities tab
+
+    def test_a_place_tab_has_no_location_search(self):
+        fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        for tab in ('facilities', 'oil-gas', 'methane', 'schools'):
+            response = self.client.get(fresno.get_emissions_tab_url(tab), {'year': '2023'})
+            assert response.status_code == 200, tab
+            assert 'find-area-query' not in response.content.decode(), tab
+        content = self.client.get(fresno.get_emissions_tab_url('facilities'), {'year': '2023'}).content.decode()
+        assert 'id="facility-q"' in content and 'Search by location' not in content
+        near = self.client.get(reverse('emissions:near-me-facilities'), {'lat': '36.737', 'lng': '-119.787', 'radius': '1'}).content.decode()
+        assert 'id="facility-q"' in near and 'find-area-query' not in near
+
+    def test_the_dairy_pages(self):
+        from camp.apps.emissions.tests.test_dairies import make_dairies
+        make_dairies()
+        cache.clear()
+        fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        _, box = self.box(reverse('emissions:dairy-list'))
+        assert box.index('id="dairy-q"') < box.index('Search by location')
+        assert f'data-near-url="{reverse("emissions:near-me-dairies")}"' in box
+        content, box = self.box(fresno.get_emissions_dairies_url())
+        assert 'id="dairy-q"' in box and 'find-area-query' not in content
+
+
 class CommunityRedirectTests(TestCase):
     """The Community tab is gone: its addresses go to the Overview's In and around, query kept."""
     fixtures = ['regions.yaml', 'emissions.yaml']
@@ -337,7 +380,7 @@ class FindAreaTests(TestCase):
         fresno = next(place for place in places if place['name'] == 'Fresno County')
         assert fresno['url'] == Region.objects.get(type='county', slug='fresno').get_emissions_url()
 
-    def test_every_community_layer_is_listed_labelled(self):
+    def test_every_community_layer_is_listed_labeled(self):
         # No de-duplication across layers: a city and an urban area of the
         # same name are both listed; a CDP reads as a "Community".
         cache.clear()
@@ -353,7 +396,7 @@ class FindAreaTests(TestCase):
         hrefs = re.findall(r'href="([^"]*)"', jumps)
         assert hrefs and all('county=' not in href for href in hrefs)
 
-    def test_ab617_community_is_findable_and_labelled_distinctly(self):
+    def test_ab617_community_is_findable_and_labeled_distinctly(self):
         cache.clear()
         make(Region.Type.AB617_COMMUNITY, 'Shafter', AROUND_PLANT)
         labels = {(place['name'], place['type_label']) for place in views.find_area_places()}
@@ -440,14 +483,14 @@ class PesticidesLinkTests(TestCase):
     def test_region_tabs_link_their_pesticides_page(self):
         fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
         content = self.client.get(fresno.get_emissions_url()).content.decode()
-        assert f'class="is-cross-link"><a href="{fresno.get_pesticides_url()}"' in content
+        assert f'area-cross-link" href="{fresno.get_pesticides_url()}"' in content
         # A tab with no pesticides counterpart opens its Overview.
         content = self.client.get(fresno.get_emissions_tab_url('facilities')).content.decode()
-        assert f'class="is-cross-link"><a href="{fresno.get_pesticides_url()}"' in content
+        assert f'area-cross-link" href="{fresno.get_pesticides_url()}"' in content
 
     def test_a_tract_has_none(self):
         tract = make(Region.Type.TRACT, 'T1', AROUND_PLANT)
-        assert 'is-cross-link' not in self.client.get(tract.get_emissions_url()).content.decode()
+        assert 'area-cross-link' not in self.client.get(tract.get_emissions_url()).content.decode()
 
     def test_near_me_keeps_the_point(self):
         content = self.client.get(reverse('emissions:near-me'), {'lat': '36.737', 'lng': '-119.787', 'radius': '3', 'label': 'Home'}).content.decode()

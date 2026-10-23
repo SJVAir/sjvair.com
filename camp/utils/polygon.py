@@ -68,7 +68,7 @@ def compute_regular_polygon(bounding_circle, n_sides, rotation=0):
 
     if not len(centroid) == 2:
         raise ValueError(
-            "bounding_circle centre should contain 2D coordinates (e.g. (x, y))"
+            "bounding_circle center should contain 2D coordinates (e.g. (x, y))"
         )
 
     if polygon_radius <= 0:

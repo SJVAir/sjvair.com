@@ -1,7 +1,7 @@
 from django.contrib.gis.db import models
 from django.utils.translation import gettext_lazy as _
 
-from ..levels import LevelSet, AQLevel
+from .. import levels
 from .base import BaseEntry
 
 
@@ -13,14 +13,7 @@ class PM25(BaseEntry):
     units = 'µg/m³'
     summarize = True
 
-    Levels = LevelSet(
-        AQLevel.GOOD(0.0),
-        AQLevel.MODERATE(9.1),
-        AQLevel.UNHEALTHY_SENSITIVE(35.5),
-        AQLevel.UNHEALTHY(55.5),
-        AQLevel.VERY_UNHEALTHY(150.5),
-        AQLevel.HAZARDOUS(250.5),
-    )
+    Levels = levels.PM25
 
     value = models.DecimalField(
         max_digits=7, decimal_places=2,
@@ -54,15 +47,7 @@ class PM100(BaseEntry):
     epa_aqs_code = 81102
     units = 'µg/m³'
 
-    Levels = LevelSet(
-        AQLevel.GOOD(0),
-        AQLevel.MODERATE(55),
-        AQLevel.UNHEALTHY_SENSITIVE(155),
-        AQLevel.UNHEALTHY(255),
-        AQLevel.VERY_UNHEALTHY(355),
-        AQLevel.HAZARDOUS(425),
-        AQLevel.VERY_HAZARDOUS(605),
-    )
+    Levels = levels.PM100
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,

@@ -3,13 +3,15 @@
 {# About page. An optional `label` puts words in front of the icon, for #}
 {# somewhere a bare "?" would have nothing to attach itself to. An optional #}
 {# `placement` (right, bottom, left) opens the tooltip that way instead of up. #}
+{# `external` links to the note's official source instead, for a note the #}
+{# About page doesn't cover (AB 617 communities: a kind of place, like a county). #}
 {# About page. Replaces the old "How to read this page" block: those four #}
 {# notes described four elements elsewhere on the page, so each one now sits #}
 {# on the element it describes. #}
 {% health_note key as note %}
 {% if note %}
 <a class="note-help has-tooltip-multiline has-tooltip-arrow{% if placement %} has-tooltip-{{ placement }}{% endif %}"
-   href="{% url 'pesticides:about' %}{% if anchor %}#{{ anchor }}{% endif %}"
+   {% if external %}href="{{ note.source_url }}" target="_blank" rel="noopener"{% else %}href="{% url 'pesticides:about' %}{% if anchor %}#{{ anchor }}{% endif %}"{% endif %}
    data-tooltip="{{ note.summary }}"
    aria-label="{{ note.title }}">{% if label %}<span class="note-help-label">{{ label }}</span>{% endif %}<span class="fa-regular fa-fw fa-circle-question" aria-hidden="true"></span></a>
 {% endif %}

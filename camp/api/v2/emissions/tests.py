@@ -416,11 +416,20 @@ class DairyEndpointTests(TestCase):
         assert body['source'] == 'CARB county inventory, dairy cattle: animals and manure only, not feed or silage'
         assert len(body['counties']) == 8
         fresno = next(row for row in body['counties'] if row['slug'] == 'fresno')
-        assert set(fresno) == {'id', 'slug', 'name', 'emissions', 'emissions_per_sq_mi', 'mature_cows', 'mature_cows_per_sq_mi', 'value'}
+        assert set(fresno) == {'id', 'slug', 'name', 'emissions', 'emissions_per_sq_mi', 'mature_cows', 'mature_cows_per_sq_mi', 'dairies', 'value'}
+        assert fresno['dairies'] == 1 and body['level'] == 'county' and body['areas'] == body['counties']
         assert fresno['emissions'] == pytest.approx(730)
         assert fresno['value'] == fresno['mature_cows'] == 1300
         assert self.get('dairy-counties')['X-Cache-Status'] == 'MISS'
         assert self.get('dairy-counties').json()['pollutant'] == 'rog'
+
+    def test_areas_by_level(self):
+        # A finer level: each area with a herd, by where the dairy is; no emissions (CARB's is by county).
+        body = self.get('dairy-areas', {'year': 2023, 'pollutant': 'rog', 'level': 'zipcode'}).json()
+        assert body['level'] == 'zipcode' and 'counties' not in body
+        assert all(row['emissions'] is None and row['dairies'] >= 1 for row in body['areas'])
+        assert sum(row['mature_cows'] for row in body['areas']) <= 1400
+        assert self.get('dairy-areas', {'level': 'nope'}).status_code == 400
 
     def test_counties_reject_what_dairies_dont_report(self):
         for params in ({'pollutant': 'nox'}, {'pollutant': 'benzene'}, {'measure': 'bogus'}):
@@ -513,12 +522,27 @@ class WellEndpointTests(TestCase):
         wells.clear_caches()
         assert len(self.client.get(reverse('api:v2:emissions:wells-geojson')).json()['wells']) == 1
 
+    def test_areas(self):
+        from camp.apps.regions.models import Region
+        kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
+        body = self.client.get(reverse('api:v2:emissions:wells-areas'), {'level': 'county'}).json()
+        assert body['level'] == 'county' and body['unit'] == 'wells'
+        row = next(area for area in body['areas'] if area['id'] == kern.sqid)
+        assert (row['wells'], row['active'], row['hpz'], row['hpz_share']) == (2, 1, 1, 0.5)
+        assert row['per_sq_mi'] > 0
+        # The table's filters narrow it, as they do the map's wells.
+        idle = self.client.get(reverse('api:v2:emissions:wells-areas'), {'level': 'county', 'status': 'Idle'}).json()
+        assert next(area for area in idle['areas'] if area['id'] == kern.sqid)['wells'] == 1
+        assert self.client.get(reverse('api:v2:emissions:wells-areas'), {'level': 'nope'}).status_code == 400
+
     def test_detail(self):
         body = self.client.get(reverse('api:v2:emissions:well-detail', args=[self.idle.sqid])).json()
         assert body == {
             'id': self.idle.sqid, 'api': '0402900002', 'label': 'TEST LEASE 02', 'lease_name': 'TEST LEASE', 'well_number': '02',
             'status': 'Idle', 'well_type': 'Oil & Gas', 'operator': 'TEST OIL LLC', 'field': 'Test Field', 'county': 'Kern County',
-            'spud_year': None, 'in_hpz': 'Verified HPZ', 'directional': True, 'url': self.idle.calgem_url,
+            'spud_year': None, 'in_hpz': 'Verified HPZ', 'directional': True,
+            'url': 'https://wellstar-public.conservation.ca.gov/Well/Well/Detail?api=0402900002',
+            'map_url': self.idle.well_finder_url,
         }
         assert self.client.get(reverse('api:v2:emissions:well-detail', args=[self.active.sqid])).json()['spud_year'] == 2015
         assert self.client.get(reverse('api:v2:emissions:well-detail', args=['nope'])).status_code == 404

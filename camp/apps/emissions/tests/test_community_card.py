@@ -32,7 +32,8 @@ class FacilityTractLineTests(TestCase):
         content = self.client.get(Facility.objects.get(name='TEST PLANT').get_absolute_url()).content.decode()
         assert 'a tract at the' not in content
 
-    def test_about_page(self):
+    def test_about_page_has_no_calenviroscreen_section(self):
+        # Only the facility page's Community line uses CalEnviroScreen; the About page lists it as a source.
         content = self.client.get(reverse('emissions:about')).content.decode()
-        assert '<h2 id="calenviroscreen">' in content
-        assert "SB 535 disadvantaged-community list shown is CalEPA's 2026 draft until it is final" in content
+        assert 'id="calenviroscreen"' not in content
+        assert 'https://oehha.ca.gov/calenviroscreen' in content

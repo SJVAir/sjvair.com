@@ -251,6 +251,51 @@ class ImportGHGRPTests(GHGTestCase):
         assert '502' in err.getvalue()
         assert set(GHGReport.objects.values_list('external_id', flat=True)) == {'501', '503', '601'}
 
+    def test_a_failed_county_list_skips_the_county(self):
+        import requests
+        responses = self.responses()
+        def fetch(url):
+            if 'county_fips/06019' in url:
+                raise requests.HTTPError('429 Client Error: Too Many Requests')
+            return envirofacts(responses)(url)
+        err = StringIO()
+        with patch('camp.apps.emissions.importers.ghgrp.fetch_json', side_effect=fetch):
+            with pytest.raises(CommandError, match='fresno'):
+                call_command('import_ghgrp', year=2023, stdout=StringIO(), stderr=err)
+        assert 'Fresno County: reporter list not fetched' in err.getvalue()
+        assert list(GHGReport.objects.values_list('external_id', flat=True)) == ['601']
+
+
+class FetchJSONTests(TestCase):
+    def response(self, status, headers=None, payload=None):
+        import requests
+        response = requests.Response()
+        response.status_code = status
+        response.headers.update(headers or {})
+        response._content = json.dumps(payload or []).encode()
+        response.url = 'https://data.epa.gov/efservice/x/JSON'
+        return response
+
+    def test_a_throttle_is_waited_out(self):
+        replies = [self.response(429, {'Retry-After': '30'}), self.response(429), self.response(200, payload=[{'a': 1}])]
+        with patch('camp.apps.emissions.importers.ghgrp.requests.get', side_effect=replies), \
+                patch('camp.apps.emissions.importers.ghgrp.time.sleep') as sleep:
+            assert ghgrp.fetch_json('https://data.epa.gov/efservice/x/JSON') == [{'a': 1}]
+        waits = [c.args[0] for c in sleep.call_args_list if c.args[0] != ghgrp.PAUSE]
+        assert waits == [30.0, 20]
+
+    def test_gives_up_after_the_last_retry(self):
+        import requests
+        with patch('camp.apps.emissions.importers.ghgrp.requests.get', side_effect=lambda *a, **k: self.response(429)), \
+                patch('camp.apps.emissions.importers.ghgrp.time.sleep'):
+            with pytest.raises(requests.HTTPError):
+                ghgrp.fetch_json('https://data.epa.gov/efservice/x/JSON', retries=3)
+
+    def test_retry_delay(self):
+        assert [ghgrp.retry_delay(None, n) for n in range(6)] == [10, 20, 40, 80, 120, 120]
+        assert ghgrp.retry_delay(self.response(429, {'Retry-After': '900'}), 0) == ghgrp.MAX_BACKOFF
+        assert ghgrp.retry_delay(self.response(429, {'Retry-After': 'soon'}), 1) == 20
+
 
 import shutil
 import tempfile
@@ -474,7 +519,7 @@ class GHGPageTests(GHGTestCase):
 
     def test_about_and_integrations(self):
         content = self.client.get(reverse('emissions:about')).content.decode()
-        assert '<h2 id="greenhouse-gases">Greenhouse gases</h2>' in content
+        assert '<section class="about-section" id="greenhouse-gases">' in content
         assert 'No greenhouse-gas data has been imported yet.' in content
         assert 'Greenhouse gases warm the climate' in content
         SourceImport.objects.create(source='ghgrp', version='2023', data_through=date(2023, 12, 31))

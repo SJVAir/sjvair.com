@@ -1,107 +1,100 @@
 import re
-import tempfile
+from pathlib import Path
 
-import pdfplumber
-import requests
-from django.core.management.base import BaseCommand
+import yaml
+from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
 
 from camp.apps.pesticides import rollup
 from camp.apps.pesticides.models import Chemical
 
-# URL changes when CARB updates the table; re-check periodically.
-CARB_TAC_URL = 'https://ww2.arb.ca.gov/sites/default/files/classic/toxics/healthval/contable09252025.pdf'
-
-CAS_RE = re.compile(r'^\d+-\d+-\d+$')
-
-COL_NAME = 0
-COL_CAS = 1
-CANCER_COLS = (10, 11, 13)  # Inhalation Unit Risk, Cancer Potency Factor, Oral Slope Factor
+# CARB's TAC list (17 CCR 93000 and 93001), curated in the repo: CARB
+# publishes it as regulation text with names only. The file says where each
+# part comes from. CARB's health-values table (contable.pdf) is not the list:
+# it covers many substances that aren't TACs.
+DEFAULT_PATH = Path(settings.BASE_DIR) / 'datafiles' / 'toxic-air-contaminants.yaml'
 
 
-def _cell(value):
-    """Strip whitespace and trailing TAC marker from a cell value."""
-    s = (value or '').strip()
-    if s.endswith('TAC'):
-        s = s[:-3].strip()
-    return s
+def listings(data):
+    """A function (chemical) -> the TAC listing that covers it, or None: by its CAS number, else by a by_name pattern over its name."""
+    by_cas = {entry['cas']: entry['name'] for entry in data.get('substances') or []}
+    patterns = [(re.compile(entry['pattern']), entry['name']) for entry in data.get('by_name') or []]
+
+    def listing(chemical):
+        if chemical.cas_number in by_cas:
+            return by_cas[chemical.cas_number]
+        name = chemical.name.strip().upper()
+        for pattern, label in patterns:
+            if pattern.search(name):
+                return label
+        return None
+
+    return listing
 
 
 class Command(BaseCommand):
-    help = 'Import CARB Toxic Air Contaminant classifications from the consolidated health values PDF.'
+    help = (
+        "Tag chemicals on CARB's toxic air contaminant list (17 CCR 93000/93001) and untag the rest. "
+        'Reads the curated list in datafiles/; nothing to download.'
+    )
 
     def add_arguments(self, parser):
-        group = parser.add_mutually_exclusive_group()
-        group.add_argument('--path', help='Path to a locally downloaded CARB TAC PDF')
-        group.add_argument(
-            '--url',
-            nargs='?',
-            const=CARB_TAC_URL,
-            help=f'URL to download (default: {CARB_TAC_URL})',
+        parser.add_argument(
+            '--path',
+            default=str(DEFAULT_PATH),
+            help=f'Path to the TAC list YAML (default: {DEFAULT_PATH})',
+        )
+        parser.add_argument(
+            '--dry-run',
+            action='store_true',
+            help='Report what would change without writing.',
         )
 
     def handle(self, *args, **options):
-        if options['path']:
-            self._run(options['path'])
-        else:
-            url = options['url'] or CARB_TAC_URL
-            self.stdout.write(f'Downloading {url}')
-            resp = requests.get(url, timeout=60)
-            resp.raise_for_status()
-            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
-                tmp.write(resp.content)
-                tmp_path = tmp.name
-            self._run(tmp_path)
+        data = self._load(options['path'])
+        self._apply(listings(data), dry_run=options['dry_run'])
 
-    def _run(self, path):
-        rows = self._extract(path)
-        self.stdout.write(f'Extracted {len(rows):,} rows from PDF')
-        self._apply(rows)
+    def _load(self, path):
+        try:
+            data = yaml.safe_load(Path(path).read_text())
+        except FileNotFoundError:
+            raise CommandError(f'No TAC list at {path}')
+        if not (data or {}).get('substances'):
+            raise CommandError(f'{path} has no substances')
+        self.stdout.write(f'Loaded {len(data["substances"]):,} substances from {path}')
+        return data
 
-    def _extract(self, path):
-        rows = []
-        with pdfplumber.open(path) as pdf:
-            for page in pdf.pages:
-                table = page.extract_table()
-                if not table:
+    def _apply(self, listing, dry_run=False):
+        category = Chemical.Category.TOXIC_AIR_CONTAMINANT
+        matched = 0
+        added, removed = [], []
+        for chemical in Chemical.objects.all():
+            categories = set(chemical.categories or [])
+            label = listing(chemical)
+            if label:
+                matched += 1
+                if category in categories:
                     continue
-                for row in table:
-                    if not row or len(row) < 14:
-                        continue
-                    cas = _cell(row[COL_CAS])
-                    if not CAS_RE.match(cas):
-                        continue
-                    rows.append(row)
-        return rows
-
-    def _apply(self, rows):
-        cas_carcinogen = {}
-        for row in rows:
-            cas = _cell(row[COL_CAS])
-            is_carcinogen = any(_cell(row[col]) for col in CANCER_COLS if col < len(row))
-            cas_carcinogen[cas] = cas_carcinogen.get(cas, False) or is_carcinogen
-
-        self.stdout.write(f'  {len(cas_carcinogen):,} unique CAS numbers')
-        self.stdout.write(f'  {sum(cas_carcinogen.values()):,} with cancer data')
-
-        matched = tac_added = carcinogen_added = 0
-        for chemical in Chemical.objects.exclude(cas_number=''):
-            is_carcinogen = cas_carcinogen.get(chemical.cas_number)
-            if is_carcinogen is None:
+                added.append(f'{chemical.name} ({label})')
+                categories.add(category)
+            elif category in categories:
+                # Tagged by an earlier import that read the wrong list.
+                removed.append(chemical.name)
+                categories.discard(category)
+            else:
                 continue
-            matched += 1
-            cats = set(chemical.categories)
-            to_add = set()
-            if Chemical.Category.TOXIC_AIR_CONTAMINANT not in cats:
-                to_add.add(Chemical.Category.TOXIC_AIR_CONTAMINANT)
-                tac_added += 1
-            if is_carcinogen and Chemical.Category.CARCINOGEN not in cats:
-                to_add.add(Chemical.Category.CARCINOGEN)
-                carcinogen_added += 1
-            if to_add:
-                chemical.categories = sorted(cats | to_add)
+            if not dry_run:
+                chemical.categories = sorted(categories)
                 chemical.save(update_fields=['categories', 'modified'])
 
-        self.stdout.write(f'Matched {matched:,} chemicals by CAS number')
-        self.stdout.write(f'  Added TOXIC_AIR_CONTAMINANT to {tac_added:,}')
-        self.stdout.write(f'  Added CARCINOGEN to {carcinogen_added:,}')
-        self.stdout.write(rollup.REBUILD_REMINDER)
+        self.stdout.write(f'{matched:,} chemicals are on the list')
+        for label, names in (('Added', added), ('Removed', removed)):
+            self.stdout.write(f'  {label} TOXIC_AIR_CONTAMINANT: {len(names):,}')
+            for name in names[:25]:
+                self.stdout.write(f'    {name}')
+            if len(names) > 25:
+                self.stdout.write(f'    ... and {len(names) - 25:,} more')
+        if dry_run:
+            self.stdout.write('Dry run: nothing written.')
+        else:
+            self.stdout.write(rollup.REBUILD_REMINDER)

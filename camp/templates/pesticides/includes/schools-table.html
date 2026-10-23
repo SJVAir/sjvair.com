@@ -9,11 +9,15 @@ carries the page's scope, so a section page opens on the same year and scope
 as the row.
 {% endcomment %}
 {% with schools_sort=schools.sort %}
-<p class="summary-sentence mb-3">
-    {{ schools.total|intcomma }} school{{ schools.total|pluralize }} and child care site{{ schools.total|pluralize }}
-    {% if schools.is_district %}· {{ schools.run_by_count|intcomma }} run by {{ schools.district_name }}{% endif %}{% if schools.is_filtered %}
-    · showing {{ schools.matched|intcomma }}{% endif %}
-</p>
+{# How many match, and the same rows (all of them, not the page) as a CSV, over the table. #}
+<div class="table-toolbar">
+    <p class="summary-sentence mb-0">
+        {{ schools.total|intcomma }} school{{ schools.total|pluralize }} and child care site{{ schools.total|pluralize }}
+        {% if schools.is_district %}· {{ schools.run_by_count|intcomma }} run by {{ schools.district_name }}{% endif %}{% if schools.is_filtered %}
+        · showing {{ schools.matched|intcomma }}{% endif %}
+    </p>
+    {% if schools.matched %}<a class="button is-small" href="{% qs_replace format='csv' page=None %}" hx-boost="false" download><span class="icon"><span class="fa-regular fa-fw fa-download" aria-hidden="true"></span></span><span>Download CSV</span></a>{% endif %}
+</div>
 <div class="table-container">
     <table class="table is-fullwidth is-striped is-hoverable data-table schools-table">
         <thead>

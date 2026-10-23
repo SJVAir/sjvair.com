@@ -13,7 +13,7 @@
   if (window.SJVAirMaps) return;
 
   // The basemap styles the `?tiles=<id>` experiment switch offers, each
-  // mapped to its entry in the SDK's style catalogue (a path under
+  // mapped to its entry in the SDK's style catalog (a path under
   // maptilersdk.MapStyle). An id the table doesn't know is handed to the SDK
   // as is, which reads it as a MapTiler style id.
   var TILE_STYLE_PATHS = {
@@ -30,7 +30,7 @@
   var PHONE_QUERY = '(max-width: 768px)';
   var EMPTY = { type: 'FeatureCollection', features: [] };
 
-  // Candidate sequential colour ramps for the `?ramp=` experiment control
+  // Candidate sequential color ramps for the `?ramp=` experiment control
   // (the Options menu's Ramp select), shared by every map that offers one
   // (the pesticides section map, the emissions facility map). `sampleRamp`
   // interpolates any of these to however many classes a map needs.
@@ -41,7 +41,7 @@
     ylorbr: ['#ffffd4', '#fed98e', '#fe9929', '#d95f0e', '#993404'],
     putrid: ['#eef2b8', '#cfd96e', '#a3b53c', '#72871f', '#3f4f12'],
     bile: ['#f5f2a4', '#d9d95a', '#a9b62e', '#6b7615', '#3a400c'],
-    // Putrid with a paler, greyer light end and the middle steps spread apart.
+    // Putrid with a paler, grayer light end and the middle steps spread apart.
     putrid2: ['#eceedc', '#c9d18c', '#98ab3f', '#5f7a1c', '#2f3f0e'],
     // Multi-hue sequential: yellow-green through teal to navy (ColorBrewer YlGnBu).
     ylgnbu: ['#ffffcc', '#a1dab4', '#41b6c4', '#2c7fb8', '#253494'],
@@ -65,7 +65,7 @@
     rdbu7: ['#2166ac', '#4393c3', '#92c5de', '#f7f7f7', '#f4a582', '#d6604d', '#b2182b'],
   };
 
-  // `count` colours evenly spaced along a ramp, interpolated in RGB between
+  // `count` colors evenly spaced along a ramp, interpolated in RGB between
   // its stops, so a ramp serves any number of classes.
   function sampleRamp(ramp, count) {
     if (count <= 1) return [ramp[ramp.length - 1]];
@@ -272,7 +272,7 @@
     },
   };
 
-  // Classed colour ramps: `breaks` are the ascending boundaries between
+  // Classed color ramps: `breaks` are the ascending boundaries between
   // breaks.length + 1 classes.
   var classes = {
     index: function (value, breaks) {
@@ -288,7 +288,7 @@
       if (index === breaks.length) return round(breaks[index - 1]) + ' and up';
       return round(breaks[index - 1]) + '–' + round(breaks[index]);
     },
-    // A legend's classes, largest first: a swatch from `ramp` (one colour
+    // A legend's classes, largest first: a swatch from `ramp` (one color
     // per class) and its label, with `swatchClass` on each swatch and
     // `round` passed on to label().
     bins: function (breaks, ramp, swatchClass, round) {

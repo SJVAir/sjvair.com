@@ -71,7 +71,7 @@ def map_config(container_class, *, data, features, toolbar_template=None, option
         'options_icon': options_icon,
         'options_template': options_template,
         # Whether the shared options template (map-options.html) renders its
-        # Ramp select alongside Tiles -- off for a map with no colour ramp to
+        # Ramp select alongside Tiles -- off for a map with no color ramp to
         # pick (the Dairies tab: the size classes are fixed).
         'options_ramp': options_ramp,
         'legend_template': legend_template,

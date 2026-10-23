@@ -320,7 +320,7 @@ class PercentFilterTests(TestCase):
 
 
 class MethodStackChartTests(TestCase):
-    def test_a_stack_in_the_method_colours_with_the_scope_year_selected(self):
+    def test_a_stack_in_the_method_colors_with_the_scope_year_selected(self):
         from camp.apps.pesticides.templatetags.pesticides_explorer import METHOD_COLORS, method_stack_chart
         stack = {'years': [2022, 2023], 'series': [
             {'method': 'G', 'label': 'Ground', 'values': [10, 20]},
