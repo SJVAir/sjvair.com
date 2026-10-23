@@ -11,7 +11,7 @@ the same reading.
 '''
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.db.models import Exists, OuterRef
@@ -20,7 +20,10 @@ from camp.apps.entries import models as entry_models
 from camp.apps.monitors.legacy_backfill import pipeline_entry_models, processable_stages
 
 NEAR_MISS_WINDOW = timedelta(seconds=60)
-BAM_SENTINEL = Decimal('99999')
+# Same rule as the backfill, stated independently: before this instant the
+# legacy pm10/pm100 columns are crossed on most rows (migration 0020), so
+# PM1.0 is the smaller and PM10.0 the larger; from it on they are as stored.
+PM_CUTOVER = datetime(2022, 4, 1, tzinfo=timezone.utc)
 HPA_PER_MMHG = Decimal('1.33322')
 
 PARTICLE_FIELDS = (
@@ -31,13 +34,6 @@ PARTICLE_FIELDS = (
 
 def _quantize(value, places):
     return Decimal(value).quantize(Decimal(places), rounding=ROUND_HALF_UP)
-
-
-def _coalesce(*values):
-    for value in values:
-        if value is not None:
-            return value
-    return None
 
 
 def _value(value):
@@ -57,21 +53,18 @@ def _hpa_to_mmhg(legacy):
     return {'value': _quantize(legacy.pressure / HPA_PER_MMHG, '0.01')}
 
 
-def _celsius_to_fahrenheit(legacy):
-    if legacy.celsius is None:
+def _pm_expected(legacy, smaller):
+    if legacy.timestamp >= PM_CUTOVER:
+        return _value(legacy.pm10 if smaller else legacy.pm100)
+    if legacy.pm10 is None or legacy.pm100 is None:
         return None
-    return {'value': _quantize(legacy.celsius * Decimal(9) / Decimal(5) + 32, '0.1')}
+    low, high = sorted((legacy.pm10, legacy.pm100))
+    return {'value': low if smaller else high}
 
 
-def _bam_pm25(legacy):
-    value = _coalesce(legacy.pm25_reported, legacy.pm25)
-    if value is None or value == BAM_SENTINEL:
-        return None
-    return {'value': value}
-
-
-def _bam_pm25_skipped(legacy):
-    return _coalesce(legacy.pm25_reported, legacy.pm25) == BAM_SENTINEL
+def _pm_unresolvable(legacy):
+    # Pre-cutover with exactly one of the pair present: can't tell which PM it is.
+    return legacy.timestamp < PM_CUTOVER and (legacy.pm10 is None) != (legacy.pm100 is None)
 
 
 @dataclass
@@ -87,35 +80,20 @@ AB = ('a', 'b')
 
 def _expectations():
     from camp.apps.monitors.purpleair.models import PurpleAir
-    from camp.apps.monitors.airnow.models import AirNow
-    from camp.apps.monitors.aqview.models import AQview
-    from camp.apps.monitors.bam.models import BAM1022
 
     return {
         PurpleAir: {
             entry_models.PM25: Expectation(lambda e: _value(e.pm25_reported), per_sensor=True, sensors=AB),
-            entry_models.PM10: Expectation(lambda e: _value(e.pm10), per_sensor=True, sensors=AB),
-            entry_models.PM100: Expectation(lambda e: _value(e.pm100), per_sensor=True, sensors=AB),
+            entry_models.PM10: Expectation(
+                lambda e: _pm_expected(e, True), per_sensor=True, sensors=AB, skipped=_pm_unresolvable,
+            ),
+            entry_models.PM100: Expectation(
+                lambda e: _pm_expected(e, False), per_sensor=True, sensors=AB, skipped=_pm_unresolvable,
+            ),
             entry_models.Particulates: Expectation(_particulates, per_sensor=True, sensors=AB),
             entry_models.Temperature: Expectation(lambda e: _value(e.fahrenheit)),
             entry_models.Humidity: Expectation(lambda e: _value(e.humidity)),
             entry_models.Pressure: Expectation(_hpa_to_mmhg),
-        },
-        AirNow: {
-            entry_models.PM25: Expectation(lambda e: _value(_coalesce(e.pm25_reported, e.pm25))),
-            entry_models.PM100: Expectation(lambda e: _value(e.pm100)),
-            entry_models.O3: Expectation(lambda e: _value(e.ozone)),
-        },
-        AQview: {
-            entry_models.PM25: Expectation(lambda e: _value(_coalesce(e.pm25_reported, e.pm25))),
-        },
-        BAM1022: {
-            entry_models.PM25: Expectation(_bam_pm25, skipped=_bam_pm25_skipped),
-            entry_models.Temperature: Expectation(_celsius_to_fahrenheit),
-            entry_models.Humidity: Expectation(lambda e: _value(e.humidity)),
-            entry_models.Pressure: Expectation(lambda e: _value(
-                None if e.pressure is None else _quantize(e.pressure, '0.01')
-            )),
         },
     }
 

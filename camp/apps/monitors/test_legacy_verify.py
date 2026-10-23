@@ -14,7 +14,6 @@ from camp.apps.entries import models as entry_models
 from camp.apps.monitors.legacy_backfill import LEGACY_BACKFILL_MAP, find_missing_raw_entries
 from camp.apps.monitors.legacy_verify import verify
 from camp.apps.monitors.models import Entry
-from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.utils.datetime import make_aware
 
@@ -142,29 +141,6 @@ class VerifyPurpleAirTests(TestCase):
         assert self._counts(report, 'PM10')['unprocessed'] == 0
 
 
-class VerifyBamTests(TestCase):
-    fixtures = ['bam1022.yaml']
-
-    def setUp(self):
-        self.monitor = BAM1022.objects.first()
-        self.start = _ts(2023, 1, 1)
-        self.end = _ts(2023, 1, 2)
-
-    def test_sentinel_skipped_and_celsius_converted(self):
-        Entry.objects.create(
-            monitor=self.monitor, timestamp=self.start + timedelta(hours=1),
-            location=self.monitor.location, position=self.monitor.position,
-            pm25=Decimal('99999'), celsius=Decimal('21.0'),
-        )
-        _backfill(self.monitor, self.start, self.end)
-        report = verify([self.monitor], self.start, self.end)
-        assert report.counts[('BAM1022', 'PM25')]['skipped'] == 1
-        assert report.counts[('BAM1022', 'PM25')]['missing'] == 0
-        assert report.counts[('BAM1022', 'Temperature')]['matched'] == 1
-        assert entry_models.Temperature.objects.get(monitor=self.monitor).value == Decimal('69.8')
-        assert not report.failed
-
-
 class VerifyLegacyBackfillCommandTests(TestCase):
     fixtures = ['purple-air.yaml']
 
@@ -195,3 +171,45 @@ class VerifyLegacyBackfillCommandTests(TestCase):
         with pytest.raises(CommandError):
             call_command('verify_legacy_backfill', '--from', '2023-01-01', '--monitor', 'nope',
                 stdout=StringIO())
+
+
+class VerifyPmColumnCutoverTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        self.start = _ts(2019, 6, 1)
+        self.end = _ts(2019, 6, 2)
+        self.ts = self.start + timedelta(hours=1)
+
+    def _legacy(self, pm10, pm100):
+        Entry.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=self.ts,
+            location=self.monitor.location, position=self.monitor.position,
+            pm10=pm10, pm100=pm100,
+        )
+
+    def test_pre_cutover_swapped_row_matches(self):
+        self._legacy(Decimal('9'), Decimal('3'))
+        _backfill(self.monitor, self.start, self.end)
+        report = verify([self.monitor], self.start, self.end)
+        assert not report.failed
+        assert report.counts[('PurpleAir', 'PM10')]['matched'] == 1
+        assert report.counts[('PurpleAir', 'PM10')]['mismatch_backfilled'] == 0
+        assert report.counts[('PurpleAir', 'PM100')]['matched'] == 1
+
+    def test_uncorrected_copy_is_a_mismatch(self):
+        self._legacy(Decimal('9'), Decimal('3'))
+        _backfill(self.monitor, self.start, self.end)
+        entry_models.PM10.objects.filter(monitor=self.monitor).update(value=Decimal('9'))
+        report = verify([self.monitor], self.start, self.end)
+        assert report.counts[('PurpleAir', 'PM10')]['mismatch_backfilled'] == 1
+
+    def test_pre_cutover_null_is_skipped(self):
+        self._legacy(Decimal('9'), None)
+        _backfill(self.monitor, self.start, self.end)
+        report = verify([self.monitor], self.start, self.end)
+        assert not report.failed
+        assert report.counts[('PurpleAir', 'PM10')]['skipped'] == 1
+        assert report.counts[('PurpleAir', 'PM100')]['skipped'] == 1
+        assert report.counts[('PurpleAir', 'PM10')]['matched'] == 0

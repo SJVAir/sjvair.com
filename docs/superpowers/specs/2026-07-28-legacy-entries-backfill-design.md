@@ -3,6 +3,10 @@
 **Date:** 2026-07-28
 **Status:** Draft for review
 
+> **Scope (decided 2026-10-22):** this backfill covers **PurpleAir only**. AirNow, AQview
+> and BAM history is re-imported from source instead, so those types are not in
+> `LEGACY_BACKFILL_MAP`, the pipeline catch-up, or the verifier.
+
 ## Problem
 
 The `entries` app superseded the old monolithic `Entry` model (`camp/apps/monitors/models.py`),
@@ -35,7 +39,7 @@ gap detection (RAW phase) and pipeline completion (pipeline phase) both need to 
 
 ## Scope: which monitor types and fields
 
-Legacy `Entry` rows only exist for **PurpleAir, AirNow, AQview, and BAM**. AirGradient
+Legacy `Entry` rows exist for PurpleAir, AirNow, AQview and BAM; only **PurpleAir** is backfilled (see the scope note above). AirGradient
 never wrote legacy rows at all (`create_entry_legacy` is never called anywhere in its
 ingest path), and there is no working "Methane"/vozbox monitor type (the directory is an
 empty stub) — both are excluded from this design entirely, not merely skipped at runtime.
@@ -46,10 +50,7 @@ calibrated `pm25` value was stored, with no original reading preserved. For **Pu
 `pm25_reported` is the raw sensor reading) — this backfill uses `pm25_reported` only and
 deliberately excludes `pm25`, so PurpleAir rows recorded before `pm25_reported` existed
 are simply not backfillable for PM2.5 (they'll surface as permanent gaps, which is
-correct — there's no uncalibrated value to recover). For **AirNow, AQview, and BAM**,
-there was never any calibration applied — `pm25` and `pm25_reported` are the same value
-whenever both are present, so those three use `COALESCE(pm25_reported, pm25)` and can be
-backfilled across their full history.
+correct — there's no uncalibrated value to recover).
 
 Gas pollutants (CO, NO2, SO2) have no legacy counterpart at all — the old `Entry` model
 never had columns for them (only AirNow's new-entries path produces them) — so they are
@@ -60,20 +61,12 @@ not part of this backfill; there is nothing to migrate.
 | Monitor | EntryModel | Legacy source | Target field | Sensor | Notes |
 |---|---|---|---|---|---|
 | PurpleAir | PM25 | `pm25_reported` | `value` | copied from legacy row (`a`/`b`) | excludes `pm25` |
-| PurpleAir | PM10 | `pm10` | `value` | copied from legacy row | legacy `pm10` is PM1.0, matches `entries.PM10` |
-| PurpleAir | PM100 | `pm100` | `value` | copied from legacy row | legacy `pm100` is PM10.0, matches `entries.PM100` |
+| PurpleAir | PM10 | `pm10`, `pm100` (resolved) | `value` | copied from legacy row | PM1.0. Before 2022-04-01: `min(pm10, pm100)`, skipped if either is NULL. From then on: `pm10` as stored. See "PM1.0 / PM10 column swap" |
+| PurpleAir | PM100 | `pm10`, `pm100` (resolved) | `value` | copied from legacy row | PM10.0. Before 2022-04-01: `max(pm10, pm100)`, skipped if either is NULL. From then on: `pm100` as stored |
 | PurpleAir | Particulates | `particles_03um`..`particles_100um` | same field names | copied from legacy row | direct copy, all 6 fields |
 | PurpleAir | Temperature | `fahrenheit` | `fahrenheit` | collapsed to `''` | dedup: legacy stores same value on both `a`/`b` rows |
 | PurpleAir | Humidity | `humidity` | `value` | collapsed to `''` | same dedup |
 | PurpleAir | Pressure | `pressure` (hPa) | `hpa` | collapsed to `''` | **hPa**, converted via `hpa` setter |
-| AirNow | PM25 | `COALESCE(pm25_reported, pm25)` | `value` | `''` | |
-| AirNow | PM100 | `pm100` | `value` | `''` | |
-| AirNow | O3 | `ozone` | `value` | `''` | |
-| AQview | PM25 | `COALESCE(pm25_reported, pm25)` | `value` | `''` | only field AQview ever captured |
-| BAM | PM25 | `COALESCE(pm25_reported, pm25)` | `value` | `''` | skip when legacy `pm25 == 99999` (bad-data sentinel) |
-| BAM | Temperature | `celsius` | `celsius` | `''` | converted to fahrenheit via `celsius` setter |
-| BAM | Humidity | `humidity` | `value` | `''` | |
-| BAM | Pressure | `pressure` (mmHg) | `mmhg` | `''` | **mmHg already** — do not run through `hpa` setter; legacy `Entry.pressure` units differ by monitor type (PurpleAir stores hPa, BAM stores mmHg) |
 
 This table is expressed as data, not a new class hierarchy — a plain dict keyed by
 monitor model class, living in a new `camp/apps/monitors/legacy_backfill.py`, parallel
@@ -84,8 +77,8 @@ payload keys:
 LEGACY_BACKFILL_MAP = {
     PurpleAir: {
         entry_models.PM25: {'source': 'pm25_reported', 'target': 'value', 'per_sensor': True},
-        entry_models.PM10: {'source': 'pm10', 'target': 'value', 'per_sensor': True},
-        entry_models.PM100: {'source': 'pm100', 'target': 'value', 'per_sensor': True},
+        entry_models.PM10: {'source': ['pm10', 'pm100'], 'resolve': <min of the pair>, 'target': 'value', 'per_sensor': True},
+        entry_models.PM100: {'source': ['pm10', 'pm100'], 'resolve': <max of the pair>, 'target': 'value', 'per_sensor': True},
         entry_models.Particulates: {
             'source': ['particles_03um', 'particles_05um', 'particles_10um',
                        'particles_25um', 'particles_50um', 'particles_100um'],
@@ -95,23 +88,6 @@ LEGACY_BACKFILL_MAP = {
         entry_models.Temperature: {'source': 'fahrenheit', 'target': 'fahrenheit', 'per_sensor': False},
         entry_models.Humidity: {'source': 'humidity', 'target': 'value', 'per_sensor': False},
         entry_models.Pressure: {'source': 'pressure', 'target': 'hpa', 'per_sensor': False},
-    },
-    AirNow: {
-        entry_models.PM25: {'source': ('pm25_reported', 'pm25'), 'target': 'value', 'per_sensor': False},
-        entry_models.PM100: {'source': 'pm100', 'target': 'value', 'per_sensor': False},
-        entry_models.O3: {'source': 'ozone', 'target': 'value', 'per_sensor': False},
-    },
-    AQview: {
-        entry_models.PM25: {'source': ('pm25_reported', 'pm25'), 'target': 'value', 'per_sensor': False},
-    },
-    BAM: {
-        entry_models.PM25: {
-            'source': ('pm25_reported', 'pm25'), 'target': 'value', 'per_sensor': False,
-            'skip_if': lambda legacy: legacy.pm25 == 99999,
-        },
-        entry_models.Temperature: {'source': 'celsius', 'target': 'celsius', 'per_sensor': False},
-        entry_models.Humidity: {'source': 'humidity', 'target': 'value', 'per_sensor': False},
-        entry_models.Pressure: {'source': 'pressure', 'target': 'mmhg', 'per_sensor': False},
     },
 }
 ```
@@ -267,7 +243,7 @@ first-class requirement, not an afterthought.
 hardcoded per-monitor-type list — any `EntryModel` whose `ENTRY_CONFIG` entry declares a
 `processors` key has a pipeline to run; its terminal stage is
 `config['allowed_stages'][-1]` (e.g. `CALIBRATED` for PurpleAir's `PM25`/`Temperature`/
-`Humidity`, `CLEANED` for AirNow/AQview's `PM25`). Entry models with no `processors` key
+`Humidity`). Entry models with no `processors` key
 (PurpleAir's `PM10`, `PM100`, `Particulates`) have nothing to reprocess and are skipped.
 
 **Selection, per chunk per monitor per eligible `EntryModel`:** revised twice from the
@@ -312,6 +288,59 @@ so no chunk is reprocessed before its RAW rows exist.
 
 Management command `camp/apps/monitors/management/commands/reprocess_legacy_pipeline.py`,
 same `start`/`status`/`cancel` shape as `backfill_legacy_entries`.
+
+## PM1.0 / PM10 column swap (pre-2022-04)
+
+Naming: legacy `Entry.pm10` means PM1.0 and `Entry.pm100` means PM10.0; the new
+`entry_models.PM10` is PM1.0 and `entry_models.PM100` is PM10.0.
+
+**Cause.** Migration `0020_auto_20220129_2337` renamed the legacy columns crosswise
+(`pm100_env` -> `pm10`, `pm10_env` -> `pm100`) without moving any data, and reached
+production around mid-March 2022. Rows written by the older code before that therefore
+hold PM1.0 in `pm100` and PM10.0 in `pm10`.
+
+**Evidence** (production sample, share of PurpleAir legacy rows with `pm10 > pm100`,
+which is impossible for correctly labelled data since PM1.0 is a subset of PM10.0):
+
+| Period | Rows with pm10 > pm100 |
+|---|---|
+| 2017-12 .. 2019-12 | ~98-100% |
+| 2020-01 .. 2020-07 | ~42-61% (mixed writers) |
+| 2020-08 .. 2022-02 | ~80-92% |
+| 2022-03 | 63% |
+| 2022-04 onward | ~0% (a handful of sensor glitches per ~17M rows/month) |
+
+**Rule.** For PurpleAir legacy rows with `timestamp < PM_COLUMN_CUTOVER`
+(2022-04-01T00:00Z, defined in `legacy_backfill.py`): PM1.0 = `min(pm10, pm100)` and
+PM10.0 = `max(pm10, pm100)`. If either value is NULL before the cutover the row can't be
+resolved, so both PM10 and PM100 are skipped for it. On or after the cutover the columns
+are copied as stored. The mapping expresses this with an optional `resolve` callable
+(legacy row -> value or None); `source` still lists the fields and drives the not-null
+filter. `legacy_verify.py` states the same rule independently.
+
+**Why not a blanket date swap.** Before the cutover the columns are swapped on most rows,
+not all (the 2020 mixed-writer period is near 50/50), so any single cutover date would
+corrupt either the swapped or the unswapped rows. Ordering by value is correct for both
+and a no-op on already-correct rows.
+
+**Repair of existing rows.** RAW PM10/PM100 rows already in the new tables (written by
+the older `migrate_legacy_entry` path) may be crossed, while rows from the PurpleAir
+history import are correct. `fix_purpleair_pm_columns` pairs PM10 and PM100 RAW rows on
+(monitor, sensor, timestamp) for PurpleAir before the cutover and swaps the values of
+every pair where PM10 > PM100. Ordered and unpaired rows are untouched, so it is
+idempotent. It works per monitor in 30-day windows with one transaction per window and
+prints progress. PurpleAir PM10/PM100 are RAW-only (no derived entries) and rows are
+updated in place, so `LatestEntry` is unaffected.
+
+```bash
+docker compose run --rm web python manage.py fix_purpleair_pm_columns --dry-run
+docker compose run --rm web python manage.py fix_purpleair_pm_columns
+# options: --monitor-id <id> (repeatable), --window-days N, --sleep SECONDS
+# Heroku: heroku run -a <app> -- python manage.py fix_purpleair_pm_columns
+```
+
+Run it (dry-run first) before or alongside the RAW backfill; the backfill already writes
+corrected values and skips rows that exist.
 
 ## Pressure correction (one-time data repair)
 
@@ -397,8 +426,7 @@ traffic):
 - `camp/apps/monitors/management/commands/fix_purpleair_pressure.py` — the one-time
   Pressure repair.
 - `camp/apps/monitors/test_legacy_backfill.py` — unit tests per monitor type covering:
-  the PurpleAir `pm25` exclusion, the AirNow/AQview/BAM coalesce fallback, the BAM
-  99999 sentinel skip, the hPa-vs-mmHg pressure handling, the `per_sensor=False` dedup
+  the PurpleAir `pm25` exclusion, the hPa-vs-mmHg pressure handling, the `per_sensor=False` dedup
   across `a`/`b` rows, interior-gap detection (not just head/tail), and idempotent
   re-running of an already-processed chunk. A handful of task-level tests using Huey
   immediate mode (`MemoryHuey`) confirm the fan-out/fenced-decrement/cursor-advance

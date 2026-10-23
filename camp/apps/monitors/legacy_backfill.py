@@ -1,10 +1,11 @@
 '''
 Field mapping and pure construction logic for backfilling legacy `Entry` rows
 (camp/apps/monitors/models.py) into the new `entries` app, RAW stage only.
+PurpleAir only: AirNow, AQview and BAM history is re-imported from source.
 See docs/superpowers/specs/2026-07-28-legacy-entries-backfill-design.md.
 '''
 from bisect import bisect_left
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from django.db.models import Exists, OuterRef
 
@@ -18,13 +19,33 @@ from camp.apps.entries import models as entry_models
 # 60s of every point it covers, while real gaps still get filled.
 NEAR_DUPLICATE_WINDOW = timedelta(seconds=60)
 
+# Migration 0020_auto_20220129_2337 renamed the legacy PM columns crosswise
+# (`pm100_env` -> `pm10`, `pm10_env` -> `pm100`) without moving any data, and
+# reached production in mid-March 2022. Before this cutover most PurpleAir rows
+# therefore hold PM1.0 in `pm100` and PM10.0 in `pm10` (the share of rows with
+# pm10 > pm100 is ~98-100% in 2018-2019, ~42-61% in mid-2020 where both
+# writers were live, ~80-92% to early 2022, and ~0% from 2022-04), but not all
+# rows are swapped, so the pair is ordered by value instead of swapped
+# blindly. From this instant on the columns are copied as stored.
+PM_COLUMN_CUTOVER = datetime(2022, 4, 1, tzinfo=timezone.utc)
 
-def _bam_pm25_sentinel(legacy_entry):
-    # Check the same coalesced value the mapping copies.
-    value = legacy_entry.pm25_reported
-    if value is None:
-        value = legacy_entry.pm25
-    return value == 99999
+
+def _pm_pair_resolver(pick):
+    '''
+    Resolver for PurpleAir's legacy `pm10` (PM1.0) / `pm100` (PM10.0) columns.
+    `pick` is min for PM1.0 or max for PM10.0: before PM_COLUMN_CUTOVER the
+    columns may be crossed, and PM1.0 is a subset of PM10.0 so it can never be
+    the larger. A row missing either value can't be resolved before the
+    cutover. On/after it the columns are copied as stored.
+    '''
+    def resolve(legacy_entry):
+        pm10, pm100 = legacy_entry.pm10, legacy_entry.pm100
+        if legacy_entry.timestamp >= PM_COLUMN_CUTOVER:
+            return pm10 if pick is min else pm100
+        if pm10 is None or pm100 is None:
+            return None
+        return pick(pm10, pm100)
+    return resolve
 
 
 LEGACY_BACKFILL_MAP = {}
@@ -36,14 +57,17 @@ def _register(monitor_cls, mapping):
 
 def _load_map():
     from camp.apps.monitors.purpleair.models import PurpleAir
-    from camp.apps.monitors.airnow.models import AirNow
-    from camp.apps.monitors.aqview.models import AQview
-    from camp.apps.monitors.bam.models import BAM1022
 
     _register(PurpleAir, {
         entry_models.PM25: {'source': 'pm25_reported', 'target': 'value', 'per_sensor': True},
-        entry_models.PM10: {'source': 'pm10', 'target': 'value', 'per_sensor': True},
-        entry_models.PM100: {'source': 'pm100', 'target': 'value', 'per_sensor': True},
+        entry_models.PM10: {
+            'source': ['pm10', 'pm100'], 'resolve': _pm_pair_resolver(min),
+            'target': 'value', 'per_sensor': True,
+        },
+        entry_models.PM100: {
+            'source': ['pm10', 'pm100'], 'resolve': _pm_pair_resolver(max),
+            'target': 'value', 'per_sensor': True,
+        },
         entry_models.Particulates: {
             'source': [
                 'particles_03um', 'particles_05um', 'particles_10um',
@@ -54,26 +78,6 @@ def _load_map():
         entry_models.Temperature: {'source': 'fahrenheit', 'target': 'fahrenheit', 'per_sensor': False},
         entry_models.Humidity: {'source': 'humidity', 'target': 'value', 'per_sensor': False},
         entry_models.Pressure: {'source': 'pressure', 'target': 'hpa', 'per_sensor': False},
-    })
-
-    _register(AirNow, {
-        entry_models.PM25: {'source': ('pm25_reported', 'pm25'), 'target': 'value', 'per_sensor': False},
-        entry_models.PM100: {'source': 'pm100', 'target': 'value', 'per_sensor': False},
-        entry_models.O3: {'source': 'ozone', 'target': 'value', 'per_sensor': False},
-    })
-
-    _register(AQview, {
-        entry_models.PM25: {'source': ('pm25_reported', 'pm25'), 'target': 'value', 'per_sensor': False},
-    })
-
-    _register(BAM1022, {
-        entry_models.PM25: {
-            'source': ('pm25_reported', 'pm25'), 'target': 'value', 'per_sensor': False,
-            'skip_if': _bam_pm25_sentinel,
-        },
-        entry_models.Temperature: {'source': 'celsius', 'target': 'celsius', 'per_sensor': False},
-        entry_models.Humidity: {'source': 'humidity', 'target': 'value', 'per_sensor': False},
-        entry_models.Pressure: {'source': 'pressure', 'target': 'mmhg', 'per_sensor': False},
     })
 
 
@@ -92,8 +96,16 @@ def build_raw_entry(monitor, legacy_entry, entry_model, mapping):
 
     source = mapping['source']
     target = mapping.get('target')
+    resolve = mapping.get('resolve')
 
-    if isinstance(source, list):
+    if resolve:
+        # `source` still lists the fields the value is built from (it drives
+        # the not-null filter in find_missing_raw_entries).
+        value = resolve(legacy_entry)
+        if value is None:
+            return None
+        values = {target: value}
+    elif isinstance(source, list):
         values = {}
         for field_name in source:
             value = getattr(legacy_entry, field_name)
@@ -240,8 +252,9 @@ def pipeline_entry_models(monitor_class):
     mapped to their terminal (final configured) stage.
 
     Scope note: `monitor_class` is only ever one of the LEGACY_BACKFILL_MAP-
-    eligible types (PurpleAir, AirNow, AQview, BAM1022) -- the same four
-    types this whole legacy-entries-backfill feature covers. AirGradient
+    eligible type (PurpleAir) -- the only type this whole
+    legacy-entries-backfill feature covers (AirNow, AQview and BAM history is
+    re-imported from source instead). AirGradient
     has a real ENTRY_CONFIG pipeline of its own but no legacy data, so it is
     intentionally absent from LEGACY_BACKFILL_MAP and therefore never
     reprocessed by this system, even though it could in principle have
@@ -302,7 +315,7 @@ def monitors_with_incomplete_pipelines_in(chunk_start, chunk_end):
     across any of that monitor type's pipeline-eligible entry models.
 
     Scope note: "eligible types" here means LEGACY_BACKFILL_MAP-eligible
-    monitor types only (PurpleAir, AirNow, AQview, BAM1022) -- see the scope
+    monitor types only (PurpleAir) -- see the scope
     note on `pipeline_entry_models` above. This intentionally does NOT
     extend to AirGradient or any other monitor type outside that set, even
     though AirGradient has its own real processing pipeline: AirGradient

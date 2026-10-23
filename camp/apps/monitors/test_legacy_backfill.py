@@ -8,14 +8,12 @@ from django.utils import timezone
 
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.legacy_backfill import (
-    LEGACY_BACKFILL_MAP, build_raw_entry, chunk_start_for, find_missing_raw_entries,
+    LEGACY_BACKFILL_MAP, PM_COLUMN_CUTOVER, build_raw_entry, chunk_start_for, find_missing_raw_entries,
     monitors_with_legacy_data_in, find_incomplete_pipelines, monitors_with_incomplete_pipelines_in,
     pipeline_entry_models,
 )
 from camp.apps.monitors.models import Entry, EntryBackfillJob, PipelineBackfillJob
 from camp.apps.monitors.airnow.models import AirNow
-from camp.apps.monitors.aqview.models import AQview
-from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.utils.datetime import make_aware
 
@@ -115,69 +113,6 @@ class BuildRawEntryPurpleAirTests(TestCase):
         assert entry.location == 'inside'
         assert entry.stage == entry_models.PM25.Stage.RAW
         assert entry.processor == ''
-
-
-class BuildRawEntryCoalesceTests(TestCase):
-    def test_airnow_prefers_reported_falls_back_to_pm25(self):
-        monitor = AirNow(name='Test AirNow', location='outside')
-        legacy = _legacy_entry(monitor, pm25=Decimal('8.0'), pm25_reported=None)
-        mapping = LEGACY_BACKFILL_MAP[AirNow][entry_models.PM25]
-        entry = build_raw_entry(monitor, legacy, entry_models.PM25, mapping)
-        assert entry.value == Decimal('8.0')
-
-    def test_airnow_prefers_reported_when_both_present(self):
-        monitor = AirNow(name='Test AirNow', location='outside')
-        legacy = _legacy_entry(monitor, pm25=Decimal('8.0'), pm25_reported=Decimal('7.5'))
-        mapping = LEGACY_BACKFILL_MAP[AirNow][entry_models.PM25]
-        entry = build_raw_entry(monitor, legacy, entry_models.PM25, mapping)
-        assert entry.value == Decimal('7.5')
-
-    def test_aqview_coalesce_same_as_airnow(self):
-        monitor = AQview(name='Test AQview', location='outside')
-        legacy = _legacy_entry(monitor, pm25=Decimal('3.0'), pm25_reported=None)
-        mapping = LEGACY_BACKFILL_MAP[AQview][entry_models.PM25]
-        entry = build_raw_entry(monitor, legacy, entry_models.PM25, mapping)
-        assert entry.value == Decimal('3.0')
-
-
-class BuildRawEntryBamTests(TestCase):
-    def setUp(self):
-        self.monitor = BAM1022(name='Test BAM', location='outside')
-
-    def test_pm25_coalesces_and_skips_sentinel(self):
-        mapping = LEGACY_BACKFILL_MAP[BAM1022][entry_models.PM25]
-        legacy = _legacy_entry(self.monitor, pm25=Decimal('99999'), pm25_reported=None)
-        assert build_raw_entry(self.monitor, legacy, entry_models.PM25, mapping) is None
-
-    def test_pm25_valid_value_is_copied(self):
-        mapping = LEGACY_BACKFILL_MAP[BAM1022][entry_models.PM25]
-        legacy = _legacy_entry(self.monitor, pm25=Decimal('4.2'), pm25_reported=Decimal('4.2'))
-        entry = build_raw_entry(self.monitor, legacy, entry_models.PM25, mapping)
-        assert entry.value == Decimal('4.2')
-
-    def test_pm25_sentinel_in_reported_is_skipped_even_when_pm25_differs(self):
-        # The sentinel check uses the same coalesced value the mapping copies.
-        mapping = LEGACY_BACKFILL_MAP[BAM1022][entry_models.PM25]
-        legacy = _legacy_entry(self.monitor, pm25=Decimal('12.0'), pm25_reported=Decimal('99999'))
-        assert build_raw_entry(self.monitor, legacy, entry_models.PM25, mapping) is None
-
-    def test_pm25_sentinel_in_reported_with_null_pm25_is_skipped(self):
-        mapping = LEGACY_BACKFILL_MAP[BAM1022][entry_models.PM25]
-        legacy = _legacy_entry(self.monitor, pm25=None, pm25_reported=Decimal('99999'))
-        assert build_raw_entry(self.monitor, legacy, entry_models.PM25, mapping) is None
-
-    def test_pressure_mmhg_copied_directly_no_conversion(self):
-        mapping = LEGACY_BACKFILL_MAP[BAM1022][entry_models.Pressure]
-        legacy = _legacy_entry(self.monitor, pressure=Decimal('750.00'))
-        entry = build_raw_entry(self.monitor, legacy, entry_models.Pressure, mapping)
-        assert entry.value == Decimal('750.00')
-
-    def test_celsius_converted_to_fahrenheit(self):
-        mapping = LEGACY_BACKFILL_MAP[BAM1022][entry_models.Temperature]
-        legacy = _legacy_entry(self.monitor, celsius=Decimal('20.0'))
-        entry = build_raw_entry(self.monitor, legacy, entry_models.Temperature, mapping)
-        # 20C -> 68F via the model's own celsius setter
-        assert entry.value == Decimal('68.0')
 
 
 def _ts(*args):
@@ -352,6 +287,20 @@ class MonitorsWithLegacyDataInTests(TestCase):
         monitor = PurpleAir.objects.first()
         window_start = _ts(2023, 1, 1)
         window_end = _ts(2023, 1, 8)
+        ids = monitors_with_legacy_data_in(window_start, window_end)
+        assert monitor.pk not in ids
+
+    def test_backfill_map_is_purpleair_only(self):
+        assert set(LEGACY_BACKFILL_MAP) == {PurpleAir}
+
+    def test_ignores_legacy_data_on_non_purpleair_monitor(self):
+        monitor = AirNow.objects.create(name='Test AirNow', location='outside')
+        window_start = _ts(2023, 1, 1)
+        window_end = _ts(2023, 1, 8)
+        Entry.objects.create(
+            monitor=monitor, sensor='', timestamp=window_start + timedelta(hours=1),
+            location=monitor.location, pm25_reported=Decimal('5.0'),
+        )
         ids = monitors_with_legacy_data_in(window_start, window_end)
         assert monitor.pk not in ids
 
@@ -671,9 +620,8 @@ class PipelineEntryModelsTests(TestCase):
         models_map = pipeline_entry_models(PurpleAir)
         assert entry_models.PM10 not in models_map
 
-    def test_airnow_pm25_has_cleaned_terminal_stage(self):
-        models_map = pipeline_entry_models(AirNow)
-        assert models_map[entry_models.PM25] == entry_models.PM25.Stage.CLEANED
+    def test_non_backfill_type_has_no_pipeline_models(self):
+        assert pipeline_entry_models(AirNow) == {}
 
 
 class FindIncompletePipelinesTests(TestCase):
@@ -1228,20 +1176,19 @@ class LegacyBackfillThenReprocessIntegrationTests(TestCase):
     '''
     fixtures = ['purple-air.yaml']
 
-    def test_single_stage_pipeline_reaches_cleaned_for_airnow(self):
+    def test_backfilled_raw_entries_are_reprocessed_for_purpleair(self):
         from camp.apps.monitors.tasks import backfill_monitor_chunk, reprocess_monitor_chunk
 
-        monitor = AirNow.objects.create(name='Test AirNow Integration', location='outside')
+        monitor = PurpleAir.objects.first()
         chunk_start = _ts(2023, 1, 1)
         chunk_end = _ts(2023, 1, 8)
         ts = chunk_start + timedelta(hours=1)
 
-        # Seed a legacy Entry row; AirNow's PM25 mapping coalesces
-        # pm25_reported -> pm25 (see LEGACY_BACKFILL_MAP[AirNow][PM25]).
-        Entry.objects.create(
-            monitor=monitor, sensor='', timestamp=ts,
-            location=monitor.location, pm25_reported=Decimal('12.0'),
-        )
+        for sensor, value in (('a', Decimal('12.0')), ('b', Decimal('12.2'))):
+            Entry.objects.create(
+                monitor=monitor, sensor=sensor, timestamp=ts,
+                location=monitor.location, pm25_reported=value,
+            )
 
         entry_job = EntryBackfillJob.objects.create(
             cursor=chunk_end, range_start=_ts(2020, 1, 1), range_end=chunk_end,
@@ -1249,7 +1196,9 @@ class LegacyBackfillThenReprocessIntegrationTests(TestCase):
         )
         backfill_monitor_chunk(entry_job.pk, str(monitor.pk), chunk_start, chunk_end, 1)
 
-        raw = entry_models.PM25.objects.get(monitor=monitor, stage=entry_models.PM25.Stage.RAW)
+        raw = entry_models.PM25.objects.get(
+            monitor=monitor, sensor='a', timestamp=ts, stage=entry_models.PM25.Stage.RAW,
+        )
         assert raw.value == Decimal('12.0')
 
         pipeline_job = PipelineBackfillJob.objects.create(
@@ -1258,11 +1207,9 @@ class LegacyBackfillThenReprocessIntegrationTests(TestCase):
         )
         reprocess_monitor_chunk(pipeline_job.pk, str(monitor.pk), chunk_start, chunk_end, 1)
 
-        # AirNow's PM25 pipeline is single-stage RAW->CLEANED (PM25_FEM_Cleaner).
-        # With the Finding 1 bug, cutoff_stage=CLEANED skipped that processor
-        # entirely, so this CLEANED entry never got created.
+        # The first processor (RAW->CORRECTED) must run on the backfilled rows.
         assert entry_models.PM25.objects.filter(
-            monitor=monitor, timestamp=ts, stage=entry_models.PM25.Stage.CLEANED,
+            monitor=monitor, timestamp=ts, stage=entry_models.PM25.Stage.CORRECTED,
         ).exists()
 
     def test_multi_stage_pipeline_reaches_calibrated_for_purpleair(self):
@@ -1391,3 +1338,84 @@ class ReprocessSpikeSmoothingTests(TestCase):
             monitor=monitor, timestamp=spike_ts, stage=entry_models.PM25.Stage.CLEANED,
         )
         assert cleaned.value < corrected.value
+
+
+class PmColumnCutoverTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        self.pm10_map = LEGACY_BACKFILL_MAP[PurpleAir][entry_models.PM10]
+        self.pm100_map = LEGACY_BACKFILL_MAP[PurpleAir][entry_models.PM100]
+
+    def _build(self, timestamp, pm10, pm100):
+        legacy = _legacy_entry(
+            self.monitor, sensor='a', timestamp=timestamp,
+            pm10=None if pm10 is None else Decimal(pm10),
+            pm100=None if pm100 is None else Decimal(pm100),
+        )
+        return (
+            build_raw_entry(self.monitor, legacy, entry_models.PM10, self.pm10_map),
+            build_raw_entry(self.monitor, legacy, entry_models.PM100, self.pm100_map),
+        )
+
+    def test_pre_cutover_swapped_row_is_ordered(self):
+        pm1, pm10 = self._build(_ts(2019, 6, 1), '9', '3')
+        assert pm1.value == Decimal('3')
+        assert pm10.value == Decimal('9')
+        assert pm1.sensor == 'a'
+
+    def test_pre_cutover_ordered_row_is_unchanged(self):
+        pm1, pm10 = self._build(_ts(2021, 6, 1), '3', '9')
+        assert pm1.value == Decimal('3')
+        assert pm10.value == Decimal('9')
+
+    def test_pre_cutover_row_with_a_null_is_skipped_for_both(self):
+        assert self._build(_ts(2019, 6, 1), '3', None) == (None, None)
+        assert self._build(_ts(2019, 6, 1), None, '9') == (None, None)
+
+    def test_post_cutover_glitch_is_copied_verbatim(self):
+        pm1, pm10 = self._build(_ts(2023, 6, 1), '9', '3')
+        assert pm1.value == Decimal('9')
+        assert pm10.value == Decimal('3')
+
+    def test_post_cutover_single_value_is_copied(self):
+        pm1, pm10 = self._build(_ts(2023, 6, 1), '3', None)
+        assert pm1.value == Decimal('3')
+        assert pm10 is None
+
+    def test_cutover_boundary_counts_as_post(self):
+        pm1, pm10 = self._build(PM_COLUMN_CUTOVER, '9', '3')
+        assert pm1.value == Decimal('9')
+        assert pm10.value == Decimal('3')
+        pm1, pm10 = self._build(PM_COLUMN_CUTOVER - timedelta(seconds=1), '9', '3')
+        assert pm1.value == Decimal('3')
+        assert pm10.value == Decimal('9')
+
+    def test_find_missing_raw_entries_yields_corrected_values(self):
+        start = _ts(2019, 6, 1)
+        Entry.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=start + timedelta(hours=1),
+            location=self.monitor.location, pm10=Decimal('9'), pm100=Decimal('3'),
+        )
+        end = start + timedelta(days=1)
+        pm1 = find_missing_raw_entries(self.monitor, entry_models.PM10, self.pm10_map, start, end)
+        pm10 = find_missing_raw_entries(self.monitor, entry_models.PM100, self.pm100_map, start, end)
+        assert [e.value for e in pm1] == [Decimal('3')]
+        assert [e.value for e in pm10] == [Decimal('9')]
+
+    def test_chunk_backfill_writes_corrected_values(self):
+        from camp.apps.monitors.tasks import backfill_monitor_chunk
+        start, end = _ts(2019, 6, 1), _ts(2019, 6, 8)
+        job = EntryBackfillJob.objects.create(
+            cursor=end, range_start=_ts(2017, 1, 1), range_end=end,
+            chunk_start=start, pending_tasks=1, batch_id=1,
+        )
+        Entry.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=start + timedelta(hours=1),
+            location=self.monitor.location, pm10=Decimal('9'), pm100=Decimal('3'),
+        )
+        backfill_monitor_chunk(job.pk, str(self.monitor.pk), start, end, 1)
+        raw = entry_models.PM10.Stage.RAW
+        assert entry_models.PM10.objects.get(monitor=self.monitor, stage=raw).value == Decimal('3')
+        assert entry_models.PM100.objects.get(monitor=self.monitor, stage=raw).value == Decimal('9')
