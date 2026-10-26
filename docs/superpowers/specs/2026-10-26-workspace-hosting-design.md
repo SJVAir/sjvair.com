@@ -155,7 +155,7 @@ Modeled on `scripts/import-monitor-map.sh`:
     `<meta name="viewport" content="width=device-width, initial-scale=1">`,
     `<title>SJVAir Dashboard</title>` (a default; the app sets per-page titles),
     `<link rel="manifest" href="/workspace/manifest.webmanifest">`, sjvair.com's existing
-    favicon from its static files, `<link rel="stylesheet" href="{% static 'workspace/app.css' %}">`,
+    favicon (`{% static 'img/favicon/favicon.ico' %}`), `<link rel="stylesheet" href="{% static 'workspace/app.css' %}">`,
     `<script type="module" src="{% static 'workspace/app.js' %}"></script>`;
   - body: the mount element `<div id="SJVAirDataDashboard"></div>` (matching monitor-map's
     `SJVAirMonitorMap`; the app mounts into it and does not create it) and the identity `json_script` beside it;
@@ -318,4 +318,7 @@ stack at this branch for verification.
   only after `foundations-5a-shipping` builds `dist/workspace/` and the contract section is
   reviewed, so it plans against the real output and final values, not a stand-in.
 - Re-check the contract values above against the spec 5 design's "Hosting contract"
-  section once the user has reviewed it there; that section is authoritative.
+  section (approved by the user 2026-10-26: data-dashboard
+  `docs/superpowers/specs/2026-10-26-foundations-5a-shipping-design.md` on
+  `foundations-5a-shipping`; re-checked the same day, consistent). That section is
+  authoritative.
