@@ -7,8 +7,15 @@ BETA_TOOLS_FLAG = 'beta_tools'
 BETA_TESTERS_GROUP = 'Beta testers'
 
 
+# Browsers fetch a web app manifest without cookies, so gating it would 404
+# it for beta testers too. It holds nothing private (name, colors, icon URLs).
+UNGATED_PATHS = {'/workspace/manifest.webmanifest'}
+
+
 def is_beta_path(path):
     """Whether a URL path is behind the beta gate: the data tools under /tools/ and the dashboard at /workspace."""
+    if path in UNGATED_PATHS:
+        return False
     return path.startswith('/tools/') or path == '/workspace' or path.startswith('/workspace/')
 
 

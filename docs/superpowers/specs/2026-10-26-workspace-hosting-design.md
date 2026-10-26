@@ -171,7 +171,9 @@ Modeled on `scripts/import-monitor-map.sh`:
 - **Performance:** read and rewrite once per process (cache in memory, keyed on nothing;
   the file only changes with a deploy, which restarts dynos). A missing file is a 404
   with a logged error, not a 500.
-- Behind the same beta gate as the page.
+- **Not behind the beta gate** (decided by the user 2026-10-26, after the final review): browsers
+  fetch `<link rel="manifest">` without cookies, so a gated manifest 404s even for beta
+  testers. It holds nothing private; it is sent `X-Robots-Tag: noindex`.
 
 ### 5. Content Security Policy
 
@@ -211,7 +213,7 @@ Modeled on `scripts/import-monitor-map.sh`:
 ### 6. Beta gate and nav
 
 - Extend `BetaToolsMiddleware` / `camp/utils/beta.py` so `/workspace` and everything
-  under `/workspace/` (including the manifest) is a 404 without the `beta_tools` flag,
+  under `/workspace/` (except the manifest; see section 4) is a 404 without the `beta_tools` flag,
   exactly as `/tools/` is. Generalize the single prefix into a list of gated prefixes;
   keep `/workspacefoo` ungated. `BETA_TOOLS_GATE=0` opens it, as today.
 - Shared links (`/workspace/shared/...`) are gated too during the preview, so testers

@@ -208,7 +208,8 @@ docker compose run --rm web python manage.py seed_beta_tester
 ```
 
 - **Beta gate:** `/workspace` is behind the `beta_tools` flag like `/tools/` (404 without
-  it); "My Dashboard" is in the beta-only Data Tools menu.
+  it); "My Dashboard" is in the beta-only Data Tools menu. The manifest is exempt
+  (browsers fetch it without cookies; it holds nothing private) and is sent `noindex`.
 - **CSP:** built from `camp/apps/workspace/csp-hosts.json`, a byte-for-byte copy of
   data-dashboard's `csp-hosts.json`; update both together. `WORKSPACE_CSP_ENFORCE`
   (defaults to `DEBUG`: enforced locally, report-only in production until set to `1`

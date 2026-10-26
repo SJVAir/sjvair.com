@@ -48,4 +48,6 @@ class WorkspaceManifest(View):
         data = load_manifest(path, static('workspace/'))
         if data is None:
             raise Http404()
-        return JsonResponse(data, content_type='application/manifest+json')
+        response = JsonResponse(data, content_type='application/manifest+json')
+        response['X-Robots-Tag'] = 'noindex'  # reachable without the beta flag
+        return response

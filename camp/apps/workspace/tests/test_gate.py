@@ -1,14 +1,19 @@
+import json
+import tempfile
+from pathlib import Path
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from waffle.models import Flag
 
+from camp.apps.workspace import manifest
 from camp.utils.beta import BETA_TESTERS_GROUP, BETA_TOOLS_FLAG, is_beta_path
 
 User = get_user_model()
 
-GATED = ['/workspace', '/workspace/', '/workspace/shared/x', '/workspace/manifest.webmanifest']
+GATED = ['/workspace', '/workspace/', '/workspace/shared/x']
 
 
 @override_settings(BETA_TOOLS_GATE=True)
@@ -33,7 +38,6 @@ class WorkspaceGateTests(TestCase):
     def test_signed_in_without_flag_gets_404(self):
         self.client.force_login(self.user('559-555-0121'))
         assert self.client.get('/workspace/').status_code == 404
-        assert self.client.get('/workspace/manifest.webmanifest').status_code == 404
 
     def test_beta_tester_gets_the_page(self):
         self.client.force_login(self.beta_tester('559-555-0122'))
@@ -49,6 +53,19 @@ class WorkspaceGateTests(TestCase):
         assert is_beta_path('/workspace/dashboards/x') is True
         assert is_beta_path('/tools/x') is True
         assert is_beta_path('/about/') is False
+
+    def test_manifest_is_not_gated(self):
+        # Browsers fetch <link rel="manifest"> without cookies, so a gated
+        # manifest would 404 even for beta testers. It holds nothing private.
+        assert is_beta_path('/workspace/manifest.webmanifest') is False
+        dist = Path(tempfile.mkdtemp())
+        (dist / 'manifest.webmanifest').write_text(json.dumps({'name': 'SJVAir Dashboard', 'icons': []}))
+        manifest.clear_cache()
+        with override_settings(WORKSPACE_DIST_DIR=str(dist)):
+            response = self.client.get('/workspace/manifest.webmanifest')
+        assert response.status_code == 200
+        assert response['X-Robots-Tag'] == 'noindex'
+        assert self.client.get('/workspace/').status_code == 404
 
     def test_nav_link(self):
         assert 'My Dashboard' not in self.client.get('/about/').content.decode()
