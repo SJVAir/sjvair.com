@@ -217,7 +217,7 @@ class OilGasTabTests(WellsPagesTestCase):
         assert '<p class="heading">Idle wells</p><p class="title">1</p>' in stats and '<p class="heading">Active wells</p><p class="title">0</p>' in stats
         assert 'No wells match these filters.' in self.get(summary_url, {'operator': 'NOBODY'})
         table = self.get(summary_url + 'table/', {'status': 'Idle'})
-        assert f'href="{summary_url}?status=Idle"' in table and 'Search by location' in table
+        assert f'href="{summary_url}?status=Idle"' in table and 'Search by location' not in table
         # Clearing the filters stays on the Table.
         clear = table[table.index('filters-clear'):table.index('</p>', table.index('filters-clear'))]
         assert f'href="{summary_url}table/' in clear

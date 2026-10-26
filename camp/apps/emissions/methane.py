@@ -196,7 +196,7 @@ def area_q(area):
         return Q()
     if isinstance(area, areas.RadiusArea):
         return area._within('point')
-    return Q(point__intersects=area.region.boundary.geometry)
+    return Q(point__intersects=area.geometry)
 
 
 def has_sources(area):

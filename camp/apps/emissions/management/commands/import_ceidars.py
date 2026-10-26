@@ -17,9 +17,14 @@ from camp.utils import geocode
 class Command(BaseCommand):
     help = 'Import CEIDARS facility emissions for the covered counties and one inventory year.'
 
-    def status(self, msg):
-        """Write an overwriting status line, clearing any leftover characters."""
-        self.stdout.write(f'{msg}\033[K', ending='\r')
+    def status(self, msg, transient=False):
+        """In a terminal, overwrite one status line. In a log, where a carriage
+        return doesn't end a line, write each status on its own line and skip
+        the transient ones (a per-row counter)."""
+        if self.stdout.isatty():
+            self.stdout.write(f'{msg}\033[K', ending='\r')
+        elif not transient:
+            self.stdout.write(msg)
 
     def add_arguments(self, parser):
         parser.add_argument('--year', type=int, required=True, help='Inventory year (e.g. 2024)')
@@ -141,7 +146,7 @@ class Command(BaseCommand):
             total_rows = len(merged)
             seen_keys = set()
             for i, (_, row) in enumerate(merged.iterrows(), 1):
-                self.status(f'{label}: {i}/{total_rows} facilities...')
+                self.status(f'{label}: {i}/{total_rows} facilities...', transient=True)
                 district = row['DIS']
                 facid = int(row['FACID'])
                 key = (district, facid)

@@ -64,8 +64,8 @@ def well_q(area):
         return area._within('point')
     region = area.region
     if region.type == Region.Type.COUNTY:
-        return Q(county=region)
-    return Q(point__intersects=region.boundary.geometry)
+        return Q(county=region) | area.point_q('point') if area.buffer else Q(county=region)
+    return Q(point__intersects=area.geometry)
 
 
 def location_q(area):
@@ -74,7 +74,7 @@ def location_q(area):
         return Q()
     if isinstance(area, areas.RadiusArea):
         return area._within('point')
-    return Q(point__intersects=area.region.boundary.geometry)
+    return Q(point__intersects=area.geometry)
 
 
 def area_wells(area, filters=None):

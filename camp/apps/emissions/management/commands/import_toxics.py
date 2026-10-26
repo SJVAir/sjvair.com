@@ -39,8 +39,14 @@ def parse_rows(frame):
 class Command(BaseCommand):
     help = "Import every toxic air contaminant each CEIDARS facility reported for one year, from CARB's per-facility detail CSVs."
 
-    def status(self, msg):
-        self.stdout.write(f'{msg}\033[K', ending='\r')
+    def status(self, msg, transient=False):
+        """In a terminal, overwrite one status line. In a log, where a carriage
+        return doesn't end a line, write each status on its own line and skip
+        the transient ones (a per-row counter)."""
+        if self.stdout.isatty():
+            self.stdout.write(f'{msg}\033[K', ending='\r')
+        elif not transient:
+            self.stdout.write(msg)
 
     def add_arguments(self, parser):
         parser.add_argument('--year', type=int, required=True, help='Inventory year (e.g. 2024)')

@@ -1,12 +1,13 @@
 {% load pesticides_explorer %}
 {% comment %}
 The records browser's filters: on the Records page, and on a place page's
-Records tab. Like every map tab's filter box, Search by location comes first
-(beside the form, so Enter there doesn't submit the filters), then the
-filters. There's no general search here: the pickers below are it.
+Records tab. On the Records page, like every Valley-wide map tab's filter
+box, Search by location comes first (beside the form, so Enter there doesn't
+submit the filters), then the filters; a place's tab has none. There's no
+general search here: the pickers below are it.
 {% endcomment %}
 <div class="records-filters box" data-filter-box>
-{% include 'regions/includes/find-field.html' %}
+{% if find_field %}{% include 'regions/includes/find-field.html' %}{% endif %}
 <form method="GET" id="records-filter-form">
     {% include 'pesticides/includes/scope-hidden.html' %}
     {{ form.region }}

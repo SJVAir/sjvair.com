@@ -1,16 +1,16 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone as dt_timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from django.contrib.gis.geos import Point
 from django.test import TestCase
-from django.utils import timezone
 
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.cimis.api import CIMISAPI
 from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.monitors.cimis.tasks import parse_hms_coordinate, process_cimis_station
+from camp.utils.datetime import localtime
 
 
 class CIMISModelTests(TestCase):
@@ -265,6 +265,29 @@ class CimisHandlePayloadTests(TestCase):
         from camp.apps.entries import models as entry_models
         assert not any(isinstance(e, entry_models.Humidity) for e in entries)
 
+    def test_skips_a_value_too_large_for_its_column_and_keeps_the_rest(self):
+        # A real reading from station 125, 2024-10-09 11:00.
+        record = self.make_record(HlyVapPres={'Value': '8460.00', 'Qc': 'Q', 'Unit': '(mbar)'})
+        entries = self.monitor.handle_payload(record)
+
+        from camp.apps.entries import models as entry_models
+        assert not entry_models.VaporPressure.objects.exists()
+        assert any(isinstance(e, entry_models.Temperature) for e in entries)
+
+    def test_skips_a_value_that_rounds_past_its_column(self):
+        record = self.make_record(HlyVapPres={'Value': '99.996', 'Qc': ' ', 'Unit': '(mbar)'})
+        self.monitor.handle_payload(record)
+
+        from camp.apps.entries import models as entry_models
+        assert not entry_models.VaporPressure.objects.exists()
+
+    def test_skips_an_unparseable_value(self):
+        record = self.make_record(HlyAirTmp={'Value': '--', 'Qc': ' ', 'Unit': '(F)'})
+        entries = self.monitor.handle_payload(record)
+
+        from camp.apps.entries import models as entry_models
+        assert not any(isinstance(e, entry_models.Temperature) for e in entries)
+
 
 class ProcessCimisDataTests(TestCase):
     def setUp(self):
@@ -413,6 +436,26 @@ class ImportCimisDataTests(TestCase):
         from camp.apps.entries import models as entry_models
         assert not entry_models.Temperature.objects.exists()
 
+    @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
+    def test_asks_for_the_pacific_date_after_the_utc_date_rolls_over(self, MockAPI):
+        CIMIS.objects.create(
+            name='Station A',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+        mock_instance = MockAPI.return_value
+        mock_instance.get_hourly_data.return_value = []
+
+        from camp.apps.monitors.cimis.tasks import import_cimis_data
+        # 8:45 PM PDT on Oct 24 is already Oct 25 in UTC.
+        with patch('django.utils.timezone.now', return_value=datetime(2026, 10, 25, 3, 45, tzinfo=dt_timezone.utc)):
+            import_cimis_data()
+
+        called_kwargs = mock_instance.get_hourly_data.call_args.kwargs
+        assert called_kwargs['start_date'] == date(2026, 10, 24)
+        assert called_kwargs['end_date'] == date(2026, 10, 24)
+
 
 class FinalizeCimisDataTests(TestCase):
     def test_no_op_when_no_monitors_exist(self):
@@ -434,12 +477,32 @@ class FinalizeCimisDataTests(TestCase):
         from camp.apps.monitors.cimis.tasks import finalize_cimis_data
         finalize_cimis_data()
 
-        yesterday = timezone.localtime(timezone.now()).date() - timedelta(days=1)
+        yesterday = localtime().date() - timedelta(days=1)
         called_kwargs = mock_instance.get_hourly_data.call_args.kwargs
         assert called_kwargs['station_numbers'] == ['2']
         assert called_kwargs['start_date'] == yesterday
         assert called_kwargs['end_date'] == yesterday
         assert sorted(called_kwargs['data_items']) == sorted(CIMIS.ENTRY_MAP.keys())
+
+    @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
+    def test_queries_the_pacific_yesterday(self, MockAPI):
+        CIMIS.objects.create(
+            name='Station A',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+        mock_instance = MockAPI.return_value
+        mock_instance.get_hourly_data.return_value = []
+
+        from camp.apps.monitors.cimis.tasks import finalize_cimis_data
+        # Its 12:00 UTC run: 5 AM PDT on Oct 25.
+        with patch('django.utils.timezone.now', return_value=datetime(2026, 10, 25, 12, 0, tzinfo=dt_timezone.utc)):
+            finalize_cimis_data()
+
+        called_kwargs = mock_instance.get_hourly_data.call_args.kwargs
+        assert called_kwargs['start_date'] == date(2026, 10, 24)
+        assert called_kwargs['end_date'] == date(2026, 10, 24)
 
     @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
     def test_ingests_records_from_yesterday(self, MockAPI):
@@ -449,7 +512,7 @@ class FinalizeCimisDataTests(TestCase):
             position=Point(-119.7871, 36.7378, srid=4326),
             location=CIMIS.LOCATION.outside,
         )
-        yesterday = timezone.localtime(timezone.now()).date() - timedelta(days=1)
+        yesterday = localtime().date() - timedelta(days=1)
         record = {
             'Date': yesterday.strftime('%Y-%m-%d'),
             'Hour': '2400',
@@ -477,7 +540,7 @@ class FinalizeCimisDataTests(TestCase):
             position=Point(-119.7871, 36.7378, srid=4326),
             location=CIMIS.LOCATION.outside,
         )
-        yesterday = timezone.localtime(timezone.now()).date() - timedelta(days=1)
+        yesterday = localtime().date() - timedelta(days=1)
 
         def record(value):
             return {

@@ -267,7 +267,11 @@ class SharedHeaderTests(TestCase):
 
 
 class FilterBoxOrderTests(TestCase):
-    """Every map tab's filter box: its search, then Search by location into the same tab elsewhere, then its own filters."""
+    """
+    A Valley-wide map tab's filter box: its search, then Search by location
+    into the same tab of a place, then its own filters. A place's own tab has
+    no Search by location: the page is the place.
+    """
     fixtures = ['regions.yaml', 'emissions.yaml']
 
     def box(self, url):
@@ -275,22 +279,34 @@ class FilterBoxOrderTests(TestCase):
         start = content.index('class="explorer-filters box"')
         return content, content[start:content.index('</form>', start)]
 
-    def test_an_area_tab_searches_then_finds_a_place(self):
+    def test_the_valley_tab_searches_then_finds_a_place(self):
         fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
-        content, box = self.box(fresno.get_emissions_tab_url('facilities'))
+        content, box = self.box(reverse('emissions:facility-list'))
         assert box.index('id="facility-q"') < box.index('Search by location') < box.index('id="facility-sector"')
         assert f'data-near-url="{reverse("emissions:near-me-facilities")}"' in box
         assert fresno.get_emissions_tab_url('facilities') in content  # the places land on their own Facilities tab
+
+    def test_a_place_tab_has_no_location_search(self):
+        fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        for tab in ('facilities', 'oil-gas', 'methane', 'schools'):
+            response = self.client.get(fresno.get_emissions_tab_url(tab), {'year': '2023'})
+            assert response.status_code == 200, tab
+            assert 'find-area-query' not in response.content.decode(), tab
+        content = self.client.get(fresno.get_emissions_tab_url('facilities'), {'year': '2023'}).content.decode()
+        assert 'id="facility-q"' in content and 'Search by location' not in content
+        near = self.client.get(reverse('emissions:near-me-facilities'), {'lat': '36.737', 'lng': '-119.787', 'radius': '1'}).content.decode()
+        assert 'id="facility-q"' in near and 'find-area-query' not in near
 
     def test_the_dairy_pages(self):
         from camp.apps.emissions.tests.test_dairies import make_dairies
         make_dairies()
         cache.clear()
         fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
-        for url in (reverse('emissions:dairy-list'), fresno.get_emissions_dairies_url()):
-            _, box = self.box(url)
-            assert box.index('id="dairy-q"') < box.index('Search by location'), url
-            assert f'data-near-url="{reverse("emissions:near-me-dairies")}"' in box, url
+        _, box = self.box(reverse('emissions:dairy-list'))
+        assert box.index('id="dairy-q"') < box.index('Search by location')
+        assert f'data-near-url="{reverse("emissions:near-me-dairies")}"' in box
+        content, box = self.box(fresno.get_emissions_dairies_url())
+        assert 'id="dairy-q"' in box and 'find-area-query' not in content
 
 
 class CommunityRedirectTests(TestCase):

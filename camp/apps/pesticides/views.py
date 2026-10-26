@@ -1409,13 +1409,14 @@ class MapPage(vanilla.TemplateView):
         )
 
 
-def area_filter(queryset, *, county=None, region=None, section=None, point=None, radius=None, field_prefix=''):
+def area_filter(queryset, *, county=None, region=None, section=None, point=None, radius=None, buffer=0, field_prefix=''):
     """
     Restrict `queryset` (PesticideUse or PesticideNotice -- both have
     `county`/`mtrs` FKs) to an area. `county` combines with any of the other
     three, but only one of region/section/point applies (section wins over
     region over point). `field_prefix` lets callers reach these fields
-    through a relation (e.g. 'monitor__').
+    through a relation (e.g. 'monitor__'). `buffer` widens a region by that
+    many miles (a widened county is no longer the county).
     """
     def field(name):
         return f'{field_prefix}{name}'
@@ -1426,13 +1427,13 @@ def area_filter(queryset, *, county=None, region=None, section=None, point=None,
     if section is not None:
         queryset = queryset.filter(**{field('mtrs'): section})
     elif region is not None:
-        if region.type == Region.Type.COUNTY:
+        if region.type == Region.Type.COUNTY and not buffer:
             queryset = queryset.filter(**{field('county'): region})
         else:
             # The cached section pks for the region, rather than a spatial
             # join evaluated per row: places.region_area() computes the
             # intersection once and caches it.
-            pks = places.region_area(region).section_pks
+            pks = places.region_area(region, buffer).section_pks
             if not pks:
                 return queryset.none()
             queryset = queryset.filter(**{field('mtrs_id__in'): pks})
@@ -1512,6 +1513,8 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
         self.county = self._get_county()
         self.concern = scope_concern(request)
         self.point, self.radius = self._get_point_and_radius()
+        # A region filter plus ?buffer= is the region widened by that many miles.
+        self.region_buffer = shapes.buffer_param(request.GET)
 
     def _default_range(self):
         """
@@ -1600,6 +1603,7 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
             section=self.related.get('section'),
             point=self.point,
             radius=self.radius,
+            buffer=self.region_buffer,
         )
 
         if data.get('method'):
@@ -1674,6 +1678,7 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
             'method': data.get('method'),
             'fume_method': data.get('fume_method'),
             'region': self.request.GET.get('region', ''),
+            'buffer': self.region_buffer,
             'section': self.request.GET.get('section', ''),
             'chemical': self.request.GET.get('chemical', ''),
             'product': self.request.GET.get('product', ''),
@@ -1685,7 +1690,7 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
         }
         normalized = sorted((key, str(value)) for key, value in params.items())
         digest = hashlib.sha1(repr(normalized).encode()).hexdigest()
-        return f'pesticides:records-totals:v3:{digest}'
+        return f'pesticides:records-totals:v4:{digest}'
 
     def get_totals(self):
         key = self._totals_cache_key()
@@ -1729,6 +1734,7 @@ class RecordsBrowser(NearestPageMixin, vanilla.ListView):
         rows = stats.in_year(PesticideUseRollup.objects.filter(month__gte=1), self.year, self.all_years)
         rows = area_filter(
             rows, county=self.county, region=self.related.get('region'), section=self.related.get('section'),
+            buffer=self.region_buffer,
         )
         if data.get('method'):
             rows = rows.filter(method='' if data['method'] == NO_METHOD else data['method'])
@@ -2092,6 +2098,7 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
         self.county = scope_county(request)
         self.concern = scope_concern(request)
         self.point, self.radius = resolve_point_and_radius(self.form.cleaned_data)
+        self.region_buffer = shapes.buffer_param(request.GET)
         self.mode = 'past' if self.form.cleaned_data.get('past') else 'active'
         # The archive's year and month mean nothing to the active notices; a
         # stale one in the address (Scheduled chosen after a month) is ignored.
@@ -2130,6 +2137,7 @@ class NoticeList(NearestPageMixin, vanilla.ListView):
             section=self.related.get('section'),
             point=self.point,
             radius=self.radius,
+            buffer=self.region_buffer,
         )
 
         data = self.form.cleaned_data
@@ -2496,13 +2504,19 @@ class RegionAreaMixin(AreaPageMixin):
         return shapes.buffer_param(self.request.GET)
 
     def get_area(self):
-        return places.region_area(self.region)
+        return places.region_area(self.region, self.buffer)
 
     def map_clip(self):
         return {'clip_region': self.region.sqid, 'buffer': self.buffer}
 
     def buffer_context(self):
-        return {'buffer': self.buffer, 'buffer_options': shapes.buffer_options(self.request, self.buffer, params=getattr(self, 'original_query', None))}
+        params = getattr(self, 'original_query', None)
+        return {
+            'buffer': self.buffer,
+            'buffer_options': shapes.buffer_options(self.request, self.buffer, params=params),
+            # The numbers on every tab cover the widened region; the header says so.
+            'buffer_note': shapes.buffer_note(self.request, self.buffer, params=params),
+        }
 
     def area_tab_url(self, key):
         url = self.region.get_pesticides_tab_url(key)
@@ -2683,6 +2697,8 @@ class AreaNoticesMixin(AreaNarrowedListMixin):
             section=None,
             area=self.area,
             tab_label='Notices',
+            # The page is the place: no Search by location (NoticeList's).
+            find_field=False,
             # What the list below it adds up to: its mode, month and filters.
             notice_stats=stats.notice_summary(self.get_queryset()),
             **self.header_context(),
@@ -2714,6 +2730,8 @@ class AreaRecordsMixin(AreaNarrowedListMixin):
             section=None,
             area=self.area,
             tab_label='Records',
+            # The page is the place: no Search by location (RecordsBrowser's).
+            find_field=False,
             **self.header_context(),
             **self.tab_scope_context(),
         )
@@ -2735,8 +2753,10 @@ class AreaSchoolsMixin:
         return super().get(request, *args, **kwargs)
 
     def district(self):
-        """The school district this page is, or None."""
+        """The school district this page is, or None (and None past its boundary: the page is then more than the district)."""
         area = self.area
+        if self.buffer:
+            return None
         return area.region if area.kind == 'region' and area.region.type == Region.Type.SCHOOL_DISTRICT else None
 
     def schools_csv(self):
@@ -2796,7 +2816,6 @@ class AreaSchoolsMixin:
                 show_all_sections=True, locations_area=area.locations_area(), **self.map_clip(), **area.map_kwargs(),
                 location_ids=[row['location'].sqid for row in schools['rows']] if schools['is_filtered'] else None,
             ),
-            **find_field_context('schools', stats.scope_query(year, all_years, None, concern)),
             **self.header_context(),
             **self.tab_scope_context(),
             **kwargs,

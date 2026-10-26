@@ -4,10 +4,9 @@ The schools table's filters, in a box beside the map like the other data
 browsers': the name search, the type, the district a site is filed under
 (the one that runs it, or that it sits in), and on a district's own page
 "run by this district only". Every field applies itself as it changes.
-`schools` is places.schools_panel(). Like every map tab's filter box: the
-search first, then Search by location, then the rest. The search and the
-location field sit outside the <form> (the search joins it by its form=
-attribute), so Enter in the location search doesn't submit the filters.
+`schools` is places.schools_panel(). The search sits outside the <form>
+(it joins it by its form= attribute), as on the other filter boxes. Only a
+place has this tab, so there's no Search by location (find_field unset).
 {% endcomment %}
 <div class="explorer-filters schools-filters box">
     <div class="field">
@@ -19,7 +18,7 @@ attribute), so Enter in the location search doesn't submit the filters.
             <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
         </div>
     </div>
-{% include 'regions/includes/find-field.html' %}
+{% if find_field %}{% include 'regions/includes/find-field.html' %}{% endif %}
 <form method="GET" id="schools-filter-form" hx-trigger="submit, change delay:250ms">
     {% include 'pesticides/includes/scope-hidden.html' %}
     {# A near-me place's point and name ride along. #}

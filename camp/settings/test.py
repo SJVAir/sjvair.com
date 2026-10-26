@@ -9,6 +9,10 @@ BETA_TOOLS_GATE = False
 
 MEDIA_ROOT = tempfile.mkdtemp(prefix='sjvair-test-media-')
 
+# The webhook tests sign requests with this; an empty token rejects every
+# signature, so don't depend on .env.test having one.
+TWILIO_AUTH_TOKEN = 'test-twilio-auth-token'
+
 # Database
 
 # The test tables are never ANALYZEd, so the planner wildly overestimates
