@@ -83,6 +83,15 @@ DEBUG = bool(int(env('DJANGO_DEBUG', 1)))
 
 ALLOWED_HOSTS = env('ALLOWED_HOSTS', 'localhost').split(',')
 
+# The data dashboard at /workspace/ (camp.apps.workspace), built into
+# dist/workspace/ by `invoke import-data-dashboard`. Its CSP is report-only
+# unless enforced: on by default in local dev, switched on in production
+# (WORKSPACE_CSP_ENFORCE=1) before public go-live. The report URI is the
+# dashboard Sentry project's security endpoint; unset means no reports.
+WORKSPACE_DIST_DIR = BASE_DIR.child('dist', 'workspace')
+WORKSPACE_CSP_ENFORCE = bool(int(env('WORKSPACE_CSP_ENFORCE', int(DEBUG))))
+WORKSPACE_CSP_REPORT_URI = env('WORKSPACE_CSP_REPORT_URI', '')
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
@@ -139,6 +148,7 @@ INSTALLED_APPS = [
     'camp.apps.emissions',
     'camp.apps.monitors',
     'camp.apps.pesticides',
+    'camp.apps.workspace',
     'camp.apps.monitors.airgradient',
     'camp.apps.monitors.airnow',
     'camp.apps.monitors.aqlite',

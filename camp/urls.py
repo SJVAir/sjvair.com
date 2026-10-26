@@ -40,6 +40,9 @@ urlpatterns = [
     path('tools/emissions/', include(('camp.apps.emissions.urls', 'emissions'), namespace='emissions')),
     path('app/', views.GetTheApp.as_view(), name='app'),
 
+    # The data dashboard (SJVAir/data-dashboard), embedded like monitor-map
+    path('', include('camp.apps.workspace.urls')),
+
     # @sjvair/monitor-map specific routes
     path('monitor/<monitor_id>/', views.PageTemplate.as_view(template_name='pages/index.html')),
     path('widget/', views.RenderStatic.as_view(static_file='widget/index.html')),
