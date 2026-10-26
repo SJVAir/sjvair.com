@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.contrib.gis.db import models
@@ -108,6 +109,20 @@ class CIMIS(Monitor):
 
         return naive.replace(tzinfo=settings.DEFAULT_TIMEZONE)
 
+    @staticmethod
+    def fits_field(EntryModel, value):
+        '''
+        Whether `value` fits the entry's value column. CIMIS sometimes sends a
+        wild reading (e.g. 8460 mbar of vapor pressure); saving one would
+        raise and end the rest of the import.
+        '''
+        field = EntryModel._meta.get_field('value')
+        try:
+            value = Decimal(value).quantize(Decimal(1).scaleb(-field.decimal_places))
+        except InvalidOperation:
+            return False
+        return abs(value) < 10 ** (field.max_digits - field.decimal_places)
+
     def handle_payload(self, record):
         timestamp = self.parse_timestamp(record)
         entries = []
@@ -121,7 +136,7 @@ class CIMIS(Monitor):
                 continue
 
             value = item.get('Value')
-            if value in (None, ''):
+            if value in (None, '') or not self.fits_field(EntryModel, value):
                 continue
 
             entry = self.create_entry(EntryModel, timestamp=timestamp, value=value)

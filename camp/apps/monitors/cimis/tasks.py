@@ -4,7 +4,6 @@ import sentry_sdk
 
 from django.conf import settings
 from django.contrib.gis.geos import Point
-from django.utils import timezone
 
 from django_huey import db_task, db_periodic_task
 from huey import crontab
@@ -12,6 +11,7 @@ from huey import crontab
 from camp.apps.monitors.cimis.api import CIMISAPI
 from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.regions.counties import COUNTY_NAMES
+from camp.utils.datetime import localtime
 
 
 def parse_hms_coordinate(value):
@@ -88,11 +88,15 @@ def _ingest_cimis_data(target_date):
 
 @db_periodic_task(crontab(minute='45'), priority=50)
 def import_cimis_data():
-    today = timezone.localtime(timezone.now()).date()
+    # CIMIS dates are Pacific; TIME_ZONE is UTC, whose date rolls over at
+    # 4-5 PM here, and asking for that date misses the rest of the evening.
+    today = localtime().date()
     _ingest_cimis_data(today)
 
 
-@db_periodic_task(crontab(hour='4', minute='0'), priority=50)
+# Huey crontabs run in UTC: 12:00 is 4-5 AM Pacific, after yesterday's
+# last hours (2400 included) have been published.
+@db_periodic_task(crontab(hour='12', minute='0'), priority=50)
 def finalize_cimis_data():
     """
     CIMIS applies QC to hourly data with some lag, so late hours from
@@ -105,7 +109,7 @@ def finalize_cimis_data():
     value CIMIS revised during QC gets applied here instead of silently
     discarded, and an unchanged value is a no-op.
     """
-    yesterday = timezone.localtime(timezone.now()).date() - timedelta(days=1)
+    yesterday = localtime().date() - timedelta(days=1)
     _ingest_cimis_data(yesterday)
 
 
