@@ -221,6 +221,10 @@ docker compose run --rm web python manage.py seed_beta_tester
   host must be in `csp-hosts.json` before the DSN is set.
 - **Deferred with monitor-map's:** compression, cache headers, ordered uploads, and failing
   the release on an S3 upload error.
+- **Load `app.js` by its exact static URL:** no `?v=` query string and no hashed or renamed
+  copy (e.g. `ManifestStaticFilesStorage`). Hashed chunks import it back as `../app.js`, so
+  a different URL loads it twice and the app boots twice. Don't cache-bust it to work around
+  the missing `Cache-Control`.
 
 ## Architecture Overview
 

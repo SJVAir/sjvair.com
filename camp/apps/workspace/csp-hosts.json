@@ -4,7 +4,7 @@
 	"style-src": ["'self'", "{static}", "'unsafe-inline'"],
 	"font-src": ["'self'", "{static}"],
 	"img-src": ["'self'", "{static}", "data:", "blob:"],
-	"connect-src": ["'self'", "{static}"],
+	"connect-src": ["'self'", "{static}", "https://o270131.ingest.us.sentry.io"],
 	"worker-src": ["'self'", "blob:"],
 	"manifest-src": ["'self'"],
 	"frame-ancestors": ["'none'"],
