@@ -289,6 +289,54 @@ so no chunk is reprocessed before its RAW rows exist.
 Management command `camp/apps/monitors/management/commands/reprocess_legacy_pipeline.py`,
 same `start`/`status`/`cancel` shape as `backfill_legacy_entries`.
 
+## Staged runs
+
+Calibrations are trained on CLEANED data, so a historical run that calibrates
+immediately would use calibrations that are about to be retrained.
+`reprocess_legacy_pipeline start --stop-before STAGE` (stored on
+`PipelineBackfillJob.stop_before`, blank = full pipeline) stops the pipeline
+before a stage. Recommended order:
+
+1. RAW-only steps: `backfill_legacy_entries` and the PurpleAir history import.
+2. `reprocess_legacy_pipeline start --from ... --stop-before calibrated`:
+   RAW -> CORRECTED -> CLEANED only.
+3. Retrain calibrations on the cleaned history.
+4. `reprocess_legacy_pipeline start --from ...` without the flag: picks up the
+   CLEANED entries that have no children and calibrates them.
+5. Verify (`status`, spot-check CALIBRATED counts and `LatestEntry`).
+
+Selection respects the cutoff: `processable_stages` / `find_incomplete_pipelines` /
+`monitors_with_incomplete_pipelines_in` only consider entries whose next processing
+step produces a stage before the cutoff, so a staged run never selects (or wastes an
+attempt on) CLEANED entries, and `status` shows the cutoff.
+
+## Reprocess performance
+
+`reprocess_monitor_chunk` is opt-in optimized; live ingestion is unchanged:
+
+- The chunk's monitor instance is set on every entry it loads, and neighbour/sibling
+  entries fetched by the processors (`entries.models.base.reuse_monitor`) reuse it
+  instead of lazy-loading `monitors_monitor` per entry.
+- `LatestEntry` moves once per series (entry type, processor, stage) at the end of the
+  chunk (`Monitor.deferred_latest_entries`). Candidates only count once their entry's
+  transaction succeeded, so a failed entry is never recorded as newest. The default
+  calibration name is memoized for the same span.
+- Calibrations are resolved once per (entry type, trainer, position) per chunk
+  (`calibrations.lookup.ChunkCalibrationLookup`), with the same ordering as
+  `CalibrationQuerySet.closest` (distance, newest created) over calibrations that had
+  ended by the entry's timestamp.
+
+Measured on 60 timestamps x sensors a/b (60 RAW PM2.5 entries per sensor, varying values):
+
+| | total queries | per RAW PM2.5 entry |
+|---|---|---|
+| before | 3766 | 31.4 |
+| after | 2939 | 24.5 |
+
+Removed: ~360 `monitors_monitor` SELECTs, ~179 `LatestEntry` UPDATEs, ~297 calibration
+SELECTs (down to 5). What remains is mostly per-processor `entry_context` lookups and
+the neighbour/repeat-filter queries in the correction and cleaning processors.
+
 ## PM1.0 / PM10 column swap (pre-2022-04)
 
 Naming: legacy `Entry.pm10` means PM1.0 and `Entry.pm100` means PM10.0; the new

@@ -1,7 +1,9 @@
 import copy
+import logging
 import math
 import uuid
 
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
@@ -104,8 +106,48 @@ class LatestEntry(models.Model):
         self._entry = value
 
 
+logger = logging.getLogger(__name__)
+
+
+class DeferredLatestEntries:
+    '''
+    Collects the LatestEntry candidates of Monitor.deferred_latest_entries().
+    A series is what update_latest_entry keys on (entry type, processor,
+    stage). Candidates are held per unit of work in `pending` and only count
+    toward `newest` once committed, so a rolled-back unit is never recorded.
+    '''
+    def __init__(self):
+        self.pending = {}
+        self.newest = {}
+        self._default_calibrations = {}
+
+    def default_calibration(self, monitor, entry_model):
+        # DefaultCalibration is a database lookup; it can't change mid-run.
+        if entry_model not in self._default_calibrations:
+            self._default_calibrations[entry_model] = monitor.get_default_calibration(entry_model)
+        return self._default_calibrations[entry_model]
+
+    def add(self, lookup, entry):
+        key = tuple(sorted(lookup.items()))
+        current = self.pending.get(key)
+        if current is None or entry.timestamp > current[1].timestamp:
+            self.pending[key] = (lookup, entry)
+
+    def commit(self):
+        for key, (lookup, entry) in self.pending.items():
+            current = self.newest.get(key)
+            if current is None or entry.timestamp > current[1].timestamp:
+                self.newest[key] = (lookup, entry)
+        self.pending = {}
+
+    def discard(self):
+        self.pending = {}
+
+
 class Monitor(models.Model):
     LOCATION = Choices('inside', 'outside')
+
+    _latest_deferral = None # See deferred_latest_entries()
 
     CALIBRATE = False # Legacy
     LAST_ACTIVE_LIMIT = 60 * 60
@@ -482,7 +524,11 @@ class Monitor(models.Model):
 
         # Skip if not the default calibration
         if entry.stage == entry.Stage.CALIBRATED:
-            if entry.processor != self.get_default_calibration(entry.__class__):
+            if self._latest_deferral is not None:
+                default_calibration = self._latest_deferral.default_calibration(self, entry.__class__)
+            else:
+                default_calibration = self.get_default_calibration(entry.__class__)
+            if entry.processor != default_calibration:
                 return
 
         lookup = {
@@ -492,6 +538,13 @@ class Monitor(models.Model):
             'stage': entry.stage,
         }
 
+        if self._latest_deferral is not None:
+            self._latest_deferral.add(lookup, entry)
+            return
+
+        self._write_latest_entry(entry, lookup)
+
+    def _write_latest_entry(self, entry, lookup):
         # Atomic conditional update: only overwrite if our entry is newer.
         # Using filter().update() avoids the TOCTOU race in the update path.
         updated = LatestEntry.objects.filter(
@@ -511,6 +564,27 @@ class Monitor(models.Model):
             except IntegrityError:
                 pass
 
+    @contextmanager
+    def deferred_latest_entries(self):
+        '''
+        Opt-in for bulk reprocessing: while active, update_latest_entry only
+        records candidates on this instance instead of writing LatestEntry
+        per entry. Call `.commit()` on the yielded deferral after each unit of
+        work that succeeded (`.discard()` if it failed and rolled back); on
+        exit one write is made per series for the newest committed entry.
+        Live ingestion never enters this, so its behavior is unchanged.
+        '''
+        deferral = DeferredLatestEntries()
+        self._latest_deferral = deferral
+        try:
+            yield deferral
+        finally:
+            self._latest_deferral = None
+            for lookup, entry in deferral.newest.values():
+                try:
+                    self._write_latest_entry(entry, lookup)
+                except Exception:
+                    logger.exception('Failed to update LatestEntry for monitor %s: %s', self.pk, lookup)
 
     def get_latest_data(self):
         '''
@@ -907,6 +981,10 @@ class PipelineBackfillJob(TimeStampedModel):
     last_error = models.TextField(_('last error'), blank=True, default='')
 
     entries_processed = models.PositiveBigIntegerField(_('entries processed'), default=0)
+
+    stop_before = models.CharField(_('stop before'), max_length=16, blank=True, default='',
+        choices=stages.Stage.choices,
+        help_text=_('Stop the pipeline before this stage. Blank runs the full pipeline.'))
 
     def __str__(self):
         return f'{self.state} @ {self.cursor:%Y-%m-%d}'

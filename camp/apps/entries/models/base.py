@@ -1,3 +1,6 @@
+from contextlib import contextmanager
+from contextvars import ContextVar
+
 from django.conf import settings
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
@@ -12,6 +15,23 @@ from camp.utils import classproperty
 
 from ..managers import EntryQuerySet
 from .. import stages
+
+
+_reused_monitor = ContextVar('reused_monitor', default=None)
+
+
+@contextmanager
+def reuse_monitor(monitor):
+    '''
+    Opt-in for bulk reprocessing: neighbour and sibling entries fetched while
+    active (previous/next/sibling lookups) get `monitor` as their cached
+    `.monitor` instead of lazy-loading the same row again for every entry.
+    '''
+    token = _reused_monitor.set(monitor)
+    try:
+        yield monitor
+    finally:
+        _reused_monitor.reset(token)
 
 
 class BaseEntry(models.Model):
@@ -189,26 +209,34 @@ class BaseEntry(models.Model):
             .exists()
         )
 
+    def _with_reused_monitor(self, queryset):
+        monitor = _reused_monitor.get()
+        if monitor is not None and monitor.pk == self.monitor_id:
+            queryset._known_related_objects = {
+                self._meta.get_field('monitor'): {monitor.pk: monitor},
+            }
+        return queryset
+
     def get_next_entries(self):
-        return self.__class__.objects.filter(
+        return self._with_reused_monitor(self.__class__.objects.filter(
             monitor=self.monitor,
             sensor=self.sensor,
             timestamp__gt=self.timestamp,
             stage=self.stage,
             processor=self.processor,
-        ).order_by('timestamp')
+        ).order_by('timestamp'))
 
     def get_next_entry(self):
         return self.get_next_entries().first()
 
     def get_previous_entries(self):
-        return self.__class__.objects.filter(
+        return self._with_reused_monitor(self.__class__.objects.filter(
             monitor=self.monitor,
             sensor=self.sensor,
             timestamp__lt=self.timestamp,
             stage=self.stage,
             processor=self.processor,
-        ).order_by('-timestamp')
+        ).order_by('-timestamp'))
 
     def get_previous_entry(self):
         return self.get_previous_entries().first()
@@ -227,7 +255,7 @@ class BaseEntry(models.Model):
         if not sensors or len(sensors) < 2:
             return self.__class__.objects.none()
 
-        return (self.__class__.objects
+        return self._with_reused_monitor(self.__class__.objects
             .filter(
                 monitor=self.monitor,
                 timestamp=self.timestamp,

@@ -18,6 +18,8 @@ from camp.apps.monitors.legacy_backfill import (
     monitors_with_legacy_data_in, find_incomplete_pipelines, pipeline_entry_models,
     monitors_with_incomplete_pipelines_in,
 )
+from camp.apps.calibrations.lookup import ChunkCalibrationLookup
+from camp.apps.entries.models.base import reuse_monitor
 from .models import Entry, EntryBackfillJob, Monitor, PipelineBackfillJob
 
 logger = logging.getLogger(__name__)
@@ -127,13 +129,20 @@ def _insert_raw_entries(entry_model, entries):
 
 
 @db_task(priority=1, queue='secondary')
-def reprocess_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id):
+def reprocess_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id, stop_before=''):
     '''
     For one monitor, continue the pipeline for every entry in
     [chunk_start, chunk_end) that find_incomplete_pipelines picks up (any
     stage with a processor configured and no derived entries yet), then
     report completion. Safe to re-run (see the BaseProcessor.run()
     idempotency fix).
+
+    `stop_before` is a stage value; the pipeline stops before producing it
+    (see PipelineBackfillJob.stop_before).
+
+    A chunk reuses one monitor instance for every entry, resolves
+    calibrations once per (type, trainer, position), and moves LatestEntry
+    once per series at the end instead of once per entry.
     '''
     processed_count = 0
     try:
@@ -143,21 +152,28 @@ def reprocess_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id
         monitor = None
 
     if monitor is not None:
-        for entry_model in pipeline_entry_models(type(monitor)).keys():
-            incomplete = find_incomplete_pipelines(monitor, entry_model, chunk_start, chunk_end)
-            for entry in incomplete:
-                # One entry failing (bad data, or an IntegrityError from racing
-                # another worker on the same entry) shouldn't stall the batch.
-                try:
-                    with transaction.atomic():
-                        monitor.process_entry_pipeline(entry)
-                except Exception:
-                    logger.exception(
-                        'Legacy pipeline: failed to process %s %s for monitor %s',
-                        entry_model.__name__, entry.pk, monitor_id,
-                    )
-                    continue
-                processed_count += 1
+        lookup = ChunkCalibrationLookup(chunk_end)
+        with reuse_monitor(monitor), lookup.activate(), monitor.deferred_latest_entries() as latest:
+            for entry_model in pipeline_entry_models(type(monitor)).keys():
+                incomplete = find_incomplete_pipelines(
+                    monitor, entry_model, chunk_start, chunk_end, stop_before,
+                )
+                for entry in incomplete:
+                    entry.monitor = monitor
+                    # One entry failing (bad data, or an IntegrityError from racing
+                    # another worker on the same entry) shouldn't stall the batch.
+                    try:
+                        with transaction.atomic():
+                            monitor.process_entry_pipeline(entry, stop_before or None)
+                    except Exception:
+                        latest.discard()
+                        logger.exception(
+                            'Legacy pipeline: failed to process %s %s for monitor %s',
+                            entry_model.__name__, entry.pk, monitor_id,
+                        )
+                        continue
+                    latest.commit()
+                    processed_count += 1
 
     PipelineBackfillJob.objects.filter(
         pk=job_id, batch_id=batch_id,
@@ -381,7 +397,7 @@ def _pipeline_backfill_dispatch_chunk(job):
     # the cleaning step for each entry depends on the one before it.
     chunk_start = job.cursor
     chunk_end = chunk_end_for(chunk_start, job.range_end, job.chunk_days)
-    monitor_ids = monitors_with_incomplete_pipelines_in(chunk_start, chunk_end)
+    monitor_ids = monitors_with_incomplete_pipelines_in(chunk_start, chunk_end, job.stop_before)
 
     job.chunk_start = chunk_start
     if job.consecutive_failures >= PIPELINE_BACKFILL_MAX_CONSECUTIVE_FAILURES:
@@ -393,9 +409,10 @@ def _pipeline_backfill_dispatch_chunk(job):
 
     job_id = job.pk
     batch_id = job.batch_id
+    stop_before = job.stop_before
     for monitor_id in monitor_ids:
         transaction.on_commit(
-            lambda m=monitor_id: reprocess_monitor_chunk(job_id, str(m), chunk_start, chunk_end, batch_id)
+            lambda m=monitor_id: reprocess_monitor_chunk(job_id, str(m), chunk_start, chunk_end, batch_id, stop_before)
         )
 
 
@@ -422,7 +439,7 @@ def _pipeline_backfill_restart_batch(job):
 
     chunk_start = job.chunk_start
     chunk_end = chunk_end_for(chunk_start, job.range_end, job.chunk_days)
-    monitor_ids = monitors_with_incomplete_pipelines_in(chunk_start, chunk_end)
+    monitor_ids = monitors_with_incomplete_pipelines_in(chunk_start, chunk_end, job.stop_before)
 
     job.batch_id += 1
     job.pending_tasks = len(monitor_ids)
@@ -431,7 +448,8 @@ def _pipeline_backfill_restart_batch(job):
 
     job_id = job.pk
     batch_id = job.batch_id
+    stop_before = job.stop_before
     for monitor_id in monitor_ids:
         transaction.on_commit(
-            lambda m=monitor_id: reprocess_monitor_chunk(job_id, str(m), chunk_start, chunk_end, batch_id)
+            lambda m=monitor_id: reprocess_monitor_chunk(job_id, str(m), chunk_start, chunk_end, batch_id, stop_before)
         )

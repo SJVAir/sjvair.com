@@ -6,6 +6,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 
+from camp.apps.entries.stages import Stage
 from camp.utils.datetime import make_aware
 from camp.apps.monitors.models import PipelineBackfillJob
 
@@ -15,7 +16,12 @@ LIVE_MARGIN = timedelta(days=1)
 
 
 class Command(BaseCommand):
-    help = 'Start, monitor, or cancel the historical pipeline reprocessing job.'
+    help = (
+        'Start, monitor, or cancel the historical pipeline reprocessing job. '
+        'Staged use: start with --stop-before calibrated to bring entries up '
+        'to CLEANED, retrain calibrations, then start again without the flag '
+        'to calibrate them.'
+    )
 
     def add_arguments(self, parser):
         parser.add_argument('action', choices=['start', 'status', 'cancel'])
@@ -27,6 +33,9 @@ class Command(BaseCommand):
             help='Replace an existing running/paused job instead of refusing to start a new one')
         parser.add_argument('--chunk-days', dest='chunk_days', type=int, default=1,
             help='Days per chunk (default: 1)')
+        parser.add_argument('--stop-before', dest='stop_before', default='', choices=list(Stage.values),
+            help='Stop the pipeline before this stage (e.g. calibrated runs RAW -> CLEANED only). '
+                 'Entries waiting on later stages are left for a later run without the flag.')
 
     def handle(self, *args, **options):
         action = options['action']
@@ -74,10 +83,12 @@ class Command(BaseCommand):
                 range_start=range_start,
                 range_end=range_end,
                 chunk_days=chunk_days,
+                stop_before=options['stop_before'],
             )
         self.stdout.write(self.style.SUCCESS(
             f'Started pipeline reprocessing job: {range_start:%Y-%m-%d} -> {range_end:%Y-%m-%d} '
             f'({chunk_days}-day chunks)'
+            + (f', stopping before {options["stop_before"]}' if options['stop_before'] else '')
         ))
 
     def _status(self):
@@ -94,6 +105,7 @@ class Command(BaseCommand):
         self.stdout.write(f'Cursor: {job.cursor:%Y-%m-%d}')
         self.stdout.write(f'Range: {job.range_start:%Y-%m-%d} -> {job.range_end:%Y-%m-%d}')
         self.stdout.write(f'Chunk size: {job.chunk_days} day(s)')
+        self.stdout.write(f'Stop before: {job.stop_before or "(none, full pipeline)"}')
         self.stdout.write(f'Progress: {percent:.1f}%')
         self.stdout.write(f'Entries processed: {job.entries_processed}')
         if job.last_error:

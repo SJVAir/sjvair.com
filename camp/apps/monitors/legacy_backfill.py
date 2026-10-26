@@ -272,15 +272,24 @@ def pipeline_entry_models(monitor_class):
     return result
 
 
-def processable_stages(monitor_class, entry_model):
+def processable_stages(monitor_class, entry_model, stop_before=''):
     '''
     Stages of entry_model that have at least one processor configured for
     this monitor type, i.e. stages an entry can be advanced from.
+
+    With `stop_before` set (a stage value, as for process_entry_pipeline's
+    cutoff_stage), only stages with a processor whose output stage is not
+    the cutoff count: e.g. with 'calibrated', CLEANED entries can't be
+    advanced, so they are not selected until a later run without the cutoff.
     '''
-    return list(monitor_class.ENTRY_CONFIG.get(entry_model, {}).get('processors', {}))
+    processors = monitor_class.ENTRY_CONFIG.get(entry_model, {}).get('processors', {})
+    return [
+        stage for stage, stage_processors in processors.items()
+        if any(not stop_before or p.next_stage != stop_before for p in stage_processors)
+    ]
 
 
-def find_incomplete_pipelines(monitor, entry_model, chunk_start, chunk_end):
+def find_incomplete_pipelines(monitor, entry_model, chunk_start, chunk_end, stop_before=''):
     '''
     Returns entry_model instances in the window that sit at a stage with a
     processor configured but have no derived entries yet, so the pipeline can
@@ -295,12 +304,15 @@ def find_incomplete_pipelines(monitor, entry_model, chunk_start, chunk_end):
     rows, which correction folds into 'a'; calibrations missing an input),
     so they are picked up again on every pass. That costs a wasted attempt,
     nothing more.
+
+    `stop_before` (a stage value) restricts selection to entries whose next
+    step produces a stage before the cutoff; see processable_stages.
     '''
     monitor_class = type(monitor)
     stage_order = monitor_class.ENTRY_CONFIG[entry_model]['allowed_stages']
     entries = entry_model.objects.filter(
         monitor=monitor,
-        stage__in=processable_stages(monitor_class, entry_model),
+        stage__in=processable_stages(monitor_class, entry_model, stop_before),
         timestamp__gte=chunk_start,
         timestamp__lt=chunk_end,
         derived_entries__isnull=True,
@@ -308,7 +320,7 @@ def find_incomplete_pipelines(monitor, entry_model, chunk_start, chunk_end):
     return sorted(entries, key=lambda e: (e.timestamp, stage_order.index(e.stage), e.sensor))
 
 
-def monitors_with_incomplete_pipelines_in(chunk_start, chunk_end):
+def monitors_with_incomplete_pipelines_in(chunk_start, chunk_end, stop_before=''):
     '''
     Returns pks of monitors (of the eligible types) with at least one entry
     in [chunk_start, chunk_end) that find_incomplete_pipelines would pick up,
@@ -331,7 +343,7 @@ def monitors_with_incomplete_pipelines_in(chunk_start, chunk_end):
         for entry_model in models_map:
             unprocessed_in_range = entry_model.objects.filter(
                 monitor=OuterRef('pk'),
-                stage__in=processable_stages(monitor_cls, entry_model),
+                stage__in=processable_stages(monitor_cls, entry_model, stop_before),
                 timestamp__gte=chunk_start,
                 timestamp__lt=chunk_end,
                 derived_entries__isnull=True,
