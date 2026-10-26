@@ -383,13 +383,15 @@ class Monitor(models.Model):
         defaults.update(**kwargs)
         return EntryModel(**defaults)
 
-    def create_entry(self, EntryModel, save: bool = True, **data):
+    def create_entry(self, EntryModel, save: bool = True, validate: bool = True, **data):
         entry = self.initialize_entry(EntryModel)
 
         for key, value in data.items():
             setattr(entry, key, value)
 
-        if entry.validation_check():
+        # validate=False skips the per-entry duplicate query, for bulk callers
+        # (save=False) that dedupe a whole window up front.
+        if not validate or entry.validation_check():
             if save:
                 entry.save()
                 entry.refresh_from_db()

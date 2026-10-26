@@ -5,6 +5,10 @@ from datetime import timedelta
 
 from django.contrib.gis.db import models
 from django.contrib.gis.geos import Point
+from django.utils.translation import gettext_lazy as _
+
+from django_sqids import SqidsField, shuffle_alphabet
+from model_utils.models import TimeStampedModel
 
 from camp.apps.calibrations import processors
 from camp.apps.entries import models as entry_models
@@ -175,7 +179,7 @@ class PurpleAir(LCSMixin, Monitor):
         # If we're here, it's probably outside.
         return self.LOCATION.outside
 
-    def create_entries(self, payload, save=True):
+    def create_entries(self, payload, save=True, validate=True):
         timestamp = parse_timestamp(payload.get('last_seen', payload.get('time_stamp')))
         entries = []
 
@@ -196,17 +200,18 @@ class PurpleAir(LCSMixin, Monitor):
                     EntryModel=EntryModel,
                     timestamp=timestamp,
                     save=save,
+                    validate=validate,
                     **data
                 )
                 if entry is not None:
                     entries.append(entry)
         return entries
 
-    def create_entry(self, EntryModel, save: bool = True, **data):
+    def create_entry(self, EntryModel, save: bool = True, validate: bool = True, **data):
         if not data or any(v is None for v in data.values()):
             return
 
-        return super().create_entry(EntryModel, save=save, **data)
+        return super().create_entry(EntryModel, save=save, validate=validate, **data)
 
     def process_entry_pipeline(self, entry, cutoff_stage=None):
         '''
@@ -290,3 +295,77 @@ class PurpleAir(LCSMixin, Monitor):
 
         entry.timestamp = payload['timestamp']
         return super().process_entry(entry, payload)
+
+
+class PurpleAirHistoryJob(TimeStampedModel):
+    '''
+    Tracks progress of re-importing PurpleAir sensor history from the
+    PurpleAir API as RAW entries. Walks backward from range_end like
+    EntryBackfillJob. See
+    docs/superpowers/specs/2026-10-22-purpleair-history-import-design.md.
+    '''
+    class State(models.TextChoices):
+        RUNNING = 'running', _('Running')
+        PAUSED = 'paused', _('Paused')
+        DONE = 'done', _('Done')
+        FAILED = 'failed', _('Failed')
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('purpleair.PurpleAirHistoryJob'))
+
+    state = models.CharField(_('state'), max_length=10, choices=State.choices, default=State.RUNNING)
+
+    cursor = models.DateTimeField(_('cursor'))
+    chunk_start = models.DateTimeField(_('chunk start'), null=True, blank=True)
+    chunk_days = models.PositiveSmallIntegerField(_('chunk days'), default=28)
+    range_start = models.DateTimeField(_('range start'))
+    range_end = models.DateTimeField(_('range end'))
+    monitor_ids = models.JSONField(_('monitor ids'), default=list, blank=True)
+
+    pending_tasks = models.PositiveIntegerField(_('pending tasks'), default=0)
+    batch_id = models.PositiveIntegerField(_('batch id'), default=0)
+    phase_started_at = models.DateTimeField(_('phase started at'), null=True, blank=True)
+    last_progress_at = models.DateTimeField(_('last progress at'), null=True, blank=True)
+    locked_at = models.DateTimeField(_('locked at'), null=True, blank=True)
+
+    consecutive_failures = models.PositiveSmallIntegerField(_('consecutive failures'), default=0)
+    last_error = models.TextField(_('last error'), blank=True, default='')
+
+    requests_made = models.PositiveBigIntegerField(_('requests made'), default=0)
+    rows_fetched = models.PositiveBigIntegerField(_('rows fetched'), default=0)
+    raw_entries_created = models.PositiveBigIntegerField(_('raw entries created'), default=0)
+    data_points = models.PositiveBigIntegerField(_('data points'), default=0)
+
+    def __str__(self):
+        return f'{self.state} @ {self.cursor:%Y-%m-%d}'
+
+
+class PurpleAirHistoryGap(TimeStampedModel):
+    '''
+    A (monitor, window) the history import couldn't fetch completely, so one
+    missing sensor doesn't fail the whole job. Retried with
+    `import_purpleair_history retry`.
+    '''
+    class Reason(models.TextChoices):
+        NOT_FOUND = 'not_found', _('Not found')
+        ERROR = 'error', _('Error')
+        TRUNCATED = 'truncated', _('Truncated')
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('purpleair.PurpleAirHistoryGap'))
+
+    job = models.ForeignKey(PurpleAirHistoryJob, on_delete=models.CASCADE, related_name='gaps')
+    monitor = models.ForeignKey(PurpleAir, on_delete=models.CASCADE, related_name='history_gaps')
+    window_start = models.DateTimeField(_('window start'))
+    window_end = models.DateTimeField(_('window end'))
+    reason = models.CharField(_('reason'), max_length=10, choices=Reason.choices)
+    message = models.TextField(_('message'), blank=True, default='')
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['job', 'monitor', 'window_start', 'window_end'],
+                name='purpleair_history_gap_unique_window',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.reason}: {self.monitor_id} {self.window_start:%Y-%m-%d}'
