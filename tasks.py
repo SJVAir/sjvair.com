@@ -1,5 +1,6 @@
 import glob
 import os
+import shlex
 
 import livereload
 import sass
@@ -77,6 +78,15 @@ def import_monitor_map(ctx, mode):
     ctx.run(f'bash ./scripts/import-monitor-map.sh {mode}')
 
 
+DATA_DASHBOARD_REPO = 'https://github.com/SJVAir/data-dashboard'
+
+
+@task()
+def import_data_dashboard(ctx, source=DATA_DASHBOARD_REPO, ref='main'):
+    """Build the data dashboard into dist/workspace/ (source may be a local repo path)."""
+    ctx.run(f'bash ./scripts/import-data-dashboard.sh {shlex.quote(source)} {shlex.quote(ref)}')
+
+
 @task
 def vendor(ctx):
     """Copy browser-served yarn packages into dist/ (git-ignored)."""
@@ -105,12 +115,13 @@ def bundle(ctx):
 
 
 @task()
-def build(ctx, mode='production'):
+def build(ctx, mode='production', dashboard_source=DATA_DASHBOARD_REPO, dashboard_ref='main'):
     # Directory prep
     ctx.run('rm -rf ./public/static')
     mkdir(path('dist'))
 
     import_monitor_map(ctx, mode)
+    import_data_dashboard(ctx, dashboard_source, dashboard_ref)
     vendor(ctx)
     bundle(ctx)
     styles(ctx)

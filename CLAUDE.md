@@ -185,6 +185,47 @@ explicitly, via `PacificDateTimeField`. `settings.TIME_ZONE` is UTC and
 bypass the middleware and `conftest.py` activates Pacific, so wrap Pacific-date
 assertions in `timezone.override(None)`.
 
+## Data Dashboard (`/workspace/`)
+
+The data dashboard (SJVAir/data-dashboard) is built at deploy and embedded the way
+monitor-map is: `invoke build` runs `scripts/import-data-dashboard.sh`, which clones
+the dashboard's `main`, builds it (Node within its `engines`; npm refuses others), and
+copies `dist/workspace/` into `dist/`, which `collectstatic` and the S3 sync pick up
+unchanged. `camp/apps/workspace` serves `/workspace` and everything under it from a bare
+template (no `base.html`: no GTM, Bulma, or site chrome), plus
+`/workspace/manifest.webmanifest`. The repos' shared contract (file names, the
+`sjvair-identity` block, the CSP list) is data-dashboard's spec 5a "Hosting contract";
+change it there first.
+
+```bash
+# Build a dashboard branch or a local checkout (the checkout must be mounted)
+docker compose run --rm -v ../data-dashboard:/data-dashboard:ro web \
+  invoke import-data-dashboard --source /data-dashboard --ref foundations-5a-shipping
+
+# A non-staff beta tester for the dashboard's embedding tests (DEBUG only; reads
+# WORKSPACE_E2E_IDENTIFIER and WORKSPACE_E2E_PASSWORD)
+docker compose run --rm web python manage.py seed_beta_tester
+```
+
+- **Beta gate:** `/workspace` is behind the `beta_tools` flag like `/tools/` (404 without
+  it); "My Dashboard" is in the beta-only Data Tools menu. The manifest is exempt
+  (browsers fetch it without cookies; it holds nothing private) and is sent `noindex`.
+- **CSP:** built from `camp/apps/workspace/csp-hosts.json`, a byte-for-byte copy of
+  data-dashboard's `csp-hosts.json`; update both together. `WORKSPACE_CSP_ENFORCE`
+  (defaults to `DEBUG`: enforced locally, report-only in production until set to `1`
+  before public go-live). `WORKSPACE_CSP_REPORT_URI` is the dashboard Sentry project's
+  security endpoint; unset sends no reports.
+- **Production config vars** (set by hand when shipping): `VITE_SENTRY_DSN`,
+  `VITE_MAPTILER_KEY`, `VITE_NREL_KEY`, `WORKSPACE_CSP_REPORT_URI`, later
+  `WORKSPACE_CSP_ENFORCE=1`. Never `VITE_PROD_URL` or `VITE_DEV_URL`. The Sentry ingest
+  host must be in `csp-hosts.json` before the DSN is set.
+- **Deferred with monitor-map's:** compression, cache headers, ordered uploads, and failing
+  the release on an S3 upload error.
+- **Load `app.js` by its exact static URL:** no `?v=` query string and no hashed or renamed
+  copy (e.g. `ManifestStaticFilesStorage`). Hashed chunks import it back as `../app.js`, so
+  a different URL loads it twice and the app boots twice. Don't cache-bust it to work around
+  the missing `Cache-Control`.
+
 ## Architecture Overview
 
 SJVAir is a Django/PostGIS air quality monitoring platform for the San Joaquin Valley. It ingests data from multiple sensor networks, processes it through a calibration pipeline, and exposes it via a versioned REST API.

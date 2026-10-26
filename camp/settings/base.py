@@ -56,10 +56,10 @@ BAM_MIRROR_ENABLED = bool(int(env('BAM_MIRROR_ENABLED', 0)))
 
 MONITOR_ACTIVE_WINDOW_DAYS = int(env('MONITOR_ACTIVE_WINDOW_DAYS', '90'))
 
-# The data tools under /tools/ (the pesticides and emissions explorers) are in
-# beta: only users the `beta_tools` waffle flag is on for (the "Beta testers"
-# group, staff, superusers) can see them; everyone else gets a 404 and no nav
-# links. Set BETA_TOOLS_GATE=0 to open them to everyone (tests and local dev).
+# The data tools under /tools/ (the pesticides and emissions explorers) and the
+# data dashboard at /workspace/ are in beta: only users the `beta_tools` waffle
+# flag is on for (the "Beta testers" group, staff, superusers) can see them;
+# everyone else gets a 404 and no nav links. Set BETA_TOOLS_GATE=0 to open them to everyone (tests and local dev).
 # The explorers' data APIs under /api/ aren't gated.
 BETA_TOOLS_GATE = bool(int(env('BETA_TOOLS_GATE', 1)))
 
@@ -82,6 +82,15 @@ SECRET_KEY = env('SECRET_KEY')
 DEBUG = bool(int(env('DJANGO_DEBUG', 1)))
 
 ALLOWED_HOSTS = env('ALLOWED_HOSTS', 'localhost').split(',')
+
+# The data dashboard at /workspace/ (camp.apps.workspace), built into
+# dist/workspace/ by `invoke import-data-dashboard`. Its CSP is report-only
+# unless enforced: on by default in local dev, switched on in production
+# (WORKSPACE_CSP_ENFORCE=1) before public go-live. The report URI is the
+# dashboard Sentry project's security endpoint; unset means no reports.
+WORKSPACE_DIST_DIR = BASE_DIR.child('dist', 'workspace')
+WORKSPACE_CSP_ENFORCE = bool(int(env('WORKSPACE_CSP_ENFORCE', int(DEBUG))))
+WORKSPACE_CSP_REPORT_URI = env('WORKSPACE_CSP_REPORT_URI', '')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -139,6 +148,7 @@ INSTALLED_APPS = [
     'camp.apps.emissions',
     'camp.apps.monitors',
     'camp.apps.pesticides',
+    'camp.apps.workspace',
     'camp.apps.monitors.airgradient',
     'camp.apps.monitors.airnow',
     'camp.apps.monitors.aqlite',
