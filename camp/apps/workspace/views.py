@@ -1,11 +1,16 @@
+import os
+
 from django.conf import settings
+from django.http import Http404, JsonResponse
+from django.templatetags.static import static
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.views.generic import TemplateView
+from django.views.generic import TemplateView, View
 
 from .csp import build_policy, policy_header_name
 from .identity import workspace_identity
+from .manifest import load_manifest
 
 
 def is_shared_path(path):
@@ -31,3 +36,16 @@ class WorkspacePage(TemplateView):
         policy = build_policy(settings.STATIC_URL, settings.WORKSPACE_CSP_REPORT_URI)
         response[policy_header_name(settings.WORKSPACE_CSP_ENFORCE)] = policy
         return response
+
+
+@method_decorator(never_cache, name='dispatch')
+class WorkspaceManifest(View):
+    """The web app manifest, at /workspace/manifest.webmanifest (same-origin)."""
+    http_method_names = ['get', 'head', 'options']
+
+    def get(self, request):
+        path = os.path.join(settings.WORKSPACE_DIST_DIR, 'manifest.webmanifest')
+        data = load_manifest(path, static('workspace/'))
+        if data is None:
+            raise Http404()
+        return JsonResponse(data, content_type='application/manifest+json')

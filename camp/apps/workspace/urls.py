@@ -1,7 +1,9 @@
-from django.urls import re_path
+from django.urls import path, re_path
 
-from .views import WorkspacePage
+from .views import WorkspaceManifest, WorkspacePage
 
 urlpatterns = [
+    # Before the catch-all page route, which would match it too
+    path('workspace/manifest.webmanifest', WorkspaceManifest.as_view(), name='workspace-manifest'),
     re_path(r'^workspace(?:/.*)?$', WorkspacePage.as_view(), name='workspace'),
 ]
