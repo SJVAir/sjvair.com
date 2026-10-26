@@ -21,6 +21,18 @@ def compare_datetimes(dt1, dt2):
     return abs((dt2 - dt1).total_seconds()) < 60
 
 
+class PurpleAirAPIError(Exception):
+    pass
+
+
+class PurpleAirRateLimited(PurpleAirAPIError):
+    pass
+
+
+class PurpleAirNotFound(PurpleAirAPIError):
+    pass
+
+
 class PurpleAirAPI:
     API_URL = 'https://api.purpleair.com'
     READ_KEY = os.environ.get('PURPLEAIR_READ_KEY')
@@ -136,6 +148,36 @@ class PurpleAirAPI:
         except KeyError:
             return None
 
+    HISTORY_RATE_LIMIT_ATTEMPTS = 5
+
+    def get_sensor_history_window(self, sensor_index, start, end, fields=None):
+        ''' Get a sensor's history for [start, end] with exactly one request,
+            returning the rows (dicts) sorted by time_stamp. Never sleeps or
+            retries; the caller decides what to do about the errors.
+        '''
+        try:
+            response = self.get(f'/v1/sensors/{sensor_index}/history', params={
+                'fields': ','.join(fields or self.HISTORY_FIELDS),
+                'start_timestamp': int(start.timestamp()),
+                'end_timestamp': int(end.timestamp()),
+                'average': 0,
+            })
+            data = response.json()
+        except (requests.RequestException, ValueError) as error:
+            raise PurpleAirAPIError(f'{type(error).__name__}: {error}') from error
+
+        error = data.get('error')
+        if error == 'RateLimitExceededError':
+            raise PurpleAirRateLimited(data.get('description', error))
+        if error == 'NotFoundError' or response.status_code == 404:
+            raise PurpleAirNotFound(data.get('description', error or 'Not found'))
+        if error:
+            raise PurpleAirAPIError(f'{error}: {data.get("description", "")}')
+
+        timestamp_index = data['fields'].index('time_stamp')
+        rows = sorted(data['data'], key=lambda row: row[timestamp_index])
+        return [dict(zip(data['fields'], row), sensor_index=sensor_index) for row in rows]
+
     def get_sensor_history(self, sensor_index, start_date=None, end_date=None, fields=None, batch_days=28):
         ''' Get a sensor's historical entries, batching the
             requests and yielding entries as an iterator.
@@ -146,20 +188,21 @@ class PurpleAirAPI:
         chunk_count = len(timestamp_chunks)
 
         for i, (start_timestamp, end_timestamp) in enumerate(timestamp_chunks):
-            response = self.get(f'/v1/sensors/{sensor_index}/history', params={
-                'fields': ','.join(fields or self.HISTORY_FIELDS),
-                'start_timestamp': int(start_timestamp.timestamp()),
-                'end_timestamp': int(end_timestamp.timestamp()),
-                'average': 0,
-            })
-            data = response.json()
-
-            if data.get('error') == 'RateLimitExceededError':
+            # Rate limits retry only the current chunk, a bounded number of times.
+            for attempt in range(self.HISTORY_RATE_LIMIT_ATTEMPTS):
+                response = self.get(f'/v1/sensors/{sensor_index}/history', params={
+                    'fields': ','.join(fields or self.HISTORY_FIELDS),
+                    'start_timestamp': int(start_timestamp.timestamp()),
+                    'end_timestamp': int(end_timestamp.timestamp()),
+                    'average': 0,
+                })
+                data = response.json()
+                if data.get('error') != 'RateLimitExceededError':
+                    break
                 print('Rate limit exceeded. Waiting a few seconds...')
                 time.sleep(max(1, random() * 10)) # Wait 1-10 seconds
-                yield from self.get_sensor_history(sensor_index, start_date, end_date, fields)
-                return
-            elif data.get('error'):
+
+            if data.get('error'):
                 print('\n'.join([
                     f'[ERROR] purpleair_api.get_sensor_history({sensor_index}, {start_date}, {end_date}, {fields})',
                     f'\t -> {data}'

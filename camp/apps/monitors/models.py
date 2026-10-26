@@ -1,7 +1,9 @@
 import copy
+import logging
 import math
 import uuid
 
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
@@ -19,6 +21,7 @@ from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
+from django_sqids import SqidsField, shuffle_alphabet
 from model_utils import Choices, FieldTracker
 from model_utils.models import TimeStampedModel
 from phonenumber_field.modelfields import PhoneNumberField
@@ -103,8 +106,48 @@ class LatestEntry(models.Model):
         self._entry = value
 
 
+logger = logging.getLogger(__name__)
+
+
+class DeferredLatestEntries:
+    '''
+    Collects the LatestEntry candidates of Monitor.deferred_latest_entries().
+    A series is what update_latest_entry keys on (entry type, processor,
+    stage). Candidates are held per unit of work in `pending` and only count
+    toward `newest` once committed, so a rolled-back unit is never recorded.
+    '''
+    def __init__(self):
+        self.pending = {}
+        self.newest = {}
+        self._default_calibrations = {}
+
+    def default_calibration(self, monitor, entry_model):
+        # DefaultCalibration is a database lookup; it can't change mid-run.
+        if entry_model not in self._default_calibrations:
+            self._default_calibrations[entry_model] = monitor.get_default_calibration(entry_model)
+        return self._default_calibrations[entry_model]
+
+    def add(self, lookup, entry):
+        key = tuple(sorted(lookup.items()))
+        current = self.pending.get(key)
+        if current is None or entry.timestamp > current[1].timestamp:
+            self.pending[key] = (lookup, entry)
+
+    def commit(self):
+        for key, (lookup, entry) in self.pending.items():
+            current = self.newest.get(key)
+            if current is None or entry.timestamp > current[1].timestamp:
+                self.newest[key] = (lookup, entry)
+        self.pending = {}
+
+    def discard(self):
+        self.pending = {}
+
+
 class Monitor(models.Model):
     LOCATION = Choices('inside', 'outside')
+
+    _latest_deferral = None # See deferred_latest_entries()
 
     CALIBRATE = False # Legacy
     LAST_ACTIVE_LIMIT = 60 * 60
@@ -382,13 +425,15 @@ class Monitor(models.Model):
         defaults.update(**kwargs)
         return EntryModel(**defaults)
 
-    def create_entry(self, EntryModel, save: bool = True, **data):
+    def create_entry(self, EntryModel, save: bool = True, validate: bool = True, **data):
         entry = self.initialize_entry(EntryModel)
 
         for key, value in data.items():
             setattr(entry, key, value)
 
-        if entry.validation_check():
+        # validate=False skips the per-entry duplicate query, for bulk callers
+        # (save=False) that dedupe a whole window up front.
+        if not validate or entry.validation_check():
             if save:
                 entry.save()
                 entry.refresh_from_db()
@@ -479,7 +524,11 @@ class Monitor(models.Model):
 
         # Skip if not the default calibration
         if entry.stage == entry.Stage.CALIBRATED:
-            if entry.processor != self.get_default_calibration(entry.__class__):
+            if self._latest_deferral is not None:
+                default_calibration = self._latest_deferral.default_calibration(self, entry.__class__)
+            else:
+                default_calibration = self.get_default_calibration(entry.__class__)
+            if entry.processor != default_calibration:
                 return
 
         lookup = {
@@ -489,6 +538,13 @@ class Monitor(models.Model):
             'stage': entry.stage,
         }
 
+        if self._latest_deferral is not None:
+            self._latest_deferral.add(lookup, entry)
+            return
+
+        self._write_latest_entry(entry, lookup)
+
+    def _write_latest_entry(self, entry, lookup):
         # Atomic conditional update: only overwrite if our entry is newer.
         # Using filter().update() avoids the TOCTOU race in the update path.
         updated = LatestEntry.objects.filter(
@@ -508,6 +564,27 @@ class Monitor(models.Model):
             except IntegrityError:
                 pass
 
+    @contextmanager
+    def deferred_latest_entries(self):
+        '''
+        Opt-in for bulk reprocessing: while active, update_latest_entry only
+        records candidates on this instance instead of writing LatestEntry
+        per entry. Call `.commit()` on the yielded deferral after each unit of
+        work that succeeded (`.discard()` if it failed and rolled back); on
+        exit one write is made per series for the newest committed entry.
+        Live ingestion never enters this, so its behavior is unchanged.
+        '''
+        deferral = DeferredLatestEntries()
+        self._latest_deferral = deferral
+        try:
+            yield deferral
+        finally:
+            self._latest_deferral = None
+            for lookup, entry in deferral.newest.values():
+                try:
+                    self._write_latest_entry(entry, lookup)
+                except Exception:
+                    logger.exception('Failed to update LatestEntry for monitor %s: %s', self.pk, lookup)
 
     def get_latest_data(self):
         '''
@@ -654,45 +731,6 @@ class Monitor(models.Model):
 
         if entry.sensor == self.default_sensor and is_latest:
             self.latest = entry
-
-    def get_entry_migration_status(self, min_date=None) -> str:
-        # Normalize min_date to aware datetime if provided
-        if min_date:
-            if isinstance(min_date, date) and not isinstance(min_date, datetime):
-                min_date = datetime.combine(min_date, datetime.min.time())
-            min_date = timezone.make_aware(min_date)
-
-        legacy_qs = self.entries.all()
-
-        # No legacy data at all
-        if not legacy_qs.exists():
-            return 'ok'
-
-        # No legacy data in the requested window → nothing to migrate
-        if min_date and not legacy_qs.filter(timestamp__gte=min_date).exists():
-            return 'ok'
-
-        # First legacy timestamp in the window
-        legacy_ts = (
-            legacy_qs.filter(timestamp__gte=min_date).earliest('timestamp').timestamp
-            if min_date
-            else legacy_qs.earliest('timestamp').timestamp
-        )
-
-        pm25_qs = self.pm25_entries.all()
-
-        # No PM25 data at all
-        if not pm25_qs.exists():
-            return 'needs_full_migration'
-
-        pm25_ts = pm25_qs.earliest('timestamp').timestamp
-
-        # PM25 starts after legacy in the window
-        if pm25_ts > legacy_ts:
-            return 'needs_backfill'
-
-        return 'ok'
-
 
 
 class LCSMixin(Monitor):
@@ -870,3 +908,83 @@ class Entry(models.Model):
             self.celsius = (Decimal(self.fahrenheit) - 32) * (Decimal(5) / Decimal(9))
 
         return super().save(*args, **kwargs)
+
+
+class EntryBackfillJob(TimeStampedModel):
+    '''
+    Tracks progress of the legacy Entry -> entries app RAW-stage backfill.
+    See docs/superpowers/specs/2026-07-28-legacy-entries-backfill-design.md.
+    '''
+    class State(models.TextChoices):
+        RUNNING = 'running', _('Running')
+        PAUSED = 'paused', _('Paused')
+        DONE = 'done', _('Done')
+        FAILED = 'failed', _('Failed')
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('monitors.EntryBackfillJob'))
+
+    state = models.CharField(_('state'), max_length=10, choices=State.choices, default=State.RUNNING)
+
+    cursor = models.DateTimeField(_('cursor'))
+    chunk_start = models.DateTimeField(_('chunk start'), null=True, blank=True)
+    chunk_days = models.PositiveSmallIntegerField(_('chunk days'), default=1)
+    range_start = models.DateTimeField(_('range start'))
+    range_end = models.DateTimeField(_('range end'))
+
+    pending_tasks = models.PositiveIntegerField(_('pending tasks'), default=0)
+    batch_id = models.PositiveIntegerField(_('batch id'), default=0)
+    phase_started_at = models.DateTimeField(_('phase started at'), null=True, blank=True)
+    last_progress_at = models.DateTimeField(_('last progress at'), null=True, blank=True)
+    locked_at = models.DateTimeField(_('locked at'), null=True, blank=True)
+
+    consecutive_failures = models.PositiveSmallIntegerField(_('consecutive failures'), default=0)
+    last_error = models.TextField(_('last error'), blank=True, default='')
+
+    raw_entries_created = models.PositiveBigIntegerField(_('raw entries created'), default=0)
+
+    def __str__(self):
+        return f'{self.state} @ {self.cursor:%Y-%m-%d}'
+
+
+class PipelineBackfillJob(TimeStampedModel):
+    '''
+    Tracks progress of driving historical RAW entries through the
+    correction/cleaning/calibration pipeline. Independent from
+    EntryBackfillJob — can run anytime, safe to re-run. Walks forward from
+    range_start (cursor = start of the next chunk), unlike EntryBackfillJob,
+    because PurpleAir spike cleaning needs each entry's predecessor first.
+    See docs/superpowers/specs/2026-07-28-legacy-entries-backfill-design.md.
+    '''
+    class State(models.TextChoices):
+        RUNNING = 'running', _('Running')
+        PAUSED = 'paused', _('Paused')
+        DONE = 'done', _('Done')
+        FAILED = 'failed', _('Failed')
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('monitors.PipelineBackfillJob'))
+
+    state = models.CharField(_('state'), max_length=10, choices=State.choices, default=State.RUNNING)
+
+    cursor = models.DateTimeField(_('cursor'))
+    chunk_start = models.DateTimeField(_('chunk start'), null=True, blank=True)
+    chunk_days = models.PositiveSmallIntegerField(_('chunk days'), default=1)
+    range_start = models.DateTimeField(_('range start'))
+    range_end = models.DateTimeField(_('range end'))
+
+    pending_tasks = models.PositiveIntegerField(_('pending tasks'), default=0)
+    batch_id = models.PositiveIntegerField(_('batch id'), default=0)
+    phase_started_at = models.DateTimeField(_('phase started at'), null=True, blank=True)
+    last_progress_at = models.DateTimeField(_('last progress at'), null=True, blank=True)
+    locked_at = models.DateTimeField(_('locked at'), null=True, blank=True)
+
+    consecutive_failures = models.PositiveSmallIntegerField(_('consecutive failures'), default=0)
+    last_error = models.TextField(_('last error'), blank=True, default='')
+
+    entries_processed = models.PositiveBigIntegerField(_('entries processed'), default=0)
+
+    stop_before = models.CharField(_('stop before'), max_length=16, blank=True, default='',
+        choices=stages.Stage.choices,
+        help_text=_('Stop the pipeline before this stage. Blank runs the full pipeline.'))
+
+    def __str__(self):
+        return f'{self.state} @ {self.cursor:%Y-%m-%d}'

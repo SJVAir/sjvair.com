@@ -78,3 +78,21 @@ class MonitorAccessMiddleware:
             return uuid.UUID(access_key)
         except Exception:
             return None
+
+
+class DeprecatedAPIMiddleware:
+    """
+    Marks every /api/1.0/ response as deprecated (RFC 9745) and points
+    clients at v2 as the successor version.
+    """
+    PREFIX = '/api/1.0/'
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if request.path.startswith(self.PREFIX):
+            response['Deprecation'] = 'true'
+            response['Link'] = '</api/2.0/docs/>; rel="successor-version"'
+        return response

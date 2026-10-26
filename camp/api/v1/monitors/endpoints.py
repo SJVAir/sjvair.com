@@ -3,7 +3,7 @@ import uuid
 
 from datetime import datetime
 
-from resticus import generics
+from resticus import generics, http
 
 from django import forms
 from django.contrib.gis.db.models.functions import Distance
@@ -13,6 +13,7 @@ from django.utils.functional import cached_property
 from camp.apps.monitors.models import Entry, Monitor
 from camp.utils.forms import LatLonForm
 from camp.utils.views import CachedEndpointMixin
+from camp.api.v2.monitors.serializers import EntrySerializer as V2EntrySerializer
 from .filters import EntryFilter, MonitorFilter
 from .serializers import EntrySerializer, MonitorSerializer
 from ..endpoints import CSVExport
@@ -113,17 +114,25 @@ class EntryList(EntryMixin, generics.ListCreateEndpoint):
             return [entry for entry in source.values(*fields)]
         return super().serialize(source, **kwargs)
 
+    def post(self, request, *args, **kwargs):
+        if not request.monitor.ENTRY_UPLOAD_ENABLED:
+            return http.Http403('Direct entry uploads are not allowed for this monitor.')
+        return super().post(request, *args, **kwargs)
+
     def form_valid(self, form):
-        entry = self.request.monitor.create_entry_legacy(self.request.data)
-        if entry:
-            self.request.monitor.check_latest(entry)
+        # Same as v2's CreateEntry: uploads go into the entries app only. The
+        # legacy Entry table no longer receives writes.
+        created = self.request.monitor.handle_payload(self.request.data)
 
-            if self.request.monitor.latest_id == entry.pk:
-                self.request.monitor.save()
+        results = []
+        for entry in created:
+            results.append(entry)
+            results.extend(self.request.monitor.process_entry_pipeline(entry))
 
-            return {'data': self.serialize(entry)}
+        if not results:
+            return {'error': 'Invalid data.'}
 
-        return {'error': 'Invalid data.'}
+        return {'data': V2EntrySerializer(results, include=['label']).serialize()}
 
 
 class EntryCSV(EntryMixin, CSVExport):
