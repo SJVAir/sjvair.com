@@ -1,8 +1,10 @@
+from django.conf import settings
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.generic import TemplateView
 
+from .csp import build_policy, policy_header_name
 from .identity import workspace_identity
 
 
@@ -26,4 +28,6 @@ class WorkspacePage(TemplateView):
         response = super().get(request, *args, **kwargs)
         if is_shared_path(request.path):
             response['X-Robots-Tag'] = 'noindex'
+        policy = build_policy(settings.STATIC_URL, settings.WORKSPACE_CSP_REPORT_URI)
+        response[policy_header_name(settings.WORKSPACE_CSP_ENFORCE)] = policy
         return response

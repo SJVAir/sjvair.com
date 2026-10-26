@@ -1,0 +1,14 @@
+{
+	"default-src": ["'none'"],
+	"script-src": ["'self'", "{static}"],
+	"style-src": ["'self'", "{static}", "'unsafe-inline'"],
+	"font-src": ["'self'", "{static}"],
+	"img-src": ["'self'", "{static}", "data:", "blob:"],
+	"connect-src": ["'self'", "{static}"],
+	"worker-src": ["'self'", "blob:"],
+	"manifest-src": ["'self'"],
+	"frame-ancestors": ["'none'"],
+	"base-uri": ["'none'"],
+	"object-src": ["'none'"],
+	"form-action": ["'none'"]
+}
