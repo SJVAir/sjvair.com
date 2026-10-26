@@ -56,10 +56,10 @@ BAM_MIRROR_ENABLED = bool(int(env('BAM_MIRROR_ENABLED', 0)))
 
 MONITOR_ACTIVE_WINDOW_DAYS = int(env('MONITOR_ACTIVE_WINDOW_DAYS', '90'))
 
-# The data tools under /tools/ (the pesticides and emissions explorers) are in
-# beta: only users the `beta_tools` waffle flag is on for (the "Beta testers"
-# group, staff, superusers) can see them; everyone else gets a 404 and no nav
-# links. Set BETA_TOOLS_GATE=0 to open them to everyone (tests and local dev).
+# The data tools under /tools/ (the pesticides and emissions explorers) and the
+# data dashboard at /workspace/ are in beta: only users the `beta_tools` waffle
+# flag is on for (the "Beta testers" group, staff, superusers) can see them;
+# everyone else gets a 404 and no nav links. Set BETA_TOOLS_GATE=0 to open them to everyone (tests and local dev).
 # The explorers' data APIs under /api/ aren't gated.
 BETA_TOOLS_GATE = bool(int(env('BETA_TOOLS_GATE', 1)))
 

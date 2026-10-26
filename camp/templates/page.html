@@ -39,6 +39,10 @@
                             <span class="icon"><span class="fa-regular fa-fw fa-industry-windows"></span></span>
                             <span>Facility Emissions Explorer</span> <span class="tag is-success explorer-beta">Beta</span>
                         </a>
+                        <a class="navbar-item" href="/workspace/">
+                            <span class="icon"><span class="fa-regular fa-fw fa-chart-mixed"></span></span>
+                            <span>My Dashboard</span> <span class="tag is-success explorer-beta">Beta</span>
+                        </a>
                     </div>
                 </div>
                 {% endif %}
@@ -224,6 +228,12 @@
                             <span class="fa-regular fa-fw fa-industry-windows"></span>
                         </span>
                         <a href="{% url 'emissions:home' %}">Facility Emissions Explorer</a>
+                    </li>
+                    <li>
+                        <span class="fa-li">
+                            <span class="fa-regular fa-fw fa-chart-mixed"></span>
+                        </span>
+                        <a href="/workspace/">My Dashboard</a>
                     </li>
                     {% endif %}
                 </ul>
