@@ -6,7 +6,7 @@ import requests
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 
-from camp.apps.emissions import locations
+from camp.apps.emissions import locations, stats
 from camp.apps.emissions.importers import carb, ceidars, pmt
 from camp.apps.emissions.models import EmissionsRecord, Facility
 from camp.apps.emissions.sectors import sector_for_sic
@@ -240,6 +240,8 @@ class Command(BaseCommand):
             f'{total_geocode_failures} geocoding failures '
             f'[{total_elapsed:.1f}s]'
         )
+        # Even with --skip-toxics: the facilities and records just changed.
+        stats.clear_caches()
         # Every reported toxic, per facility: the crawl reads the facilities
         # this import just wrote for the year.
         if not options['skip_toxics']:
