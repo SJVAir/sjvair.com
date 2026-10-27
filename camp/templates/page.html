@@ -120,12 +120,15 @@
                                 <span>&nbsp; Change password</span>
                             </a>
                             <hr class="navbar-divider">
-                            <a href="{% url 'account:logout' %}" class="navbar-item">
-                                <span class="icon is-small">
-                                    <span class="far fa-fw fa-sign-out-alt"></span>
-                                </span>
-                                <span>&nbsp;Logout</span>
-                            </a>
+                            <form method="post" action="{% url 'account:logout' %}" class="navbar-logout">
+                                {% csrf_token %}
+                                <button type="submit" class="navbar-item">
+                                    <span class="icon is-small">
+                                        <span class="far fa-fw fa-sign-out-alt"></span>
+                                    </span>
+                                    <span>&nbsp;Logout</span>
+                                </button>
+                            </form>
                         </div>
                     </div>
                 {% else %}

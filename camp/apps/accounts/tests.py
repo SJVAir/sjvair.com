@@ -630,3 +630,47 @@ class SMSLanguageTests(TestCase):
     def test_fold_keeps_inverted_punctuation_as_ascii(self):
         assert gsm_fold('\u00bfQu\u00e9?') == '?Que?'
         assert gsm_fold('\u00a1Hola!') == '!Hola!'
+
+
+class SignInOutPageTests(TestCase):
+    fixtures = ['users']
+
+    def setUp(self):
+        self.user = User.objects.get(email='user@sjvair.com')
+
+    def test_logout_is_a_post_form(self):
+        self.client.force_login(self.user)
+        html = self.client.get('/').content.decode()
+        assert '<form' in html
+        assert 'method="post"' in html
+        assert 'action="/account/logout/"' in html
+        assert 'csrfmiddlewaretoken' in html
+        assert '<a href="/account/logout/"' not in html
+
+    def test_logout_post_signs_out(self):
+        self.client.force_login(self.user)
+        response = self.client.post('/account/logout/')
+        assert response.status_code == 302
+        assert self.client.get('/api/2.0/account/').status_code == 401
+
+    def test_login_keeps_next(self):
+        html = self.client.get('/account/login/?next=/workspace/dashboards/x').content.decode()
+        assert 'name="next"' in html
+        assert 'value="/workspace/dashboards/x"' in html
+
+        response = self.client.post('/account/login/', {
+            'identifier': 'user@sjvair.com',
+            'password': 'letmein',
+            'next': '/workspace/dashboards/x',
+        })
+        assert response.status_code == 302
+        assert response['Location'] == '/workspace/dashboards/x'
+
+    def test_login_ignores_offsite_next(self):
+        response = self.client.post('/account/login/', {
+            'identifier': 'user@sjvair.com',
+            'password': 'letmein',
+            'next': 'https://evil.example/',
+        })
+        assert response.status_code == 302
+        assert response['Location'] == '/'
