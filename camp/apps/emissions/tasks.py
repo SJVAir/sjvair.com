@@ -30,13 +30,14 @@ def import_carbon_mapper():
 
 @db_periodic_task(crontab(minute='45'), priority=10)
 def warm_emissions_caches():
-    # The pass runs on the secondary queue, like the pesticides one: after an
-    # import it renders every warm page, which would hold up the primary queue.
     warm_emissions_caches_now()
 
 
-@db_task(queue='secondary', priority=10)
+# Also queued by clear_caches() after an import. Primary, like the
+# pesticides one: a pass is short, and secondary is for backfills and
+# large imports.
+@db_task(priority=10)
 def warm_emissions_caches_now():
     from camp.apps.emissions import warm
-    with get_queue('secondary').lock_task('warm-emissions-caches'):
+    with get_queue('primary').lock_task('warm-emissions-caches'):
         warm.warm()
