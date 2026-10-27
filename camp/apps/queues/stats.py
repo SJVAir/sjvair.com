@@ -31,6 +31,12 @@ def configure_queue_stats(queue_name, queue=None, db=None):
             options = {}
 
         enable_stats(queue, db, **options)
+        # Setting up opened a connection (to create the stats tables). Close
+        # it: gunicorn preloads the app and forks, and workers sharing one
+        # inherited SSL connection garble each other's queries -- the
+        # dashboard 500'd on every web dyno. peewee reconnects per process.
+        if not db.is_closed():
+            db.close()
         stats_admin.get_huey = lambda: queue
         return queue
     except Exception:

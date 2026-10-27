@@ -24,6 +24,16 @@ class ConfigureQueueStatsTests(TestCase):
         assert getattr(queue, '_stats', None) is not None
         assert stats_admin.get_huey() is queue
 
+    def test_leaves_no_connection_open_to_inherit(self):
+        # Gunicorn forks after setup; an open connection would be shared by
+        # every web worker.
+        queue = MemoryHuey('test-closed', immediate=False)
+        db = peewee.SqliteDatabase(':memory:')
+
+        configure_queue_stats('ignored', queue=queue, db=db)
+
+        assert db.is_closed()
+
     def test_noop_when_queue_is_immediate(self):
         queue = MemoryHuey('test-immediate', immediate=True)
         db = peewee.SqliteDatabase(':memory:')
