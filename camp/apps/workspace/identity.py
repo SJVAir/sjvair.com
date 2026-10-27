@@ -1,15 +1,13 @@
+from camp.api.v2.accounts.session import session_user_data
+
+
 def workspace_identity(user):
     """
     The signed-in user as the dashboard reads it from the page (the
     `sjvair-identity` block; shape set by the data-dashboard hosting
-    contract). Never the API token, never the phone number.
+    contract): exactly what a session-cookie GET /api/2.0/account/ returns,
+    so never the API token.
     """
     if not user.is_authenticated:
         return {'v': 1, 'user': None}
-    return {'v': 1, 'user': {
-        'id': str(user.pk),
-        'name': user.full_name,
-        'email': user.email or None,
-        'emailVerified': False,  # until accounts have verified emails
-        'phoneVerified': user.phone_verified,
-    }}
+    return {'v': 1, 'user': session_user_data(user)}

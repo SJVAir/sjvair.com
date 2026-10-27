@@ -71,14 +71,17 @@ class WorkspacePageTests(TestCase):
         token = get_token(user)
         self.client.force_login(user)
         response = self.client.get('/workspace/')
-        assert identity_of(response) == {'v': 1, 'user': {
-            'id': str(user.pk),
-            'name': 'Ana </script> B',
-            'email': None,
-            'emailVerified': False,
-            'phoneVerified': True,
-        }}
+        identity = identity_of(response)
+        assert identity['v'] == 1
+        assert identity['user'] == self.client.get('/api/2.0/account/').json()['data']
+        assert 'api_token' not in identity['user']
         html = response.content.decode()
         assert token and token not in html
-        assert '5550111' not in html and '555-0111' not in html
         assert '\\u003C/script\\u003E' in html
+
+    def test_identity_staff(self):
+        user = User.objects.create_user(None, 'letmein1', full_name='Staff', is_staff=True)
+        self.client.force_login(user)
+        identity = identity_of(self.client.get('/workspace/'))
+        assert identity['user']['is_admin'] is True
+        assert 'api_token' not in identity['user']

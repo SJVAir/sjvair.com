@@ -13,6 +13,8 @@ from camp.apps.accounts.models import User
 from camp.utils.test import CsrfExemptRequestFactory, debug, get_response_data
 
 from . import endpoints, forms
+from .serializers import get_token
+from .session import session_user_data
 
 client = Client()
 
@@ -601,3 +603,125 @@ class AlertListTests(TestCase):
 
     def test_alert_list_level_is_null_without_updates(self):
         assert self.get_alert_data()['level'] is None
+
+
+class SessionResponseTests(TestCase):
+    fixtures = ['users']
+    urls = ['/api/2.0/account/', '/api/1.0/account/']
+
+    def setUp(self):
+        self.user = User.objects.get(email="user@sjvair.com")
+        self.client = Client()
+
+    def tearDown(self):
+        cache.clear()
+        return super().tearDown()
+
+    def token_header(self):
+        return {'HTTP_AUTHORIZATION': f'Token {get_token(self.user)}'}
+
+    def test_token_get_includes_api_token(self):
+        for url in self.urls:
+            response = self.client.get(url, **self.token_header())
+            assert response.status_code == 200
+            assert response.json()['data']['api_token'] == get_token(self.user)
+
+    def test_session_get_omits_api_token(self):
+        self.client.force_login(self.user)
+        for url in self.urls:
+            response = self.client.get(url)
+            assert response.status_code == 200
+            data = response.json()['data']
+            assert 'api_token' not in data
+            assert data['phone'] == self.user.phone
+
+    def test_session_patch_omits_api_token(self):
+        self.client.force_login(self.user)
+        for url in self.urls:
+            response = self.client.patch(
+                url, json.dumps({'full_name': 'New Name'}), content_type='application/json'
+            )
+            assert response.status_code == 200
+            data = response.json()['data']
+            assert 'api_token' not in data
+            assert data['full_name'] == 'New Name'
+
+    def test_session_password_change_omits_api_token(self):
+        self.client.force_login(self.user)
+        for url, new in zip(self.urls, ['Str0ng-Passw0rd-one', 'Str0ng-Passw0rd-two']):
+            old = 'letmein' if url == self.urls[0] else 'Str0ng-Passw0rd-one'
+            response = self.client.put(
+                url + 'password/',
+                json.dumps({'old_password': old, 'new_password1': new, 'new_password2': new}),
+                content_type='application/json',
+            )
+            assert response.status_code == 200, response.content
+            assert 'api_token' not in response.json()['data']
+            self.client.force_login(User.objects.get(pk=self.user.pk))
+
+    def test_session_and_token_together_is_a_session_request(self):
+        self.client.force_login(self.user)
+        for url in self.urls:
+            response = self.client.get(url, **self.token_header())
+            assert response.status_code == 200
+            assert 'api_token' not in response.json()['data']
+
+    def test_signed_out_is_401(self):
+        for url in self.urls:
+            assert self.client.get(url).status_code == 401
+            assert self.client.patch(url, '{}', content_type='application/json').status_code == 401
+            assert self.client.delete(url).status_code == 401
+            assert self.client.put(
+                url + 'password/', '{}', content_type='application/json'
+            ).status_code == 401
+
+    def test_session_user_data_matches_the_session_response(self):
+        self.client.force_login(self.user)
+        response = self.client.get('/api/2.0/account/')
+        data = session_user_data(self.user)
+        assert data == response.json()['data']
+        assert isinstance(data['id'], str)
+
+
+class LoginSessionTests(TestCase):
+    """
+    `account/login/` answers a GET with the signed-in user. A session-cookie GET
+    must not get the API token; token clients and credential POSTs still do.
+    """
+    fixtures = ['users']
+    urls = ['/api/2.0/account/login/', '/api/1.0/account/login/']
+
+    def setUp(self):
+        self.user = User.objects.get(email="user@sjvair.com")
+        self.client = Client()
+
+    def tearDown(self):
+        cache.clear()
+        return super().tearDown()
+
+    def test_session_get_omits_api_token(self):
+        self.client.force_login(self.user)
+        for url in self.urls:
+            response = self.client.get(url)
+            assert response.status_code == 200, url
+            data = response.json()['data']
+            assert 'api_token' not in data, url
+            assert data['id'] == str(self.user.pk)
+
+    def test_token_get_includes_api_token(self):
+        header = {'HTTP_AUTHORIZATION': f'Token {get_token(self.user)}'}
+        for url in self.urls:
+            response = self.client.get(url, **header)
+            assert response.status_code == 200, url
+            assert response.json()['data']['api_token'] == get_token(self.user), url
+
+    def test_credential_post_includes_api_token(self):
+        credentials = json.dumps({'identifier': 'user@sjvair.com', 'password': 'letmein'})
+        for url in self.urls:
+            response = Client().post(url, credentials, content_type='application/json')
+            assert response.status_code == 200, url
+            assert response.json()['data']['api_token'] == get_token(self.user), url
+
+    def test_signed_out_get_is_401(self):
+        for url in self.urls:
+            assert self.client.get(url).status_code == 401, url

@@ -32,6 +32,7 @@ from camp.apps.alerts.models import Alert
 from camp.apps.accounts.models import User
 
 from . import forms, serializers
+from .session import SESSION_EXCLUDE, SessionUserMixin, is_session_request
 
 
 class AlertList(generics.ListEndpoint):
@@ -68,8 +69,16 @@ class LoginEndpoint(TokenAuthEndpoint):
     serializer_class = serializers.UserSerializer
 
     def get(self, request, **kwargs):
-        data = self.serializer_class(request.user).data
+        # A session-cookie GET never gets the API token. A credential POST
+        # (token clients signing in) has no token authenticator either, but
+        # calls get() to return the token it just earned, so it keeps it.
+        exclude = None
+        if request.method != 'POST' and is_session_request(request):
+            exclude = SESSION_EXCLUDE
+        data = self.serializer_class(request.user, exclude=exclude).data
         return http.Http200({"data": data})
+
+    get.login_required = True
 
     def get_credentials(self, request):
         return {
@@ -88,7 +97,7 @@ class RegisterEndpoint(generics.CreateEndpoint):
     serializer_class = serializers.UserSerializer
 
 
-class UserDetail(generics.DetailUpdateDeleteEndpoint):
+class UserDetail(SessionUserMixin, generics.DetailUpdateDeleteEndpoint):
     """
     Retrieve, update or delete a user
     """
@@ -110,7 +119,7 @@ class UserDetail(generics.DetailUpdateDeleteEndpoint):
         return self.form_invalid(form)
 
 
-class ChangePasswordEndpoint(mixins.UpdateModelMixin, generics.GenericEndpoint):
+class ChangePasswordEndpoint(SessionUserMixin, mixins.UpdateModelMixin, generics.GenericEndpoint):
     documented = False
     form_class = auth_forms.PasswordChangeForm
     model = User
