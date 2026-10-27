@@ -1,5 +1,3 @@
-import esri2gpd
-
 from django.contrib.gis.geos import Point
 
 
@@ -9,6 +7,7 @@ from huey import crontab
 from camp.apps.monitors.models import Entry
 from camp.apps.monitors.aqview.models import AQview
 from camp.apps.regions.counties import COUNTY_NAMES
+from camp.utils import arcgis
 
 
 AQVIEW_URL = "https://gis.carb.arb.ca.gov/hosting/rest/services/Hosted/AQview_revised_PROD_view/FeatureServer/0"
@@ -16,7 +15,7 @@ AQVIEW_URL = "https://gis.carb.arb.ca.gov/hosting/rest/services/Hosted/AQview_re
 
 @db_periodic_task(crontab(minute='*/15'), priority=50)
 def import_aqview_data():
-    records = esri2gpd.get(AQVIEW_URL, where=' and '.join([
+    records = arcgis.get(AQVIEW_URL, where=' and '.join([
         "externalmonitorid in ('BAM 1022', 'BAM 1020')",
         "countyname in ({})".format(
             ', '.join([f"'{c}'" for c in COUNTY_NAMES])

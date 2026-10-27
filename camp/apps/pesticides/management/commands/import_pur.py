@@ -137,7 +137,11 @@ class Command(BaseCommand):
                 f"Fumigants: {counts['chemicals']:,} chemicals, {counts['products']:,} products "
                 f"({counts['added']:,} not flagged by CDPR)"
             )
+            # Again after classifying: the fumigant narrowing reads the flags it just wrote.
+            stats.bump_data_version()
             stats.refresh_landing_stats()
+            from camp.apps.pesticides.tasks import warm_pesticide_caches_now
+            warm_pesticide_caches_now()
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 

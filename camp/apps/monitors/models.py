@@ -3,12 +3,12 @@ import math
 import uuid
 
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 import pandas as pd
 
 from django.conf import settings
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import FieldDoesNotExist, ObjectDoesNotExist, ValidationError
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
 from django.db import IntegrityError
@@ -382,6 +382,31 @@ class Monitor(models.Model):
         defaults.update(**kwargs)
         return EntryModel(**defaults)
 
+    @staticmethod
+    def stored_column(EntryModel, key):
+        '''The column `key` writes: itself, or `value` for a unit property like hpa or celsius.'''
+        try:
+            return EntryModel._meta.get_field(key).attname
+        except FieldDoesNotExist:
+            return 'value'
+
+    @staticmethod
+    def as_stored(EntryModel, key, value):
+        '''
+        `value` as the database would store it in `key`, so an unchanged value
+        compares equal: a float 18.2 never equals the stored Decimal('18.20').
+        '''
+        try:
+            field = EntryModel._meta.get_field(key)
+        except FieldDoesNotExist:
+            return value
+        if value is None or not isinstance(field, models.DecimalField):
+            return value
+        try:
+            return field.to_python(value).quantize(Decimal(1).scaleb(-field.decimal_places))
+        except (ValidationError, InvalidOperation):
+            return value
+
     def create_entry(self, EntryModel, save: bool = True, **data):
         entry = self.initialize_entry(EntryModel)
 
@@ -418,7 +443,11 @@ class Monitor(models.Model):
             for key, value in data.items():
                 if key in lookup_fields:
                     continue
-                if getattr(existing, key) != value:
+                # Compare the column the key sets, read off `entry`, which already
+                # ran any unit setter: an hpa or celsius getter rounds, so reading
+                # it back never equals what the feed sent.
+                column = self.stored_column(EntryModel, key)
+                if getattr(existing, column) != self.as_stored(EntryModel, column, getattr(entry, column)):
                     setattr(existing, key, value)
                     changed = True
             if changed:

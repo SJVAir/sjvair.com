@@ -164,8 +164,12 @@ def rebuild_totals_year(year, atomic=True):
     `rebuild_pesticide_rollup --totals-only` calls this, and a table it
     didn't know about would be left empty and the map would read zeros.
     """
+    # Lazy: stats imports the models, and a module-level import here is circular.
+    from camp.apps.pesticides import stats
     context = transaction.atomic() if atomic else nullcontext()
     with context:
+        # Once the new rows are visible, so nothing caches the old ones under the new version.
+        transaction.on_commit(stats.bump_data_version)
         PesticideUseTotal.objects.filter(year=year).delete()
         written = 0
         with connection.cursor() as cursor:

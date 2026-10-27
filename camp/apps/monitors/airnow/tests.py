@@ -6,7 +6,10 @@ import pytest
 from datetime import datetime, timedelta, timezone as dt_timezone
 
 from django.contrib.gis.geos import GEOSGeometry, Point
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 import requests
@@ -120,6 +123,23 @@ class DataRequestTests(TestCase):
         params = mock_request.call_args.kwargs['params']
         assert 'nowcastonly' not in params
         assert params['includerawconcentrations'] == 1
+
+
+class ActiveTests(TestCase):
+    def test_active_until_the_next_hours_raw_arrives(self):
+        # The newest RAW is up to 2h20m old: an hour's RawConcentration
+        # arrives about 1h20m after it starts.
+        monitor = AirNow.objects.create(
+            name='Fresno - Garland',
+            position=Point(-119.7727, 36.7853, srid=4326),
+            location=AirNow.LOCATION.outside,
+        )
+        hour = timezone.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=2)
+        monitor.handle_payload(make_site_payload('OZONE', 41.0, 38.0, utc=hour.strftime('%Y-%m-%dT%H:%M')))
+
+        with patch('django.utils.timezone.now', return_value=hour + timedelta(hours=2, minutes=20)):
+            assert monitor.is_active
+            assert AirNow.objects.get_active().filter(pk=monitor.pk).exists()
 
 
 class HandlePayloadTests(TestCase):
@@ -476,3 +496,53 @@ class BackfillTests(TestCase):
         backfill.backfill_airnow(self.start, self.end)
 
         assert entry_models.PM25.objects.filter(monitor=self.monitor).count() == 3
+
+    def hourly_payloads(self, hours):
+        return [
+            make_site_payload('PM2.5', 18.2 + hour, 14.1 + hour, utc=f'2026-09-01T{hour:02d}:00')
+            for hour in range(hours)
+        ]
+
+    def count_queries(self, mock_fetch, hours):
+        mock_fetch.return_value = self.hourly_payloads(hours)
+        start = datetime(2026, 9, 1, tzinfo=dt_timezone.utc)
+        backfill.backfill_airnow(start, start + timedelta(hours=hours))  # creates
+        with CaptureQueriesContext(connection) as queries:
+            backfill.backfill_airnow(start, start + timedelta(hours=hours))  # loads and compares
+        return len(queries)
+
+    def test_queries_dont_grow_with_the_hours_in_a_window(self, mock_fetch, mock_sleep):
+        assert self.count_queries(mock_fetch, 3) == self.count_queries(mock_fetch, 24)
+
+    def test_unchanged_rerun_writes_nothing(self, mock_fetch, mock_sleep):
+        mock_fetch.return_value = self.hourly_payloads(6)
+        start = datetime(2026, 9, 1, tzinfo=dt_timezone.utc)
+        backfill.backfill_airnow(start, start + timedelta(hours=6))
+        modified = dict(entry_models.PM25.objects.values_list('pk', 'modified'))
+
+        with CaptureQueriesContext(connection) as queries:
+            backfill.backfill_airnow(start, start + timedelta(hours=6))
+
+        assert dict(entry_models.PM25.objects.values_list('pk', 'modified')) == modified
+        assert not [q for q in queries if q['sql'].startswith(('INSERT', 'UPDATE "entries', 'DELETE'))]
+
+    def test_latest_entry_is_the_newest_hour(self, mock_fetch, mock_sleep):
+        mock_fetch.return_value = self.hourly_payloads(6)
+        start = datetime(2026, 9, 1, tzinfo=dt_timezone.utc)
+
+        backfill.backfill_airnow(start, start + timedelta(hours=6))
+
+        PM25 = entry_models.PM25
+        latest = LatestEntry.objects.get(monitor=self.monitor, stage=PM25.Stage.CLEANED)
+        assert latest.timestamp == start + timedelta(hours=5)
+        assert PM25.objects.get(pk=latest.entry_id).value == Decimal('19.10')
+
+    def test_cleaned_points_at_its_raw(self, mock_fetch, mock_sleep):
+        mock_fetch.return_value = [make_site_payload('PM2.5', 18.2, 14.0)]
+
+        backfill.backfill_airnow(self.start, self.end)
+
+        PM25 = entry_models.PM25
+        raw = self.get_entry(PM25, PM25.Stage.RAW)
+        assert self.get_entry(PM25, PM25.Stage.CLEANED).origin_id == raw.pk
+        assert self.get_entry(PM25, PM25.Stage.CALIBRATED).origin_id == raw.pk
