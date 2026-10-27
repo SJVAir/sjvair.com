@@ -517,6 +517,24 @@ if "SENTRY_DSN" in os.environ:
 
 
 
+# Logging
+#
+# Django's defaults only email request tracebacks (and only to ADMINS, which
+# isn't set), so a 500 left nothing but "status=500" in the Heroku logs. Print
+# them to stderr too; everything else keeps Django's defaults.
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler'},
+    },
+    'loggers': {
+        'django.request': {'handlers': ['console'], 'level': 'ERROR'},
+    },
+}
+
+
 # Scout APM
 
 SCOUT_MONITOR = bool(env('SCOUT_MONITOR') == 'true')
