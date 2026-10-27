@@ -213,7 +213,7 @@ DATABASES = {
 # Redis
 
 REDIS_URL = None
-for var in ["REDIS_URL", "OPENREDIS_URL"]:
+for var in ["REDIS_URL", "OPENREDIS_URL", "REDISCLOUD_URL"]:
     REDIS_URL = env(var)
     if REDIS_URL is not None:
         if REDIS_URL.startswith('rediss'):
