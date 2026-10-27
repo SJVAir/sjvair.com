@@ -44,6 +44,6 @@ def warm_paths():
     return paths
 
 
-def warm():
+def warm(force=False):
     """Render every warm path not yet rendered under the current cache version."""
-    return utils_warm.warm(warm_paths(), version(), WARMED_KEY)
+    return utils_warm.warm(warm_paths(), version(), WARMED_KEY, force=force)

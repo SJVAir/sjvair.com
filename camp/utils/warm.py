@@ -35,15 +35,16 @@ def warm_path(path):
     return response.status_code
 
 
-def warm(paths, version, marker_key):
+def warm(paths, version, marker_key, force=False):
     """
-    Render every one of `paths` not yet marked under `version`, marking each
-    that renders. A page that fails is logged and left unmarked, so the next
-    pass tries it again. Returns {'warmed', 'skipped', 'failed', 'seconds'}.
+    Render every one of `paths` not yet marked under `version` (every one,
+    with `force`), marking each that renders. A page that fails is logged and
+    left unmarked, so the next pass tries it again. Returns {'warmed',
+    'skipped', 'failed', 'seconds'}.
     """
     started = time.monotonic()
     markers = {path: f'{marker_key}:{version}:{path}' for path in paths}
-    done = cache.get_many(list(markers.values()))
+    done = {} if force else cache.get_many(list(markers.values()))
     result = {'warmed': 0, 'skipped': 0, 'failed': 0}
     for path in paths:
         if markers[path] in done:

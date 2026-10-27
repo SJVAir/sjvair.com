@@ -31,6 +31,8 @@ class WarmTests(RollupTestMixin, TestCase):
 
         second = warm.warm()
         assert (second['warmed'], second['skipped']) == (0, first['warmed'])
+        # Unless forced: then every page renders again.
+        assert warm.warm(force=True)['warmed'] == first['warmed']
 
         stats.bump_data_version()
         assert warm.warm()['warmed'] == first['warmed']

@@ -58,6 +58,6 @@ def warm_paths():
     return [*paths, reverse('api:v2:pesticides:township-list')]
 
 
-def warm():
+def warm(force=False):
     """Render every warm path not yet rendered under the current data version (see camp.utils.warm)."""
-    return utils_warm.warm(warm_paths(), stats.data_version(), WARMED_KEY)
+    return utils_warm.warm(warm_paths(), stats.data_version(), WARMED_KEY, force=force)
