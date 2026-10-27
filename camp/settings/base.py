@@ -377,13 +377,17 @@ RESTICUS = {
 }
 
 # huey / django-huey
+#
+# Each queue in its own Redis database: /0, /1, /2 of REDIS_URL, or on Redis
+# Cloud (which serves only database 0) a separate database per queue, set in
+# REDIS_PRIMARY_URL / REDIS_SECONDARY_URL / REDIS_SUMMARIES_URL.
 
 DJANGO_HUEY = {
     'default': 'primary',
     'queues': {
         'primary': {
             'name': 'primary_tasks',
-            'connection': {'url': f'{REDIS_URL}/0'},
+            'connection': {'url': env('REDIS_PRIMARY_URL', f'{REDIS_URL}/0')},
             'consumer': {
                 'periodic': True,
                 'workers': int(env('HUEY_PRIMARY_WORKERS', env('HUEY_WORKERS', 4)))
@@ -393,7 +397,7 @@ DJANGO_HUEY = {
         },
         'secondary': {
             'name': 'secondary_tasks',
-            'connection': {'url': f'{REDIS_URL}/1'},
+            'connection': {'url': env('REDIS_SECONDARY_URL', f'{REDIS_URL}/1')},
             'consumer': {
                 'periodic': False,
                 'workers': int(env('HUEY_SECONDARY_WORKERS', env('HUEY_WORKERS', 4)))
@@ -403,7 +407,7 @@ DJANGO_HUEY = {
         },
         'summaries': {
             'name': 'summaries_tasks',
-            'connection': {'url': f'{REDIS_URL}/2'},
+            'connection': {'url': env('REDIS_SUMMARIES_URL', f'{REDIS_URL}/2')},
             'consumer': {
                 'periodic': True,
                 'workers': int(env('HUEY_SUMMARIES_WORKERS', env('HUEY_WORKERS', 2)))
