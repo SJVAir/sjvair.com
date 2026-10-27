@@ -383,6 +383,14 @@ class Monitor(models.Model):
         return EntryModel(**defaults)
 
     @staticmethod
+    def stored_column(EntryModel, key):
+        '''The column `key` writes: itself, or `value` for a unit property like hpa or celsius.'''
+        try:
+            return EntryModel._meta.get_field(key).attname
+        except FieldDoesNotExist:
+            return 'value'
+
+    @staticmethod
     def as_stored(EntryModel, key, value):
         '''
         `value` as the database would store it in `key`, so an unchanged value
@@ -435,7 +443,11 @@ class Monitor(models.Model):
             for key, value in data.items():
                 if key in lookup_fields:
                     continue
-                if getattr(existing, key) != self.as_stored(EntryModel, key, value):
+                # Compare the column the key sets, read off `entry`, which already
+                # ran any unit setter: an hpa or celsius getter rounds, so reading
+                # it back never equals what the feed sent.
+                column = self.stored_column(EntryModel, key)
+                if getattr(existing, column) != self.as_stored(EntryModel, column, getattr(entry, column)):
                     setattr(existing, key, value)
                     changed = True
             if changed:
