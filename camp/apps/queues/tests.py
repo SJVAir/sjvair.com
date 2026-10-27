@@ -34,6 +34,19 @@ class ConfigureQueueStatsTests(TestCase):
 
         assert db.is_closed()
 
+    def test_closes_the_database_the_stats_models_query_through(self):
+        # huey.contrib.djhuey.stats sets up first and its database is the one
+        # the models' proxy holds -- the connection the dashboard reads over.
+        from huey.contrib.stats import database as stats_proxy
+
+        proxied = stats_proxy.obj
+        assert proxied is not None
+        proxied.connect(reuse_if_open=True)
+
+        configure_queue_stats('ignored', queue=MemoryHuey('test-proxy', immediate=False), db=peewee.SqliteDatabase(':memory:'))
+
+        assert proxied.is_closed()
+
     def test_noop_when_queue_is_immediate(self):
         queue = MemoryHuey('test-immediate', immediate=True)
         db = peewee.SqliteDatabase(':memory:')

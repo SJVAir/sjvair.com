@@ -15,6 +15,7 @@ def configure_queue_stats(queue_name, queue=None, db=None):
     """
     try:
         from django_huey import get_queue
+        from huey.contrib.stats import database as stats_proxy
         from huey.contrib.stats import enable_stats
         from huey.contrib.djhuey.stats import admin as stats_admin
         from huey.contrib.djhuey.stats.apps import stats_database
@@ -31,12 +32,16 @@ def configure_queue_stats(queue_name, queue=None, db=None):
             options = {}
 
         enable_stats(queue, db, **options)
-        # Setting up opened a connection (to create the stats tables). Close
-        # it: gunicorn preloads the app and forks, and workers sharing one
-        # inherited SSL connection garble each other's queries -- the
-        # dashboard 500'd on every web dyno. peewee reconnects per process.
-        if not db.is_closed():
-            db.close()
+        # Setting up opened connections (to create the stats tables). Close
+        # them: gunicorn preloads the app and forks, and workers sharing one
+        # inherited SSL connection garble each other's queries ("SSL error:
+        # decryption failed or bad record mac" -- the dashboard 500'd). peewee
+        # reconnects per process. The stats models query through huey's proxy,
+        # which huey.contrib.djhuey.stats initialized first with its own
+        # database, not `db` -- so close that one too.
+        for database in {db, stats_proxy.obj} - {None}:
+            if not database.is_closed():
+                database.close()
         stats_admin.get_huey = lambda: queue
         return queue
     except Exception:
