@@ -32,6 +32,7 @@ from camp.apps.alerts.models import Alert
 from camp.apps.accounts.models import User
 
 from . import forms, serializers
+from .session import SessionUserMixin
 
 
 class AlertList(generics.ListEndpoint):
@@ -88,7 +89,7 @@ class RegisterEndpoint(generics.CreateEndpoint):
     serializer_class = serializers.UserSerializer
 
 
-class UserDetail(generics.DetailUpdateDeleteEndpoint):
+class UserDetail(SessionUserMixin, generics.DetailUpdateDeleteEndpoint):
     """
     Retrieve, update or delete a user
     """
@@ -110,7 +111,7 @@ class UserDetail(generics.DetailUpdateDeleteEndpoint):
         return self.form_invalid(form)
 
 
-class ChangePasswordEndpoint(mixins.UpdateModelMixin, generics.GenericEndpoint):
+class ChangePasswordEndpoint(SessionUserMixin, mixins.UpdateModelMixin, generics.GenericEndpoint):
     documented = False
     form_class = auth_forms.PasswordChangeForm
     model = User
