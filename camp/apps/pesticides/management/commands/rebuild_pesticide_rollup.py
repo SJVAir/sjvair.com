@@ -28,8 +28,11 @@ class Command(BaseCommand):
 
         if options['fumigants_only']:
             self.write_fumigants(fumigants.classify_fumigants())
+            # The fumigant narrowing reads the flags, not the rollup, so no rebuild bumps it.
+            stats.bump_data_version()
             stats.refresh_landing_stats()
             self.stdout.write('Refreshed cached year facts and landing stats.')
+            self.queue_warm()
             return
 
         totals_only = options['totals_only']
@@ -56,6 +59,12 @@ class Command(BaseCommand):
 
         stats.refresh_landing_stats()
         self.stdout.write('Refreshed cached year facts and landing stats.')
+        self.queue_warm()
+
+    def queue_warm(self):
+        from camp.apps.pesticides.tasks import warm_pesticide_caches_now
+        warm_pesticide_caches_now()
+        self.stdout.write('Queued a cache warm pass for the busiest explorer pages.')
 
     def write_fumigants(self, counts):
         self.stdout.write(

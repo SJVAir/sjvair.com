@@ -5,7 +5,9 @@ from unittest import mock
 import pytest
 
 from django.core.cache import cache
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from camp.apps.pesticides import places, stats
@@ -59,7 +61,7 @@ class AreaTests(RollupTestMixin, TestCase):
         assert ctx['map_config']['year'] == 'all'
         assert ctx['map_config']['year_label'] == '2022\u20132023'
         # Built once and cached; a later import is what clears it.
-        assert cache.get(stats.all_years_key('place-v3', 'region:9001')) is not None
+        assert cache.get(stats.all_years_key('place-v3', 'region:9001', 'year=all')) is not None
 
     def test_place_page_cards(self):
         fresno = Region.objects.get(pk=9001)
@@ -344,6 +346,15 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         # mile east; the section three miles east is left out.
         assert totals['lbs'] == 695.0 and totals['applications'] == 6
         assert totals['section'].pk == 9101
+
+    def test_block_totals_many_matches_one_at_a_time(self):
+        rows = PesticideUseRollup.objects.all()
+        points = [self.inside.point, self.away.point, self.inside.point]
+        with CaptureQueriesContext(connection) as ctx:
+            batched = stats.block_totals_many(rows, points, 2023)
+        # Two spatial lookups and one group-by, however many points.
+        assert len(ctx.captured_queries) == 3
+        assert batched == [stats.block_totals(rows, point, 2023) for point in points]
 
     def test_block_totals_outside_any_section(self):
         totals = stats.block_totals(PesticideUseRollup.objects.all(), self.away.point, 2023)
