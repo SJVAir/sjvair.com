@@ -72,7 +72,7 @@ requests==2.34.2
 scikit-learn==1.9.0
 scout-apm==3.5.3
 sentry-sdk==2.62.0
-setuptools==80.10.2
+setuptools==84.2.1
 shapely==2.1.2
 sjvair==0.1.0a4
 simpleeval==1.0.7
@@ -86,4 +86,3 @@ whitenoise==6.12.0
 git+https://github.com/dmpayton/django-resticus@develop
 git+https://github.com/dmpayton/django-form-utils@django-3.x
 git+https://github.com/dmpayton/django-admin-honeypot
-git+https://github.com/dmpayton/esri2gpd@master

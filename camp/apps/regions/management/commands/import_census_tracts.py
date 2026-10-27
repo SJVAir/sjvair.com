@@ -2,7 +2,6 @@ import math
 
 from pathlib import Path
 
-import esri2gpd
 import requests
 import pandas as pd
 
@@ -10,7 +9,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from camp.apps.regions.models import Region
-from camp.utils import geodata
+from camp.utils import arcgis, geodata
 from camp.utils.gis import to_multipolygon
 
 TRACTS_2010_URL = "https://www2.census.gov/geo/tiger/TIGER2010/TRACT/2010/tl_2010_06_tract10.zip"
@@ -248,7 +247,7 @@ class Command(BaseCommand):
     def load_sb535_dac(self) -> pd.DataFrame:
         print('\nLoading SB535 DAC...')
         print(f'-> {SB535DAC_URL}')
-        gdf = (esri2gpd
+        gdf = (arcgis
             .get(SB535DAC_URL)
             .rename(columns={
                 'Tract': 'geoid',

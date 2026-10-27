@@ -43,7 +43,7 @@ RUN git config --global --add safe.directory /app
 # Install Python dependencies
 COPY requirements/base.txt ./requirements/
 RUN pip install --upgrade pip
-RUN pip install setuptools==80.10.2 wheel packaging
+RUN pip install setuptools==84.2.1 wheel packaging
 RUN pip install --no-cache-dir -r requirements/base.txt
 
 # Start with a bash shell (overridden in most services)
