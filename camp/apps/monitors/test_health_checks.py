@@ -83,7 +83,7 @@ class MonitorHealthCheckTests(TestCase):
 
     def test_reports_staleness_within_own_limit_even_past_last_active_limit(self):
         """
-        Regression test: AirNow's LAST_ACTIVE_LIMIT (1.5h) is tighter than its
+        Regression test: a model's LAST_ACTIVE_LIMIT can be tighter than its
         health check `limit` (3h). A monitor stale by 2h should still surface
         the informative "Last entry was X ago" message, not the misleading
         "no monitor has ever reported" message that get_active()-based

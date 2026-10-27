@@ -9,6 +9,7 @@ from django.contrib.gis.geos import GEOSGeometry, Point
 from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 import requests
@@ -122,6 +123,23 @@ class DataRequestTests(TestCase):
         params = mock_request.call_args.kwargs['params']
         assert 'nowcastonly' not in params
         assert params['includerawconcentrations'] == 1
+
+
+class ActiveTests(TestCase):
+    def test_active_until_the_next_hours_raw_arrives(self):
+        # The newest RAW is up to 2h20m old: an hour's RawConcentration
+        # arrives about 1h20m after it starts.
+        monitor = AirNow.objects.create(
+            name='Fresno - Garland',
+            position=Point(-119.7727, 36.7853, srid=4326),
+            location=AirNow.LOCATION.outside,
+        )
+        hour = timezone.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=2)
+        monitor.handle_payload(make_site_payload('OZONE', 41.0, 38.0, utc=hour.strftime('%Y-%m-%dT%H:%M')))
+
+        with patch('django.utils.timezone.now', return_value=hour + timedelta(hours=2, minutes=20)):
+            assert monitor.is_active
+            assert AirNow.objects.get_active().filter(pk=monitor.pk).exists()
 
 
 class HandlePayloadTests(TestCase):
