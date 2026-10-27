@@ -681,3 +681,47 @@ class SessionResponseTests(TestCase):
         data = session_user_data(self.user)
         assert data == response.json()['data']
         assert isinstance(data['id'], str)
+
+
+class LoginSessionTests(TestCase):
+    """
+    `account/login/` answers a GET with the signed-in user. A session-cookie GET
+    must not get the API token; token clients and credential POSTs still do.
+    """
+    fixtures = ['users']
+    urls = ['/api/2.0/account/login/', '/api/1.0/account/login/']
+
+    def setUp(self):
+        self.user = User.objects.get(email="user@sjvair.com")
+        self.client = Client()
+
+    def tearDown(self):
+        cache.clear()
+        return super().tearDown()
+
+    def test_session_get_omits_api_token(self):
+        self.client.force_login(self.user)
+        for url in self.urls:
+            response = self.client.get(url)
+            assert response.status_code == 200, url
+            data = response.json()['data']
+            assert 'api_token' not in data, url
+            assert data['id'] == str(self.user.pk)
+
+    def test_token_get_includes_api_token(self):
+        header = {'HTTP_AUTHORIZATION': f'Token {get_token(self.user)}'}
+        for url in self.urls:
+            response = self.client.get(url, **header)
+            assert response.status_code == 200, url
+            assert response.json()['data']['api_token'] == get_token(self.user), url
+
+    def test_credential_post_includes_api_token(self):
+        credentials = json.dumps({'identifier': 'user@sjvair.com', 'password': 'letmein'})
+        for url in self.urls:
+            response = Client().post(url, credentials, content_type='application/json')
+            assert response.status_code == 200, url
+            assert response.json()['data']['api_token'] == get_token(self.user), url
+
+    def test_signed_out_get_is_401(self):
+        for url in self.urls:
+            assert self.client.get(url).status_code == 401, url
