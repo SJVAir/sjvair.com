@@ -3,12 +3,12 @@ import math
 import uuid
 
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 import pandas as pd
 
 from django.conf import settings
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import FieldDoesNotExist, ObjectDoesNotExist, ValidationError
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
 from django.db import IntegrityError
@@ -382,6 +382,23 @@ class Monitor(models.Model):
         defaults.update(**kwargs)
         return EntryModel(**defaults)
 
+    @staticmethod
+    def as_stored(EntryModel, key, value):
+        '''
+        `value` as the database would store it in `key`, so an unchanged value
+        compares equal: a float 18.2 never equals the stored Decimal('18.20').
+        '''
+        try:
+            field = EntryModel._meta.get_field(key)
+        except FieldDoesNotExist:
+            return value
+        if value is None or not isinstance(field, models.DecimalField):
+            return value
+        try:
+            return field.to_python(value).quantize(Decimal(1).scaleb(-field.decimal_places))
+        except (ValidationError, InvalidOperation):
+            return value
+
     def create_entry(self, EntryModel, save: bool = True, **data):
         entry = self.initialize_entry(EntryModel)
 
@@ -418,7 +435,7 @@ class Monitor(models.Model):
             for key, value in data.items():
                 if key in lookup_fields:
                     continue
-                if getattr(existing, key) != value:
+                if getattr(existing, key) != self.as_stored(EntryModel, key, value):
                     setattr(existing, key, value)
                     changed = True
             if changed:
