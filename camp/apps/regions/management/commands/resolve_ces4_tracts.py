@@ -1,4 +1,3 @@
-import esri2gpd
 import geopandas as gpd
 import pandas as pd
 
@@ -6,7 +5,7 @@ from django.core.management.base import BaseCommand
 
 from camp.apps.regions.models import Region, Boundary
 from camp.apps.regions.utils import get_tract_relationships
-from camp.utils import geodata
+from camp.utils import arcgis, geodata
 
 # https://oehha.ca.gov/calenviroscreen/sb535
 SB535DAC_URL = 'https://services1.arcgis.com/PCHfdHz4GlDNAhBb/arcgis/rest/services/SB_535_Disadvantaged_Communities_2022/FeatureServer/0'
@@ -26,8 +25,8 @@ def get_ces4() -> pd.DataFrame:
     gdf['Tract'] = gdf['Tract'].astype(str).str.zfill(11)
 
     # Get the SB535 Disadvantaged Communities dataset and filter by county.
-    # esri2gpd returns a materialized GeoDataFrame so filter directly.
-    sb535dac = esri2gpd.get(SB535DAC_URL)
+    # arcgis.get returns a materialized GeoDataFrame so filter directly.
+    sb535dac = arcgis.get(SB535DAC_URL)
     sb535dac = sb535dac[
         sb535dac.geometry.apply(
             lambda g: (not g.is_empty and g.area > 0

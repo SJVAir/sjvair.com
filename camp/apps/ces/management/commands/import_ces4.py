@@ -1,4 +1,3 @@
-import esri2gpd
 import pandas as pd
 
 from django.core.management.base import BaseCommand
@@ -7,7 +6,7 @@ from camp.apps.ces import stats as ces_stats
 from camp.apps.ces.models import CES4, DACCategory
 from camp.apps.regions.models import Boundary, Region
 from camp.apps.regions.utils import get_tract_relationships
-from camp.utils import geodata
+from camp.utils import arcgis, geodata
 from camp.utils.geodata import load_region_geometry
 
 # https://oehha.ca.gov/calenviroscreen/sb535
@@ -151,7 +150,7 @@ class Command(BaseCommand):
         )
         gdf['Tract'] = gdf['Tract'].astype(str).str.zfill(11)
 
-        sb535 = esri2gpd.get(SB535_URL)
+        sb535 = arcgis.get(SB535_URL)
         sb535 = sb535[
             sb535.geometry.apply(
                 lambda g: (not g.is_empty and g.area > 0

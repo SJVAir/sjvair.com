@@ -11,9 +11,11 @@ leave values derived from the old NowCast-based RAW.
 
 import time
 from datetime import timedelta, timezone as dt_timezone
+from decimal import Decimal
 from functools import reduce
 
 from django.db import transaction
+from django.utils import timezone
 
 from camp.apps.calibrations.core.processors.airnow import AirNowNowCast
 from camp.apps.monitors.airnow.api import airnow_api
@@ -69,47 +71,80 @@ def fetch_window(bbox, start, end, pause):
             + fetch_window(bbox, split, end, pause))
 
 
-def rebuild_derived_entries(monitor, raw):
-    '''Recompute the pipeline's entries derived from `raw`, updating existing ones in place.'''
-    config = monitor.ENTRY_CONFIG.get(raw.__class__, {})
-    for Processor in config.get('processors', {}).get(raw.stage, []):
-        EntryModel = Processor.entry_model
-        existing = EntryModel.objects.filter(
-            monitor_id=monitor.pk,
-            timestamp=raw.timestamp,
-            sensor=raw.sensor,
-            stage=Processor.next_stage,
-            processor=Processor.name,
-        ).first()
+class WindowEntries:
+    '''
+    One window's stored entries for one entry model, loaded in a single query, and the
+    writes the window makes to them, applied together. Looking up each hour on its own
+    meant several random reads per row into tables far too big to be cached.
+    '''
 
-        processor = Processor(raw)
-        derived = processor.process() if processor.is_valid() else None
+    def __init__(self, EntryModel, monitors, start, end):
+        self.EntryModel = EntryModel
+        self.places = Decimal(1).scaleb(-EntryModel._meta.get_field('value').decimal_places)
+        self.entries = {}
+        for entry in (EntryModel.objects
+                .filter(monitor_id__in=[m.pk for m in monitors.values()], timestamp__gte=start, timestamp__lte=end, sensor='')):
+            entry.monitor = monitors[entry.monitor_id]  # spares a query when it's cloned
+            self.entries[(entry.monitor_id, entry.timestamp, entry.stage, entry.processor)] = entry
+        self.created, self.changed, self.removed = {}, {}, {}
 
-        if derived is None:
-            if existing is not None:
-                LatestEntry.objects.filter(entry_id=existing.pk).delete()
-                existing.delete()
-        elif existing is None:
-            derived.save()
-            monitor.update_latest_entry(derived)
-        elif existing.value != derived.value:
-            existing.value = derived.value
-            existing.origin_id = raw.pk
-            existing.save()
+    def upsert(self, monitor, timestamp, stage, value, processor='', origin_id=None):
+        # As the column stores it, so an unchanged value compares equal.
+        value = Decimal(str(value)).quantize(self.places)
+        key = (monitor.pk, timestamp, stage, processor)
+        entry = self.entries.get(key)
+        if entry is None:
+            entry = monitor.initialize_entry(self.EntryModel,
+                timestamp=timestamp, stage=stage, processor=processor, value=value, origin_id=origin_id)
+            self.entries[key] = self.created[key] = entry
+        elif entry.value != value or entry.origin_id != origin_id:
+            entry.value, entry.origin_id = value, origin_id
+            if key not in self.created:
+                self.changed[key] = entry
+        return entry
+
+    def discard(self, monitor, timestamp, stage, processor=''):
+        key = (monitor.pk, timestamp, stage, processor)
+        if (entry := self.entries.pop(key, None)) is None:
+            return
+        self.changed.pop(key, None)
+        if self.created.pop(key, None) is None:
+            self.removed[key] = entry
+
+    def discard_hour(self, monitor, timestamp, keep_stage):
+        '''Drop the hour's entries, except those at `keep_stage`.'''
+        for key in [k for k in self.entries if k[:2] == (monitor.pk, timestamp) and k[2] != keep_stage]:
+            self.discard(monitor, *key[1:])
+
+    def save(self):
+        if self.removed:
+            pks = [entry.pk for entry in self.removed.values()]
+            LatestEntry.objects.filter(entry_id__in=pks).delete()
+            self.EntryModel.objects.filter(pk__in=pks).delete()
+
+        # RAW first: derived entries point at it.
+        created = sorted(self.created.values(), key=lambda e: e.stage != self.EntryModel.Stage.RAW)
+        self.EntryModel.objects.bulk_create(created, batch_size=1000)
+
+        now = timezone.now()
+        for entry in self.changed.values():
+            entry.modified = now
+        self.EntryModel.objects.bulk_update(self.changed.values(), ['value', 'origin', 'modified'], batch_size=1000)
+
+        # Only each series' newest entry can move LatestEntry.
+        newest = {}
+        for entry in [*created, *self.changed.values()]:
+            series = (entry.monitor_id, entry.stage, entry.processor)
+            if series not in newest or entry.timestamp > newest[series].timestamp:
+                newest[series] = entry
+        for entry in newest.values():
+            entry.monitor.update_latest_entry(entry)
 
 
-def remove_missing_entries(monitor, EntryModel, timestamp):
-    '''Drop a -999 hour stored before missing values were skipped: RAW and its derived entries (not the NowCast).'''
-    stale = (EntryModel.objects
-        .filter(monitor_id=monitor.pk, timestamp=timestamp, sensor='')
-        .exclude(stage=EntryModel.Stage.CALIBRATED))
-    LatestEntry.objects.filter(entry_id__in=list(stale.values_list('pk', flat=True))).delete()
-    stale.delete()
-
-
-def backfill_items(items, geometry, monitors):
+def backfill_items(items, geometry, monitors, start, end):
     '''Import one window's payload rows. `monitors` caches lookups by site name.'''
     counts = {'entries': 0, 'missing': 0, 'skipped': 0}
+    rows = []
     for item in items:
         EntryModel = AirNow.ENTRY_MAP.get(item['Parameter'])
         if EntryModel is None:
@@ -121,24 +156,42 @@ def backfill_items(items, geometry, monitors):
         if (monitor := monitors[name]) is None:
             counts['skipped'] += 1
             continue
+        rows.append((item, EntryModel, monitor))
 
-        monitor.handle_payload(item)
+    by_pk = {monitor.pk: monitor for monitor in monitors.values() if monitor is not None}
+    windows = {EntryModel: WindowEntries(EntryModel, by_pk, start, end) for EntryModel in {row[1] for row in rows}}
+
+    for item, EntryModel, monitor in rows:
+        entries = windows[EntryModel]
         timestamp = AirNow.get_timestamp(item)
-        if AirNowNowCast.is_missing(AirNow.get_value(item)):
-            remove_missing_entries(monitor, EntryModel, timestamp)
+        raw = None
+        if AirNowNowCast.is_missing(value := AirNow.get_value(item)):
+            # A -999 hour stored before missing values were skipped: drop RAW and what was
+            # derived from it, but not the NowCast.
+            entries.discard_hour(monitor, timestamp, keep_stage=EntryModel.Stage.CALIBRATED)
             counts['missing'] += 1
-            continue
+        else:
+            raw = entries.upsert(monitor, timestamp, EntryModel.Stage.RAW, value)
+            # Rebuilt in place: the normal pipeline skips an hour that already has them.
+            for Processor in monitor.ENTRY_CONFIG[EntryModel].get('processors', {}).get(EntryModel.Stage.RAW, []):
+                processor = Processor(raw)
+                derived = processor.process() if processor.is_valid() else None
+                if derived is None:
+                    entries.discard(monitor, timestamp, Processor.next_stage, Processor.name)
+                else:
+                    entries.upsert(monitor, timestamp, Processor.next_stage, derived.value,
+                        processor=Processor.name, origin_id=raw.pk)
+            counts['entries'] += 1
 
-        raw = EntryModel.objects.filter(
-            monitor_id=monitor.pk,
-            timestamp=timestamp,
-            sensor='',
-            stage=EntryModel.Stage.RAW,
-        ).first()
-        if raw is not None:
-            rebuild_derived_entries(monitor, raw)
-        counts['entries'] += 1
+        # Saved even when the hour's RAW is missing: AirNow's NowCast only needs 2 of the
+        # last 3 hours.
+        nowcast = AirNow.NOWCAST_PROCESSORS.get(item['Parameter'])
+        if nowcast is not None and not AirNowNowCast.is_missing(item.get('Value')):
+            entries.upsert(monitor, timestamp, nowcast.next_stage, item['Value'],
+                processor=nowcast.name, origin_id=raw.pk if raw else None)
 
+    for entries in windows.values():
+        entries.save()
     return counts
 
 
@@ -156,7 +209,7 @@ def backfill_airnow(start, end, pause=PAUSE_SECONDS, log=None):
     for idx, (win_start, win_end) in enumerate(windows, start=1):
         items = fetch_window(geometry.extent, win_start, win_end, pause)
         with transaction.atomic():
-            counts = backfill_items(items, geometry, monitors)
+            counts = backfill_items(items, geometry, monitors, win_start, win_end)
 
         for key, value in counts.items():
             totals[key] += value

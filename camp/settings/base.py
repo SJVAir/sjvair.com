@@ -223,7 +223,7 @@ DATABASES = {
 # Redis
 
 REDIS_URL = None
-for var in ["REDIS_URL", "OPENREDIS_URL"]:
+for var in ["REDIS_URL", "OPENREDIS_URL", "REDISCLOUD_URL"]:
     REDIS_URL = env(var)
     if REDIS_URL is not None:
         if REDIS_URL.startswith('rediss'):
@@ -387,13 +387,17 @@ RESTICUS = {
 }
 
 # huey / django-huey
+#
+# All three queues share database 0: Redis Cloud only serves database 0 (a
+# SELECT of any other is refused), and huey already namespaces every key by
+# the queue's name (huey.redis.primary_tasks, huey.schedule.secondary_tasks...).
 
 DJANGO_HUEY = {
     'default': 'primary',
     'queues': {
         'primary': {
             'name': 'primary_tasks',
-            'connection': {'url': f'{REDIS_URL}/0'},
+            'connection': {'url': REDIS_URL},
             'consumer': {
                 'periodic': True,
                 'workers': int(env('HUEY_PRIMARY_WORKERS', env('HUEY_WORKERS', 4)))
@@ -403,7 +407,7 @@ DJANGO_HUEY = {
         },
         'secondary': {
             'name': 'secondary_tasks',
-            'connection': {'url': f'{REDIS_URL}/1'},
+            'connection': {'url': REDIS_URL},
             'consumer': {
                 'periodic': False,
                 'workers': int(env('HUEY_SECONDARY_WORKERS', env('HUEY_WORKERS', 4)))
@@ -413,7 +417,7 @@ DJANGO_HUEY = {
         },
         'summaries': {
             'name': 'summaries_tasks',
-            'connection': {'url': f'{REDIS_URL}/2'},
+            'connection': {'url': REDIS_URL},
             'consumer': {
                 'periodic': True,
                 'workers': int(env('HUEY_SUMMARIES_WORKERS', env('HUEY_WORKERS', 2)))

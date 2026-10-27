@@ -254,6 +254,71 @@ class CreateEntryUpsertTests(TestCase):
         assert result is None
         assert entry_models.PM25.objects.filter(monitor=monitor).count() == 1
 
+    def test_unchanged_float_or_string_value_is_not_resaved(self):
+        # Feeds send floats and strings; the column holds Decimal('18.20').
+        monitor = self.get_purpleair()
+        entry = monitor.create_entry(
+            entry_models.PM25, timestamp='2025-04-27T00:00:00Z',
+            sensor='a', stage=entry_models.PM25.Stage.RAW, value=18.2,
+        )
+        modified = entry_models.PM25.objects.get(pk=entry.pk).modified
+
+        for value in (18.2, '18.2', '18.20'):
+            assert monitor.create_entry(
+                entry_models.PM25, timestamp='2025-04-27T00:00:00Z',
+                sensor='a', stage=entry_models.PM25.Stage.RAW, value=value,
+            ) is None
+        assert entry_models.PM25.objects.get(pk=entry.pk).modified == modified
+
+    def test_float_that_differs_at_stored_precision_is_updated(self):
+        monitor = self.get_purpleair()
+        monitor.create_entry(
+            entry_models.PM25, timestamp='2025-04-27T00:00:00Z',
+            sensor='a', stage=entry_models.PM25.Stage.RAW, value=18.2,
+        )
+
+        updated = monitor.create_entry(
+            entry_models.PM25, timestamp='2025-04-27T00:00:00Z',
+            sensor='a', stage=entry_models.PM25.Stage.RAW, value=18.21,
+        )
+
+        assert updated is not None
+        assert entry_models.PM25.objects.get(pk=updated.pk).value == Decimal('18.21')
+
+    def test_unchanged_unit_property_value_is_not_resaved(self):
+        # hpa and celsius getters round, so they never read back what the feed sent.
+        monitor = self.get_purpleair()
+        for EntryModel, key, value in (
+            (entry_models.Pressure, 'hpa', 1013.27),
+            (entry_models.Temperature, 'celsius', 21.37),
+        ):
+            entry = monitor.create_entry(
+                EntryModel, timestamp='2025-04-27T00:00:00Z',
+                sensor='a', stage=EntryModel.Stage.RAW, **{key: value},
+            )
+            modified = EntryModel.objects.get(pk=entry.pk).modified
+
+            assert monitor.create_entry(
+                EntryModel, timestamp='2025-04-27T00:00:00Z',
+                sensor='a', stage=EntryModel.Stage.RAW, **{key: value},
+            ) is None
+            assert EntryModel.objects.get(pk=entry.pk).modified == modified
+
+    def test_changed_unit_property_value_is_updated(self):
+        monitor = self.get_purpleair()
+        monitor.create_entry(
+            entry_models.Pressure, timestamp='2025-04-27T00:00:00Z',
+            sensor='a', stage=entry_models.Pressure.Stage.RAW, hpa=1013.27,
+        )
+
+        updated = monitor.create_entry(
+            entry_models.Pressure, timestamp='2025-04-27T00:00:00Z',
+            sensor='a', stage=entry_models.Pressure.Stage.RAW, hpa=1000.00,
+        )
+
+        assert updated is not None
+        assert entry_models.Pressure.objects.get(pk=updated.pk).value == Decimal('750.06')
+
 
 class MonitorSaveCountyLookupTests(TestCase):
     """Monitor.county is derived from the position; nothing else writes it."""

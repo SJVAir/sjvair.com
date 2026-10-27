@@ -1,5 +1,6 @@
 from django.core.management.base import BaseCommand
 
+from camp.apps.emissions import stats
 from camp.apps.emissions.models import Facility
 from camp.apps.emissions.sectors import sector_for_sic
 
@@ -16,4 +17,5 @@ class Command(BaseCommand):
                 facility.sector = sector
                 changed.append(facility)
         Facility.objects.bulk_update(changed, ['sector'], batch_size=1000)
+        stats.clear_caches()
         self.stdout.write(f'{len(changed)} facilities updated.')

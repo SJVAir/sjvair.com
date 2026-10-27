@@ -68,7 +68,7 @@ urlpatterns += [path('system-status/', include(([
             Cache,
             Storage,
             Memory,
-            functools.partial(Redis, client_factory=lambda: RedisClient.from_url(f'{settings.REDIS_URL}/0')),
+            functools.partial(Redis, client_factory=lambda: RedisClient.from_url(settings.REDIS_URL)),
         ],
         extra_context={'title': 'Infrastructure'},
     ), name='index'),

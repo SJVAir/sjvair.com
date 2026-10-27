@@ -94,7 +94,7 @@ def scope_concern(request):
 
 
 
-def movers_context(rows, year, all_years, field, lbs_field='lbs_chemical'):
+def movers_context(rows, year, all_years, field, lbs_field='lbs_chemical', key=()):
     """
     The "biggest movers" card's context, or None when there is nothing to
     compare against and the card should be left off the page.
@@ -104,6 +104,10 @@ def movers_context(rows, year, all_years, field, lbs_field='lbs_chemical'):
     scope, so this card has no year of its own to be told -- which keeps it
     a fixed "what changed since last year" rather than a second thing to
     configure.
+
+    `key` names what `rows` holds (the page's entity or place, county and
+    narrowing), for caching: the two-year comparison reads both years' rows
+    on every view otherwise.
     """
     if all_years or not year:
         return None
@@ -112,7 +116,10 @@ def movers_context(rows, year, all_years, field, lbs_field='lbs_chemical'):
         return None
     # The same cap as the leaderboards beside it: ten rows of two numbers
     # each was the heaviest block on the page, for the least-read position.
-    movers = stats.top_movers(rows, year_from, year, field, lbs_field, limit=stats.RELATED_LIMIT)
+    movers = stats.cached(
+        stats.all_years_key('movers', *key, field, lbs_field, year_from, year),
+        lambda: stats.top_movers(rows, year_from, year, field, lbs_field, limit=stats.RELATED_LIMIT),
+    )
     if not movers['rising'] and not movers['falling']:
         return None
     return {
@@ -621,7 +628,8 @@ class Home(vanilla.TemplateView):
             movers_rows = movers_rows.filter(county=county)
         if concern:
             movers_rows = stats.narrow_rows(movers_rows, concern)
-        movers = movers_context(movers_rows, year, all_years, 'chemical')
+        movers = movers_context(movers_rows, year, all_years, 'chemical',
+            key=('valley', county.slug if county is not None else '', concern or ''))
         ramp = maps.ramp_for(self.request.GET.get('ramp'))
         by_county = maps.rank_counties(
             stats.with_rates(data['by_county'], year, all_years, concern), county_rank, ramp=ramp)
@@ -886,19 +894,17 @@ class ExplorerDetailMixin:
         """
         An all-years aggregate reads every loaded year of this entity's rollup
         rows -- hundreds of thousands for a widely-used chemical, and seconds
-        per page. They only change on import, so cache them; a single year is
-        cheap enough to compute per request.
+        per page -- and even one year of a crop like almonds takes most of a
+        second. They only change on import, so cache them all, per year.
 
         `always` for the aggregates that read every year whatever the scope --
-        the seasonality grid -- which are the expensive kind on a year-scoped
-        page too.
+        the seasonality grid -- so one entry serves every year's page.
         """
-        if not (always or self.all_years):
-            return build()
         scope = self.county.slug if self.county is not None else ''
         if self.concern_active:
             scope = f'{scope}:{self.concern_active}'
-        return stats.cached(stats.all_years_key('detail', self.use_field, self.object.pk, scope, name), build)
+        period = stats.ALL_YEARS if always else (stats.year_param(self.year, self.all_years) or 'none')
+        return stats.cached(stats.all_years_key('detail', self.use_field, self.object.pk, scope, period, name), build)
 
     def top_related(self, field, lbs_field=None, limit=stats.RELATED_LIMIT):
         lbs_field = lbs_field or self.lbs_field
@@ -981,7 +987,7 @@ class ExplorerDetailMixin:
             county_total=stats.SJV_COUNTY_COUNT,
             concern_excluded=self.concern_excluded,
             totals=totals,
-            by_year=stats.by_year(rows, self.lbs_field, self.apps_field),
+            by_year=self.cached_stat('by_year', lambda: stats.by_year(rows, self.lbs_field, self.apps_field), always=True),
             by_county=self.cached_stat('by_county', lambda: stats.by_county(rows, year, self.lbs_field, all_years=all_years, apps_field=self.apps_field)),
             by_method=self.cached_stat('by_method', lambda: stats.by_method(rows, year, self.lbs_field, all_years=all_years, apps_field=self.apps_field)),
             by_fume_method=self.by_fume_method(year, all_years),
@@ -1027,7 +1033,8 @@ class ExplorerDetailMixin:
         county_rank = maps.county_metric(self.request.GET.get('rank'), hide_lbs=self.hide_lbs())
         ramp = maps.ramp_for(self.request.GET.get('ramp'))
         # The axis flips on an entity page: which counties moved for this one.
-        context['movers'] = movers_context(rows, year, all_years, 'county', self.lbs_field)
+        context['movers'] = movers_context(rows, year, all_years, 'county', self.lbs_field, key=(
+            'detail', self.use_field, self.object.pk, self.county.slug if self.county is not None else '', self.concern_active))
         context['by_county'] = maps.rank_counties(
             stats.with_rates(context['by_county'], year, all_years, self.concern), county_rank, ramp=ramp)
         context['county_rank'] = county_rank
@@ -2620,7 +2627,7 @@ class AreaOverviewMixin:
             movers_rows = area.rollup_rows()
             if concern:
                 movers_rows = stats.narrow_rows(movers_rows, concern)
-            extra['movers'] = movers_context(movers_rows, year, all_years, 'chemical')
+            extra['movers'] = movers_context(movers_rows, year, all_years, 'chemical', key=('place', area.cache_key(), concern or ''))
         return super().get_context_data(
             section=None,
             years=stats.years_loaded(),

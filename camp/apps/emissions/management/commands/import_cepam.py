@@ -3,6 +3,7 @@ import requests
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
+from camp.apps.emissions import stats
 from camp.apps.emissions.importers import carb, cepam
 from camp.apps.emissions.models import CountyInventory
 
@@ -39,5 +40,6 @@ class Command(BaseCommand):
                     CountyInventory.objects.bulk_create(rows, batch_size=1000)
                 self.stdout.write(f'{label}: {len(rows)} EIC rows')
 
+        stats.clear_caches()
         if failed:
             raise CommandError(f'Import incomplete for: {", ".join(failed)}')

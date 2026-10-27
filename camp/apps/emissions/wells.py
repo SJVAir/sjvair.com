@@ -33,10 +33,11 @@ def generation():
 def clear_caches():
     """Orphan every cached wells aggregate and API response: they're keyed under the generation."""
     cache.set(GENERATION_KEY, generation() + 1, None)
+    stats.clear_caches()
 
 
 def key(*parts):
-    return ':'.join(str(part) for part in (f'emissions:wells:v{CACHE_VERSION}', generation(), *parts))
+    return ':'.join(str(part) for part in (f'emissions:wells:v{CACHE_VERSION}', stats.generation(), generation(), *parts))
 
 
 # SB 1137's health protection zone: 3,200 ft of a home, school, child-care

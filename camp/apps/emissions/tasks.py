@@ -1,6 +1,6 @@
 from django.core.management import call_command
 
-from django_huey import db_periodic_task, get_queue
+from django_huey import db_periodic_task, db_task, get_queue
 from huey import crontab
 
 
@@ -26,3 +26,17 @@ def import_wells():
 def import_carbon_mapper():
     with get_queue('primary').lock_task('import-carbon-mapper'):
         call_command('import_carbon_mapper')
+
+
+@db_periodic_task(crontab(minute='45'), priority=10)
+def warm_emissions_caches():
+    # The pass runs on the secondary queue, like the pesticides one: after an
+    # import it renders every warm page, which would hold up the primary queue.
+    warm_emissions_caches_now()
+
+
+@db_task(queue='secondary', priority=10)
+def warm_emissions_caches_now():
+    from camp.apps.emissions import warm
+    with get_queue('secondary').lock_task('warm-emissions-caches'):
+        warm.warm()
