@@ -1086,7 +1086,7 @@ class FixPurpleAirPressureCommandTests(TestCase):
         bad_entry.refresh_from_db()
         expected = (Decimal('1013.25') / Decimal('1.33322')).quantize(Decimal('0.01'))
         assert bad_entry.value == expected
-        assert 'Corrected 1' in out.getvalue()
+        assert 'Corrected 1 entries' in out.getvalue()
 
     def test_leaves_already_correct_value_untouched(self):
         correct_value = (Decimal('1013.25') / Decimal('1.33322')).quantize(Decimal('0.01'))
@@ -1098,16 +1098,60 @@ class FixPurpleAirPressureCommandTests(TestCase):
         call_command('fix_purpleair_pressure', stdout=out)
         good_entry.refresh_from_db()
         assert good_entry.value == correct_value
-        assert 'Corrected 0' in out.getvalue()
+        assert 'Corrected 0 entries' in out.getvalue()
 
     def test_dry_run_does_not_modify(self):
         bad_entry = entry_models.Pressure.objects.create(
             monitor=self.monitor, sensor='', timestamp=self.ts, location=self.monitor.location,
             stage=entry_models.Pressure.Stage.RAW, processor='', value=Decimal('1013.25'),
         )
-        call_command('fix_purpleair_pressure', '--dry-run')
+        out = StringIO()
+        call_command('fix_purpleair_pressure', '--dry-run', stdout=out)
         bad_entry.refresh_from_db()
         assert bad_entry.value == Decimal('1013.25')
+        assert 'Would correct 1 entries' in out.getvalue()
+
+    def test_second_run_finds_nothing(self):
+        Entry.objects.create(
+            monitor=self.monitor, sensor='b', timestamp=self.ts,
+            location=self.monitor.location, pressure=Decimal('1013.25'),
+        )
+        entry_models.Pressure.objects.create(
+            monitor=self.monitor, sensor='', timestamp=self.ts, location=self.monitor.location,
+            stage=entry_models.Pressure.Stage.RAW, processor='', value=Decimal('1013.25'),
+        )
+        call_command('fix_purpleair_pressure', stdout=StringIO())
+        out = StringIO()
+        call_command('fix_purpleair_pressure', stdout=out)
+        assert 'Corrected 0 entries' in out.getvalue()
+
+    def test_leaves_rows_without_a_legacy_source_untouched(self):
+        # Written by the live converter: correct mmHg with no legacy row behind it.
+        live_entry = entry_models.Pressure.objects.create(
+            monitor=self.monitor, sensor='', timestamp=self.ts + timedelta(minutes=2),
+            location=self.monitor.location, stage=entry_models.Pressure.Stage.RAW,
+            processor='', value=Decimal('760.00'),
+        )
+        call_command('fix_purpleair_pressure', stdout=StringIO())
+        live_entry.refresh_from_db()
+        assert live_entry.value == Decimal('760.00')
+
+    def test_corrects_across_windows(self):
+        later_ts = self.ts + timedelta(days=45)
+        Entry.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=later_ts,
+            location=self.monitor.location, pressure=Decimal('1000.00'),
+        )
+        for ts, value in ((self.ts, Decimal('1013.25')), (later_ts, Decimal('1000.00'))):
+            entry_models.Pressure.objects.create(
+                monitor=self.monitor, sensor='', timestamp=ts, location=self.monitor.location,
+                stage=entry_models.Pressure.Stage.RAW, processor='', value=value,
+            )
+        out = StringIO()
+        call_command('fix_purpleair_pressure', '--window-days', '7', stdout=out)
+        later = entry_models.Pressure.objects.get(monitor=self.monitor, timestamp=later_ts)
+        assert later.value == (Decimal('1000.00') / Decimal('1.33322')).quantize(Decimal('0.01'))
+        assert 'Corrected 2 entries' in out.getvalue()
 
     def test_monitor_flag_scopes_to_one_monitor(self):
         bad_entry = entry_models.Pressure.objects.create(
@@ -1119,7 +1163,7 @@ class FixPurpleAirPressureCommandTests(TestCase):
         bad_entry.refresh_from_db()
         expected = (Decimal('1013.25') / Decimal('1.33322')).quantize(Decimal('0.01'))
         assert bad_entry.value == expected
-        assert 'Corrected 1' in out.getvalue()
+        assert 'Corrected 1 entries' in out.getvalue()
 
     def test_monitor_flag_raises_on_unknown_id(self):
         from django_smalluuid.models import uuid_default
@@ -1160,7 +1204,7 @@ class FixPurpleAirPressureCommandTests(TestCase):
         expected = (Decimal('1013.25') / Decimal('1.33322')).quantize(Decimal('0.01'))
         assert in_range_entry.value == expected
         assert out_of_range_entry.value == Decimal('1013.25')  # untouched, outside --to
-        assert 'Corrected 1 of 1 checked' in out.getvalue()
+        assert 'Corrected 1 entries' in out.getvalue()
 
 
 class LegacyBackfillThenReprocessIntegrationTests(TestCase):
