@@ -5,15 +5,19 @@ blocked build, account, then (inside one transaction holding the row lock) the i
 version checks, and only then the write.
 """
 import json
+import time
 from datetime import timezone as dt_timezone
 
 from django.conf import settings
+from django.core.cache import cache
+from django.db.models import Sum
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from resticus import http
 
 from camp.api.v2.accounts.session import session_user_data
+from camp.apps.documents import snapshots
 from camp.apps.documents.models import (
     BlockedBuild, DocumentChange, PurgedDocument, SavedDocument, id_validator, measure,
 )
@@ -192,7 +196,8 @@ def apply_save(user, id, cleaned):
             {'signed_in_as': signed_in_as},
         )
 
-    # (Task 4: the per-account rate limit goes here, before the transaction.)
+    if rate_limited(user):
+        return refuse('rate_limited', 429, 'Too many saves. Try again in a minute.')
 
     try:
         return save_locked(user, id, cleaned)
@@ -200,6 +205,18 @@ def apply_save(user, id, cleaned):
         # Another request created this id between our lookup and insert. Run the checks
         # again: they now see that row and refuse (stale_base or id_taken).
         return save_locked(user, id, cleaned)
+
+
+def rate_limited(user):
+    """Count this save against the account's minute; True when it is over the limit."""
+    key = f'documents:saves:{user.pk}:{int(time.time() // 60)}'
+    cache.add(key, 0, 90)
+    try:
+        count = cache.incr(key)
+    except ValueError:  # expired between add and incr
+        cache.add(key, 1, 90)
+        count = 1
+    return count > settings.DOCUMENTS_SAVES_PER_MINUTE
 
 
 class CreateRaced(Exception):
@@ -236,11 +253,35 @@ def save_locked(user, id, cleaned):
                     {'schema_version': doc.schema_version},
                 )
 
-        # (Task 4: the document-count and storage limits go here, after the version checks.)
+        refusal = check_limits(user, doc, cleaned)
+        if refusal:
+            return refusal
 
-        # (Task 4: the snapshot step goes here, before the write.)
+        if doc is not None:
+            reason = snapshots.reason_for(doc, cleaned, timezone.now())
+            if reason:
+                snapshots.take(doc, reason)
 
         return write(user, id, doc, cleaned)
+
+
+def check_limits(user, doc, cleaned):
+    """A refusal when this save would break an account limit, else None."""
+    if cleaned['deleted_at'] is None and (doc is None or doc.deleted_at is not None):
+        live = user.saved_documents.filter(deleted_at__isnull=True).count()
+        if live >= settings.DOCUMENTS_MAX_PER_ACCOUNT:
+            return refuse(
+                'limit_documents', 403, 'This account has reached its document limit.',
+                {'limit': settings.DOCUMENTS_MAX_PER_ACCOUNT},
+            )
+    total = user.saved_documents.aggregate(total=Sum('size'))['total'] or 0
+    total += cleaned['size'] - (doc.size if doc is not None else 0)
+    if total > settings.DOCUMENTS_MAX_STORAGE:
+        return refuse(
+            'limit_storage', 403, 'This account has reached its storage limit.',
+            {'limit': settings.DOCUMENTS_MAX_STORAGE},
+        )
+    return None
 
 
 def write(user, id, doc, cleaned):
