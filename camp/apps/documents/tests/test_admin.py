@@ -78,6 +78,26 @@ class AdminTests(TestCase):
         model_admin = admin.site._registry[SavedDocument]
         self.assertNotIn('delete_selected', model_admin.get_actions(response.wsgi_request))
 
+    def test_delete_view_refused_and_link_hidden(self):
+        self.assertEqual(self.admin.get(self.url('delete', 'doc')).status_code, 403)
+        self.assertEqual(self.admin.post(self.url('delete', 'doc'), {'post': 'yes'}).status_code, 403)
+        self.assertTrue(SavedDocument.objects.filter(pk='doc').exists())
+        change = self.admin.get(self.url('change', 'doc')).content.decode()
+        self.assertNotIn(self.url('delete', 'doc'), change)
+
+    def test_staff_can_delete_user_with_dashboards(self):
+        url = reverse('admin:accounts_user_delete', args=[self.alice.pk])
+        confirm = self.admin.get(url)
+        self.assertEqual(confirm.status_code, 200)
+        self.assertNotIn(MARKER, confirm.content.decode())
+        self.assertFalse(confirm.context['perms_lacking'])
+        response = self.admin.post(url, {'post': 'yes'})
+        self.assertEqual(response.status_code, 302, response.content)
+        self.assertFalse(type(self.alice).objects.filter(pk=self.alice.pk).exists())
+        self.assertFalse(SavedDocument.objects.filter(pk='doc').exists())
+        self.assertFalse(DocumentChange.objects.exists())
+        self.assertFalse(DocumentSnapshot.objects.exists())
+
     def test_only_sharing_disabled_is_editable(self):
         response = self.admin.get(self.url('change', 'doc'))
         self.assertEqual(list(response.context['adminform'].form.fields), ['sharing_disabled'])

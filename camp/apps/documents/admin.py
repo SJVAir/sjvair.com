@@ -1,4 +1,5 @@
 from django.contrib import admin, messages
+from django.core.exceptions import PermissionDenied
 
 from .models import BlockedBuild, DocumentProfile, SavedDocument
 
@@ -32,12 +33,23 @@ class SavedDocumentAdmin(admin.ModelAdmin):
     actions = ['disable_share_links', 'enable_share_links']
 
     # Deleting here would remove a user's dashboard without leaving a PurgedDocument record
-    # (and would list its changes and snapshots on the confirmation page), so it is not offered.
+    # (and would list its changes and snapshots on the confirmation page), so there is no delete
+    # view, action, or link. The delete permission itself stays the usual one: deleting a User
+    # cascades to their dashboards, and Django's User delete page needs it to allow that.
     def has_add_permission(self, request):
         return False
 
-    def has_delete_permission(self, request, obj=None):
-        return False
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        actions.pop('delete_selected', None)
+        return actions
+
+    def delete_view(self, request, object_id, extra_context=None):
+        raise PermissionDenied
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        extra_context = {**(extra_context or {}), 'show_delete': False}
+        return super().change_view(request, object_id, form_url, extra_context)
 
     @admin.action(description='Disable share links for the selected documents')
     def disable_share_links(self, request, queryset):
