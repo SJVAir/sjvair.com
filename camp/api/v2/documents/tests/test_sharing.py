@@ -1,6 +1,8 @@
 import json
+from datetime import timedelta
 
 from django.test import Client, TestCase
+from django.utils import timezone
 
 from camp.apps.documents.models import DocumentProfile, SavedDocument
 
@@ -57,6 +59,31 @@ class SharingTests(TestCase):
         doc = SavedDocument.objects.get(pk='doc')
         self.assertEqual(doc.share_token, token)
         self.assertEqual(doc.visibility, 'link')
+
+    def listed_since(self, cursor):
+        data = self.client.get(BASE, {'since': cursor.isoformat()}).json()['data']
+        return {doc['id']: doc for doc in data['documents']}
+
+    def age(self, id='doc'):
+        """Make the document's last change an hour old, before the cursor below."""
+        SavedDocument.objects.filter(pk=id).update(updated_at=timezone.now() - timedelta(hours=1))
+
+    def test_share_and_revoke_reach_other_devices(self):
+        self.create()
+        self.age()
+        cursor = timezone.now() - timedelta(minutes=1)
+        self.assertNotIn('doc', self.listed_since(cursor))
+
+        token = self.token()
+        listed = self.listed_since(cursor)['doc']
+        self.assertEqual((listed['visibility'], listed['share_token']), ('link', token))
+        self.assertEqual(listed['version'], 1)
+
+        self.age()
+        self.assertEqual(self.revoke().status_code, 204)
+        listed = self.listed_since(cursor)['doc']
+        self.assertEqual((listed['visibility'], listed['share_token']), ('private', None))
+        self.assertEqual(listed['version'], 1)
 
     def test_share_twice_same_token(self):
         self.create()

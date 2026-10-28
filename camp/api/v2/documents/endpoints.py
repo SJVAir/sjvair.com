@@ -309,9 +309,10 @@ class DocumentShare(NoStoreMixin, BodilessMixin, Endpoint):
         doc.visibility = SavedDocument.Visibility.LINK
         if not doc.share_token:
             doc.share_token = new_share_token()
-        # Only these fields: sharing is not an edit, so version and updated_at stay as they are.
+        # Sharing is not an edit, so version stays; updated_at moves so `?since=` carries the
+        # new visibility and token to the owner's other devices.
         SavedDocument.objects.filter(pk=doc.pk).update(
-            visibility=doc.visibility, share_token=doc.share_token
+            visibility=doc.visibility, share_token=doc.share_token, updated_at=timezone.now()
         )
         return http.Http200({'data': {'share_token': doc.share_token}})
 
@@ -321,7 +322,8 @@ class DocumentShare(NoStoreMixin, BodilessMixin, Endpoint):
             return not_found()
         # The token is dropped, not kept: sharing again makes a new one, so this link stays dead.
         SavedDocument.objects.filter(pk=doc.pk).update(
-            visibility=SavedDocument.Visibility.PRIVATE, share_token=None
+            visibility=SavedDocument.Visibility.PRIVATE, share_token=None,
+            updated_at=timezone.now(),
         )
         return http.Http204()
 
