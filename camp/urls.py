@@ -68,7 +68,12 @@ urlpatterns += [path('system-status/', include(([
             Cache,
             Storage,
             Memory,
-            functools.partial(Redis, client_factory=lambda: RedisClient.from_url(settings.REDIS_URL)),
+            # One check per huey queue: each has its own Redis database. A lambda,
+            # not a partial, so the URL (and its password) never shows in a repr.
+            *[
+                functools.partial(Redis, client_factory=lambda url=queue['connection']['url']: RedisClient.from_url(url))
+                for queue in settings.DJANGO_HUEY['queues'].values() if 'connection' in queue
+            ],
         ],
         extra_context={'title': 'Infrastructure'},
     ), name='index'),

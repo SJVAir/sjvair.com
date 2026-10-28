@@ -388,16 +388,16 @@ RESTICUS = {
 
 # huey / django-huey
 #
-# All three queues share database 0: Redis Cloud only serves database 0 (a
-# SELECT of any other is refused), and huey already namespaces every key by
-# the queue's name (huey.redis.primary_tasks, huey.schedule.secondary_tasks...).
+# Each queue in its own Redis database: /0, /1, /2 of REDIS_URL, or on Redis
+# Cloud (which serves only database 0) a separate database per queue, set in
+# REDIS_PRIMARY_URL / REDIS_SECONDARY_URL / REDIS_SUMMARIES_URL.
 
 DJANGO_HUEY = {
     'default': 'primary',
     'queues': {
         'primary': {
             'name': 'primary_tasks',
-            'connection': {'url': REDIS_URL},
+            'connection': {'url': env('REDIS_PRIMARY_URL', f'{REDIS_URL}/0')},
             'consumer': {
                 'periodic': True,
                 'workers': int(env('HUEY_PRIMARY_WORKERS', env('HUEY_WORKERS', 4)))
@@ -407,7 +407,7 @@ DJANGO_HUEY = {
         },
         'secondary': {
             'name': 'secondary_tasks',
-            'connection': {'url': REDIS_URL},
+            'connection': {'url': env('REDIS_SECONDARY_URL', f'{REDIS_URL}/1')},
             'consumer': {
                 'periodic': False,
                 'workers': int(env('HUEY_SECONDARY_WORKERS', env('HUEY_WORKERS', 4)))
@@ -417,7 +417,7 @@ DJANGO_HUEY = {
         },
         'summaries': {
             'name': 'summaries_tasks',
-            'connection': {'url': REDIS_URL},
+            'connection': {'url': env('REDIS_SUMMARIES_URL', f'{REDIS_URL}/2')},
             'consumer': {
                 'periodic': True,
                 'workers': int(env('HUEY_SUMMARIES_WORKERS', env('HUEY_WORKERS', 2)))
@@ -525,6 +525,24 @@ if "SENTRY_DSN" in os.environ:
         release=COMMIT_HASH,
     )
 
+
+
+# Logging
+#
+# Django's defaults only email request tracebacks (and only to ADMINS, which
+# isn't set), so a 500 left nothing but "status=500" in the Heroku logs. Print
+# them to stderr too; everything else keeps Django's defaults.
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler'},
+    },
+    'loggers': {
+        'django.request': {'handlers': ['console'], 'level': 'ERROR'},
+    },
+}
 
 
 # Scout APM

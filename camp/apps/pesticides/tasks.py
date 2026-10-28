@@ -18,14 +18,14 @@ def refresh_pesticide_landing_stats():
 
 @db_periodic_task(crontab(minute='40'), priority=10)
 def warm_pesticide_caches():
-    # The pass itself runs on the secondary queue: after a rebuild it renders
-    # every warm page (a couple of minutes), which would hold up the primary
-    # queue's every-minute tasks.
     warm_pesticide_caches_now()
 
 
-@db_task(queue='secondary', priority=10)
+# Also queued by imports and rebuilds. Primary, not secondary: a full pass
+# is a minute or so once per import, and secondary is for backfills and
+# large imports.
+@db_task(priority=10)
 def warm_pesticide_caches_now():
     from camp.apps.pesticides import warm
-    with get_queue('secondary').lock_task('warm-pesticide-caches'):
+    with get_queue('primary').lock_task('warm-pesticide-caches'):
         warm.warm()
