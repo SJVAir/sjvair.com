@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import timedelta, timezone as dt_timezone
 
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -54,7 +54,7 @@ class DocumentList(NoStoreMixin, Endpoint):
                     {'fields': {'since': ['Enter a valid date and time.']}},
                 )
             if timezone.is_naive(moment):
-                moment = timezone.make_aware(moment, timezone.utc)
+                moment = timezone.make_aware(moment, dt_timezone.utc)
             documents = documents.filter(updated_at__gte=moment)
             purged = list(
                 PurgedDocument.objects.filter(owner=request.user, purged_at__gte=moment)

@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from django.test import Client, TestCase
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from camp.apps.documents.models import PurgedDocument, SavedDocument
 
@@ -63,6 +64,17 @@ class ReadTests(TestCase):
         self.assertEqual({d['id'] for d in data['documents']}, {'old', 'new'})
         self.assertEqual(data['purged'], [])
 
+    def test_list_naive_since_is_treated_as_utc(self):
+        old = seed(self.alice, 'old')
+        seed(self.alice, 'new')
+        SavedDocument.objects.filter(pk=old.pk).update(
+            updated_at=timezone.now() - timedelta(days=2)
+        )
+        since = (timezone.now() - timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%S')
+        response = self.client.get(BASE, {'since': since})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([d['id'] for d in response.json()['data']['documents']], ['new'])
+
     def test_list_bad_since_is_invalid(self):
         response = self.client.get(BASE, {'since': 'yesterday-ish'})
         self.assertEqual(response.status_code, 400)
@@ -71,8 +83,6 @@ class ReadTests(TestCase):
     def test_cursor_is_ten_seconds_back(self):
         before = timezone.now()
         cursor = self.client.get(BASE).json()['data']['cursor']
-        from django.utils.dateparse import parse_datetime
-
         delta = before - parse_datetime(cursor)
         self.assertGreater(delta, timedelta(seconds=9))
         self.assertLess(delta, timedelta(seconds=12))
