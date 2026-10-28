@@ -79,6 +79,8 @@ class DeleteAccountTests(TestCase):
         response = self.client.get(self.profile_url)
         self.assertContains(response, export)
         self.assertContains(response, 'Download my dashboards')
+        # The download is the live dashboards only, though the deletion also takes the trash.
+        self.assertContains(response, "The download doesn't include dashboards in the trash.")
 
     def test_wrong_password_keeps_account(self):
         response = self.delete(password='nope')
