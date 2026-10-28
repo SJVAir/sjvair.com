@@ -92,6 +92,21 @@ WORKSPACE_DIST_DIR = BASE_DIR.child('dist', 'workspace')
 WORKSPACE_CSP_ENFORCE = bool(int(env('WORKSPACE_CSP_ENFORCE', int(DEBUG))))
 WORKSPACE_CSP_REPORT_URI = env('WORKSPACE_CSP_REPORT_URI', '')
 
+# Saved dashboards (camp.apps.documents). Sizes count characters of compact JSON.
+DOCUMENTS_MAX_PER_ACCOUNT = 50
+DOCUMENTS_MAX_STORAGE = 25 * 1024 * 1024
+DOCUMENTS_MAX_SNAPSHOT_STORAGE = 25 * 1024 * 1024
+DOCUMENTS_MAX_BODY = 1_000_000
+DOCUMENTS_MAX_CHANGES = 2_000_000
+DOCUMENTS_SAVES_PER_MINUTE = 120
+DOCUMENTS_LOG_LIMIT = 500
+DOCUMENTS_TRASH_DAYS = 30
+DOCUMENTS_SNAPSHOT_DAYS = 30
+# The request-size cap for a signed-in save (PUT documents/<id>/) only; it replaces Django's
+# DATA_UPLOAD_MAX_MEMORY_SIZE for that request. A save carries up to DOCUMENTS_MAX_BODY +
+# DOCUMENTS_MAX_CHANGES characters, up to 4 bytes each in UTF-8.
+DOCUMENTS_MAX_REQUEST_BYTES = 16 * 1024 * 1024
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
@@ -149,6 +164,7 @@ INSTALLED_APPS = [
     'camp.apps.monitors',
     'camp.apps.pesticides',
     'camp.apps.workspace',
+    'camp.apps.documents',
     'camp.apps.monitors.airgradient',
     'camp.apps.monitors.airnow',
     'camp.apps.monitors.aqlite',
@@ -519,10 +535,14 @@ if "SENTRY_DSN" in os.environ:
     import sentry_sdk
     from sentry_sdk.integrations.django import DjangoIntegration
 
+    from camp.apps.documents.sentry import scrub_documents
+
     sentry_sdk.init(
         dsn=os.environ["SENTRY_DSN"],
         integrations=[DjangoIntegration(transaction_style="url")],
         release=COMMIT_HASH,
+        # Saved dashboards' bodies and names stay out of error reports.
+        before_send=scrub_documents,
     )
 
 

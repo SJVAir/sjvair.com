@@ -12,3 +12,42 @@ class SiteChromeTests(TestCase):
             assert 'class="skip-link" href="#main"' in html
             assert 'id="id_translate" aria-label="Language"' in html
             assert '<h4' not in html
+
+
+class ReportPrefillTests(TestCase):
+    URL = '/contact/'
+
+    def get(self, page, topic='Report'):
+        params = {'page': page}
+        if topic:
+            params['topic'] = topic
+        return self.client.get(self.URL, params).context['form']
+
+    def test_report_prefill(self):
+        page = 'https://testserver/workspace/shared/abc123'
+        form = self.get(page)
+        assert form.initial['topic'] == 'Report'
+        assert form.initial['subject'] == 'Report a shared dashboard'
+        assert form.initial['message'].startswith(f'Page: {page}')
+        assert 'Report' in dict(form.fields['topic'].choices)
+
+    def test_relative_page_accepted(self):
+        form = self.get('/workspace/shared/abc123')
+        assert form.initial['message'].startswith('Page: /workspace/shared/abc123')
+
+    def test_foreign_page_ignored(self):
+        for page in [
+            'https://evil.com/workspace/shared/abc',
+            '//evil.com/workspace/shared/abc',
+            'javascript:alert(1)//workspace/shared/abc',
+            'ftp://testserver/workspace/shared/abc',
+            '/elsewhere/workspace/shared/abc',
+            '/workspace/shared/' + 'a' * 500,
+        ]:
+            form = self.get(page)
+            assert 'message' not in form.initial, page
+            assert 'subject' not in form.initial, page
+
+    def test_no_prefill_without_topic(self):
+        form = self.get('/workspace/shared/abc', topic=None)
+        assert 'message' not in form.initial
