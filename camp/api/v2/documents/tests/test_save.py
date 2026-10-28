@@ -206,12 +206,20 @@ class SaveTests(TestCase):
         self.assertEqual(set(response.json()['data']['fields']), {'body'})
 
     def test_bad_ids_invalid(self):
-        for bad in ['profile', 'export', 'has.dot', 'x' * 65]:
+        for bad in ['export', 'shared', 'has.dot', 'x' * 65]:
             response = save(self.client, bad)
             self.assertEqual(response.status_code, 400, bad)
             self.assertEqual(code(response), 'invalid')
             self.assertIn('id', response.json()['data']['fields'])
         self.assertFalse(SavedDocument.objects.exists())
+
+    def test_reserved_ids_invalid(self):
+        # profile/, export/, and shared/ are fixed routes ahead of <id>/, so a PUT there never
+        # reaches the save, and a document with one of those ids would have its sub-routes
+        # shadowed (shared/changes/ is a share link); validation refuses the ids.
+        for reserved in ['profile', 'export', 'shared']:
+            _, errors = save_module.validate({}, reserved)
+            self.assertIn('id', errors, reserved)
 
     def test_kind_other_than_dashboard_invalid(self):
         response = save(self.client, 'doc', kind='notebook')

@@ -25,8 +25,8 @@ from camp.apps.documents.models import (
 from . import serializers
 from .responses import refuse
 
-# Ids answered by fixed endpoints (documents/profile/, documents/export/).
-RESERVED_IDS = {'profile', 'export'}
+# Ids answered by fixed endpoints (documents/profile/, documents/export/, documents/shared/).
+RESERVED_IDS = {'profile', 'export', 'shared'}
 
 FIELDS = (
     'kind', 'schema_version', 'name', 'body', 'deleted_at', 'copied_from', 'base_version',

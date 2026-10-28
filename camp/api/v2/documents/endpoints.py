@@ -1,3 +1,5 @@
+import secrets
+
 from datetime import timedelta, timezone as dt_timezone
 
 from io import BytesIO
@@ -9,7 +11,7 @@ from django.utils.dateparse import parse_datetime
 from resticus import http
 from resticus.views import Endpoint
 
-from camp.apps.documents.models import PurgedDocument, SavedDocument
+from camp.apps.documents.models import DocumentProfile, PurgedDocument, SavedDocument
 
 from camp.apps.documents import purge
 
@@ -35,6 +37,17 @@ class NoStoreMixin:
         return response
 
 
+class BodilessMixin:
+    """Skips body parsing for `bodiless_methods`: resticus refuses a body with no content type."""
+
+    bodiless_methods = ()
+
+    def parse_body(self, request):
+        if request.method in self.bodiless_methods:
+            return (None, None)
+        return super().parse_body(request)
+
+
 def owned_document(request, id):
     """The signed-in user's document, or None when it is missing or someone else's."""
     return SavedDocument.objects.filter(owner=request.user, pk=id).first()
@@ -47,6 +60,10 @@ def refuse_absent(request, id):
     """
     if PurgedDocument.objects.filter(owner=request.user, pk=id).exists():
         return refuse('gone', 410, 'This document was permanently deleted.')
+    return not_found()
+
+
+def not_found():
     return refuse('not_found', 404, 'No such document.')
 
 
@@ -105,9 +122,10 @@ def is_session_user(request):
     return user is not None and user.is_authenticated
 
 
-class DocumentDetail(NoStoreMixin, Endpoint):
+class DocumentDetail(NoStoreMixin, BodilessMixin, Endpoint):
     documented = False
     login_required = True
+    bodiless_methods = ('DELETE',)
 
     def dispatch(self, request, *args, **kwargs):
         if request.method == 'PUT' and is_session_user(request):
@@ -115,12 +133,6 @@ class DocumentDetail(NoStoreMixin, Endpoint):
             if refusal is not None:
                 return refusal
         return super().dispatch(request, *args, **kwargs)
-
-    def parse_body(self, request):
-        # A DELETE carries no body, and resticus would refuse one with no content type.
-        if request.method == 'DELETE':
-            return (None, None)
-        return super().parse_body(request)
 
     def get(self, request, id):
         doc = owned_document(request, id)
@@ -173,3 +185,143 @@ def parse_since(value):
     if value is None or not value.isascii() or not value.isdigit():
         return None
     return int(value)
+
+
+class DocumentShare(NoStoreMixin, BodilessMixin, Endpoint):
+    """Turn a document's share link on (POST) or off (DELETE)."""
+    documented = False
+    login_required = True
+    bodiless_methods = ('POST', 'DELETE')
+
+    def post(self, request, id):
+        doc = owned_document(request, id)
+        if doc is None or doc.deleted_at is not None:
+            return not_found()
+        if serializers.sharing_blocked(doc):
+            return refuse('sharing_blocked', 403, 'Sharing is turned off for this dashboard.')
+        doc.visibility = SavedDocument.Visibility.LINK
+        if not doc.share_token:
+            doc.share_token = new_share_token()
+        # Only these fields: sharing is not an edit, so version and updated_at stay as they are.
+        SavedDocument.objects.filter(pk=doc.pk).update(
+            visibility=doc.visibility, share_token=doc.share_token
+        )
+        return http.Http200({'data': {'share_token': doc.share_token}})
+
+    def delete(self, request, id):
+        doc = owned_document(request, id)
+        if doc is None:
+            return not_found()
+        # The token is dropped, not kept: sharing again makes a new one, so this link stays dead.
+        SavedDocument.objects.filter(pk=doc.pk).update(
+            visibility=SavedDocument.Visibility.PRIVATE, share_token=None
+        )
+        return http.Http204()
+
+
+def new_share_token():
+    while True:
+        token = secrets.token_urlsafe(16)
+        if not SavedDocument.objects.filter(share_token=token).exists():
+            return token
+
+
+def not_shared():
+    """The one answer for a share link that does not open, whatever the reason.
+
+    Private, revoked, deleted, unknown, turned off, and blocked owner all get these same bytes,
+    so a link reveals nothing about the document behind it.
+    """
+    return refuse('not_found', 404, 'This shared dashboard is no longer available.')
+
+
+def shared_document(token):
+    """The document behind a share link, or None when the link does not open."""
+    doc = (
+        SavedDocument.objects.select_related('owner__document_profile')
+        .filter(share_token=token)
+        .first()
+    )
+    if doc is None or not serializers.shareable(doc):
+        return None
+    return doc
+
+
+class SharedDocumentDetail(NoStoreMixin, Endpoint):
+    """A shared dashboard, for anyone with the link (signed in or not)."""
+    documented = False
+    login_required = False
+
+    def get(self, request, token):
+        doc = shared_document(token)
+        if doc is None:
+            return not_shared()
+        return http.Http200({'data': serializers.shared(doc)})
+
+
+class SharedDocumentChanges(NoStoreMixin, Endpoint):
+    """What an open shared dashboard polls: just the version, or the whole SharedDocument."""
+    documented = False
+    login_required = False
+
+    def get(self, request, token):
+        # The link is checked first, so a bad since never tells a known token from an unknown one.
+        doc = shared_document(token)
+        if doc is None:
+            return not_shared()
+        since = parse_since(request.params.get('since'))
+        if since is None:
+            return refuse(
+                'invalid', 400, 'since must be an integer of 0 or more.',
+                {'fields': {'since': ['Enter a whole number of 0 or more.']}},
+            )
+        if since == doc.version:
+            return http.Http200({'data': {'version': doc.version}})
+        return http.Http200({'data': serializers.shared(doc)})
+
+
+class DocumentCredit(NoStoreMixin, Endpoint):
+    """The "Based on…" credit for a copy: open to the owner, or to anyone while it is shared."""
+    documented = False
+    login_required = False
+
+    def get(self, request, id):
+        doc = SavedDocument.objects.select_related('owner__document_profile').filter(pk=id).first()
+        if doc is None:
+            return not_found()
+        is_owner = request.user.is_authenticated and doc.owner_id == request.user.pk
+        if not (is_owner or serializers.shareable(doc)):
+            return not_found()
+        return http.Http200({'data': serializers.credit(doc)})
+
+
+class DocumentProfileDetail(NoStoreMixin, Endpoint):
+    """The signed-in user's public display name for shared dashboards."""
+    documented = False
+    login_required = True
+
+    def get(self, request):
+        profile, _ = DocumentProfile.objects.get_or_create(user=request.user)
+        return http.Http200({'data': {'display_name': profile.display_name or None}})
+
+    def put(self, request):
+        data = request.data
+        if not isinstance(data, dict) or 'display_name' not in data:
+            return invalid_display_name('This field is required.')
+        value = data['display_name']
+        if value is not None and not isinstance(value, str):
+            return invalid_display_name('Enter text or null.')
+        value = (value or '').strip() or None
+        max_length = DocumentProfile._meta.get_field('display_name').max_length
+        if value is not None and len(value) > max_length:
+            return invalid_display_name(f'Use {max_length} characters or fewer.')
+        profile, _ = DocumentProfile.objects.get_or_create(user=request.user)
+        profile.display_name = value
+        profile.save(update_fields=['display_name'])
+        return http.Http200({'data': {'display_name': profile.display_name}})
+
+
+def invalid_display_name(message):
+    return refuse(
+        'invalid', 400, 'The display name is invalid.', {'fields': {'display_name': [message]}}
+    )
