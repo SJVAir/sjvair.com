@@ -413,8 +413,10 @@ class DocumentProfileDetail(NoStoreMixin, Endpoint):
     login_required = True
 
     def get(self, request):
-        profile, _ = DocumentProfile.objects.get_or_create(user=request.user)
-        return http.Http200({'data': {'display_name': profile.display_name or None}})
+        # Reading never creates a profile; a user without one has no display name yet.
+        profile = DocumentProfile.objects.filter(user=request.user).first()
+        display_name = profile.display_name if profile is not None else None
+        return http.Http200({'data': {'display_name': display_name or None}})
 
     def put(self, request):
         data = request.data

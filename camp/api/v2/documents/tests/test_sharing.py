@@ -295,6 +295,8 @@ class SharingTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Cache-Control'], 'no-store')
         self.assertEqual(response.json(), {'data': {'display_name': None}})
+        # Reading never creates a profile; only a PUT does.
+        self.assertFalse(DocumentProfile.objects.filter(user=self.alice).exists())
 
         def put(value):
             return self.client.put(
