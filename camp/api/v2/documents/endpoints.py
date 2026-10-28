@@ -71,6 +71,10 @@ def not_found():
     return refuse('not_found', 404, 'No such document.')
 
 
+def not_deleted():
+    return refuse('not_deleted', 409, 'Move the document to the trash first.')
+
+
 class DocumentList(NoStoreMixin, Endpoint):
     documented = False
     login_required = True
@@ -206,8 +210,13 @@ class DocumentDetail(NoStoreMixin, BodilessMixin, Endpoint):
         if doc is None:
             return refuse_absent(request, id)
         if doc.deleted_at is None:
-            return refuse('not_deleted', 409, 'Move the document to the trash first.')
-        purge.purge_document(doc)
+            return not_deleted()
+        if not purge.purge_document(doc):
+            # Restored or purged since it was read: answer for the row as it is now.
+            doc = owned_document(request, id)
+            if doc is None:
+                return refuse_absent(request, id)
+            return not_deleted()
         return http.Http204()
 
 

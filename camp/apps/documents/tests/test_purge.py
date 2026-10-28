@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest import mock
 
 from django.test import TestCase
 from django.utils import timezone
@@ -38,3 +39,36 @@ class PurgeTests(TestCase):
             kept.append(snap.pk)
         self.assertEqual(purge.expire_snapshots(self.now), 1)
         self.assertEqual(list(DocumentSnapshot.objects.values_list('pk', flat=True)), [kept[1]])
+
+    def test_purge_skips_a_document_restored_after_it_was_read(self):
+        doc = seed(self.alice, 'doc', deleted_at=self.now - timedelta(days=1))
+        SavedDocument.objects.filter(pk='doc').update(deleted_at=None)  # restored since the read
+        self.assertFalse(purge.purge_document(doc))
+        self.assertIsNone(SavedDocument.objects.get(pk='doc').deleted_at)
+        self.assertFalse(PurgedDocument.objects.exists())
+
+    def test_purge_skips_a_document_already_gone(self):
+        doc = seed(self.alice, 'doc', deleted_at=self.now)
+        SavedDocument.objects.filter(pk='doc').delete()
+        self.assertFalse(purge.purge_document(doc))
+        self.assertFalse(PurgedDocument.objects.exists())
+
+    def test_sweep_skips_documents_restored_or_retrashed_mid_sweep(self):
+        for id in ('restored', 'retrashed', 'expired'):
+            seed(self.alice, id, deleted_at=self.now - timedelta(days=31))
+        real = purge.purge_document
+
+        def change_then_purge(doc, **kwargs):
+            # What a save landing between the sweep's read and its purge would do.
+            if doc.pk == 'restored':
+                SavedDocument.objects.filter(pk=doc.pk).update(deleted_at=None)
+            if doc.pk == 'retrashed':
+                SavedDocument.objects.filter(pk=doc.pk).update(deleted_at=self.now)
+            return real(doc, **kwargs)
+
+        with mock.patch.object(purge, 'purge_document', side_effect=change_then_purge):
+            self.assertEqual(purge.purge_expired(self.now), 1)
+        self.assertEqual(
+            set(SavedDocument.objects.values_list('id', flat=True)), {'restored', 'retrashed'}
+        )
+        self.assertEqual(list(PurgedDocument.objects.values_list('id', flat=True)), ['expired'])

@@ -1,10 +1,12 @@
 from datetime import timedelta
+from unittest import mock
 
 from django.test import Client, TestCase
 from django.utils import timezone
 
 from camp.apps.documents.models import DocumentChange, DocumentSnapshot, PurgedDocument, SavedDocument
 
+from .. import endpoints
 from .helpers import BASE, make_user
 from .test_read import seed
 
@@ -51,4 +53,20 @@ class DeleteTests(TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.content, missing.content)
         self.assertTrue(SavedDocument.objects.filter(pk='theirs').exists())
+        self.assertFalse(PurgedDocument.objects.exists())
+
+    def test_delete_restored_after_read_is_not_deleted(self):
+        seed(self.alice, 'trash', deleted_at=timezone.now())
+        real = endpoints.owned_document
+
+        def read_then_restore(request, id):
+            doc = real(request, id)
+            SavedDocument.objects.filter(pk=id).update(deleted_at=None)  # a restore lands
+            return doc
+
+        with mock.patch.object(endpoints, 'owned_document', side_effect=read_then_restore):
+            response = self.client.delete(f'{BASE}trash/')
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()['errors']['detail'][0]['code'], 'not_deleted')
+        self.assertTrue(SavedDocument.objects.filter(pk='trash').exists())
         self.assertFalse(PurgedDocument.objects.exists())
