@@ -98,9 +98,11 @@ class DeleteAccountView(LoginRequiredMixin, View):
 
 
 def deletion_context(user):
+    # Metadata only: the bodies are never needed to count dashboards or share links.
+    documents = user.saved_documents.defer('body').select_related('owner__document_profile')
     return {'deletion_counts': {
         'dashboards': user.saved_documents.count(),
-        'share_links': sum(1 for doc in user.saved_documents.all() if shareable(doc)),
+        'share_links': sum(1 for doc in documents if shareable(doc)),
         'subscriptions': user.subscriptions.count(),
     }}
 

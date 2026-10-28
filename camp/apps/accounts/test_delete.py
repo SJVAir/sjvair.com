@@ -1,11 +1,14 @@
 from django.contrib.messages import get_messages
 from django.core.cache import cache
+from django.db import connection
 from django.test import Client, TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
-from camp.api.v2.documents.tests.helpers import make_user, save
+from camp.api.v2.documents.tests.helpers import body_queries, make_user, save
 from camp.apps.accounts.models import User
 from camp.apps.alerts.models import Subscription
+from camp.apps.accounts.views import deletion_context
 from camp.apps.documents.models import SavedDocument
 from camp.apps.monitors.purpleair.models import PurpleAir
 
@@ -52,6 +55,21 @@ class DeleteAccountTests(TestCase):
         self.assertIn('password', response.context['delete_form'].fields)
         self.assertContains(response, f'action="{self.delete_url}"')
         self.assertContains(response, 'Delete my account')
+
+    def test_counts_skip_bodies_and_dont_grow_with_dashboards(self):
+        self.make_docs()
+        user = User.objects.get(pk=self.user.pk)
+        with CaptureQueriesContext(connection) as few:
+            deletion_context(user)
+        self.assertEqual(body_queries(few), [])
+        for id in ('four', 'five'):
+            self.assertEqual(save(self.client, id).status_code, 200)
+            self.client.post(f'/api/2.0/documents/{id}/share/')
+        user = User.objects.get(pk=self.user.pk)
+        with CaptureQueriesContext(connection) as more:
+            counts = deletion_context(user)['deletion_counts']
+        self.assertEqual((counts['dashboards'], counts['share_links']), (5, 3))
+        self.assertEqual(len(more), len(few))
 
     def test_download_link_only_with_dashboards(self):
         export = reverse('api:v2:documents:export')

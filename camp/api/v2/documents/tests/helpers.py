@@ -46,3 +46,15 @@ def save(client, id, **overrides):
     payload.update(overrides)
     payload = {key: value for key, value in payload.items() if value is not MISSING}
     return client.put(f'{BASE}{id}/', json.dumps(payload), content_type='application/json')
+
+
+BODY_COLUMNS = ('"documents_saveddocument"."body"', '"documents_documentsnapshot"."body"')
+
+
+def body_queries(captured):
+    """The captured queries that read a document's or snapshot's body column."""
+    return [
+        query['sql'] for query in captured.captured_queries
+        if query['sql'].lstrip().upper().startswith('SELECT')
+        and any(column in query['sql'] for column in BODY_COLUMNS)
+    ]

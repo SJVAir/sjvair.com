@@ -51,9 +51,15 @@ class BodilessMixin:
         return super().parse_body(request)
 
 
-def owned_document(request, id):
-    """The signed-in user's document, or None when it is missing or someone else's."""
-    return SavedDocument.objects.filter(owner=request.user, pk=id).first()
+def owned_document(request, id, with_body=True):
+    """The signed-in user's document, or None when it is missing or someone else's.
+
+    Pass `with_body=False` where only its metadata is used, to skip loading the body.
+    """
+    documents = SavedDocument.objects.filter(owner=request.user, pk=id)
+    if not with_body:
+        documents = documents.defer('body')
+    return documents.first()
 
 
 def refuse_absent(request, id):
@@ -80,7 +86,7 @@ class DocumentList(NoStoreMixin, Endpoint):
 
     def get(self, request):
         now = timezone.now()
-        documents = SavedDocument.objects.filter(owner=request.user)
+        documents = SavedDocument.objects.filter(owner=request.user).defer('body')
         purged = []
         since = request.params.get('since')
         if since:
@@ -247,10 +253,10 @@ class DocumentSnapshotList(NoStoreMixin, Endpoint):
     login_required = True
 
     def get(self, request, id):
-        doc = owned_document(request, id)
+        doc = owned_document(request, id, with_body=False)
         if doc is None:
             return refuse_absent(request, id)
-        snapshots = doc.snapshots.order_by('-created_at', '-id')
+        snapshots = doc.snapshots.defer('body').order_by('-created_at', '-id')
         return http.Http200({'data': [
             {
                 'id': snap.id,

@@ -1,13 +1,15 @@
 import json
 from datetime import timedelta
 
+from django.db import connection
 from django.test import Client, TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from camp.apps.documents.models import PurgedDocument, SavedDocument
 
-from .helpers import BASE, make_user
+from .helpers import BASE, body_queries, make_user
 
 
 def seed(owner, id, **extra):
@@ -74,6 +76,12 @@ class ReadTests(TestCase):
         response = self.client.get(BASE, {'since': since})
         self.assertEqual(response.status_code, 200)
         self.assertEqual([d['id'] for d in response.json()['data']['documents']], ['new'])
+
+    def test_list_never_reads_bodies(self):
+        seed(self.alice, 'mine')
+        with CaptureQueriesContext(connection) as captured:
+            self.assertEqual(self.client.get(BASE).status_code, 200)
+        self.assertEqual(body_queries(captured), [])
 
     def test_list_bad_since_is_invalid(self):
         # The second looks like a date and time but is no real day (Django raises on it).

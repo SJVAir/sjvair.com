@@ -1,11 +1,13 @@
 from datetime import timedelta
 
+from django.db import connection
 from django.test import Client, TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from camp.apps.documents.models import DocumentSnapshot, SavedDocument
 
-from .helpers import BASE, make_user
+from .helpers import BASE, body_queries, make_user
 
 
 def seed(owner, id):
@@ -46,6 +48,13 @@ class SnapshotReadTests(TestCase):
             set(rows[0]), {'id', 'version', 'schema_version', 'reason', 'created_at'}
         )
         self.assertEqual(rows[0]['reason'], 'conflict')
+
+    def test_snapshot_list_never_reads_bodies(self):
+        doc = seed(self.alice, 'd')
+        snap(doc, 1)
+        with CaptureQueriesContext(connection) as captured:
+            self.assertEqual(self.client.get(f'{BASE}d/snapshots/').status_code, 200)
+        self.assertEqual(body_queries(captured), [])
 
     def test_snapshot_detail(self):
         doc = seed(self.alice, 'd')
