@@ -125,3 +125,34 @@ class DocumentDetail(NoStoreMixin, Endpoint):
         if errors:
             return refuse('invalid', 400, 'The save is invalid.', {'fields': errors})
         return save.apply_save(request.user, id, cleaned)
+
+
+class DocumentChanges(NoStoreMixin, Endpoint):
+    """What open dashboards poll: the changes after version `since`, or just the version."""
+    documented = False
+    login_required = True
+
+    def get(self, request, id):
+        since = parse_since(request.params.get('since'))
+        if since is None:
+            return refuse(
+                'invalid', 400, 'since must be an integer of 0 or more.',
+                {'fields': {'since': ['Enter a whole number of 0 or more.']}},
+            )
+        doc = owned_document(request, id)
+        if doc is None:
+            return refuse_absent(request, id)
+        if since == doc.version:
+            return http.Http200({'data': {'version': doc.version}})
+        return http.Http200({'data': {
+            'version': doc.version,
+            'changes': save.changes_since(doc, since),
+            'document': serializers.document(doc),
+        }})
+
+
+def parse_since(value):
+    """`since` as an int >= 0, or None when it is missing or not one."""
+    if value is None or not value.isascii() or not value.isdigit():
+        return None
+    return int(value)
