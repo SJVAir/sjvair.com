@@ -10,7 +10,6 @@ from django.conf import settings
 from django.core.exceptions import RequestDataTooBig
 from django.http import HttpResponse
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
 from resticus import http
 from resticus.views import Endpoint
 
@@ -85,14 +84,12 @@ class DocumentList(NoStoreMixin, Endpoint):
         purged = []
         since = request.params.get('since')
         if since:
-            moment = parse_datetime(since)
+            moment = save.parse_moment(since)
             if moment is None:
                 return refuse(
                     'invalid', 400, 'since must be an ISO 8601 date and time.',
                     {'fields': {'since': ['Enter a valid date and time.']}},
                 )
-            if timezone.is_naive(moment):
-                moment = timezone.make_aware(moment, dt_timezone.utc)
             documents = documents.filter(updated_at__gte=moment)
             purged = list(
                 PurgedDocument.objects.filter(owner=request.user, purged_at__gte=moment)

@@ -76,9 +76,14 @@ class ReadTests(TestCase):
         self.assertEqual([d['id'] for d in response.json()['data']['documents']], ['new'])
 
     def test_list_bad_since_is_invalid(self):
-        response = self.client.get(BASE, {'since': 'yesterday-ish'})
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()['errors']['detail'][0]['code'], 'invalid')
+        # The second looks like a date and time but is no real day (Django raises on it).
+        for since in ('yesterday-ish', '2026-02-30T00:00:00', '2026-13-01T25:00:00Z'):
+            with self.subTest(since=since):
+                response = self.client.get(BASE, {'since': since})
+                self.assertEqual(response.status_code, 400)
+                payload = response.json()
+                self.assertEqual(payload['errors']['detail'][0]['code'], 'invalid')
+                self.assertIn('since', payload['data']['fields'])
 
     def test_cursor_is_ten_seconds_back(self):
         before = timezone.now()
