@@ -71,8 +71,12 @@ def display_name(doc):
 
 
 def shared(doc):
-    """SharedDocument: what a share link shows. Carries nothing that identifies the owner."""
+    """SharedDocument: what a share link shows. Carries nothing that identifies the owner.
+
+    The id is the document's own (so a copy can record `copied_from`), not the owner's.
+    """
     return {
+        'id': doc.id,
         'kind': doc.kind,
         'name': doc.name,
         'schema_version': doc.schema_version,

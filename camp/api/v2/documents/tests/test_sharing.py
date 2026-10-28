@@ -8,7 +8,10 @@ from camp.apps.documents.models import DocumentProfile, SavedDocument
 
 from .helpers import BASE, make_user, save
 
-SHARED_KEYS = {'kind', 'name', 'schema_version', 'version', 'body', 'updated_at', 'display_name'}
+# `id` lets "Make a copy" record copiedFrom; nothing here identifies the owner.
+SHARED_KEYS = {
+    'id', 'kind', 'name', 'schema_version', 'version', 'body', 'updated_at', 'display_name',
+}
 
 
 class SharingTests(TestCase):
@@ -192,8 +195,8 @@ class SharingTests(TestCase):
         for value in (self.alice.email, self.alice.full_name, str(self.alice.phone)):
             self.assertNotIn(value, content)
         data = response.json()['data']
-        self.assertNotIn('id', data)
         self.assertNotIn('owner', data)
+        self.assertNotIn('owner_id', data)
         self.assertNotIn(f'"{self.alice.pk}"', content)
 
     def test_shared_has_no_personal_fields(self):
@@ -205,6 +208,7 @@ class SharingTests(TestCase):
         data = response.json()['data']
         self.assertEqual(set(data), SHARED_KEYS)
         self.assertEqual(data['name'], 'Fresno air')
+        self.assertEqual(data['id'], 'doc')
         self.assertEqual(data['kind'], 'dashboard')
         self.assertEqual(data['version'], 1)
         self.assertIsNone(data['display_name'])
@@ -241,6 +245,7 @@ class SharingTests(TestCase):
         self.assertEqual(changed.status_code, 200)
         data = changed.json()['data']
         self.assertEqual(set(data), SHARED_KEYS)
+        self.assertEqual(data['id'], 'doc')
         self.assertEqual(data['version'], 2)
         self.assertEqual(data['name'], 'Renamed')
         self.assert_no_personal(changed)
