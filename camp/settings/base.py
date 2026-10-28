@@ -92,6 +92,17 @@ WORKSPACE_DIST_DIR = BASE_DIR.child('dist', 'workspace')
 WORKSPACE_CSP_ENFORCE = bool(int(env('WORKSPACE_CSP_ENFORCE', int(DEBUG))))
 WORKSPACE_CSP_REPORT_URI = env('WORKSPACE_CSP_REPORT_URI', '')
 
+# Saved dashboards (camp.apps.documents). Sizes count characters of compact JSON.
+DOCUMENTS_MAX_PER_ACCOUNT = 50
+DOCUMENTS_MAX_STORAGE = 25 * 1024 * 1024
+DOCUMENTS_MAX_SNAPSHOT_STORAGE = 25 * 1024 * 1024
+DOCUMENTS_MAX_BODY = 1_000_000
+DOCUMENTS_MAX_CHANGES = 2_000_000
+DOCUMENTS_SAVES_PER_MINUTE = 120
+DOCUMENTS_LOG_LIMIT = 500
+DOCUMENTS_TRASH_DAYS = 30
+DOCUMENTS_SNAPSHOT_DAYS = 30
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
@@ -149,6 +160,7 @@ INSTALLED_APPS = [
     'camp.apps.monitors',
     'camp.apps.pesticides',
     'camp.apps.workspace',
+    'camp.apps.documents',
     'camp.apps.monitors.airgradient',
     'camp.apps.monitors.airnow',
     'camp.apps.monitors.aqlite',
