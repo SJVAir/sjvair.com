@@ -11,6 +11,8 @@ from resticus.views import Endpoint
 
 from camp.apps.documents.models import PurgedDocument, SavedDocument
 
+from camp.apps.documents import purge
+
 from . import save, serializers
 from .responses import refuse
 
@@ -114,6 +116,12 @@ class DocumentDetail(NoStoreMixin, Endpoint):
                 return refusal
         return super().dispatch(request, *args, **kwargs)
 
+    def parse_body(self, request):
+        # A DELETE carries no body, and resticus would refuse one with no content type.
+        if request.method == 'DELETE':
+            return (None, None)
+        return super().parse_body(request)
+
     def get(self, request, id):
         doc = owned_document(request, id)
         if doc is None:
@@ -125,6 +133,15 @@ class DocumentDetail(NoStoreMixin, Endpoint):
         if errors:
             return refuse('invalid', 400, 'The save is invalid.', {'fields': errors})
         return save.apply_save(request.user, id, cleaned)
+
+    def delete(self, request, id):
+        doc = owned_document(request, id)
+        if doc is None:
+            return refuse_absent(request, id)
+        if doc.deleted_at is None:
+            return refuse('not_deleted', 409, 'Move the document to the trash first.')
+        purge.purge_document(doc)
+        return http.Http204()
 
 
 class DocumentChanges(NoStoreMixin, Endpoint):
