@@ -103,6 +103,10 @@ DOCUMENTS_LOG_LIMIT = 500
 DOCUMENTS_TRASH_DAYS = 30
 DOCUMENTS_SNAPSHOT_DAYS = 30
 
+# A save carries up to DOCUMENTS_MAX_BODY + DOCUMENTS_MAX_CHANGES characters, up to 4 bytes
+# each in UTF-8; Django's default 2.5 MB cap on request bodies would refuse it first.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 16 * 1024 * 1024
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 

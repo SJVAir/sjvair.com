@@ -1,5 +1,6 @@
 from datetime import timedelta, timezone as dt_timezone
 
+from django.core.exceptions import RequestDataTooBig
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from resticus import http
@@ -7,17 +8,24 @@ from resticus.views import Endpoint
 
 from camp.apps.documents.models import PurgedDocument, SavedDocument
 
-from . import serializers
+from . import save, serializers
 from .responses import refuse
 
 CURSOR_OVERLAP = timedelta(seconds=10)
 
 
 class NoStoreMixin:
-    """Puts `Cache-Control: no-store` on every response, resticus's own errors included."""
+    """Puts `Cache-Control: no-store` on every response, resticus's own errors included.
+
+    A request over DATA_UPLOAD_MAX_MEMORY_SIZE is refused as `too_large` (resticus reads the
+    body before its own error handling, so Django would otherwise answer with an HTML 400).
+    """
 
     def dispatch(self, request, *args, **kwargs):
-        response = super().dispatch(request, *args, **kwargs)
+        try:
+            response = super().dispatch(request, *args, **kwargs)
+        except RequestDataTooBig:
+            response = save.too_large()
         response['Cache-Control'] = 'no-store'
         return response
 
@@ -77,3 +85,9 @@ class DocumentDetail(NoStoreMixin, Endpoint):
         if doc is None:
             return refuse_absent(request, id)
         return http.Http200({'data': serializers.document(doc)})
+
+    def put(self, request, id):
+        cleaned, errors = save.validate(request.data, id)
+        if errors:
+            return refuse('invalid', 400, 'The save is invalid.', {'fields': errors})
+        return save.apply_save(request.user, id, cleaned)
