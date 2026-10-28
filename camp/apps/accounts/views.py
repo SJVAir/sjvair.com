@@ -8,6 +8,7 @@ from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
+from django.utils.translation import gettext as _
 from django.utils.http import urlsafe_base64_decode
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
@@ -92,8 +93,8 @@ class DeleteAccountView(LoginRequiredMixin, View):
         user = request.user
         logout(request)
         user.delete()
-        messages.success(request, 'Your account was deleted')
-        return redirect('/')
+        messages.success(request, _('Your account was deleted'))
+        return redirect('account:login')
 
 
 def deletion_context(user):

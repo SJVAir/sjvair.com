@@ -79,7 +79,7 @@ class DeleteAccountTests(TestCase):
         token = self.make_docs()
         response = self.delete()
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response['Location'], '/')
+        self.assertEqual(response['Location'], reverse('account:login'))
         self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
         self.assertFalse(SavedDocument.objects.filter(pk__in=['one', 'two', 'three']).exists())
         self.assertNotIn('_auth_user_id', self.client.session)
@@ -87,6 +87,13 @@ class DeleteAccountTests(TestCase):
             'Your account was deleted', [str(m) for m in get_messages(response.wsgi_request)]
         )
         self.assertEqual(Client().get(f'/api/2.0/documents/shared/{token}/').status_code, 404)
+
+    def test_deleted_message_is_shown_after_redirect(self):
+        response = self.client.post(
+            self.delete_url, {'password': PASSWORD, 'confirm': 'on'}, follow=True
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Your account was deleted')
 
     def test_get_delete_url_redirects_to_profile(self):
         response = self.client.get(self.delete_url)
@@ -98,8 +105,9 @@ class DeleteAccountTests(TestCase):
             'full_name': 'Renamed', 'email': self.user.email, 'phone': str(self.user.phone),
             'language': 'en', 'password': PASSWORD, 'confirm': 'on',
         })
-        self.assertIn(response.status_code, (200, 302))
-        self.assertTrue(User.objects.filter(pk=self.user.pk).exists())
+        self.assertRedirects(response, self.profile_url)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.full_name, 'Renamed')
 
     def test_delete_requires_login(self):
         response = Client().post(self.delete_url, {'password': PASSWORD, 'confirm': 'on'})
