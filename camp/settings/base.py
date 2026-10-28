@@ -535,10 +535,14 @@ if "SENTRY_DSN" in os.environ:
     import sentry_sdk
     from sentry_sdk.integrations.django import DjangoIntegration
 
+    from camp.apps.documents.sentry import scrub_documents
+
     sentry_sdk.init(
         dsn=os.environ["SENTRY_DSN"],
         integrations=[DjangoIntegration(transaction_style="url")],
         release=COMMIT_HASH,
+        # Saved dashboards' bodies and names stay out of error reports.
+        before_send=scrub_documents,
     )
 
 
