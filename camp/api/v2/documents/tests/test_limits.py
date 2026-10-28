@@ -1,9 +1,20 @@
+from unittest import mock
+
 from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
 
 from camp.apps.documents.models import DocumentChange, SavedDocument, measure
 
+from .. import save as save_module
 from .helpers import body, make_user, save
+
+
+# A fixed moment one second into a minute, so a rate-limit test can't straddle two minutes.
+START_OF_MINUTE = 1_800_000_000 // 60 * 60 + 1
+
+
+def frozen_clock():
+    return mock.patch.object(save_module.time, 'time', return_value=START_OF_MINUTE)
 
 
 def code(response):
@@ -68,7 +79,8 @@ class LimitTests(TestCase):
         self.assertGreater(size, 0)
 
     @override_settings(DOCUMENTS_SAVES_PER_MINUTE=3)
-    def test_rate_limit_121st_save(self):
+    @frozen_clock()
+    def test_rate_limit_121st_save(self, _clock):
         for i in range(3):
             self.assertEqual(self.put(f'r{i}').status_code, 200)
         before = SavedDocument.objects.count(), DocumentChange.objects.count()
@@ -78,11 +90,20 @@ class LimitTests(TestCase):
         self.assertEqual((SavedDocument.objects.count(), DocumentChange.objects.count()), before)
 
     @override_settings(DOCUMENTS_SAVES_PER_MINUTE=1)
-    def test_rate_limit_is_per_account(self):
+    @frozen_clock()
+    def test_rate_limit_is_per_account(self, _clock):
         self.assertEqual(self.put('a').status_code, 200)
         other = Client()
         other.force_login(make_user(2))
         self.assertEqual(save(other, 'b').status_code, 200)
+
+    @override_settings(DOCUMENTS_SAVES_PER_MINUTE=1)
+    def test_rate_limit_resets_next_minute(self):
+        with frozen_clock():
+            self.assertEqual(self.put('a').status_code, 200)
+            self.assertEqual(code(self.put('b')), 'rate_limited')
+        with mock.patch.object(save_module.time, 'time', return_value=START_OF_MINUTE + 60):
+            self.assertEqual(self.put('b').status_code, 200)
 
     def test_save_that_does_not_grow_allowed_over_storage_limit(self):
         pad = {'text': 'x' * 400}
