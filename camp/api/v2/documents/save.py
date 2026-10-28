@@ -274,9 +274,13 @@ def check_limits(user, doc, cleaned):
                 'limit_documents', 403, 'This account has reached its document limit.',
                 {'limit': settings.DOCUMENTS_MAX_PER_ACCOUNT},
             )
+    # Only a save that grows the account's total is checked, so an account already over the
+    # cap (say, after the cap was lowered) can still shrink or rewrite its dashboards.
+    growth = cleaned['size'] - (doc.size if doc is not None else 0)
+    if growth <= 0:
+        return None
     total = user.saved_documents.aggregate(total=Sum('size'))['total'] or 0
-    total += cleaned['size'] - (doc.size if doc is not None else 0)
-    if total > settings.DOCUMENTS_MAX_STORAGE:
+    if total + growth > settings.DOCUMENTS_MAX_STORAGE:
         return refuse(
             'limit_storage', 403, 'This account has reached its storage limit.',
             {'limit': settings.DOCUMENTS_MAX_STORAGE},

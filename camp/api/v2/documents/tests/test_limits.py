@@ -83,3 +83,17 @@ class LimitTests(TestCase):
         other = Client()
         other.force_login(make_user(2))
         self.assertEqual(save(other, 'b').status_code, 200)
+
+    def test_save_that_does_not_grow_allowed_over_storage_limit(self):
+        pad = {'text': 'x' * 400}
+        self.assertEqual(self.put('a', body=pad).status_code, 200)
+        self.assertEqual(self.put('b', body=pad).status_code, 200)
+        # The cap drops below what the account already stores (as a lowered setting would).
+        with override_settings(DOCUMENTS_MAX_STORAGE=500):
+            response = self.put('a', base_version=1, body={'text': 'x' * 100})
+            self.assertEqual(response.status_code, 200, response.content)
+            response = self.put('a', base_version=2, body={'text': 'y' * 100})
+            self.assertEqual(response.status_code, 200, response.content)
+            # Growing is still refused, and so is a new document.
+            self.assertEqual(code(self.put('a', base_version=3, body=pad)), 'limit_storage')
+            self.assertEqual(code(self.put('c')), 'limit_storage')
