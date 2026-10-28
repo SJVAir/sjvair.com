@@ -1,5 +1,8 @@
 from datetime import timedelta, timezone as dt_timezone
 
+from io import BytesIO
+
+from django.conf import settings
 from django.core.exceptions import RequestDataTooBig
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -76,9 +79,40 @@ class DocumentList(NoStoreMixin, Endpoint):
         }})
 
 
+def read_save_body(request):
+    """Read a signed-in save's body under DOCUMENTS_MAX_REQUEST_BYTES instead of Django's cap.
+
+    resticus reads the body before it authenticates, so the larger cap is applied here, and
+    only for a PUT from a session user; everyone else keeps DATA_UPLOAD_MAX_MEMORY_SIZE.
+    Returns a refusal when the request is too large, otherwise None (the body is then cached
+    on the request, so Django's own cap check is skipped for this request only).
+    """
+    try:
+        length = int(request.META.get('CONTENT_LENGTH') or 0)
+    except ValueError:
+        return save.too_large()
+    if length < 0 or length > settings.DOCUMENTS_MAX_REQUEST_BYTES:
+        return save.too_large()
+    request._body = request.read()
+    request._stream = BytesIO(request._body)
+    return None
+
+
+def is_session_user(request):
+    user = getattr(request, 'user', None)
+    return user is not None and user.is_authenticated
+
+
 class DocumentDetail(NoStoreMixin, Endpoint):
     documented = False
     login_required = True
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.method == 'PUT' and is_session_user(request):
+            refusal = read_save_body(request)
+            if refusal is not None:
+                return refusal
+        return super().dispatch(request, *args, **kwargs)
 
     def get(self, request, id):
         doc = owned_document(request, id)

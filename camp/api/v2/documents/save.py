@@ -196,15 +196,24 @@ def apply_save(user, id, cleaned):
 
     try:
         return save_locked(user, id, cleaned)
-    except IntegrityError:
+    except CreateRaced:
         # Another request created this id between our lookup and insert. Run the checks
         # again: they now see that row and refuse (stale_base or id_taken).
         return save_locked(user, id, cleaned)
 
 
+class CreateRaced(Exception):
+    """The create's insert hit a row another request inserted after our lookup."""
+
+
+def locked_row(id):
+    """The document row, locked until the transaction ends, or None."""
+    return SavedDocument.objects.select_for_update().filter(pk=id).first()
+
+
 def save_locked(user, id, cleaned):
     with transaction.atomic():
-        doc = SavedDocument.objects.select_for_update().filter(pk=id).first()
+        doc = locked_row(id)
 
         purged = PurgedDocument.objects.filter(pk=id).first()
         if purged is not None:
@@ -246,7 +255,14 @@ def write(user, id, doc, cleaned):
     doc.deleted_at = cleaned['deleted_at']
     doc.copied_from = cleaned['copied_from']
     doc.version += 1
-    doc.save(force_insert=created)
+    if created:
+        try:
+            doc.save(force_insert=True)
+        except IntegrityError as err:
+            # Leaving the atomic block by exception rolls the transaction back.
+            raise CreateRaced from err
+    else:
+        doc.save()
 
     DocumentChange.objects.create(document=doc, version=doc.version, entries=cleaned['changes'])
     doc.changes.filter(version__lte=doc.version - settings.DOCUMENTS_LOG_LIMIT).delete()

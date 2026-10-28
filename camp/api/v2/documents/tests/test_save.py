@@ -1,8 +1,10 @@
 import json
+from unittest import mock
 
 from django.conf import settings
 from django.test import Client, TestCase, override_settings
 
+from camp.api.v2.documents import save as save_module
 from camp.apps.documents.models import (
     BlockedBuild, DocumentChange, PurgedDocument, SavedDocument, measure,
 )
@@ -327,8 +329,62 @@ class SaveTests(TestCase):
         self.assertEqual(state(), before)
 
     @override_settings(DATA_UPLOAD_MAX_MEMORY_SIZE=1000)
-    def test_request_over_upload_cap_is_too_large(self):
+    def test_session_save_uses_documents_cap_not_site_cap(self):
+        # Over the site cap but under DOCUMENTS_MAX_REQUEST_BYTES: a signed-in save goes through.
+        self.create(body=padded_body(2000))
+
+    @override_settings(DOCUMENTS_MAX_REQUEST_BYTES=1000)
+    def test_session_save_over_documents_cap_is_too_large(self):
         response = save(self.client, 'doc', body=padded_body(2000))
         self.assertEqual(response.status_code, 413)
         self.assertEqual(code(response), 'too_large')
         self.assertEqual(response['Cache-Control'], 'no-store')
+        self.assertFalse(SavedDocument.objects.exists())
+
+    @override_settings(DOCUMENTS_MAX_REQUEST_BYTES=1000)
+    def test_invalid_content_length_is_too_large(self):
+        response = self.client.put(f'{BASE}doc/', '{}', content_type='application/json',
+                                   CONTENT_LENGTH='lots')
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(code(response), 'too_large')
+
+    @override_settings(DATA_UPLOAD_MAX_MEMORY_SIZE=1000)
+    def test_signed_out_save_keeps_site_cap(self):
+        # Over the site cap: refused before resticus authenticates, never buffered past it.
+        response = save(Client(), 'doc', body=padded_body(2000))
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(code(response), 'too_large')
+        self.assertEqual(response['Cache-Control'], 'no-store')
+        # Under it: the usual 401.
+        self.assertEqual(save(Client(), 'doc').status_code, 401)
+
+    @override_settings(DATA_UPLOAD_MAX_MEMORY_SIZE=1000)
+    def test_other_endpoints_keep_site_cap(self):
+        payload = json.dumps({'text': 'x' * 2000})
+        # Another API endpoint answers Django's own 400 for a request over the cap.
+        response = self.client.put('/api/2.0/time/', payload, content_type='application/json')
+        self.assertEqual(response.status_code, 400)
+        # So does every documents method other than a save (here: the list).
+        response = self.client.put(BASE, payload, content_type='application/json')
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(code(response), 'too_large')
+
+    def test_create_race_reruns_checks(self):
+        # Another request inserted this id after our locked lookup missed it.
+        self.create(body=body(1))
+        real = save_module.locked_row
+        calls = []
+
+        def miss_first(id):
+            calls.append(id)
+            return None if len(calls) == 1 else real(id)
+
+        with mock.patch.object(save_module, 'locked_row', side_effect=miss_first):
+            response = save(self.client, 'doc', body=body(2))
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(code(response), 'stale_base')
+        self.assertIsNone(response.json()['data']['changes'])
+        doc = SavedDocument.objects.get(pk='doc')
+        self.assertEqual((doc.version, doc.body), (1, body(1)))
+        self.assertEqual(DocumentChange.objects.filter(document=doc).count(), 1)
