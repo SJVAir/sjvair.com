@@ -206,7 +206,7 @@ class SaveTests(TestCase):
         self.assertEqual(set(response.json()['data']['fields']), {'body'})
 
     def test_bad_ids_invalid(self):
-        for bad in ['export', 'shared', 'has.dot', 'x' * 65]:
+        for bad in ['shared', 'has.dot', 'x' * 65]:
             response = save(self.client, bad)
             self.assertEqual(response.status_code, 400, bad)
             self.assertEqual(code(response), 'invalid')

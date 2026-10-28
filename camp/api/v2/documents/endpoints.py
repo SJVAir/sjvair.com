@@ -1,11 +1,14 @@
+import json
 import secrets
 
 from datetime import timedelta, timezone as dt_timezone
 
 from io import BytesIO
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.core.exceptions import RequestDataTooBig
+from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from resticus import http
@@ -19,6 +22,7 @@ from . import save, serializers
 from .responses import refuse
 
 CURSOR_OVERLAP = timedelta(seconds=10)
+PACIFIC = ZoneInfo('America/Los_Angeles')
 
 
 class NoStoreMixin:
@@ -96,6 +100,57 @@ class DocumentList(NoStoreMixin, Endpoint):
             'purged': purged,
             'cursor': now - CURSOR_OVERLAP,
         }})
+
+
+class DocumentExport(NoStoreMixin, Endpoint):
+    """The "Download my dashboards" backup: the dashboard's own backup file format."""
+    documented = False
+    login_required = True
+
+    def get(self, request):
+        now = timezone.now()
+        documents = SavedDocument.objects.filter(
+            owner=request.user, deleted_at__isnull=True
+        ).order_by('created_at', 'id')
+        envelope = {
+            'format': 'sjvair-workspace',
+            'type': 'backup',
+            'formatVersion': 1,
+            'exportedAt': file_timestamp(now),
+            'documents': [backup_document(doc) for doc in documents],
+        }
+        response = HttpResponse(
+            json.dumps(envelope, ensure_ascii=False, separators=(',', ':')),
+            content_type='application/json',
+        )
+        day = now.astimezone(PACIFIC).strftime('%Y-%m-%d')
+        response['Content-Disposition'] = f'attachment; filename="sjvair-dashboards-{day}.json"'
+        return response
+
+
+def file_timestamp(moment):
+    """An instant as the dashboard writes it (`Date.toISOString()`): UTC, milliseconds, Z."""
+    moment = moment.astimezone(dt_timezone.utc)
+    return moment.strftime('%Y-%m-%dT%H:%M:%S.') + f'{moment.microsecond // 1000:03d}Z'
+
+
+def backup_document(doc):
+    """One document in the backup file (camelCase, the dashboard's format; version restarts)."""
+    data = {
+        'kind': doc.kind,
+        'schemaVersion': doc.schema_version,
+        'id': doc.id,
+        'name': doc.name,
+    }
+    if doc.copied_from:
+        data['copiedFrom'] = doc.copied_from
+    data.update({
+        'version': 0,
+        'createdAt': file_timestamp(doc.created_at),
+        'updatedAt': file_timestamp(doc.updated_at),
+        'body': doc.body,
+    })
+    return data
 
 
 def read_save_body(request):
@@ -177,6 +232,49 @@ class DocumentChanges(NoStoreMixin, Endpoint):
             'version': doc.version,
             'changes': save.changes_since(doc, since),
             'document': serializers.document(doc),
+        }})
+
+
+class DocumentSnapshotList(NoStoreMixin, Endpoint):
+    """A document's snapshots, newest first, without their bodies."""
+    documented = False
+    login_required = True
+
+    def get(self, request, id):
+        doc = owned_document(request, id)
+        if doc is None:
+            return refuse_absent(request, id)
+        snapshots = doc.snapshots.order_by('-created_at', '-id')
+        return http.Http200({'data': [
+            {
+                'id': snap.id,
+                'version': snap.version,
+                'schema_version': snap.schema_version,
+                'reason': snap.reason,
+                'created_at': snap.created_at,
+            }
+            for snap in snapshots
+        ]})
+
+
+class DocumentSnapshotDetail(NoStoreMixin, Endpoint):
+    documented = False
+    login_required = True
+
+    def get(self, request, id, snapshot_id):
+        doc = owned_document(request, id)
+        if doc is None:
+            return refuse_absent(request, id)
+        snap = doc.snapshots.filter(pk=snapshot_id).first()
+        if snap is None:
+            return not_found()
+        return http.Http200({'data': {
+            'id': snap.id,
+            'version': snap.version,
+            'schema_version': snap.schema_version,
+            'name': snap.name,
+            'body': snap.body,
+            'created_at': snap.created_at,
         }})
 
 
