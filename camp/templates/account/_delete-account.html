@@ -1,0 +1,27 @@
+<section class="box mt-6" id="delete-account">
+    <form class="form" action="{% url 'account:delete' %}" method="post">
+        {% csrf_token %}
+        <h2 class="title is-4 has-text-danger">Delete account</h2>
+        <div class="content">
+            <p>Deleting your account permanently removes:</p>
+            <ul>
+                <li>Your profile and sign-in details</li>
+                <li>{{ deletion_counts.dashboards }} saved dashboard{{ deletion_counts.dashboards|pluralize }}, including any in the trash, their history, and snapshots</li>
+                <li>{{ deletion_counts.share_links }} share link{{ deletion_counts.share_links|pluralize }}, which will stop working</li>
+                <li>{{ deletion_counts.subscriptions }} air quality alert subscription{{ deletion_counts.subscriptions|pluralize }}</li>
+            </ul>
+            {% if deletion_counts.dashboards %}
+                <p>
+                    <a href="{% url 'api:v2:documents:export' %}" class="button is-light" download>
+                        <span class="far fa-download"></span>&nbsp;Download my dashboards
+                    </a>
+                </p>
+            {% endif %}
+        </div>
+
+        {% include '_includes/form/field.html' with field=delete_form.password icon_left="far fa-lock" %}
+        {% include '_includes/form/field.html' with field=delete_form.confirm %}
+
+        <button type="submit" class="button is-danger">Delete my account</button>
+    </form>
+</section>

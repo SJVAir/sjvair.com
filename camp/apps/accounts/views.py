@@ -1,10 +1,11 @@
-from django.contrib.auth import authenticate, login, views as auth_views
+from django.contrib import messages
+from django.contrib.auth import authenticate, login, logout, views as auth_views
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.tokens import default_token_generator as token_generator
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse, HttpResponseForbidden
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
 from django.utils.http import urlsafe_base64_decode
@@ -15,6 +16,7 @@ import vanilla
 
 from twilio.twiml.messaging_response import MessagingResponse
 
+from camp.api.v2.documents.serializers import shareable
 from camp.utils.twilio_signature import is_valid_twilio_request
 from camp.utils.views import RedirectViewMixin
 
@@ -57,6 +59,12 @@ class ProfileView(LoginRequiredMixin, vanilla.UpdateView):
     def get_object(self):
         return self.request.user
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.setdefault('delete_form', forms.DeleteAccountForm(user=self.request.user))
+        context.update(deletion_context(self.request.user))
+        return context
+
     def form_valid(self, form):
         self.phone_changed = self.object.tracker.has_changed('phone')
         return super().form_valid(form)
@@ -65,6 +73,35 @@ class ProfileView(LoginRequiredMixin, vanilla.UpdateView):
         if self.phone_changed:
             return reverse_lazy('account:phone-verify-send')
         return reverse_lazy('account:profile')
+
+
+class DeleteAccountView(LoginRequiredMixin, View):
+    """Deletes the signed-in account (and, by cascade, its saved dashboards). POST only."""
+
+    def get(self, request):
+        return redirect('account:profile')
+
+    def post(self, request):
+        form = forms.DeleteAccountForm(request.POST, user=request.user)
+        if not form.is_valid():
+            return render(request, ProfileView.template_name, {
+                'form': forms.ProfileForm(instance=request.user),
+                'delete_form': form,
+                **deletion_context(request.user),
+            })
+        user = request.user
+        logout(request)
+        user.delete()
+        messages.success(request, 'Your account was deleted')
+        return redirect('/')
+
+
+def deletion_context(user):
+    return {'deletion_counts': {
+        'dashboards': user.saved_documents.count(),
+        'share_links': sum(1 for doc in user.saved_documents.all() if shareable(doc)),
+        'subscriptions': user.subscriptions.count(),
+    }}
 
 
 class SendPhoneVerification(LoginRequiredMixin, vanilla.FormView):
