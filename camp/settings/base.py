@@ -221,6 +221,14 @@ for var in ["REDIS_URL", "OPENREDIS_URL", "REDISCLOUD_URL"]:
         break
 
 
+def redis_db_url(index):
+    """REDIS_URL's database `index`. The /N goes before any query string: a rediss URL carries ?ssl_cert_reqs=none."""
+    if REDIS_URL is None:
+        return None
+    base, _, query = REDIS_URL.partition('?')
+    return f'{base}/{index}' + (f'?{query}' if query else '')
+
+
 # Auth
 
 AUTHENTICATION_BACKENDS = (
@@ -387,7 +395,7 @@ DJANGO_HUEY = {
     'queues': {
         'primary': {
             'name': 'primary_tasks',
-            'connection': {'url': env('REDIS_PRIMARY_URL', f'{REDIS_URL}/0')},
+            'connection': {'url': env('REDIS_PRIMARY_URL', redis_db_url(0))},
             'consumer': {
                 'periodic': True,
                 'workers': int(env('HUEY_PRIMARY_WORKERS', env('HUEY_WORKERS', 4)))
@@ -397,7 +405,7 @@ DJANGO_HUEY = {
         },
         'secondary': {
             'name': 'secondary_tasks',
-            'connection': {'url': env('REDIS_SECONDARY_URL', f'{REDIS_URL}/1')},
+            'connection': {'url': env('REDIS_SECONDARY_URL', redis_db_url(1))},
             'consumer': {
                 'periodic': False,
                 'workers': int(env('HUEY_SECONDARY_WORKERS', env('HUEY_WORKERS', 4)))
@@ -407,7 +415,7 @@ DJANGO_HUEY = {
         },
         'summaries': {
             'name': 'summaries_tasks',
-            'connection': {'url': env('REDIS_SUMMARIES_URL', f'{REDIS_URL}/2')},
+            'connection': {'url': env('REDIS_SUMMARIES_URL', redis_db_url(2))},
             'consumer': {
                 'periodic': True,
                 'workers': int(env('HUEY_SUMMARIES_WORKERS', env('HUEY_WORKERS', 2)))
