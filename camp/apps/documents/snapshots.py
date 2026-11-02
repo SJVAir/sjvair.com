@@ -35,10 +35,18 @@ def reason_for(doc, cleaned, now):
 
 def take(doc, reason):
     """Copy the stored state of `doc`, then trim the owner's oldest snapshots to the cap."""
+    return keep(
+        doc, version=doc.version, schema_version=doc.schema_version, name=doc.name,
+        body=doc.body, size=doc.size, reason=reason,
+    )
+
+
+def keep(doc, *, version, schema_version, name, body, size,
+         reason=DocumentSnapshot.Reason.CONFLICT):
+    """Store the given content as a snapshot of `doc`, then trim the owner's oldest to the cap."""
     snapshot = DocumentSnapshot.objects.create(
-        document=doc, owner_id=doc.owner_id, version=doc.version,
-        schema_version=doc.schema_version, name=doc.name, body=doc.body, size=doc.size,
-        reason=reason,
+        document=doc, owner_id=doc.owner_id, version=version, schema_version=schema_version,
+        name=name, body=body, size=size, reason=reason,
     )
     trim(doc.owner_id)
     return snapshot
