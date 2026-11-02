@@ -18,7 +18,7 @@ from camp.apps.documents.models import DocumentProfile, PurgedDocument, SavedDoc
 from camp.apps.documents import purge
 
 from . import save, serializers
-from .responses import refuse
+from .responses import not_found, refuse, refuse_absent
 
 CURSOR_OVERLAP = timedelta(seconds=10)
 PACIFIC = ZoneInfo('America/Los_Angeles')
@@ -60,20 +60,6 @@ def owned_document(request, id, with_body=True):
     if not with_body:
         documents = documents.defer('body')
     return documents.first()
-
-
-def refuse_absent(request, id):
-    """Answer for a document the user cannot open: gone if they purged it, otherwise not found.
-
-    Missing and not-yours share this one path so the two answers are byte-identical.
-    """
-    if PurgedDocument.objects.filter(owner=request.user, pk=id).exists():
-        return refuse('gone', 410, 'This document was permanently deleted.')
-    return not_found()
-
-
-def not_found():
-    return refuse('not_found', 404, 'No such document.')
 
 
 def not_deleted():
@@ -184,17 +170,24 @@ def is_session_user(request):
     return user is not None and user.is_authenticated
 
 
-class DocumentDetail(NoStoreMixin, BodilessMixin, Endpoint):
-    documented = False
-    login_required = True
-    bodiless_methods = ('DELETE',)
+class LargeBodyMixin:
+    """Reads a signed-in user's `large_body_methods` requests under DOCUMENTS_MAX_REQUEST_BYTES."""
+
+    large_body_methods = ()
 
     def dispatch(self, request, *args, **kwargs):
-        if request.method == 'PUT' and is_session_user(request):
+        if request.method in self.large_body_methods and is_session_user(request):
             refusal = read_save_body(request)
             if refusal is not None:
                 return refusal
         return super().dispatch(request, *args, **kwargs)
+
+
+class DocumentDetail(NoStoreMixin, LargeBodyMixin, BodilessMixin, Endpoint):
+    documented = False
+    login_required = True
+    bodiless_methods = ('DELETE',)
+    large_body_methods = ('PUT',)
 
     def get(self, request, id):
         doc = owned_document(request, id)
@@ -247,26 +240,24 @@ class DocumentChanges(NoStoreMixin, Endpoint):
         }})
 
 
-class DocumentSnapshotList(NoStoreMixin, Endpoint):
-    """A document's snapshots, newest first, without their bodies."""
+class DocumentSnapshotList(NoStoreMixin, LargeBodyMixin, Endpoint):
+    """A document's snapshots, newest first, without their bodies (GET); keep given content (POST)."""
     documented = False
     login_required = True
+    large_body_methods = ('POST',)
+
+    def post(self, request, id):
+        cleaned, errors = save.validate_snapshot(request.data, id)
+        if errors:
+            return refuse('invalid', 400, 'The snapshot is invalid.', {'fields': errors})
+        return save.keep_snapshot(request, id, cleaned)
 
     def get(self, request, id):
         doc = owned_document(request, id, with_body=False)
         if doc is None:
             return refuse_absent(request, id)
         snapshots = doc.snapshots.defer('body').order_by('-created_at', '-id')
-        return http.Http200({'data': [
-            {
-                'id': snap.id,
-                'version': snap.version,
-                'schema_version': snap.schema_version,
-                'reason': snap.reason,
-                'created_at': snap.created_at,
-            }
-            for snap in snapshots
-        ]})
+        return http.Http200({'data': [serializers.snapshot_row(snap) for snap in snapshots]})
 
 
 class DocumentSnapshotDetail(NoStoreMixin, Endpoint):

@@ -6,15 +6,7 @@ from django.test import Client, TestCase, override_settings
 from camp.apps.documents.models import DocumentChange, SavedDocument, measure
 
 from .. import save as save_module
-from .helpers import body, make_user, save
-
-
-# A fixed moment one second into a minute, so a rate-limit test can't straddle two minutes.
-START_OF_MINUTE = 1_800_000_000 // 60 * 60 + 1
-
-
-def frozen_clock():
-    return mock.patch.object(save_module.time, 'time', return_value=START_OF_MINUTE)
+from .helpers import START_OF_MINUTE, body, frozen_clock, make_user, save
 
 
 def code(response):

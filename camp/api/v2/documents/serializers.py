@@ -27,6 +27,17 @@ def document(doc):
     return data
 
 
+def snapshot_row(snap):
+    """A snapshot without its name or body: a row of the snapshot list, and the answer to a POST."""
+    return {
+        'id': snap.id,
+        'version': snap.version,
+        'schema_version': snap.schema_version,
+        'reason': snap.reason,
+        'created_at': snap.created_at,
+    }
+
+
 def entries(changes):
     """Flatten saved DocumentChange rows (in order) into Entry dicts."""
     return [

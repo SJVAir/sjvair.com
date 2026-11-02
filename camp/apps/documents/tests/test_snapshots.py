@@ -76,6 +76,20 @@ class SnapshotTests(TestCase):
             ['daily', 'conflict'],
         )
 
+    def test_conflict_snapshot_does_not_suppress_daily(self):
+        self.put()
+        self.put(base_version=1, snapshot='conflict')  # first save of the day: conflict
+        self.put(base_version=2)                       # still takes the daily
+        reasons = list(DocumentSnapshot.objects.order_by('pk').values_list('reason', flat=True))
+        assert reasons == ['conflict', 'daily']
+        assert DocumentSnapshot.objects.get(reason='daily').version == 2
+
+    def test_schema_snapshot_still_suppresses_daily(self):
+        self.put()
+        self.put(base_version=1, schema_version=2)
+        self.put(base_version=2, schema_version=2)
+        assert list(DocumentSnapshot.objects.values_list('reason', flat=True)) == ['schema']
+
     def test_one_snapshot_per_save_by_priority(self):
         self.put()
         self.put(base_version=1, schema_version=2, snapshot='conflict')
@@ -95,3 +109,32 @@ class SnapshotTests(TestCase):
     def test_start_of_day_is_pacific(self):
         now = datetime(2026, 10, 28, 3, 0, tzinfo=ZoneInfo('UTC'))  # Oct 27, 20:00 Pacific
         self.assertEqual(snapshots.start_of_day(now), datetime(2026, 10, 27, tzinfo=PACIFIC))
+
+
+class KeepTests(TestCase):
+    def setUp(self):
+        self.alice = make_user(1)
+        self.doc = SavedDocument.objects.create(
+            id='d', owner=self.alice, kind='dashboard', name='Stored', body={'a': 1}, size=7,
+            schema_version=1, version=2,
+        )
+
+    def test_keep_stores_given_content_not_stored(self):
+        made = snapshots.keep(
+            self.doc, version=2, schema_version=1, name='Mine', body={'b': 2}, size=7,
+        )
+        made.refresh_from_db()
+        assert (
+            made.reason, made.version, made.schema_version, made.name, made.body, made.size,
+            made.owner_id,
+        ) == ('conflict', 2, 1, 'Mine', {'b': 2}, 7, self.alice.pk)
+        self.doc.refresh_from_db()
+        assert (self.doc.version, self.doc.body) == (2, {'a': 1})
+
+    @override_settings(DOCUMENTS_MAX_SNAPSHOT_STORAGE=20)
+    def test_keep_trims_oldest(self):
+        first = snapshots.keep(self.doc, version=2, schema_version=1, name=None, body={}, size=10)
+        snapshots.keep(self.doc, version=2, schema_version=1, name=None, body={}, size=10)
+        snapshots.keep(self.doc, version=2, schema_version=1, name=None, body={}, size=10)
+        assert not DocumentSnapshot.objects.filter(pk=first.pk).exists()
+        assert DocumentSnapshot.objects.count() == 2

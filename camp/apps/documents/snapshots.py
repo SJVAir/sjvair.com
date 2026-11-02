@@ -17,22 +17,36 @@ def start_of_day(now):
 
 
 def reason_for(doc, cleaned, now):
-    """Why this save should snapshot the stored state of `doc`, or None. One reason at most."""
+    """Why this save should snapshot the stored state of `doc`, or None. One reason at most.
+
+    The day's first save takes a daily snapshot unless a daily or schema one exists from today.
+    Conflict snapshots don't count: one may hold a device's content rather than the stored
+    version, so it can't stand in for the day's copy of what the server held.
+    """
     if cleaned['schema_version'] > doc.schema_version:
         return DocumentSnapshot.Reason.SCHEMA
     if cleaned['snapshot'] == 'conflict':
         return DocumentSnapshot.Reason.CONFLICT
-    if not doc.snapshots.filter(created_at__gte=start_of_day(now)).exists():
+    today = doc.snapshots.filter(created_at__gte=start_of_day(now))
+    if not today.exclude(reason=DocumentSnapshot.Reason.CONFLICT).exists():
         return DocumentSnapshot.Reason.DAILY
     return None
 
 
 def take(doc, reason):
     """Copy the stored state of `doc`, then trim the owner's oldest snapshots to the cap."""
+    return keep(
+        doc, version=doc.version, schema_version=doc.schema_version, name=doc.name,
+        body=doc.body, size=doc.size, reason=reason,
+    )
+
+
+def keep(doc, *, version, schema_version, name, body, size,
+         reason=DocumentSnapshot.Reason.CONFLICT):
+    """Store the given content as a snapshot of `doc`, then trim the owner's oldest to the cap."""
     snapshot = DocumentSnapshot.objects.create(
-        document=doc, owner_id=doc.owner_id, version=doc.version,
-        schema_version=doc.schema_version, name=doc.name, body=doc.body, size=doc.size,
-        reason=reason,
+        document=doc, owner_id=doc.owner_id, version=version, schema_version=schema_version,
+        name=name, body=body, size=size, reason=reason,
     )
     trim(doc.owner_id)
     return snapshot

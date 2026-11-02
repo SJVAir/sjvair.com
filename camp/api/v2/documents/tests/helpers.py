@@ -1,8 +1,11 @@
 import json
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 
 from camp.api.v2.accounts.session import session_user_data
+from camp.api.v2.documents import save as save_module
+from camp.apps.documents.models import measure
 
 User = get_user_model()
 
@@ -58,3 +61,38 @@ def body_queries(captured):
         if query['sql'].lstrip().upper().startswith('SELECT')
         and any(column in query['sql'] for column in BODY_COLUMNS)
     ]
+
+
+# A fixed moment one second into a minute, so a rate-limit test can't straddle two minutes.
+START_OF_MINUTE = 1_800_000_000 // 60 * 60 + 1
+
+
+def frozen_clock():
+    return mock.patch.object(save_module.time, 'time', return_value=START_OF_MINUTE)
+
+
+def padded_body(chars):
+    """A body whose measured size is exactly `chars`, padded with a non-ASCII character."""
+    empty = measure({'text': ''})
+    return {'text': '\u00e9' * (chars - empty)}
+
+
+def code(response):
+    return response.json()['errors']['detail'][0]['code']
+
+
+def post_snapshot(client, id, **overrides):
+    """POST a valid snapshot for `id` as the client's signed-in user; overrides replace defaults."""
+    payload = {
+        'base_version': 1,
+        'schema_version': 1,
+        'name': 'Mine',
+        'body': body(1),
+        'account_id': account_id(client) if '_auth_user_id' in client.session else None,
+        'build_id': 'test-build',
+    }
+    payload.update(overrides)
+    payload = {key: value for key, value in payload.items() if value is not MISSING}
+    return client.post(
+        f'{BASE}{id}/snapshots/', json.dumps(payload), content_type='application/json'
+    )
