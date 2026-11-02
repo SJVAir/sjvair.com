@@ -17,12 +17,18 @@ def start_of_day(now):
 
 
 def reason_for(doc, cleaned, now):
-    """Why this save should snapshot the stored state of `doc`, or None. One reason at most."""
+    """Why this save should snapshot the stored state of `doc`, or None. One reason at most.
+
+    The day's first save takes a daily snapshot unless a daily or schema one exists from today.
+    Conflict snapshots don't count: one may hold a device's content rather than the stored
+    version, so it can't stand in for the day's copy of what the server held.
+    """
     if cleaned['schema_version'] > doc.schema_version:
         return DocumentSnapshot.Reason.SCHEMA
     if cleaned['snapshot'] == 'conflict':
         return DocumentSnapshot.Reason.CONFLICT
-    if not doc.snapshots.filter(created_at__gte=start_of_day(now)).exists():
+    today = doc.snapshots.filter(created_at__gte=start_of_day(now))
+    if not today.exclude(reason=DocumentSnapshot.Reason.CONFLICT).exists():
         return DocumentSnapshot.Reason.DAILY
     return None
 

@@ -76,6 +76,20 @@ class SnapshotTests(TestCase):
             ['daily', 'conflict'],
         )
 
+    def test_conflict_snapshot_does_not_suppress_daily(self):
+        self.put()
+        self.put(base_version=1, snapshot='conflict')  # first save of the day: conflict
+        self.put(base_version=2)                       # still takes the daily
+        reasons = list(DocumentSnapshot.objects.order_by('pk').values_list('reason', flat=True))
+        assert reasons == ['conflict', 'daily']
+        assert DocumentSnapshot.objects.get(reason='daily').version == 2
+
+    def test_schema_snapshot_still_suppresses_daily(self):
+        self.put()
+        self.put(base_version=1, schema_version=2)
+        self.put(base_version=2, schema_version=2)
+        assert list(DocumentSnapshot.objects.values_list('reason', flat=True)) == ['schema']
+
     def test_one_snapshot_per_save_by_priority(self):
         self.put()
         self.put(base_version=1, schema_version=2, snapshot='conflict')
