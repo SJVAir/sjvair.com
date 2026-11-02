@@ -284,13 +284,7 @@ def keep_snapshot(request, id, cleaned):
             doc, version=cleaned['base_version'], schema_version=cleaned['schema_version'],
             name=cleaned['name'], body=cleaned['body'], size=size,
         )
-    return http.Http201({'data': {
-        'id': snap.id,
-        'version': snap.version,
-        'schema_version': snap.schema_version,
-        'reason': snap.reason,
-        'created_at': snap.created_at,
-    }})
+    return http.Http201({'data': serializers.snapshot_row(snap)})
 
 
 def rate_limited(user):

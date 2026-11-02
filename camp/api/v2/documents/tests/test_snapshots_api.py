@@ -244,6 +244,16 @@ class SnapshotPostTests(TestCase):
     def test_large_session_body_accepted(self):
         assert self.post(body=padded_body(2000)).status_code == 201
 
+    @override_settings(DOCUMENTS_MAX_REQUEST_BYTES=1000)
+    def test_over_request_cap_is_too_large(self):
+        response = self.post(body=padded_body(2000))
+        assert (response.status_code, code(response)) == (413, 'too_large')
+        assert not DocumentSnapshot.objects.exists()
+
+    def test_account_checked_before_document(self):
+        response = self.post(id='nope', account_id='other')
+        assert (response.status_code, code(response)) == (403, 'account_mismatch')
+
     def test_posted_snapshot_does_not_suppress_daily(self):
         assert self.post().status_code == 201
         assert save(self.client, 'd', base_version=1).status_code == 200

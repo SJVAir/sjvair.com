@@ -257,16 +257,7 @@ class DocumentSnapshotList(NoStoreMixin, LargeBodyMixin, Endpoint):
         if doc is None:
             return refuse_absent(request, id)
         snapshots = doc.snapshots.defer('body').order_by('-created_at', '-id')
-        return http.Http200({'data': [
-            {
-                'id': snap.id,
-                'version': snap.version,
-                'schema_version': snap.schema_version,
-                'reason': snap.reason,
-                'created_at': snap.created_at,
-            }
-            for snap in snapshots
-        ]})
+        return http.Http200({'data': [serializers.snapshot_row(snap) for snap in snapshots]})
 
 
 class DocumentSnapshotDetail(NoStoreMixin, Endpoint):
