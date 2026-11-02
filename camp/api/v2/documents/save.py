@@ -23,7 +23,7 @@ from camp.apps.documents.models import (
 )
 
 from . import serializers
-from .responses import refuse
+from .responses import refuse, refuse_absent
 
 # Ids answered by fixed endpoints (documents/profile/, documents/export/, documents/shared/).
 RESERVED_IDS = {'profile', 'export', 'shared'}
@@ -31,6 +31,11 @@ RESERVED_IDS = {'profile', 'export', 'shared'}
 FIELDS = (
     'kind', 'schema_version', 'name', 'body', 'deleted_at', 'copied_from', 'base_version',
     'changes', 'account_id', 'build_id', 'snapshot',
+)
+
+# A snapshot request: content to keep as a conflict snapshot of an existing document.
+SNAPSHOT_FIELDS = (
+    'base_version', 'schema_version', 'name', 'body', 'account_id', 'build_id',
 )
 
 REQUIRED = 'This field is required.'
@@ -157,6 +162,38 @@ def validate(data, id):
     return cleaned, {}
 
 
+def check_snapshot_field(name, value):
+    """The error message for one snapshot field, or None. base_version can't be null here."""
+    if name == 'base_version':
+        return None if is_int(value) and value >= 0 else 'Must be an integer >= 0.'
+    return check_field(name, value)
+
+
+def validate_snapshot(data, id):
+    """Check a snapshot request's shape. Returns (cleaned, errors), as validate does."""
+    errors = {}
+    message = check_id(id)
+    if message:
+        errors['id'] = [message]
+    if not isinstance(data, dict):
+        errors['request'] = ['The request must be a JSON object.']
+        return {}, errors
+
+    cleaned = {}
+    for name in SNAPSHOT_FIELDS:
+        if name not in data:
+            errors[name] = [REQUIRED]
+            continue
+        message = check_snapshot_field(name, data[name])
+        if message:
+            errors[name] = [message]
+        else:
+            cleaned[name] = data[name]
+    if errors:
+        return {}, errors
+    return cleaned, {}
+
+
 def changes_since(doc, base_version):
     """Log entries for versions base_version+1 … doc.version, or None if the log can't say."""
     if base_version is None or base_version > doc.version:
@@ -186,6 +223,23 @@ def apply_save(user, id, cleaned):
     ):
         return too_large()
 
+    refusal = check_caller(user, cleaned)
+    if refusal:
+        return refusal
+
+    try:
+        return save_locked(user, id, cleaned)
+    except CreateRaced:
+        # Another request created this id between our lookup and insert. Run the checks
+        # again: they now see that row and refuse (stale_base or id_taken).
+        return save_locked(user, id, cleaned)
+
+
+def check_caller(user, cleaned):
+    """A refusal for a blocked build, another account, or too many saves this minute, else None.
+
+    Shared by saves and snapshot requests, which count against the same per-minute limit.
+    """
     if BlockedBuild.objects.filter(build_id=cleaned['build_id']).exists():
         return refuse('build_blocked', 409, 'This version of the app can no longer save.')
 
@@ -198,13 +252,45 @@ def apply_save(user, id, cleaned):
 
     if rate_limited(user):
         return refuse('rate_limited', 429, 'Too many saves. Try again in a minute.')
+    return None
 
-    try:
-        return save_locked(user, id, cleaned)
-    except CreateRaced:
-        # Another request created this id between our lookup and insert. Run the checks
-        # again: they now see that row and refuse (stale_base or id_taken).
-        return save_locked(user, id, cleaned)
+
+def keep_snapshot(request, id, cleaned):
+    """Keep the given content as a conflict snapshot of the user's document. Returns the response.
+
+    The document itself is never changed. Checks run in the save's order, and nothing is
+    written before all of them pass.
+    """
+    size = measure(cleaned['body'])
+    if size > settings.DOCUMENTS_MAX_BODY:
+        return too_large()
+
+    refusal = check_caller(request.user, cleaned)
+    if refusal:
+        return refusal
+
+    with transaction.atomic():
+        # The body is only needed for a stale_base answer, which loads it on access.
+        doc = (
+            SavedDocument.objects.select_for_update().defer('body')
+            .filter(pk=id, owner=request.user).first()
+        )
+        if doc is None:
+            return refuse_absent(request, id)
+        if cleaned['base_version'] != doc.version:
+            return stale(doc, cleaned['base_version'])
+
+        snap = snapshots.keep(
+            doc, version=cleaned['base_version'], schema_version=cleaned['schema_version'],
+            name=cleaned['name'], body=cleaned['body'], size=size,
+        )
+    return http.Http201({'data': {
+        'id': snap.id,
+        'version': snap.version,
+        'schema_version': snap.schema_version,
+        'reason': snap.reason,
+        'created_at': snap.created_at,
+    }})
 
 
 def rate_limited(user):

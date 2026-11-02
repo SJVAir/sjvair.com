@@ -9,7 +9,7 @@ from camp.apps.documents.models import (
     BlockedBuild, DocumentChange, PurgedDocument, SavedDocument, measure,
 )
 
-from .helpers import BASE, MISSING, account_id, body, make_user, save
+from .helpers import BASE, MISSING, account_id, body, make_user, padded_body, save
 
 
 def code(response):
@@ -18,12 +18,6 @@ def code(response):
 
 def change(n):
     return {'schema_version': 1, 'change': {'op': 'set', 'n': n}}
-
-
-def padded_body(chars):
-    """A body whose measured size is exactly `chars`, padded with a non-ASCII character."""
-    empty = measure({'text': ''})
-    return {'text': 'é' * (chars - empty)}
 
 
 class SaveTests(TestCase):

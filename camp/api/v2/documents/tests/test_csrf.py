@@ -5,6 +5,8 @@ import pytest
 from django.middleware.csrf import get_token
 from django.test import Client, TestCase
 
+from camp.apps.documents.models import SavedDocument
+
 from .helpers import BASE, account_id, body, make_user
 
 
@@ -31,7 +33,7 @@ class SessionCsrfTests(TestCase):
     def test_session_save_without_csrf_refused(self):
         assert self.put().status_code == 403
 
-    def test_session_save_with_csrf_accepted(self):
+    def token(self):
         # A GET sets the csrftoken cookie; its value is the header token.
         self.client.get(f'{BASE}')
         token = self.client.cookies.get('csrftoken')
@@ -43,4 +45,29 @@ class SessionCsrfTests(TestCase):
         else:
             token = token.value
         self.client.cookies['csrftoken'] = token
-        assert self.put(HTTP_X_CSRFTOKEN=token).status_code == 200
+        return token
+
+    def test_session_save_with_csrf_accepted(self):
+        assert self.put(HTTP_X_CSRFTOKEN=self.token()).status_code == 200
+
+    def post_snapshot(self, **headers):
+        SavedDocument.objects.get_or_create(
+            id='doc', defaults={
+                'owner': self.user, 'kind': 'dashboard', 'body': {}, 'size': 2,
+                'schema_version': 1, 'version': 1,
+            },
+        )
+        payload = {
+            'base_version': 1, 'schema_version': 1, 'name': None, 'body': body(),
+            'account_id': account_id(self.client), 'build_id': 'test-build',
+        }
+        return self.client.post(
+            f'{BASE}doc/snapshots/', json.dumps(payload), content_type='application/json',
+            **headers,
+        )
+
+    def test_session_snapshot_post_without_csrf_refused(self):
+        assert self.post_snapshot().status_code == 403
+
+    def test_session_snapshot_post_with_csrf_accepted(self):
+        assert self.post_snapshot(HTTP_X_CSRFTOKEN=self.token()).status_code == 201
