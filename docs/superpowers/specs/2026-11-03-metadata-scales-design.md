@@ -1,6 +1,6 @@
 # Metadata enablers, second batch, spec 1: scales, tiers, hierarchy, hints, wrappers
 
-**Status: ready for the user's review (2026-11-03). Not yet approved. No code until it is.**
+**Status: approved by the user (2026-11-03).**
 
 Repos: sjvair.com (branch from `origin/develop`, PR into `develop`) and sdk-js (branch from
 `origin/release/4.8.0`, PR into it). First batch: sjvair.com #293
