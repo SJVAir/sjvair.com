@@ -109,3 +109,61 @@ class ForecastDetailTests(TestCase):
         assert boundary is not None
         assert boundary['geometry']['type'] == 'MultiPolygon'
         assert len(boundary['geometry']['coordinates']) > 0
+
+
+class ForecastMetaTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def get_data(self):
+        response = self.client.get(reverse('api:v2:forecasts:forecast-meta'))
+        assert response.status_code == 200
+        assert response['Cache-Control'] == 'public, max-age=3600'
+        return response.json()['data']
+
+    def test_forecast_meta_scales(self):
+        scales = self.get_data()['scales']
+        assert set(scales) == {'aqi-forecast', 'burn-status'}
+
+        aqi = scales['aqi-forecast']
+        assert aqi['label'] == 'AQI Forecast'
+        assert aqi['kind'] == 'range'
+        assert len(aqi['levels']) == 6
+        assert aqi['levels'][-1]['key'] == 'hazardous'
+        assert aqi['levels'][-1]['max'] is None
+
+        burn = scales['burn-status']
+        assert burn['label'] == 'Burn Status'
+        assert burn['kind'] == 'category'
+        assert [l['key'] for l in burn['levels']] == ['discouraged', 'registered']
+        assert [l['value'] for l in burn['levels']] == ['Discouraged', 'Registered']
+        assert [l['label'] for l in burn['levels']] == [
+            'Burning Discouraged', 'No Burning Unless Registered',
+        ]
+        assert [l['color'] for l in burn['levels']] == ['#ffff00', '#ff7e00']
+        assert all(l['tier'] is None for l in burn['levels'])
+        assert burn['source']['url'] == 'https://ww2.valleyair.org/'
+
+    def test_forecast_meta_zones(self):
+        zones = self.get_data()['zones']
+        assert len(zones) == 9
+        by_name = {z['name']: z['region'] for z in zones}
+        fresno = Region.objects.get(name='Fresno County')
+        assert by_name['Fresno'] == {
+            'id': fresno.sqid,
+            'type': fresno.type,
+            'external_id': fresno.external_id,
+            'name': 'Fresno County',
+        }
+        assert by_name['Sequoia National Park and Forest']['type'] == 'custom'
+
+    def test_forecast_meta_zone_without_region(self):
+        Region.objects.filter(name='Sequoia National Park and Forest').delete()
+        zones = self.get_data()['zones']
+        assert len(zones) == 9
+        by_name = {z['name']: z['region'] for z in zones}
+        assert by_name['Sequoia National Park and Forest'] is None
+        assert by_name['Fresno'] is not None
+
+    def test_meta_route_not_shadowed(self):
+        response = self.client.get('/api/2.0/forecasts/meta/')
+        assert 'scales' in response.json()['data']

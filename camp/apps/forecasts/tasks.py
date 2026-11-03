@@ -15,6 +15,7 @@ from camp.apps.regions.models import Region
 from camp.utils.aqi import aqi_label
 
 from .models import Forecast
+from .scales import BURN_STATUS_VALUES
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,8 @@ def fetch_forecasts():
     response.raise_for_status()
     root = ET.fromstring(response.content)
 
+    unknown_burn_statuses = set()
+
     with transaction.atomic():
         Forecast.objects.filter(issued_date=issued_date).delete()
         for item in root.iter('item'):
@@ -135,6 +138,16 @@ def fetch_forecasts():
                         aqi_value, pollutant = parse_aqi_text(aqi_el.text)
                         forecast_date = parse_feed_datetime(aqi_el.get('date')).date()
 
+                        burn_status = burn_el.get('status', '')
+                        if burn_status not in BURN_STATUS_VALUES and burn_status not in unknown_burn_statuses:
+                            unknown_burn_statuses.add(burn_status)
+                            # Stored as-is and served with its feed text; the
+                            # warning is the cue to extend BURN_STATUS_VALUES.
+                            logger.warning(
+                                'Unknown burn status %r for zone %r: not in BURN_STATUS_VALUES',
+                                burn_status, zone_name,
+                            )
+
                         Forecast.objects.create(
                             region=region,
                             zone_name=zone_name,
@@ -144,7 +157,7 @@ def fetch_forecasts():
                             aqi_value=aqi_value,
                             aqi_category=aqi_label(aqi_value),
                             pollutant=pollutant,
-                            burn_status=burn_el.get('status', ''),
+                            burn_status=burn_status,
                             burn_status_text=burn_el.text or '',
                             air_alert=air_alert,
                             air_alert_start=air_alert_start,
