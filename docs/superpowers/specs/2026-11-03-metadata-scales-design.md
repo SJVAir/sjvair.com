@@ -105,14 +105,37 @@ overlap** (decided with the user):
 - **Display hints** per entry type, in the catalog: `precision`, `chart` (line or bar),
   `y_min` (start at zero). Defaults the dashboard uses (_my call_ on the field set).
 
-### 6. Forecast and CalHeatScore APIs and wrappers (in progress)
+### 6. Forecast and CalHeatScore APIs and wrappers
 
-Findings so far: no client (monitor-map, mobile, sdk-js) uses `forecasts/` or
-`calheatscore/` yet, so they can be reshaped. `forecasts/` embeds each region's full
-boundary geometry in every row (about 700 KB locally) and filters by region sqid only.
-`calheatscore/` is per ZIP only, so "heat for a county = highest ZIP score" would need the
-client to fetch every ZIP. Not yet decided: region/code filters, server-side "highest ZIP"
-and "containing zone" answers, and dropping geometry from the forecast list.
+Findings: no client (monitor-map, mobile, sdk-js) uses `forecasts/` or `calheatscore/` yet,
+so they can be reshaped. `forecasts/` embeds each region's full boundary geometry in every
+row (about 700 KB locally) and filters by region sqid only. `calheatscore/` is per ZIP only.
+
+**The server answers for any place** (decided with the user), so the dashboard asks once by
+code:
+
+- **Heat for an area** = the highest score among ZIPs overlapping it by **at least 1% of
+  the ZIP's area** (same rule as cross-county browsing; decided with the user). A ZIP target
+  is itself. The response names the ZIP that set the score and how many ZIPs were
+  considered, so the dashboard can label "highest in Fresno County today".
+- **Forecast for an area** = the forecast zone containing the area's center
+  (point-on-surface); a zone region is itself. The response names the zone used.
+- Both take a region by code (`region_type` + `region`, the coverage endpoint's
+  convention); `?monitor=` (the monitor's position) is _my call_, cheap and useful for
+  monitor-targeted "now" widgets. Points wait for the coordinates `places/lookup/` spec.
+- **Forecast rows drop the embedded boundary**; `region` becomes `{ id, type, external_id,
+  name }`.
+- Cost (measured locally, Fresno County): ZIPs touching the county 16 ms, max score per day
+  2 ms, containing zone 19 ms. The region → ZIPs and region → zone answers change only on
+  boundary re-import: cache them a day or more. Responses cache until the next import
+  (heat: 5 and 8 AM Pacific; forecasts: daily). Durations are the builder's call.
+
+**sdk-js** (branch from `origin/release/4.8.0`; no release without the user's yes):
+wrappers for `forecasts/` and `calheatscore/` (both modes), the new metas
+(`calheatscore/meta/`, `forecasts/meta/`, `hms/meta/`), the shared `Scale`/`Level` types,
+`tier` on monitor levels, the region meta fields and the overlap browse mode, stage and
+processor labels, and catalog display hints. All take the 4.7.0 request options
+(`signal`/`init`).
 
 ## Later specs (agreed order: this one first)
 
