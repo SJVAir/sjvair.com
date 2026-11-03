@@ -73,7 +73,9 @@ class CalHeatScorePlace(generics.Endpoint):
         queryset = CalHeatScore.objects.filter(region__in=[z.pk for z in zips])
         if not any(key in request.GET for key in ('date', 'date__gte', 'date__lte')):
             queryset = queryset.filter(date__gte=timezone.now().astimezone(settings.DEFAULT_TIMEZONE).date())
-        queryset = CalHeatScoreFilter(request.GET, queryset=queryset).qs
+        # Only the date filters: a ZIP filter would narrow rows but not zip_count.
+        dates = {k: v for k, v in request.GET.items() if k in ('date', 'date__gte', 'date__lte')}
+        queryset = CalHeatScoreFilter(dates, queryset=queryset).qs
 
         # One row per date: the highest score, ties to the lowest ZIP code.
         rows = (queryset.order_by('date', '-score', 'region__external_id')

@@ -1,12 +1,18 @@
 from datetime import date
 from unittest.mock import patch
 
+from django.contrib.gis.geos import Point
+from django.core.cache import cache
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
 from camp.apps.calheatscore.models import CalHeatScore
+from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.regions.models import Region
+from camp.apps.regions.tests.test_resolve import make_region
 
 
 class CalHeatScoreListTests(TestCase):
@@ -211,8 +217,56 @@ class CalHeatScorePlaceTests(TestCase):
         assert len(response.json()['data']['days']) == 3
 
     def test_query_count_bounded(self):
-        # The place is mocked here, so only the score query is left, whatever the ZIP count.
+        # Mocked place: only the region lookup and the one score query remain.
         with self.assertNumQueries(2):
             self.get([self.zip_a])
         with self.assertNumQueries(2):
             self.get([self.zip_a, self.zip_b, self.zip_c])
+
+    def test_query_count_independent_of_zip_count_cold(self):
+        counts = []
+        for n in (1, 6):
+            cache.clear()
+            county = make_region(f'Box {n}', Region.Type.COUNTY, f'box{n}', (n * 100, 0, n * 100 + 10, 10))
+            for i in range(n):
+                zipcode = make_region(
+                    f'Z{n}{i}', Region.Type.ZIPCODE, f'9{n}{i:03d}',
+                    (n * 100 + i, 1, n * 100 + i + 0.5, 2))
+                CalHeatScore.objects.create(region=zipcode, date=date(2026, 7, 12), score=i % 5)
+            with CaptureQueriesContext(connection) as queries:
+                response = self.client.get(self.url, {
+                    'region_type': 'county', 'region': county.external_id, 'date': '2026-07-12'})
+            body = response.json()['data']
+            assert body['zip_count'] == n
+            assert len(body['days']) == 1
+            counts.append(len(queries))
+        assert counts[0] == counts[1]
+        assert counts[1] <= 4
+
+    def test_monitor_target(self):
+        make_region('Mon Zip', Region.Type.ZIPCODE, '90020', (-100, 30, -99, 31))
+        zipcode = Region.objects.get(external_id='90020')
+        CalHeatScore.objects.create(region=zipcode, date=date(2026, 7, 12), score=4)
+        monitor = CIMIS.objects.create(
+            name='In', station_number='7', position=Point(-99.5, 30.5, srid=4326),
+            location=CIMIS.LOCATION.outside)
+        response = self.client.get(self.url, {'monitor': str(monitor.pk), 'date__gte': '2026-07-01'})
+        body = response.json()['data']
+        assert body['place'] == {'monitor': str(monitor.pk)}
+        assert body['zip_count'] == 1
+        assert body['days'] == [
+            {'date': '2026-07-12', 'score': 4, 'score_display': 'Severe', 'zipcode': '90020'}]
+
+    def test_monitor_without_position(self):
+        monitor = CIMIS.objects.create(
+            name='No Pos', station_number='9', position=None, location=CIMIS.LOCATION.outside)
+        response = self.client.get(self.url, {'monitor': str(monitor.pk)})
+        assert response.status_code == 400
+        assert response.json()['error'] == 'Monitor has no location.'
+
+    def test_zip_filters_are_ignored(self):
+        CalHeatScore.objects.create(region=self.zip_b, date=date(2026, 7, 12), score=4)
+        zips = [self.zip_a, self.zip_b]
+        plain = self.get(zips).json()['data']
+        filtered = self.get(zips, {'zipcode': '93728', 'zipcode__in': '93728'}).json()['data']
+        assert filtered == plain
