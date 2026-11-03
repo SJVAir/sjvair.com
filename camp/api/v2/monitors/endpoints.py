@@ -133,6 +133,16 @@ class MonitorMetaEndpoint(Endpoint):
                 }
         return payload
 
+    def get_scale(self, entry_model):
+        if entry_model.Levels is None:
+            return None
+        scale = entry_model.Levels.to_scale(
+            id=entry_model.entry_type,
+            label=entry_model.label,
+            units=entry_model.units or '',
+        )
+        return scale.to_json()
+
     def get_entries(self):
         payload = {}
         for entry_model in BaseEntry.get_subclasses():
@@ -142,6 +152,7 @@ class MonitorMetaEndpoint(Endpoint):
                 'units': entry_model.units,
                 'epa_aqs_code': entry_model.epa_aqs_code,
                 'levels': entry_model.Levels.as_dict() if entry_model.Levels else None,
+                'scale': self.get_scale(entry_model),
                 'fields': ['timestamp', 'sensor', 'stage', 'processor'] + entry_model.declared_field_names,
             }
         return payload
