@@ -27,8 +27,8 @@ coordinates, the remaining wrappers, cleanup) comes in later specs (see "Later s
 
 ```
 Scale  { id, label, units, kind: "range" | "category", levels: Level[] }
-Level  { key (permanent), label, color, tier (0–4 or null), description, guidance,
-         min/max (range scales) | value (category scales) }
+Level  { key (permanent), label, color, opacity (0–1 or null), tier (0–4 or null),
+         description, guidance, min/max (range scales) | value (category scales) }
 ```
 
 - `description`: official wording, quoted, with the source credited once per scale
@@ -87,7 +87,10 @@ Level  { key (permanent), label, color, tier (0–4 or null), description, guida
     the list can be extended.
 - **HMS (`hms/meta/`, new)**: smoke density Light 1, Medium 2, Heavy 3 (decided with the
   user); fire FRP classes (<10, 10–49, 50–149, 150–349, ≥350 MW). Colors move unchanged
-  from monitor-map's hardcoded values so map-sdk can drop its copies (_my call_).
+  from monitor-map's hardcoded values so map-sdk can drop its copies (_my call_). Smoke
+  levels also carry monitor-map's fill `opacity` (light `#bfc8c3` 0.2, medium `#757b78`
+  0.3, heavy `#333634` 0.4); `opacity` is `null` on every other level (requested by the
+  map-sdk session, 2026-11-03, so its smoke preset keeps today's look from metadata).
 - **`tier: null`** for fire intensity and burn status: they aren't health conditions, so
   they never outrank air or heat on "Can we go outside?" (_my call_; bends "tier on every
   level of every scale"; the user didn't object).
@@ -176,8 +179,12 @@ code:
 wrappers for `forecasts/` and `calheatscore/` (both modes), the new metas
 (`calheatscore/meta/`, `forecasts/meta/`, `hms/meta/`), the shared `Scale`/`Level` types,
 `tier` on monitor levels, the region meta fields and the overlap browse mode, stage and
-processor labels, and catalog display hints. All take the 4.7.0 request options
-(`signal`/`init`).
+processor labels, and catalog display hints. Also the **`regions/geojson/` wrapper**
+(moved from a later spec at the map-sdk session's request, 2026-11-03: forecast rows drop
+their boundaries, so map-sdk's region-fill, CalHeatScore-ZIP, and forecast-zone presets
+need geometry from it): `type` required, regions by code (`external_id`, several at once),
+plus the endpoint's existing `within`, `slug`, `name`, and `simplify` options. All take the
+4.7.0 request options (`signal`/`init`).
 
 ## Not changed by this spec
 
@@ -195,8 +202,7 @@ processor labels, and catalog display hints. All take the 4.7.0 request options
   data-dashboard `docs/reference/pesticides-explorer-research.md`.
 - Cache headers on summary endpoints; location name search and wrappers;
   `places/lookup/` by rounded coordinates (POST) or `?monitor=`; remaining sdk-js wrappers
-  (`calenviroscreen/`, `regions/geojson/`, `buffer`) and `api-urls.md`; hardcoded-value
-  cleanup in sjvair.com.
+  (`calenviroscreen/`, `buffer`) and `api-urls.md`; hardcoded-value cleanup in sjvair.com.
 - Production data checks are out of scope (user, 2026-10-20); verify locally, then ask the
   user whether to drop those TODO.md items.
 
