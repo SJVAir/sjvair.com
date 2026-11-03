@@ -16,6 +16,14 @@ from camp.utils import maps
 TRACT_VINTAGE = '2020'
 
 
+def overlap_area(geometry: GEOSGeometry):
+    """Expression: the area of a region's boundary that falls inside `geometry`."""
+    return Func(
+        Intersection('boundary__geometry', geometry),
+        function='ST_Area', output_field=FloatField(),
+    )
+
+
 class RegionQuerySet(models.QuerySet):
     def current_vintage(self):
         """Leave out retired census tracts (see TRACT_VINTAGE); other types pass through.
@@ -64,6 +72,17 @@ class RegionQuerySet(models.QuerySet):
         """
         return self.filter(boundary__geometry__intersects=geometry)
 
+    def _area_fraction_inside(self, geometry: GEOSGeometry, min_fraction: float):
+        """Regions with at least `min_fraction` of their own area inside `geometry`."""
+        area = Func('boundary__geometry', function='ST_Area', output_field=FloatField())
+        return (self
+            # ST_Intersects first so the spatial index prunes candidates
+            # before the (expensive) intersection area is computed.
+            .filter(boundary__geometry__intersects=geometry)
+            .annotate(overlap_fraction=overlap_area(geometry) / NullIf(area, 0.0))
+            .filter(overlap_fraction__gte=min_fraction)
+        )
+
     def contained_within(self, geometry: GEOSGeometry, min_fraction: float = 0.99):
         """
         Filters regions that are (essentially) entirely inside the given
@@ -81,18 +100,7 @@ class RegionQuerySet(models.QuerySet):
         excursions are all well under 0.1% of area, while the smallest
         genuine straddle is several percent, so 99% separates the two.
         """
-        overlap = Func(
-            Intersection('boundary__geometry', geometry),
-            function='ST_Area', output_field=FloatField(),
-        )
-        area = Func('boundary__geometry', function='ST_Area', output_field=FloatField())
-        return (self
-            # ST_Intersects first so the spatial index prunes candidates
-            # before the (expensive) intersection area is computed.
-            .filter(boundary__geometry__intersects=geometry)
-            .annotate(overlap_fraction=overlap / NullIf(area, 0.0))
-            .filter(overlap_fraction__gte=min_fraction)
-        )
+        return self._area_fraction_inside(geometry, min_fraction)
 
     def overlapping(self, geometry: GEOSGeometry, min_fraction: float = 0.01):
         """
@@ -103,17 +111,7 @@ class RegionQuerySet(models.QuerySet):
         where neighbouring boundaries from different sources disagree (a ZIP
         that merely touches a county's edge), while keeping real overlaps.
         """
-        overlap = Func(
-            Intersection('boundary__geometry', geometry),
-            function='ST_Area', output_field=FloatField(),
-        )
-        area = Func('boundary__geometry', function='ST_Area', output_field=FloatField())
-        return (self
-            # Cheap index-backed prefilter before the intersection area.
-            .filter(boundary__geometry__intersects=geometry)
-            .annotate(overlap_fraction=overlap / NullIf(area, 0.0))
-            .filter(overlap_fraction__gte=min_fraction)
-        )
+        return self._area_fraction_inside(geometry, min_fraction)
 
     def combined_geometry(self) -> GEOSGeometry:
         """

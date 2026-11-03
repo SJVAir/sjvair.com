@@ -1,3 +1,5 @@
+import pickle
+
 from datetime import date
 
 from django.contrib.gis.geos import MultiPolygon, Point, Polygon
@@ -163,3 +165,25 @@ class ForecastZoneTests(ResolveTestCase):
         forecast_zone_for(self.fresno_city)
         with self.assertNumQueries(0):
             assert forecast_zone_for(self.fresno_city) == (self.fresno, 'center')
+
+
+class CachedPlacesCarryNoGeometryTests(ResolveTestCase):
+    def assert_no_geometry(self, region):
+        assert 'boundary' not in region._state.fields_cache
+        assert len(pickle.dumps(region)) < 5000
+
+    def test_cached_zips_and_zones_carry_no_geometry(self):
+        county = make_region('Box County', Region.Type.COUNTY, 'box', (0, 0, 10, 10))
+        make_region('Inside', Region.Type.ZIPCODE, '90010', (1, 1, 2, 2))
+        county = Region.objects.select_related('boundary').get(pk=county.pk)
+        for zip_region in zips_for(county):
+            self.assert_no_geometry(zip_region)
+
+        # The caller's own region (boundary loaded) must not leak into the cache.
+        tulare_zone = Region.objects.select_related('boundary').get(name='Tulare (SJV Valley portion)')
+        zone, rule = forecast_zone_for(tulare_zone)
+        assert rule == 'zone'
+        self.assert_no_geometry(zone)
+        for place in (self.fresno, self.fresno_city):
+            zone, _ = forecast_zone_for(place)
+            self.assert_no_geometry(zone)

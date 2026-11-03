@@ -2,13 +2,13 @@
 Resolving a place (a region by code, or a monitor) from request params, and
 the ZIPs and SJVAPCD forecast zone that place falls in.
 """
-from django.contrib.gis.db.models import FloatField, Func
-from django.contrib.gis.db.models.functions import Intersection
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
+from camp.apps.regions.querysets import overlap_area
 
 CACHE_TIMEOUT = 60 * 60 * 24
 ZIP_MIN_FRACTION = 0.01
@@ -96,16 +96,18 @@ def zips_for(place):
 
 
 def _zones():
-    """The forecast zone regions that exist, keyed by their ZONE_TO_REGION feed name."""
+    """
+    The forecast zone regions that exist, keyed by their ZONE_TO_REGION feed
+    name, in one query. No boundary is joined: these end up in the cache, and
+    a geometry would bloat (or silently fail to store in) Memcached.
+    """
     from camp.apps.forecasts.tasks import ZONE_TO_REGION
 
-    zones = {}
-    for feed_name, (region_type, region_name) in ZONE_TO_REGION.items():
-        region = (Region.objects.select_related('boundary')
-            .filter(type=region_type, name=region_name).first())
-        if region is not None:
-            zones[feed_name] = region
-    return zones
+    wanted = Q()
+    for region_type, region_name in ZONE_TO_REGION.values():
+        wanted |= Q(type=region_type, name=region_name)
+    found = {(r.type, r.name): r for r in Region.objects.filter(wanted)}
+    return {feed_name: found[key] for feed_name, key in ZONE_TO_REGION.items() if key in found}
 
 
 def _zone_for_county(county, zones):
@@ -150,7 +152,8 @@ def _forecast_zone_for(place):
             if zone is not None:
                 return zone, 'county'
         if any(zone.pk == place.pk for zone in zones.values()):
-            return place, 'zone'
+            # The geometry-free copy, never the caller's (it may carry its boundary).
+            return next(z for z in zones.values() if z.pk == place.pk), 'zone'
 
     geometry = _place_geometry(place)
     if geometry is None or not zones:
@@ -165,13 +168,9 @@ def _forecast_zone_for(place):
         return by_pk[center], 'center'
 
     if is_region:
-        overlap = Func(
-            Intersection('boundary__geometry', geometry),
-            function='ST_Area', output_field=FloatField(),
-        )
         best = (Region.objects.filter(pk__in=zone_ids, boundary__geometry__intersects=geometry)
-            .annotate(overlap_area=overlap).filter(overlap_area__gt=0)
-            .order_by('-overlap_area', 'pk').values_list('pk', flat=True).first())
+            .annotate(shared_area=overlap_area(geometry)).filter(shared_area__gt=0)
+            .order_by('-shared_area', 'pk').values_list('pk', flat=True).first())
         if best is not None:
             return by_pk[best], 'overlap'
 
