@@ -7,9 +7,10 @@ from camp.apps.forecasts.models import Forecast
 from camp.apps.forecasts.scales import get_aqi_forecast_scale, get_burn_status_scale
 from camp.apps.forecasts.tasks import ZONE_TO_REGION
 from camp.apps.regions.models import Region
+from camp.apps.regions.resolve import PlaceError, PlaceNotFound, forecast_zone_for, place_json, resolve_place
 
 from .filters import ForecastFilter
-from .serializers import ForecastSerializer
+from .serializers import ForecastSerializer, region_json
 
 
 class ForecastMixin:
@@ -18,7 +19,7 @@ class ForecastMixin:
     paginate = True
 
     def get_queryset(self):
-        return super().get_queryset().select_related('region', 'region__boundary')
+        return super().get_queryset().select_related('region')
 
 
 class ForecastList(ForecastMixin, generics.ListEndpoint):
@@ -37,6 +38,46 @@ class ForecastList(ForecastMixin, generics.ListEndpoint):
             today = timezone.now().astimezone(settings.DEFAULT_TIMEZONE).date()
             qs = qs.filter(forecast_date__gte=today)
         return qs
+
+
+class ForecastPlace(generics.Endpoint):
+    """The SJVAPCD forecast for the zone a place falls in (?region_type= &
+    ?region=, or ?monitor=; filterable by ?forecast_date and its lt/lte/gt/gte
+    variants; defaults to today onward), with the zone and the rule that picked it."""
+
+    DATE_FILTERS = (
+        'forecast_date', 'forecast_date__lt', 'forecast_date__lte',
+        'forecast_date__gt', 'forecast_date__gte',
+    )
+
+    def get(self, request, *args, **kwargs):
+        try:
+            place = resolve_place(request.GET)
+        except PlaceNotFound as err:
+            return http.Http404({'error': str(err)})
+        except PlaceError as err:
+            return http.Http400({'error': str(err)})
+
+        zone, rule = forecast_zone_for(place)
+        forecasts = []
+        if zone is not None:
+            queryset = Forecast.objects.filter(region=zone).select_related('region')
+            if not any(key in request.GET for key in self.DATE_FILTERS):
+                today = timezone.now().astimezone(settings.DEFAULT_TIMEZONE).date()
+                queryset = queryset.filter(forecast_date__gte=today)
+            # Only the date filters: any other would change which zone's rows come back.
+            dates = {k: v for k, v in request.GET.items() if k in self.DATE_FILTERS}
+            queryset = ForecastFilter(dates, queryset=queryset).qs.order_by('forecast_date', 'issued_date')
+            forecasts = ForecastSerializer(queryset).serialize()
+
+        response = http.Http200({'data': {
+            'place': place_json(place),
+            'zone': region_json(zone) if zone else None,
+            'rule': rule,
+            'forecasts': forecasts,
+        }})
+        response['Cache-Control'] = 'public, max-age=900'
+        return response
 
 
 class ForecastDetail(ForecastMixin, generics.DetailEndpoint):

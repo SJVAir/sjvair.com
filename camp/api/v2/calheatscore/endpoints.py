@@ -6,7 +6,7 @@ from resticus import generics, http
 from camp.apps.calheatscore.models import CalHeatScore
 from camp.apps.calheatscore.scales import get_heat_scale
 from camp.apps.regions.models import Region
-from camp.apps.regions.resolve import PlaceError, PlaceNotFound, resolve_place, zips_for
+from camp.apps.regions.resolve import PlaceError, PlaceNotFound, place_json, resolve_place, zips_for
 
 from .filters import CalHeatScoreFilter
 from .serializers import CalHeatScoreSerializer
@@ -87,13 +87,6 @@ class CalHeatScorePlace(generics.Endpoint):
             'zipcode': zipcode,
         } for day, score, zipcode in rows]
 
-        if isinstance(place, Region):
-            place_json = {'region': {
-                'type': place.type, 'external_id': place.external_id, 'name': place.name,
-            }}
-        else:
-            place_json = {'monitor': str(place.pk)}
-
-        response = http.Http200({'data': {'place': place_json, 'zip_count': len(zips), 'days': days}})
+        response = http.Http200({'data': {'place': place_json(place), 'zip_count': len(zips), 'days': days}})
         response['Cache-Control'] = 'public, max-age=900'
         return response

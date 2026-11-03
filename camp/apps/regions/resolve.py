@@ -54,6 +54,13 @@ def resolve_place(params):
     return region
 
 
+def place_json(place):
+    """A resolved place as the public `place` object: its region code, or its monitor id."""
+    if isinstance(place, Region):
+        return {'region': {'type': place.type, 'external_id': place.external_id, 'name': place.name}}
+    return {'monitor': str(place.pk)}
+
+
 def _place_key(prefix, place):
     if isinstance(place, Region):
         # boundary_id changes when a re-import swaps the boundary, so the key follows it.
