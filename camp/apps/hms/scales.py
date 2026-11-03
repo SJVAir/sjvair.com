@@ -27,7 +27,7 @@ _FIRE = [
 def get_smoke_scale():
     return Scale(
         id='smoke-density',
-        label='Smoke density',
+        label='Smoke Density',
         units='',
         kind='category',
         source=SOURCE,
@@ -48,7 +48,7 @@ def get_smoke_scale():
 def get_fire_scale():
     return Scale(
         id='fire-frp',
-        label='Fire radiative power',
+        label='Fire Radiative Power',
         units='MW',
         kind='range',
         source=SOURCE,

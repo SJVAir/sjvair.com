@@ -243,13 +243,16 @@ class HMSMetaTests(TestCase):
         return response.json()['data']['scales']
 
     def test_hms_meta_smoke_opacity(self):
-        heavy = self.get_scales()['smoke-density']['levels'][2]
+        smoke = self.get_scales()['smoke-density']
+        assert smoke['label'] == 'Smoke Density'
+        heavy = smoke['levels'][2]
         assert heavy['key'] == 'heavy'
         assert heavy['opacity'] == 0.4
         assert heavy['tier'] == 3
 
     def test_hms_meta_fire_tierless(self):
         fire = self.get_scales()['fire-frp']
+        assert fire['label'] == 'Fire Radiative Power'
         assert fire['units'] == 'MW'
         assert all(level['tier'] is None for level in fire['levels'])
         assert fire['levels'][-1]['max'] is None

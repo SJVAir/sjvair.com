@@ -120,6 +120,7 @@ class CalHeatScoreMetaTests(TestCase):
         assert [l['key'] for l in levels] == ['low', 'mild', 'moderate', 'high', 'severe']
         assert [l['tier'] for l in levels] == [0, 1, 2, 3, 4]
         assert [l['value'] for l in levels] == [0, 1, 2, 3, 4]
+        assert scale['label'] == 'Heat Score'
         assert scale['kind'] == 'category'
         assert levels[3]['color'] == '#c23a00'
         assert levels[0]['guidance'] == ''

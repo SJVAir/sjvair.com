@@ -4,7 +4,6 @@ from django.utils import timezone
 from resticus import generics, http
 
 from camp.apps.calheatscore.models import CalHeatScore
-
 from camp.apps.calheatscore.scales import get_heat_scale
 
 from .filters import CalHeatScoreFilter

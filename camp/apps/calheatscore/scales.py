@@ -40,7 +40,7 @@ _LEVELS = [
 def get_heat_scale():
     return Scale(
         id='heat-score',
-        label='CalHeatScore',
+        label='Heat Score',
         units='',
         kind='category',
         source=SOURCE,
