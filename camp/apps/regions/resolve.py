@@ -12,6 +12,9 @@ from camp.apps.regions.querysets import overlap_area
 
 CACHE_TIMEOUT = 60 * 60 * 24
 ZIP_MIN_FRACTION = 0.01
+# The share of a place's own area a zone must hold for the 'overlap' rule:
+# the same 1% floor that drops boundary-disagreement slivers elsewhere.
+ZONE_MIN_FRACTION = 0.01
 
 
 class PlaceError(Exception):
@@ -141,7 +144,7 @@ def forecast_zone_for(place):
     The SJVAPCD forecast zone for a place, as (zone, rule): 'county' (a county a zone stands for, itself included),
     'zone' (a custom zone region), 'center' (the zone holding its
     point-on-surface, or a monitor's position), 'overlap' (the zone sharing
-    the most area), else (None, None). Cached for 24 hours.
+    the most area, if that is at least 1% of the place's), else (None, None). Cached for 24 hours.
     """
     key = _place_key('forecast_zone_for', place)
     cached = cache.get(key)
@@ -183,7 +186,8 @@ def _forecast_zone_for(place):
 
     if is_region:
         best = (Region.objects.filter(pk__in=zone_ids, boundary__geometry__intersects=geometry)
-            .annotate(shared_area=overlap_area(geometry)).filter(shared_area__gt=0)
+            .annotate(shared_area=overlap_area(geometry))
+            .filter(shared_area__gt=0, shared_area__gte=ZONE_MIN_FRACTION * geometry.area)
             .order_by('-shared_area', 'pk').values_list('pk', flat=True).first())
         if best is not None:
             return by_pk[best], 'overlap'

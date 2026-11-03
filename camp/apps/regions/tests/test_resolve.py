@@ -160,6 +160,17 @@ class ForecastZoneTests(ResolveTestCase):
         expected = max(zones, key=lambda r: r.boundary.geometry.intersection(geometry).area)
         assert zone == expected
 
+    def test_overlap_under_one_percent_is_no_zone(self):
+        # Mostly far outside the Valley (where its point-on-surface lands),
+        # plus a 0.01-degree square inside Fresno County: a sliver of its area.
+        x, y = self.fresno.boundary.geometry.point_on_surface.coords
+        place = make_region('Mostly Elsewhere', Region.Type.CUSTOM, 'elsewhere', None)
+        place.boundary = Boundary.objects.create(region=place, version='2020', geometry=MultiPolygon(
+            Polygon.from_bbox((-130, 40, -125, 45)),
+            Polygon.from_bbox((x, y, x + 0.01, y + 0.01)), srid=4326))
+        place.save(update_fields=['boundary'])
+        assert forecast_zone_for(place) == (None, None)
+
     def test_monitor_center(self):
         point = self.fresno_city.boundary.geometry.point_on_surface
         monitor = CIMIS.objects.create(name='M', station_number='5', position=point, location=CIMIS.LOCATION.outside)

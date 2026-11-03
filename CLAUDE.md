@@ -198,7 +198,11 @@ zones are missing there; see SJVAPCD Forecast Setup).
   inside it; a monitor's is the ZIP containing it; ties go to the lowest ZIP code). Forecasts
   return the SJVAPCD zone's rows plus the `rule` that picked it: `county`, `zone`, `center`
   (zone holding the point-on-surface or monitor), or `overlap` (largest shared area). Both are
-  resolved and cached 24h in `camp/apps/regions/resolve.py` (geometry-free Regions).
+  resolved and cached 24h in `camp/apps/regions/resolve.py` (geometry-free Regions). The
+  `overlap` rule needs the zone to hold >=1% of the place's own area. **Deploy:** run
+  `import_forecast_zones` before deploying the place endpoints, or clear the cached
+  `forecast_zone_for:` keys after the import; otherwise places answered without the 3
+  custom zones keep that answer for up to 24h.
 - **Regions**: `regions/?within=...&within_mode=overlaps` (also the geojson variant) keeps
   regions with >=1% of their own area inside the parents and adds `also_in`; the default
   `contained` mode is unchanged. `regions/meta/` types carry `count`, `parents` and
