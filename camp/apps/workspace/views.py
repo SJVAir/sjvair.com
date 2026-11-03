@@ -9,7 +9,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.generic import TemplateView, View
 
 from .csp import build_policy, policy_header_name
-from .identity import workspace_identity
+from .identity import DELETED_ACCOUNT_SESSION_KEY, workspace_identity
 from .manifest import load_manifest
 
 
@@ -27,7 +27,8 @@ class WorkspacePage(TemplateView):
     http_method_names = ['get', 'head', 'options']
 
     def get_context_data(self, **kwargs):
-        return {'workspace_identity': workspace_identity(self.request.user)}
+        deleted_account = self.request.session.pop(DELETED_ACCOUNT_SESSION_KEY, None)
+        return {'workspace_identity': workspace_identity(self.request.user, deleted_account)}
 
     def get(self, request, *args, **kwargs):
         response = super().get(request, *args, **kwargs)

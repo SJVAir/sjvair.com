@@ -18,6 +18,7 @@ import vanilla
 from twilio.twiml.messaging_response import MessagingResponse
 
 from camp.api.v2.documents.serializers import shareable
+from camp.apps.workspace.identity import DELETED_ACCOUNT_SESSION_KEY
 from camp.utils.twilio_signature import is_valid_twilio_request
 from camp.utils.views import RedirectViewMixin
 
@@ -91,8 +92,12 @@ class DeleteAccountView(LoginRequiredMixin, View):
                 **deletion_context(request.user),
             })
         user = request.user
+        user_id = user.id
         logout(request)
         user.delete()
+        # On the new signed-out session: the next /workspace/ page tells the
+        # dashboard once, so it drops this account's space in this browser.
+        request.session[DELETED_ACCOUNT_SESSION_KEY] = str(user_id)
         messages.success(request, _('Your account was deleted'))
         return redirect('account:login')
 
