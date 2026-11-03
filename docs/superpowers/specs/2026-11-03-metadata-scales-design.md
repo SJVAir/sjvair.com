@@ -56,7 +56,9 @@ Level  { key (permanent), label, color, tier (0–4 or null), description, guida
   `levels` dict exactly as sdk-js's schema, monitor-map, and mobile read it (uppercase keys,
   `name`, `range` with "next minus 0.1"), with `tier` added to each entry; and gains a new
   `scale` field in the shared shape, which the dashboard reads. Both come from the same
-  `LevelSet`.
+  `LevelSet`. Kept compatible on purpose (the user's call, 2026-11-03): installed mobile
+  apps read the old dict for alerts and can't be forced to update. A test asserts the two
+  agree. Retiring the old dict is deferred (data-dashboard `DEFERRED.md` → "Mobile app").
 - **Heat (`calheatscore/meta/`, new)**: Low 0, Mild 1, Moderate 2, High 3, Severe 4.
   Colors from CalHeatScore's official interpretation table: 1 `#fae0c8`, 2 `#ea8753`,
   3 `#c23a00`, 4 `#700006`; score 0 has none there, so `#DEDEDE` from their API example
