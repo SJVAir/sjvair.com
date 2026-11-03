@@ -1,9 +1,11 @@
 import pickle
 
 from datetime import date
+from unittest import mock
 
 from django.contrib.gis.geos import MultiPolygon, Point, Polygon
 from django.core.cache import cache
+from django.core.cache.backends.base import memcache_key_warnings
 from django.test import TestCase
 from django.utils.text import slugify
 
@@ -210,3 +212,42 @@ class CachedPlacesCarryNoGeometryTests(ResolveTestCase):
         for place in (self.fresno, self.fresno_city):
             zone, _ = forecast_zone_for(place)
             self.assert_no_geometry(zone)
+
+
+class PlaceCacheKeyTests(ResolveTestCase):
+    """Production caches in Memcached, which rejects keys with spaces or over 250 chars."""
+
+    def keys_used(self, place):
+        keys = []
+        real_get = cache.get
+
+        def spy(key, *args, **kwargs):
+            keys.append(cache.make_key(key))
+            return real_get(key, *args, **kwargs)
+
+        with mock.patch('camp.apps.regions.resolve.cache.get', side_effect=spy):
+            zips_for(place)
+            forecast_zone_for(place)
+        return keys
+
+    def assert_memcached_safe(self, keys):
+        assert len(keys) == 2
+        for key in keys:
+            assert list(memcache_key_warnings(key)) == [], key
+
+    def test_region_keys_are_memcached_safe(self):
+        self.assert_memcached_safe(self.keys_used(self.fresno))
+
+    def test_monitor_keys_are_memcached_safe(self):
+        monitor = CIMIS.objects.create(
+            name='Pos', station_number='8', position=Point(-121.100784, 37.795162, srid=4326),
+            location=CIMIS.LOCATION.outside)
+        self.assert_memcached_safe(self.keys_used(monitor))
+
+    def test_monitor_key_follows_its_position(self):
+        monitor = CIMIS.objects.create(
+            name='Pos', station_number='8', position=Point(-121.1, 37.7, srid=4326),
+            location=CIMIS.LOCATION.outside)
+        before = self.keys_used(monitor)
+        monitor.position = Point(-119.78, 36.74, srid=4326)
+        assert self.keys_used(monitor) != before

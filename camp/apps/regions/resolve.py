@@ -2,6 +2,8 @@
 Resolving a place (a region by code, or a monitor) from request params, and
 the ZIPs and SJVAPCD forecast zone that place falls in.
 """
+import hashlib
+
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db.models import Q
@@ -69,7 +71,10 @@ def _place_key(prefix, place):
     if isinstance(place, Region):
         # boundary_id changes when a re-import swaps the boundary, so the key follows it.
         return f'{prefix}:region:{place.pk}:{place.boundary_id}'
-    return f'{prefix}:monitor:{place.pk}:{place.position.wkt if place.position else ""}'
+    # A moved monitor gets a new key. The position is hashed: its WKT has
+    # spaces, which Memcached rejects.
+    position = hashlib.md5(place.position.wkb).hexdigest() if place.position else ''
+    return f'{prefix}:monitor:{place.pk}:{position}'
 
 
 def _place_geometry(place):
