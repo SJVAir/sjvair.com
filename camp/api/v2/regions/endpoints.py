@@ -1,6 +1,9 @@
 import json
 
 from django import forms
+from django.contrib.gis.geos import GeometryCollection
+from django.core.cache import cache
+from django.db.models import Count
 
 from resticus import generics, http
 
@@ -13,6 +16,14 @@ from camp.utils.views import CachedEndpointMixin
 
 from .filters import LOOKUP_MAX_CODES, RegionFilter, parse_codes
 from .serializers import LocationSerializer, RegionListSerializer, RegionSerializer
+
+
+WITHIN_MODES = ('contained', 'overlaps')
+# The share of a region's own area that must fall inside another for the two
+# to count as overlapping (the same floor Region.objects.overlapping uses).
+ALSO_IN_MIN_FRACTION = 0.01
+META_COUNT_CACHE_KEY = 'regions:meta:counts'
+META_COUNT_CACHE_TIMEOUT = 60 * 60
 
 
 class PlaceQueryForm(forms.Form):
@@ -37,7 +48,9 @@ class RegionList(RegionMixin, generics.ListEndpoint):
     serializer_class = RegionListSerializer
 
     def lookup_error(self):
-        """The 400 for a malformed ?external_id= lookup, or None."""
+        """The 400 for a malformed ?external_id= lookup or ?within_mode=, or None."""
+        if self.request.GET.get('within_mode', 'contained') not in WITHIN_MODES:
+            return http.Http400({'error': 'within_mode must be contained or overlaps.'})
         if 'external_id' not in self.request.GET:
             return None
         region_type = self.request.GET.get('type', '').strip()
@@ -70,8 +83,61 @@ class RegionList(RegionMixin, generics.ListEndpoint):
                 # back to the unnarrowed list here would silently hand back
                 # every region in the database.
                 return qs.none()
-            qs = qs.contained_within(geometry)
+            if self.overlaps_mode():
+                qs = qs.overlapping(geometry)
+            else:
+                qs = qs.contained_within(geometry)
         return qs
+
+    def overlaps_mode(self):
+        return (
+            self.request.GET.get('within_mode') == 'overlaps'
+            and any(value.strip() for value in self.request.GET.getlist('within'))
+        )
+
+    def also_in_map(self, regions):
+        """
+        {region pk: [{type, external_id, name}]} for the listed regions: the
+        other regions of the requested parents' type that each overlaps by at
+        least ALSO_IN_MIN_FRACTION of its own area. One query for the
+        candidates (those touching the results), then matched in Python, so
+        the query count doesn't grow with the number of results.
+        """
+        within_ids = [value for value in self.request.GET.getlist('within') if value.strip()]
+        parents = list(Region.all_objects.filter(sqid__in=within_ids).values_list('pk', 'type'))
+        shapes_ = {r.pk: r.boundary.geometry for r in regions if r.boundary}
+        if not parents or not shapes_:
+            return {}
+        reach = GeometryCollection(*shapes_.values(), srid=4326).unary_union
+        candidates = list(
+            Region.objects.select_related('boundary')
+            .filter(type__in={t for _, t in parents})
+            .exclude(pk__in=[pk for pk, _ in parents])
+            .intersects(reach).current_vintage()
+            .order_by('name')
+        )
+        result = {}
+        for pk, shape in shapes_.items():
+            area = shape.area
+            result[pk] = [
+                {'type': c.type, 'external_id': c.external_id, 'name': c.name}
+                for c in candidates
+                if area and c.boundary.geometry.intersects(shape)
+                and shape.intersection(c.boundary.geometry).area / area >= ALSO_IN_MIN_FRACTION
+            ]
+        return result
+
+    def serialize(self, source, *args, **kwargs):
+        if not self.overlaps_mode() or isinstance(source, Region):
+            return super().serialize(source, *args, **kwargs)
+        regions = list(source)
+        also_in = self.also_in_map(regions)
+
+        def fixup(region, data):
+            data['also_in'] = also_in.get(region.pk, [])
+            return data
+
+        return super().serialize(regions, *args, fixup=fixup, **kwargs)
 
 
 class RegionGeoJSONBase(RegionList):
@@ -187,14 +253,26 @@ class LocationList(generics.ListEndpoint):
 class RegionMetaEndpoint(generics.Endpoint):
     """Metadata describing all region types supported by the API."""
 
+    def get_counts(self):
+        """Current regions per type: one grouped query, cached for an hour."""
+        counts = cache.get(META_COUNT_CACHE_KEY)
+        if counts is None:
+            counts = dict(Region.objects.order_by().values_list('type').annotate(n=Count('pk')))
+            cache.set(META_COUNT_CACHE_KEY, counts, META_COUNT_CACHE_TIMEOUT)
+        return counts
+
     def get_types(self):
         payload = {}
+        counts = self.get_counts()
         for region_type, label in Region.Type.choices:
             category = Region.TYPE_CATEGORIES[region_type]
             payload[region_type] = {
                 'type': region_type,
                 'label': label,
                 'category': category.value,
+                'count': counts.get(region_type, 0),
+                'parents': Region.TYPE_PARENTS[region_type],
+                'referenceable': region_type != Region.Type.LAND_USE,
             }
         return payload
 

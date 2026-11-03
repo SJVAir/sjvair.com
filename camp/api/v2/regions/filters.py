@@ -21,6 +21,12 @@ class RegionFilter(FilterSet):
     # which a single-field django_filters method can't express cleanly.
     within = django_filters.CharFilter(method='noop', help_text='Parent region id; repeatable.')
 
+    within_mode = django_filters.CharFilter(
+        method='noop', help_text=(
+            'With within: contained (default) keeps regions essentially inside the parents; '
+            'overlaps keeps regions with at least 1% of their own area inside them, and adds also_in.'
+        ))
+
     external_id = django_filters.CharFilter(
         method='noop', help_text=(
             'Comma-separated official codes; requires type. Retired regions are included, flagged. '
