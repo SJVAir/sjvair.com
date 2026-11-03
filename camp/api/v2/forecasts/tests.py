@@ -61,6 +61,12 @@ class ForecastListTests(TestCase):
         assert self.forecast_yesterday.sqid in ids
         assert self.forecast_today.sqid not in ids
 
+    def test_empty_forecast_date_keeps_the_default(self):
+        response = self.client.get(self.url, {'forecast_date': '', 'forecast_date__gte': ''})
+        ids = [r['id'] for r in response.json()['data']]
+        assert self.forecast_today.sqid in ids
+        assert self.forecast_yesterday.sqid not in ids
+
     def test_region_id_filter(self):
         response = self.client.get(self.url, {
             'region_id': self.kern.sqid,
@@ -158,6 +164,12 @@ class ForecastPlaceTests(TestCase):
             'region_type': 'county', 'region': '06019', 'forecast_date': self.yesterday.isoformat()})
         ids = [f['id'] for f in response.json()['data']['forecasts']]
         assert ids == [self.forecast_yesterday.sqid]
+
+    def test_empty_date_params_keep_the_default(self):
+        response = self.client.get(self.url, {
+            'region_type': 'county', 'region': '06019', 'forecast_date': '', 'forecast_date__gte': ''})
+        ids = [f['id'] for f in response.json()['data']['forecasts']]
+        assert ids == [self.forecast_today.sqid, self.forecast_tomorrow.sqid]
 
     def test_other_filters_are_ignored(self):
         kern_zone = Region.objects.get(name='Kern (SJV Air Basin portion)')

@@ -30,6 +30,14 @@ class CalHeatScoreListTests(TestCase):
         assert data['data'][0]['score'] == 3
         assert data['data'][0]['score_display'] == 'High'
 
+    def test_empty_date_keeps_the_default(self):
+        with patch.object(timezone, 'now', return_value=timezone.make_aware(
+            timezone.datetime(2026, 7, 12, 10, 0, 0)
+        )):
+            url = reverse('api:v2:calheatscore:calheatscore-list')
+            data = self.client.get(url, {'date': ''}).json()
+        assert [r['date'] for r in data['data']] == ['2026-07-12']
+
     def test_explicit_date_overrides_default(self):
         url = reverse('api:v2:calheatscore:calheatscore-list')
         data = self.client.get(url, {'date': '2026-07-13'}).json()
@@ -198,6 +206,14 @@ class CalHeatScorePlaceTests(TestCase):
             timezone.datetime(2026, 7, 12, 10, 0, 0)
         )):
             response = self.client.get(self.url, {'region_type': 'zipcode', 'region': '93728'})
+        assert [d['date'] for d in response.json()['data']['days']] == ['2026-07-12', '2026-07-13']
+
+    def test_empty_date_params_keep_the_default(self):
+        with patch.object(timezone, 'now', return_value=timezone.make_aware(
+            timezone.datetime(2026, 7, 12, 10, 0, 0)
+        )):
+            response = self.client.get(self.url, {
+                'region_type': 'zipcode', 'region': '93728', 'date': '', 'date__gte': ''})
         assert [d['date'] for d in response.json()['data']['days']] == ['2026-07-12', '2026-07-13']
 
     def test_errors_pass_through(self):

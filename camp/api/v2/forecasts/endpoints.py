@@ -30,9 +30,10 @@ class ForecastList(ForecastMixin, generics.ListEndpoint):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # A blank value isn't a filter (the filter ignores it), so it keeps the default.
         has_forecast_date_filter = any(
-            key == 'forecast_date' or key.startswith('forecast_date__')
-            for key in self.request.GET
+            (key == 'forecast_date' or key.startswith('forecast_date__')) and value.strip()
+            for key, value in self.request.GET.items()
         )
         if not has_forecast_date_filter:
             today = timezone.now().astimezone(settings.DEFAULT_TIMEZONE).date()
@@ -63,11 +64,12 @@ class ForecastPlace(generics.Endpoint):
         forecasts = []
         if zone is not None:
             queryset = Forecast.objects.filter(region=zone).select_related('region')
-            if not any(key in request.GET for key in self.DATE_FILTERS):
+            # Only the date filters, and only given ones (a blank value isn't a
+            # filter): any other would change which zone's rows come back.
+            dates = {k: v for k, v in request.GET.items() if k in self.DATE_FILTERS and v.strip()}
+            if not dates:
                 today = timezone.now().astimezone(settings.DEFAULT_TIMEZONE).date()
                 queryset = queryset.filter(forecast_date__gte=today)
-            # Only the date filters: any other would change which zone's rows come back.
-            dates = {k: v for k, v in request.GET.items() if k in self.DATE_FILTERS}
             # One row per date: the latest issue (a later publication breaks a tie).
             queryset = (ForecastFilter(dates, queryset=queryset).qs
                 .order_by('forecast_date', '-issued_date', '-published_at', '-pk')
