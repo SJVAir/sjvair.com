@@ -205,8 +205,8 @@ zones are missing there; see SJVAPCD Forecast Setup).
   custom zones keep that answer for up to 24h.
 - **Regions**: `regions/?within=...&within_mode=overlaps` (also the geojson variant) keeps
   regions with >=1% of their own area inside the parents and adds `also_in`; the default
-  `contained` mode is unchanged. `regions/meta/` types carry `count`, `parents` and
-  `referenceable` (false for land use).
+  `contained` mode is unchanged. `regions/meta/` types carry `count`, `parents`,
+  `referenceable` (false for land use) and `browsable` (false for MTRS and land use).
 - **Burn status** (`camp/apps/forecasts/scales.py`): the feed's `status` string is stored as
   received; unknown values are stored and logged by the ingest task. When a new value
   appears, add a level there. The "No Burning For All" string is still unconfirmed.

@@ -284,6 +284,7 @@ class RegionMetaEndpoint(generics.Endpoint):
                 'count': counts.get(region_type, 0),
                 'parents': Region.TYPE_PARENTS[region_type],
                 'referenceable': region_type != Region.Type.LAND_USE,
+                'browsable': region_type not in Region.NON_BROWSABLE_TYPES,
             }
         return payload
 

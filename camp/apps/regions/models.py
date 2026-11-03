@@ -105,6 +105,10 @@ class Region(TimeStampedModel):
         Type.CUSTOM: [],
     }
 
+    # Types too numerous or unstable to browse as a list (square-mile
+    # sections; land-use polygons, whose codes aren't stable).
+    NON_BROWSABLE_TYPES = frozenset({Type.MTRS, Type.LAND_USE})
+
     # The community layers, each shown as-is (never merged), with the short
     # label the explorers give them: a CDP reads as a "Community". Plain
     # strings, not lazy ones: they end up in cached, JSON-embedded lists.

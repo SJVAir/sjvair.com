@@ -112,7 +112,13 @@ class RegionMetaTests(TestCase):
             'count': 0,
             'parents': [],
             'referenceable': True,
+            'browsable': True,
         }
+
+    def test_browsable(self):
+        response, content = self._fetch_region_meta()
+        types = content['data']['types']
+        assert {t for t, info in types.items() if not info['browsable']} == {'mtrs', 'land_use'}
 
     def test_meta_counts_parents_referenceable(self):
         make_county('Fresno County', FRESNO_COUNTY_WKT)
