@@ -178,6 +178,34 @@ zones are missing there; see SJVAPCD Forecast Setup).
 - `GET /api/2.0/meta/coverage/` returns first/last Pacific dates per dataset. It is
   computed on request, cached, and backed by the per-monitor unique index (no
   table-wide MIN/MAX on entry tables); there is no background task.
+- **Scale shape** (`camp/utils/scales.py`): `{id, label, units, kind: range|category, source,
+  levels[]}`; a level is `{key, label, color, tier, description, guidance, min, max, value,
+  opacity}`. Scale ids are catalog entry-type ids and level `key`s are permanent. Ranges are
+  half-open (`min <= value < max`) and the top level's `max` is `null`; categories use `value`.
+  `tier` is 0-4 or `null` (no severity). `description` is the official wording (credited via
+  `source`); `guidance` is SJVAir's own and is `""` for AQ Good and heat Low.
+- **Domain meta endpoints** (each a catalog `meta_url`): `calheatscore/meta/`, `hms/meta/` and
+  `forecasts/meta/` return scales keyed by catalog entry-type id (forecasts also lists the
+  zones with their regions). `monitors/meta/` adds a `scale` per entry type plus `stages` and
+  `processors` labels. Its old `levels` dict (uppercase keys, `name`, `label`, `color`,
+  `range`, `guidance`) is kept as-is for existing clients (mobile reads it); only `tier` was
+  added. Don't change its shape.
+- **Catalog** (`meta/datasets/`): each entry type has `display` hints (`precision`, `chart`,
+  `y_min`); `burn-status` is an entry type of the forecasts dataset.
+- **Place endpoints** `calheatscore/place/` and `forecasts/place/` take `?region_type=&region=`
+  (code; retired regions answer, land use is refused) or `?monitor=`. Heat returns the highest
+  score per date among the ZIPs the place covers (a region's ZIPs need >=1% of their own area
+  inside it; a monitor's is the ZIP containing it; ties go to the lowest ZIP code). Forecasts
+  return the SJVAPCD zone's rows plus the `rule` that picked it: `county`, `zone`, `center`
+  (zone holding the point-on-surface or monitor), or `overlap` (largest shared area). Both are
+  resolved and cached 24h in `camp/apps/regions/resolve.py` (geometry-free Regions).
+- **Regions**: `regions/?within=...&within_mode=overlaps` (also the geojson variant) keeps
+  regions with >=1% of their own area inside the parents and adds `also_in`; the default
+  `contained` mode is unchanged. `regions/meta/` types carry `count`, `parents` and
+  `referenceable` (false for land use).
+- **Burn status** (`camp/apps/forecasts/scales.py`): the feed's `status` string is stored as
+  received; unknown values are stored and logged by the ingest task. When a new value
+  appears, add a level there. The "No Burning For All" string is still unconfirmed.
 
 Timestamps: zone-less `timestamp__*` filter and `at/` values are read as Pacific,
 explicitly, via `PacificDateTimeField`. `settings.TIME_ZONE` is UTC and
