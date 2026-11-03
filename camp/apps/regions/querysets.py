@@ -94,6 +94,27 @@ class RegionQuerySet(models.QuerySet):
             .filter(overlap_fraction__gte=min_fraction)
         )
 
+    def overlapping(self, geometry: GEOSGeometry, min_fraction: float = 0.01):
+        """
+        Filters regions with at least `min_fraction` of their own area inside
+        the given geometry. The mirror of contained_within: that one asks
+        "is the region (essentially) inside?", this one "does the region
+        meaningfully reach in?". The small floor drops the hairline slivers
+        where neighbouring boundaries from different sources disagree (a ZIP
+        that merely touches a county's edge), while keeping real overlaps.
+        """
+        overlap = Func(
+            Intersection('boundary__geometry', geometry),
+            function='ST_Area', output_field=FloatField(),
+        )
+        area = Func('boundary__geometry', function='ST_Area', output_field=FloatField())
+        return (self
+            # Cheap index-backed prefilter before the intersection area.
+            .filter(boundary__geometry__intersects=geometry)
+            .annotate(overlap_fraction=overlap / NullIf(area, 0.0))
+            .filter(overlap_fraction__gte=min_fraction)
+        )
+
     def combined_geometry(self) -> GEOSGeometry:
         """
         Returns a MultiPolygon representing the union of all geometries in the queryset.

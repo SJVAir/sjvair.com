@@ -1,0 +1,178 @@
+"""
+Resolving a place (a region by code, or a monitor) from request params, and
+the ZIPs and SJVAPCD forecast zone that place falls in.
+"""
+from django.contrib.gis.db.models import FloatField, Func
+from django.contrib.gis.db.models.functions import Intersection
+from django.core.cache import cache
+from django.core.exceptions import ValidationError
+
+from camp.apps.monitors.models import Monitor
+from camp.apps.regions.models import Region
+
+CACHE_TIMEOUT = 60 * 60 * 24
+ZIP_MIN_FRACTION = 0.01
+
+
+class PlaceError(Exception):
+    """A bad place request; the message is the 400 text."""
+
+
+class PlaceNotFound(PlaceError):
+    """The place doesn't exist; the message is the 404 text."""
+
+
+def resolve_place(params):
+    """The Region (retired ones included) or Monitor named by `region_type` + `region`, or `monitor`."""
+    monitor_id = (params.get('monitor') or '').strip()
+    region_type = (params.get('region_type') or '').strip()
+    region_code = (params.get('region') or '').strip()
+
+    if monitor_id and (region_type or region_code):
+        raise PlaceError('Give either monitor or region, not both.')
+    if bool(region_type) != bool(region_code):
+        raise PlaceError('region_type and region go together.')
+    if not monitor_id and not region_code:
+        raise PlaceError('Give a region (region_type and region) or a monitor.')
+
+    if monitor_id:
+        try:
+            monitor = Monitor.objects.get(pk=monitor_id)
+        except (Monitor.DoesNotExist, ValidationError, ValueError):
+            raise PlaceNotFound(f'No such monitor: {monitor_id}.')
+        if monitor.position is None:
+            raise PlaceError('Monitor has no location.')
+        return monitor
+
+    if region_type == Region.Type.LAND_USE:
+        raise PlaceError("Land-use regions can't be looked up by code yet.")
+    # all_objects: a retired region's code still answers.
+    region = (Region.all_objects.select_related('boundary')
+        .filter(type=region_type, external_id=region_code).first())
+    if region is None:
+        raise PlaceNotFound(f'No such region: {region_type} {region_code}.')
+    return region
+
+
+def _place_key(prefix, place):
+    if isinstance(place, Region):
+        # boundary_id changes when a re-import swaps the boundary, so the key follows it.
+        return f'{prefix}:region:{place.pk}:{place.boundary_id}'
+    return f'{prefix}:monitor:{place.pk}:{place.position.wkt if place.position else ""}'
+
+
+def _place_geometry(place):
+    """The place's geometry: a monitor's point, or a region's boundary (None without one)."""
+    if isinstance(place, Region):
+        return place.boundary.geometry if place.boundary_id else None
+    return place.position
+
+
+def zips_for(place):
+    """
+    The current ZIP regions a place covers: a ZIP is itself, a monitor sits in
+    at most one, any other region gets the ZIPs with at least 1% of their area
+    inside it. The Region objects (not just ids) are cached for 24 hours, so a
+    warm call costs no queries.
+    """
+    if isinstance(place, Region) and place.type == Region.Type.ZIPCODE:
+        return [place]
+
+    key = _place_key('zips_for', place)
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+
+    geometry = _place_geometry(place)
+    zips = Region.objects.filter(type=Region.Type.ZIPCODE)
+    if geometry is None:
+        found = []
+    elif isinstance(place, Region):
+        found = list(zips.overlapping(geometry, ZIP_MIN_FRACTION).order_by('external_id'))
+    else:
+        found = list(zips.filter(boundary__geometry__contains=geometry).order_by('external_id')[:1])
+    cache.set(key, found, CACHE_TIMEOUT)
+    return found
+
+
+def _zones():
+    """The forecast zone regions that exist, keyed by their ZONE_TO_REGION feed name."""
+    from camp.apps.forecasts.tasks import ZONE_TO_REGION
+
+    zones = {}
+    for feed_name, (region_type, region_name) in ZONE_TO_REGION.items():
+        region = (Region.objects.select_related('boundary')
+            .filter(type=region_type, name=region_name).first())
+        if region is not None:
+            zones[feed_name] = region
+    return zones
+
+
+def _zone_for_county(county, zones):
+    """
+    The zone a county stands for: the one whose feed name leads with the
+    county's name ('Kern (SJV Air Basin portion)' and 'Tulare' for Kern and
+    Tulare Counties; the other counties are their own zones). Derived from
+    ZONE_TO_REGION's keys so there is no second table to keep in step.
+    """
+    for feed_name, zone in zones.items():
+        if f'{feed_name.split(" (")[0]} County' == county.name:
+            return zone
+    return None
+
+
+def forecast_zone_for(place):
+    """
+    The SJVAPCD forecast zone for a place, as (zone, rule): 'county' (a county a zone stands for, itself included),
+    'zone' (a custom zone region), 'center' (the zone holding its
+    point-on-surface, or a monitor's position), 'overlap' (the zone sharing
+    the most area), else (None, None). Cached for 24 hours.
+    """
+    key = _place_key('forecast_zone_for', place)
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+
+    result = _forecast_zone_for(place)
+    cache.set(key, result, CACHE_TIMEOUT)
+    return result
+
+
+def _forecast_zone_for(place):
+    zones = _zones()
+    is_region = isinstance(place, Region)
+
+    if is_region:
+        # A county comes first: the six counties that are their own zone read
+        # as 'county', like Kern and Tulare, not as 'zone'.
+        if place.type == Region.Type.COUNTY:
+            zone = _zone_for_county(place, zones)
+            if zone is not None:
+                return zone, 'county'
+        if any(zone.pk == place.pk for zone in zones.values()):
+            return place, 'zone'
+
+    geometry = _place_geometry(place)
+    if geometry is None or not zones:
+        return None, None
+
+    point = geometry.point_on_surface if is_region else geometry
+    zone_ids = [zone.pk for zone in zones.values()]
+    by_pk = {zone.pk: zone for zone in zones.values()}
+    center = (Region.objects.filter(pk__in=zone_ids, boundary__geometry__contains=point)
+        .order_by('pk').values_list('pk', flat=True).first())
+    if center is not None:
+        return by_pk[center], 'center'
+
+    if is_region:
+        overlap = Func(
+            Intersection('boundary__geometry', geometry),
+            function='ST_Area', output_field=FloatField(),
+        )
+        best = (Region.objects.filter(pk__in=zone_ids, boundary__geometry__intersects=geometry)
+            .annotate(overlap_area=overlap).filter(overlap_area__gt=0)
+            .order_by('-overlap_area', 'pk').values_list('pk', flat=True).first())
+        if best is not None:
+            return by_pk[best], 'overlap'
+
+    return None, None
