@@ -7,7 +7,7 @@ from django.core.exceptions import ValidationError
 from django.db.models import Q
 
 from camp.apps.monitors.models import Monitor
-from camp.apps.regions.models import Region
+from camp.apps.regions.models import Boundary, Region
 from camp.apps.regions.querysets import overlap_area
 
 CACHE_TIMEOUT = 60 * 60 * 24
@@ -46,9 +46,10 @@ def resolve_place(params):
 
     if region_type == Region.Type.LAND_USE:
         raise PlaceError("Land-use regions can't be looked up by code yet.")
-    # all_objects: a retired region's code still answers.
-    region = (Region.all_objects.select_related('boundary')
-        .filter(type=region_type, external_id=region_code).first())
+    # all_objects: a retired region's code still answers. The boundary is
+    # left unloaded: the zips and zone answers are cached by boundary_id, so
+    # a warm request never needs the geometry (see _place_geometry).
+    region = Region.all_objects.filter(type=region_type, external_id=region_code).first()
     if region is None:
         raise PlaceNotFound(f'No such region: {region_type} {region_code}.')
     return region
@@ -69,9 +70,14 @@ def _place_key(prefix, place):
 
 
 def _place_geometry(place):
-    """The place's geometry: a monitor's point, or a region's boundary (None without one)."""
+    """
+    The place's geometry: a monitor's point, or a region's boundary (None
+    without one). A region's is fetched on its own, only on a cache miss.
+    """
     if isinstance(place, Region):
-        return place.boundary.geometry if place.boundary_id else None
+        if place.boundary_id is None:
+            return None
+        return Boundary.objects.filter(pk=place.boundary_id).values_list('geometry', flat=True).first()
     return place.position
 
 
@@ -158,9 +164,10 @@ def _forecast_zone_for(place):
             zone = _zone_for_county(place, zones)
             if zone is not None:
                 return zone, 'county'
-        if any(zone.pk == place.pk for zone in zones.values()):
-            # The geometry-free copy, never the caller's (it may carry its boundary).
-            return next(z for z in zones.values() if z.pk == place.pk), 'zone'
+        # The zone's own (geometry-free) row, which is what gets cached.
+        zone = next((z for z in zones.values() if z.pk == place.pk), None)
+        if zone is not None:
+            return zone, 'zone'
 
     geometry = _place_geometry(place)
     if geometry is None or not zones:

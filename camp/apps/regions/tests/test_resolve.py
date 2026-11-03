@@ -54,6 +54,10 @@ class ResolvePlaceTests(ResolveTestCase):
         place = resolve_place({'region_type': 'county', 'region': self.fresno.external_id})
         assert place == self.fresno
 
+    def test_resolve_region_leaves_the_boundary_unloaded(self):
+        place = resolve_place({'region_type': 'county', 'region': self.fresno.external_id})
+        assert 'boundary' not in place._state.fields_cache
+
     def test_resolve_retired_region(self):
         self.fresno_city.retire(date(2026, 1, 1))
         place = resolve_place({'region_type': 'city', 'region': self.fresno_city.external_id})

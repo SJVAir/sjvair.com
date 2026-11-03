@@ -1,7 +1,9 @@
 from datetime import date, datetime, timedelta, timezone as dt_timezone
 
 from django.core.cache import cache
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
@@ -195,6 +197,13 @@ class ForecastPlaceTests(TestCase):
             'region_type': 'city', 'region': self.fresno_city.external_id})
         assert response.status_code == 200
         assert response.json()['data']['zone']['id'] == self.fresno.sqid
+
+    def test_warm_request_loads_no_boundary(self):
+        params = {'region_type': 'city', 'region': self.fresno_city.external_id}
+        self.client.get(self.url, params)
+        with CaptureQueriesContext(connection) as queries:
+            assert self.client.get(self.url, params).json()['data']['rule'] == 'center'
+        assert not [q['sql'] for q in queries if 'regions_boundary' in q['sql']]
 
     def test_route_not_shadowed(self):
         assert self.client.get('/api/2.0/forecasts/place/').status_code == 400
