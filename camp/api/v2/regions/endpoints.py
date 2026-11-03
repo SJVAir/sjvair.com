@@ -1,8 +1,8 @@
 import json
 
 from django import forms
-from django.contrib.gis.geos import GeometryCollection
 from django.core.cache import cache
+from django.db import connection
 from django.db.models import Count
 
 from resticus import generics, http
@@ -11,7 +11,7 @@ from camp.apps.regions import shapes
 from django.db.models import Q
 
 from camp.apps.regions.locations import SOURCES
-from camp.apps.regions.models import Location, Region
+from camp.apps.regions.models import Boundary, Location, Region
 from camp.utils.views import CachedEndpointMixin
 
 from .filters import LOOKUP_MAX_CODES, RegionFilter, parse_codes
@@ -98,33 +98,44 @@ class RegionList(RegionMixin, generics.ListEndpoint):
     def also_in_map(self, regions):
         """
         {region pk: [{type, external_id, name}]} for the listed regions: the
-        other regions of the requested parents' type that each overlaps by at
-        least ALSO_IN_MIN_FRACTION of its own area. One query for the
-        candidates (those touching the results), then matched in Python, so
-        the query count doesn't grow with the number of results.
+        other current regions of the requested parents' type that each
+        overlaps by at least ALSO_IN_MIN_FRACTION of its own area. One query
+        pairs every result with its candidates in the database (ST_Intersects
+        on the boundary index first, then the shared area), so the query
+        count doesn't grow with the number of results and no geometry is
+        loaded into Python.
         """
         within_ids = [value for value in self.request.GET.getlist('within') if value.strip()]
-        parents = list(Region.all_objects.filter(sqid__in=within_ids).values_list('pk', 'type'))
-        shapes_ = {r.pk: r.boundary.geometry for r in regions if r.boundary}
-        if not parents or not shapes_:
+        result_ids = [r.pk for r in regions if r.boundary_id]
+        if not within_ids or not result_ids:
             return {}
-        reach = GeometryCollection(*shapes_.values(), srid=4326).unary_union
-        candidates = list(
-            Region.objects.select_related('boundary')
-            .filter(type__in={t for _, t in parents})
-            .exclude(pk__in=[pk for pk, _ in parents])
-            .intersects(reach).current_vintage()
-            .order_by('name')
+        parents = Region.all_objects.filter(sqid__in=within_ids)
+        candidates = (
+            Region.objects.filter(type__in=parents.values('type'))
+            .exclude(pk__in=parents.values('pk'))
+            .current_vintage().values('pk')
         )
+        candidate_sql, candidate_params = candidates.query.sql_with_params()
+        region_table = connection.ops.quote_name(Region._meta.db_table)
+        boundary_table = connection.ops.quote_name(Boundary._meta.db_table)
+        sql = f"""
+            SELECT r.id, c.type, c.external_id, c.name
+            FROM {region_table} r
+            JOIN {boundary_table} rb ON rb.id = r.boundary_id
+            JOIN {boundary_table} cb ON ST_Intersects(cb.geometry, rb.geometry)
+            JOIN {region_table} c ON c.boundary_id = cb.id
+            WHERE r.id = ANY(%s)
+              AND c.id IN ({candidate_sql})
+              AND ST_Area(rb.geometry) > 0
+              AND ST_Area(ST_Intersection(rb.geometry, cb.geometry)) >= %s * ST_Area(rb.geometry)
+            ORDER BY c.name, c.id
+        """
         result = {}
-        for pk, shape in shapes_.items():
-            area = shape.area
-            result[pk] = [
-                {'type': c.type, 'external_id': c.external_id, 'name': c.name}
-                for c in candidates
-                if area and c.boundary.geometry.intersects(shape)
-                and shape.intersection(c.boundary.geometry).area / area >= ALSO_IN_MIN_FRACTION
-            ]
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [result_ids, *candidate_params, ALSO_IN_MIN_FRACTION])
+            for pk, region_type, external_id, name in cursor.fetchall():
+                result.setdefault(pk, []).append(
+                    {'type': region_type, 'external_id': external_id, 'name': name})
         return result
 
     def serialize(self, source, *args, **kwargs):

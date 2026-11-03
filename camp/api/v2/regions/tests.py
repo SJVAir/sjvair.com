@@ -629,6 +629,37 @@ class RegionWithinOverlapsTests(TestCase):
         assert response.status_code == 400
         assert data['error'] == 'within_mode must be contained or overlaps.'
 
+    def test_also_in_drops_a_sliver_under_one_percent(self):
+        # Reaches 0.0005 deg into the straddler's top edge: 0.25% of its area.
+        make_county('Sliver County', 'MULTIPOLYGON(((-119.3 36.9995, -118.7 36.9995, -118.7 37.5, -119.3 37.5, -119.3 36.9995)))')
+        response, data = self._overlaps(self.fresno)
+        rows = {r['id']: r for r in data['data']}
+        assert [c['name'] for c in rows[self.straddler.sqid]['also_in']] == ['Madera County']
+
+    def test_also_in_leaves_out_every_within_parent(self):
+        # A third county holding 25% of the straddler: it alone stays in also_in.
+        tulare = make_county('Tulare County', 'MULTIPOLYGON(((-119.3 36.95, -118.7 36.95, -118.7 37.5, -119.3 37.5, -119.3 36.95)))')
+        response, data = self._get(
+            ('type', 'zipcode'), ('within', self.fresno.sqid), ('within', self.madera.sqid),
+            ('within_mode', 'overlaps'))
+        rows = {r['id']: r for r in data['data']}
+        assert rows[self.straddler.sqid]['also_in'] == [
+            {'type': 'county', 'external_id': tulare.external_id, 'name': 'Tulare County'},
+        ]
+        assert rows[self.inside.sqid]['also_in'] == []
+
+    def test_also_in_skips_a_retired_candidate(self):
+        self.madera.retire(date(2026, 10, 1))
+        response, data = self._overlaps(self.fresno)
+        rows = {r['id']: r for r in data['data']}
+        assert rows[self.straddler.sqid]['also_in'] == []
+
+    def test_bad_within_mode_400_on_geojson(self):
+        request = RequestFactory().get('/', [('type', 'zipcode'), ('within', self.fresno.sqid), ('within_mode', 'bogus')])
+        response = region_geojson(request)
+        assert response.status_code == 400
+        assert get_response_data(response)['error'] == 'within_mode must be contained or overlaps.'
+
     def test_overlaps_applies_to_geojson(self):
         request = RequestFactory().get('/', [('type', 'zipcode'), ('within', self.fresno.sqid), ('within_mode', 'overlaps')])
         data = get_response_data(region_geojson(request))
