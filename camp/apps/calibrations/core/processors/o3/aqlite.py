@@ -23,6 +23,10 @@ WARMUP_DURATION = timedelta(minutes=20)
 
 @processors.register()
 class AQLiteRawCleaner(BaseProcessor):
+    label = "Ozone range and warm-up check"
+    description = (
+        "Discards impossible ozone readings and readings taken in the 20 minutes after the sensor restarts, while it warms up."
+    )
     entry_model = O3
     required_stage = O3.Stage.RAW
     next_stage = O3.Stage.CLEANED
@@ -107,6 +111,10 @@ class AQLiteHourlyAggregator:
     Registered in the processor registry so DefaultCalibration can reference it
     by name and update_latest_entry will recognize it as the display value.
     """
+    label = "Hourly average (floored at zero)"
+    description = (
+        "Averages an hour of cleaned ozone readings into one value, never reporting below zero."
+    )
 
     name = 'AQLiteHourlyAggregator'
     entry_model = O3

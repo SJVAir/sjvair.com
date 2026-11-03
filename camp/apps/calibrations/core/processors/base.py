@@ -29,6 +29,10 @@ class BaseProcessor(ABC, metaclass=ProcessorMeta):
     Subclasses should implement the `process()` method to return a new BaseEntry instance.
     '''
 
+    # Public text for the monitors/meta/ catalog; concrete processors override.
+    label = ''
+    description = ''
+
     entry_model = None
     required_context = []
     required_stage = None

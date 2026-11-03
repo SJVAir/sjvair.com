@@ -14,6 +14,10 @@ class AirGradientTemperature(BaseProcessor):
     AirGradient Temperature Correction Equation
     https://www.airgradient.com/documentation/calibration-algorithms/
     '''
+    label = "Temperature correction"
+    description = (
+        "Corrects AirGradient and PurpleAir outdoor temperature readings using AirGradient's published equation; indoor monitors are skipped."
+    )
 
     entry_model = Temperature
     required_stage = Temperature.Stage.RAW

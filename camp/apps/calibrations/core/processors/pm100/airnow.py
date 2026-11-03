@@ -12,6 +12,10 @@ class PM100_AirNow_NowCast(AirNowNowCast):
     AirNow's PM10 NowCast, kept as CALIBRATED. It isn't the display
     value; AirNow PM10 still defaults to RAW.
     """
+    label = "AirNow NowCast"
+    description = (
+        "AirNow's own NowCast, a weighted average of recent hours of PM10 that emphasizes the latest hours when air quality is changing quickly."
+    )
     name = 'PM100_AirNow_NowCast'
     entry_model = PM100
     next_stage = PM100.Stage.CALIBRATED
