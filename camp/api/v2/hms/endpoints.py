@@ -1,11 +1,12 @@
 from datetime import timedelta
 
-from resticus import generics
+from resticus import generics, http
 
 from django.conf import settings
 from django.utils import timezone
 
 from camp.apps.hms.models import Fire, Smoke
+from camp.apps.hms.scales import get_fire_scale, get_smoke_scale
 
 from .filters import FireFilter, SmokeFilter
 from .serializers import FireSerializer, SmokeSerializer
@@ -74,3 +75,13 @@ class FireDetail(FireMixin, generics.DetailEndpoint):
     """Retrieve a single HMS fire detection record."""
     lookup_field = 'id'
     lookup_url_kwarg = 'fire_id'
+
+
+class HMSMeta(generics.Endpoint):
+    """The smoke density and fire intensity scales."""
+
+    def get(self, request, *args, **kwargs):
+        scales = [get_smoke_scale(), get_fire_scale()]
+        response = http.Http200({'data': {'scales': {s.id: s.to_json() for s in scales}}})
+        response['Cache-Control'] = 'public, max-age=3600'
+        return response

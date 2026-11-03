@@ -233,3 +233,24 @@ class FireRegionFilterTests(TestCase):
     def test_invalid_region_id_returns_empty(self):
         data = self.client.get(self.url, {'region_id': 'BOGUS'}).json()
         assert len(data['data']) == 0
+
+
+class HMSMetaTests(TestCase):
+    def get_scales(self):
+        response = self.client.get(reverse('api:v2:hms:hms-meta'))
+        assert response.status_code == 200
+        assert response['Cache-Control'] == 'public, max-age=3600'
+        return response.json()['data']['scales']
+
+    def test_hms_meta_smoke_opacity(self):
+        heavy = self.get_scales()['smoke-density']['levels'][2]
+        assert heavy['key'] == 'heavy'
+        assert heavy['opacity'] == 0.4
+        assert heavy['tier'] == 3
+
+    def test_hms_meta_fire_tierless(self):
+        fire = self.get_scales()['fire-frp']
+        assert fire['units'] == 'MW'
+        assert all(level['tier'] is None for level in fire['levels'])
+        assert fire['levels'][-1]['max'] is None
+        assert fire['levels'][0]['min'] == 0

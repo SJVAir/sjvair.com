@@ -103,3 +103,28 @@ class CalHeatScoreByZipTests(TestCase):
         assert data['count'] == 2
         dates = {row['date'] for row in data['data']}
         assert dates == {'2026-07-12', '2026-07-13'}
+
+
+class CalHeatScoreMetaTests(TestCase):
+    fixtures = ['regions', 'calheatscore']
+
+    def get_scale(self):
+        response = self.client.get(reverse('api:v2:calheatscore:calheatscore-meta'))
+        assert response.status_code == 200
+        assert response['Cache-Control'] == 'public, max-age=3600'
+        return response.json()['data']['scales']['heat-score']
+
+    def test_heat_meta(self):
+        scale = self.get_scale()
+        levels = scale['levels']
+        assert [l['key'] for l in levels] == ['low', 'mild', 'moderate', 'high', 'severe']
+        assert [l['tier'] for l in levels] == [0, 1, 2, 3, 4]
+        assert [l['value'] for l in levels] == [0, 1, 2, 3, 4]
+        assert scale['kind'] == 'category'
+        assert levels[3]['color'] == '#c23a00'
+        assert levels[0]['guidance'] == ''
+        assert levels[4]['guidance'].startswith('Everyone should stay somewhere cool')
+
+    def test_meta_routes_not_shadowed(self):
+        response = self.client.get('/api/2.0/calheatscore/meta/')
+        assert 'heat-score' in response.json()['data']['scales']

@@ -1,9 +1,11 @@
 from django.conf import settings
 from django.utils import timezone
 
-from resticus import generics
+from resticus import generics, http
 
 from camp.apps.calheatscore.models import CalHeatScore
+
+from camp.apps.calheatscore.scales import get_heat_scale
 
 from .filters import CalHeatScoreFilter
 from .serializers import CalHeatScoreSerializer
@@ -41,3 +43,13 @@ class CalHeatScoreByZip(generics.ListEndpoint):
             .select_related('region')
             .filter(region__external_id=self.kwargs['zipcode'])
         )
+
+
+class CalHeatScoreMeta(generics.Endpoint):
+    """The CalHeatScore scale: levels, colors, descriptions, and guidance."""
+
+    def get(self, request, *args, **kwargs):
+        scale = get_heat_scale()
+        response = http.Http200({'data': {'scales': {scale.id: scale.to_json()}}})
+        response['Cache-Control'] = 'public, max-age=3600'
+        return response
