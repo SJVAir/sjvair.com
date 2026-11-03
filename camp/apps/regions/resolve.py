@@ -106,7 +106,9 @@ def zips_for(place):
     elif isinstance(place, Region):
         found = list(zips.overlapping(geometry, ZIP_MIN_FRACTION).order_by('external_id'))
     else:
-        found = list(zips.filter(boundary__geometry__contains=geometry).order_by('external_id')[:1])
+        # intersects, not contains: a point on a shared edge is in both
+        # (contains would say neither), and the lowest code answers.
+        found = list(zips.filter(boundary__geometry__intersects=geometry).order_by('external_id')[:1])
     cache.set(key, found, CACHE_TIMEOUT)
     return found
 

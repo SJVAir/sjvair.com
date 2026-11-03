@@ -118,6 +118,14 @@ class ZipsForTests(ResolveTestCase):
         assert zips_for(inside) == [zipcode]
         assert zips_for(outside) == []
 
+    def test_zips_for_monitor_on_a_shared_edge(self):
+        # On the line between two ZIPs: neither contains it; the lower code wins.
+        make_region('West Zip', Region.Type.ZIPCODE, '90031', (-101, 30, -100, 31))
+        east = make_region('East Zip', Region.Type.ZIPCODE, '90030', (-100, 30, -99, 31))
+        monitor = CIMIS.objects.create(
+            name='Edge', station_number='4', position=Point(-100, 30.5, srid=4326), location=CIMIS.LOCATION.outside)
+        assert zips_for(monitor) == [east]
+
     def test_zips_for_cached(self):
         county = make_region('Box County', Region.Type.COUNTY, 'box', (0, 0, 10, 10))
         inside = make_region('Inside', Region.Type.ZIPCODE, '90010', (1, 1, 2, 2))
