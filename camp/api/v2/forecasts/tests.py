@@ -198,6 +198,17 @@ class ForecastPlaceTests(TestCase):
         assert response.status_code == 200
         assert response.json()['data']['zone']['id'] == self.fresno.sqid
 
+    def test_only_the_latest_issue_per_date(self):
+        # Tomorrow was also forecast yesterday (superseded); today's was
+        # republished later on the same issued date (the later one wins).
+        create_forecast(self.fresno, self.tomorrow, issued_date=self.yesterday)
+        republished = create_forecast(self.fresno, self.today, aqi_value=55)
+        republished.published_at += timedelta(hours=2)
+        republished.save()
+        response = self.client.get(self.url, {'region_type': 'county', 'region': '06019'})
+        ids = [f['id'] for f in response.json()['data']['forecasts']]
+        assert ids == [republished.sqid, self.forecast_tomorrow.sqid]
+
     def test_warm_request_loads_no_boundary(self):
         params = {'region_type': 'city', 'region': self.fresno_city.external_id}
         self.client.get(self.url, params)

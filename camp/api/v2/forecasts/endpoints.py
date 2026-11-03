@@ -43,7 +43,8 @@ class ForecastList(ForecastMixin, generics.ListEndpoint):
 class ForecastPlace(generics.Endpoint):
     """The SJVAPCD forecast for the zone a place falls in (?region_type= &
     ?region=, or ?monitor=; filterable by ?forecast_date and its lt/lte/gt/gte
-    variants; defaults to today onward), with the zone and the rule that picked it."""
+    variants; defaults to today onward), with the zone and the rule that picked it.
+    One forecast per date: the most recently issued."""
 
     DATE_FILTERS = (
         'forecast_date', 'forecast_date__lt', 'forecast_date__lte',
@@ -67,7 +68,10 @@ class ForecastPlace(generics.Endpoint):
                 queryset = queryset.filter(forecast_date__gte=today)
             # Only the date filters: any other would change which zone's rows come back.
             dates = {k: v for k, v in request.GET.items() if k in self.DATE_FILTERS}
-            queryset = ForecastFilter(dates, queryset=queryset).qs.order_by('forecast_date', 'issued_date')
+            # One row per date: the latest issue (a later publication breaks a tie).
+            queryset = (ForecastFilter(dates, queryset=queryset).qs
+                .order_by('forecast_date', '-issued_date', '-published_at', '-pk')
+                .distinct('forecast_date'))
             forecasts = ForecastSerializer(queryset).serialize()
 
         response = http.Http200({'data': {
