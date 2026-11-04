@@ -6,7 +6,8 @@ import operator
 from django.conf import settings
 from django.db.models import Exists, OuterRef, Q
 
-from camp.utils.datetime import make_aware
+from camp.utils.datetime import localtime, make_aware
+from camp.apps.summaries.periods import is_period_start, iter_hours, iter_period_starts, period_end
 from camp.apps.summaries.models import BaseSummary
 from camp.apps.entries.stages import Stage
 from camp.apps.monitors.models import Monitor
@@ -19,37 +20,26 @@ DEFAULT_CHUNK_DAYS = 1
 
 
 def chunk_start_for(cursor, range_start, chunk_days=DEFAULT_CHUNK_DAYS):
-    """The lower bound of the next chunk to process, walking backward from cursor."""
-    return max(cursor - timedelta(days=chunk_days), range_start)
+    """
+    The lower bound of the next chunk to process, walking backward from cursor.
+    Steps whole Pacific calendar days, so the result is always a Pacific
+    midnight even when `cursor` comes back from the database as UTC.
+    """
+    target = localtime(cursor).date() - timedelta(days=chunk_days)
+    return max(make_aware(datetime(target.year, target.month, target.day), settings.DEFAULT_TIMEZONE), range_start)
 
 
-def hour_range(start, end):
-    """Yield each hourly datetime in [start, end)."""
-    current = start
-    while current < end:
-        yield current
-        current += timedelta(hours=1)
+hour_range = iter_hours
 
 
 def iter_chunk_days(chunk_start, chunk_end):
-    """Yield each day (midnight-aligned datetime) in [chunk_start, chunk_end)."""
-    day = chunk_start
-    while day < chunk_end:
-        yield day
-        day += timedelta(days=1)
-
-
-def _months_later(day, months):
-    """Advance a day-1-aligned datetime by `months` calendar months, re-localizing for DST."""
-    total = day.month - 1 + months
-    year = day.year + total // 12
-    month = total % 12 + 1
-    return make_aware(datetime(year, month, 1), settings.DEFAULT_TIMEZONE)
+    """Yield each Pacific day start in [chunk_start, chunk_end). `chunk_start` is a Pacific midnight."""
+    return iter_period_starts('day', chunk_start, chunk_end)
 
 
 def daily_rollup_window(day):
     """The (target, source, window_start, window_end) tuple to roll up a single day."""
-    return (BaseSummary.Resolution.DAILY, BaseSummary.Resolution.HOURLY, day, day + timedelta(days=1))
+    return (BaseSummary.Resolution.DAILY, BaseSummary.Resolution.HOURLY, day, period_end('day', day))
 
 
 def higher_rollup_windows(day):
@@ -61,31 +51,21 @@ def higher_rollup_windows(day):
     confirmed complete, since every later day in that period was necessarily
     already processed on an earlier (more recent) tick.
     """
-    if day.day != 1:
+    local = localtime(day)
+    if not is_period_start('day', day) or local.day != 1:
         return []
 
-    windows = [(
-        BaseSummary.Resolution.MONTHLY, BaseSummary.Resolution.DAILY,
-        day, _months_later(day, 1),
-    )]
+    R = BaseSummary.Resolution
+    windows = [(R.MONTHLY, R.DAILY, day, period_end('month', day))]
 
-    if day.month in (1, 4, 7, 10):
-        windows.append((
-            BaseSummary.Resolution.QUARTERLY, BaseSummary.Resolution.MONTHLY,
-            day, _months_later(day, 3),
-        ))
+    if local.month in (1, 4, 7, 10):
+        windows.append((R.QUARTERLY, R.MONTHLY, day, period_end('quarter', day)))
 
-    if day.month in (12, 3, 6, 9):
-        windows.append((
-            BaseSummary.Resolution.SEASONAL, BaseSummary.Resolution.MONTHLY,
-            day, _months_later(day, 3),
-        ))
+    if local.month in (12, 3, 6, 9):
+        windows.append((R.SEASONAL, R.MONTHLY, day, period_end('season', day)))
 
-    if day.month == 1:
-        windows.append((
-            BaseSummary.Resolution.YEARLY, BaseSummary.Resolution.MONTHLY,
-            day, _months_later(day, 12),
-        ))
+    if local.month == 1:
+        windows.append((R.YEARLY, R.MONTHLY, day, period_end('year', day)))
 
     return windows
 

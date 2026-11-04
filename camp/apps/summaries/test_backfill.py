@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 
 from django.conf import settings
 from django.core.management import call_command
@@ -8,6 +8,9 @@ from django.utils import timezone
 import pytest
 
 from camp.utils.datetime import make_aware
+from camp.apps.summaries.aggregators import compute_stats
+from camp.apps.summaries.periods import is_period_start, iter_hours
+from camp.apps.summaries.tasks import backfill_summaries_tick
 from camp.apps.summaries.backfill import (
     chunk_start_for,
     hour_range,
@@ -33,47 +36,106 @@ def _day(y, m, d):
     return make_aware(datetime(y, m, d), settings.DEFAULT_TIMEZONE)
 
 
+LA = settings.DEFAULT_TIMEZONE
+R = BaseSummary.Resolution
+
+
+def _iso(ts):
+    return ts.astimezone(LA).isoformat()
+
+
 class ChunkStartForTests(TestCase):
     def test_defaults_to_one_day(self):
-        cursor = _day(2023, 7, 15)
-        range_start = _day(2020, 1, 1)
-        assert chunk_start_for(cursor, range_start) == cursor - timedelta(days=1)
+        assert chunk_start_for(_day(2023, 7, 15), _day(2020, 1, 1)) == _day(2023, 7, 14)
 
     def test_steps_back_by_chunk_days(self):
-        cursor = _day(2023, 7, 15)
-        range_start = _day(2020, 1, 1)
-        assert chunk_start_for(cursor, range_start, chunk_days=7) == cursor - timedelta(days=7)
+        assert chunk_start_for(_day(2023, 7, 15), _day(2020, 1, 1), chunk_days=7) == _day(2023, 7, 8)
 
     def test_clamps_to_range_start(self):
-        cursor = _day(2020, 1, 4)
-        range_start = _day(2020, 1, 1)
-        assert chunk_start_for(cursor, range_start, chunk_days=7) == range_start
+        assert chunk_start_for(_day(2020, 1, 4), _day(2020, 1, 1), chunk_days=7) == _day(2020, 1, 1)
+
+    def test_steps_back_across_spring_forward(self):
+        # 2026-03-08 is 23 hours long: stepping back from the 9th lands on the 8th's midnight (PST).
+        start = chunk_start_for(_day(2026, 3, 9), _day(2026, 1, 1))
+        assert _iso(start) == '2026-03-08T00:00:00-08:00'
+
+    def test_steps_back_across_fall_back(self):
+        # 2026-11-01 is 25 hours long.
+        start = chunk_start_for(_day(2026, 11, 2), _day(2026, 1, 1))
+        assert _iso(start) == '2026-11-01T00:00:00-07:00'
+        start = chunk_start_for(_day(2026, 11, 2), _day(2026, 1, 1), chunk_days=3)
+        assert _iso(start) == '2026-10-30T00:00:00-07:00'
+
+    def test_chunk_spanning_a_dst_change_starts_at_midnight(self):
+        start = chunk_start_for(_day(2026, 3, 10), _day(2026, 1, 1), chunk_days=3)
+        assert _iso(start) == '2026-03-07T00:00:00-08:00'
+
+    def test_a_cursor_read_back_as_utc(self):
+        job = SummaryBackfillJob.objects.create(
+            range_start=_day(2026, 1, 1), range_end=_day(2026, 3, 10),
+            cursor=_day(2026, 3, 10), chunk_days=3,
+        )
+        job.refresh_from_db()
+        assert job.cursor.tzinfo != LA   # the database hands back UTC
+        start = chunk_start_for(job.cursor, job.range_start, 3)
+        assert _iso(start) == '2026-03-07T00:00:00-08:00'
 
 
 class HourRangeTests(TestCase):
     def test_yields_each_hour_exclusive_of_end(self):
         start = _day(2023, 1, 1)
-        end = start + timedelta(hours=3)
-        hours = list(hour_range(start, end))
-        assert hours == [start, start + timedelta(hours=1), start + timedelta(hours=2)]
+        hours = list(hour_range(start, start + timedelta(hours=3)))
+        assert [h.isoformat() for h in hours] == [
+            '2023-01-01T08:00:00+00:00', '2023-01-01T09:00:00+00:00', '2023-01-01T10:00:00+00:00',
+        ]
+
+    def test_spring_forward_day_has_23_hours(self):
+        assert len(list(hour_range(_day(2026, 3, 8), _day(2026, 3, 9)))) == 23
+
+    def test_fall_back_day_has_25_hours(self):
+        assert len(list(hour_range(_day(2026, 11, 1), _day(2026, 11, 2)))) == 25
 
 
 class IterChunkDaysTests(TestCase):
     def test_yields_each_day_exclusive_of_end(self):
-        start = _day(2023, 1, 1)
-        end = start + timedelta(days=3)
-        days = list(iter_chunk_days(start, end))
-        assert days == [start, start + timedelta(days=1), start + timedelta(days=2)]
+        days = list(iter_chunk_days(_day(2023, 1, 1), _day(2023, 1, 4)))
+        assert days == [_day(2023, 1, 1), _day(2023, 1, 2), _day(2023, 1, 3)]
+
+    def test_days_across_spring_forward_are_pacific_midnights(self):
+        days = list(iter_chunk_days(_day(2026, 3, 7), _day(2026, 3, 10)))
+        assert [_iso(d) for d in days] == [
+            '2026-03-07T00:00:00-08:00', '2026-03-08T00:00:00-08:00', '2026-03-09T00:00:00-07:00',
+        ]
+
+    def test_days_across_fall_back_are_pacific_midnights(self):
+        days = list(iter_chunk_days(_day(2026, 10, 31), _day(2026, 11, 3)))
+        assert [_iso(d) for d in days] == [
+            '2026-10-31T00:00:00-07:00', '2026-11-01T00:00:00-07:00', '2026-11-02T00:00:00-08:00',
+        ]
+
+    def test_utc_inputs_give_the_same_days(self):
+        start = _day(2026, 3, 7).astimezone(dt_timezone.utc)
+        end = _day(2026, 3, 10).astimezone(dt_timezone.utc)
+        assert len(list(iter_chunk_days(start, end))) == 3
 
 
 class DailyRollupWindowTests(TestCase):
     def test_returns_daily_window(self):
-        day = _day(2023, 7, 15)
-        target, source, window_start, window_end = daily_rollup_window(day)
-        assert target == BaseSummary.Resolution.DAILY
-        assert source == BaseSummary.Resolution.HOURLY
-        assert window_start == day
-        assert window_end == day + timedelta(days=1)
+        target, source, window_start, window_end = daily_rollup_window(_day(2023, 7, 15))
+        assert target == R.DAILY
+        assert source == R.HOURLY
+        assert window_start == _day(2023, 7, 15)
+        assert window_end == _day(2023, 7, 16)
+
+    def test_spring_forward_day_is_23_hours(self):
+        _, _, start, end = daily_rollup_window(_day(2026, 3, 8))
+        assert _iso(end) == '2026-03-09T00:00:00-07:00'
+        assert end.astimezone(dt_timezone.utc) - start.astimezone(dt_timezone.utc) == timedelta(hours=23)
+
+    def test_fall_back_day_is_25_hours(self):
+        _, _, start, end = daily_rollup_window(_day(2026, 11, 1))
+        assert _iso(end) == '2026-11-02T00:00:00-08:00'
+        assert end.astimezone(dt_timezone.utc) - start.astimezone(dt_timezone.utc) == timedelta(hours=25)
 
 
 class HigherRollupWindowsTests(TestCase):
@@ -82,48 +144,100 @@ class HigherRollupWindowsTests(TestCase):
 
     def test_ordinary_month_start_rolls_up_month_only(self):
         windows = higher_rollup_windows(_day(2023, 8, 1))
-        resolutions = [w[0] for w in windows]
-        assert resolutions == [BaseSummary.Resolution.MONTHLY]
+        assert [w[0] for w in windows] == [R.MONTHLY]
 
     def test_quarter_start_month_cascades_to_quarterly(self):
-        windows = higher_rollup_windows(_day(2023, 7, 1))
-        resolutions = [w[0] for w in windows]
-        assert BaseSummary.Resolution.MONTHLY in resolutions
-        assert BaseSummary.Resolution.QUARTERLY in resolutions
-        assert BaseSummary.Resolution.SEASONAL not in resolutions
-        assert BaseSummary.Resolution.YEARLY not in resolutions
+        resolutions = [w[0] for w in higher_rollup_windows(_day(2023, 7, 1))]
+        assert R.MONTHLY in resolutions
+        assert R.QUARTERLY in resolutions
+        assert R.SEASONAL not in resolutions
+        assert R.YEARLY not in resolutions
 
     def test_season_start_month_cascades_to_seasonal(self):
-        windows = higher_rollup_windows(_day(2023, 6, 1))
-        resolutions = [w[0] for w in windows]
-        assert BaseSummary.Resolution.SEASONAL in resolutions
+        assert R.SEASONAL in [w[0] for w in higher_rollup_windows(_day(2023, 6, 1))]
 
     def test_december_is_season_start_but_not_quarter_start(self):
-        windows = higher_rollup_windows(_day(2023, 12, 1))
-        resolutions = [w[0] for w in windows]
-        assert BaseSummary.Resolution.SEASONAL in resolutions
-        assert BaseSummary.Resolution.QUARTERLY not in resolutions
+        resolutions = [w[0] for w in higher_rollup_windows(_day(2023, 12, 1))]
+        assert R.SEASONAL in resolutions
+        assert R.QUARTERLY not in resolutions
 
     def test_january_cascades_to_quarterly_and_yearly(self):
-        windows = higher_rollup_windows(_day(2023, 1, 1))
-        resolutions = [w[0] for w in windows]
-        assert BaseSummary.Resolution.MONTHLY in resolutions
-        assert BaseSummary.Resolution.QUARTERLY in resolutions
-        assert BaseSummary.Resolution.YEARLY in resolutions
+        resolutions = [w[0] for w in higher_rollup_windows(_day(2023, 1, 1))]
+        assert R.MONTHLY in resolutions
+        assert R.QUARTERLY in resolutions
+        assert R.YEARLY in resolutions
 
     def test_quarterly_window_spans_three_months(self):
-        windows = higher_rollup_windows(_day(2023, 7, 1))
-        quarterly = next(w for w in windows if w[0] == BaseSummary.Resolution.QUARTERLY)
-        _, _, window_start, window_end = quarterly
-        assert window_start == _day(2023, 7, 1)
-        assert window_end == _day(2023, 10, 1)
+        quarterly = next(w for w in higher_rollup_windows(_day(2023, 7, 1)) if w[0] == R.QUARTERLY)
+        assert quarterly[2] == _day(2023, 7, 1)
+        assert quarterly[3] == _day(2023, 10, 1)
 
     def test_yearly_window_spans_twelve_months(self):
-        windows = higher_rollup_windows(_day(2023, 1, 1))
-        yearly = next(w for w in windows if w[0] == BaseSummary.Resolution.YEARLY)
-        _, _, window_start, window_end = yearly
-        assert window_start == _day(2023, 1, 1)
-        assert window_end == _day(2024, 1, 1)
+        yearly = next(w for w in higher_rollup_windows(_day(2023, 1, 1)) if w[0] == R.YEARLY)
+        assert yearly[2] == _day(2023, 1, 1)
+        assert yearly[3] == _day(2024, 1, 1)
+
+    def test_march_first_is_a_month_start_when_given_as_utc(self):
+        # 2026-03-01 00:00 PST is 08:00 UTC, still March 1; the old code saw Feb 28 23:00 as Mar 1 only by luck.
+        day = _day(2026, 3, 1).astimezone(dt_timezone.utc)
+        windows = higher_rollup_windows(day)
+        assert [w[0] for w in windows] == [R.MONTHLY, R.SEASONAL]
+        assert _iso(windows[0][3]) == '2026-04-01T00:00:00-07:00'
+        assert _iso(windows[1][3]) == '2026-06-01T00:00:00-07:00'
+
+    def test_an_hour_early_stamp_is_not_a_month_start(self):
+        # Feb 28 23:00 PST must not count as March 1.
+        assert higher_rollup_windows(_day(2026, 3, 1) - timedelta(hours=1)) == []
+
+    def test_january_window_ends_across_dst_are_pacific_midnights(self):
+        windows = {w[0]: w for w in higher_rollup_windows(_day(2026, 1, 1))}
+        assert _iso(windows[R.QUARTERLY][3]) == '2026-04-01T00:00:00-07:00'
+        assert _iso(windows[R.YEARLY][3]) == '2027-01-01T00:00:00-08:00'
+
+
+class BackfillJobDstTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def _run_backfill(self, from_date, to_date, hours_from, hours_to):
+        monitor = PurpleAir.objects.first()
+        MonitorSummary.objects.bulk_create([
+            MonitorSummary(
+                monitor=monitor, timestamp=hour, resolution=R.HOURLY,
+                entry_type='pm25', processor='', **compute_stats([10.0], 1),
+            )
+            for hour in iter_hours(hours_from, hours_to)
+        ])
+
+        call_command('backfill_summaries', 'start', '--from', from_date, '--to', to_date)
+        for _ in range(200):
+            SummaryBackfillJob.objects.update(locked_at=None)
+            with self.captureOnCommitCallbacks(execute=True):
+                backfill_summaries_tick()
+            if SummaryBackfillJob.objects.get().state != SummaryBackfillJob.State.RUNNING:
+                break
+        assert SummaryBackfillJob.objects.get().state == SummaryBackfillJob.State.DONE
+        return MonitorSummary.objects.exclude(resolution=R.HOURLY)
+
+    def _assert_all_period_starts(self, rows):
+        assert rows.exists()
+        for row in rows:
+            assert is_period_start(row.resolution, row.timestamp), (row.resolution, _iso(row.timestamp))
+
+    def test_summer_end_backfill_stamps_pacific_period_starts(self):
+        rows = self._run_backfill('2026-02-27', '2026-03-10', _day(2026, 2, 1), _day(2026, 3, 10))
+        self._assert_all_period_starts(rows)
+        stamps = {(r.resolution, _iso(r.timestamp)) for r in rows}
+        assert (R.MONTHLY, '2026-03-01T00:00:00-08:00') in stamps
+        assert (R.SEASONAL, '2026-03-01T00:00:00-08:00') in stamps
+        day = rows.get(resolution=R.DAILY, timestamp=_day(2026, 3, 8))
+        assert day.count == 23
+
+    def test_standard_end_backfill_across_fall_back(self):
+        rows = self._run_backfill('2026-10-30', '2026-11-04', _day(2026, 10, 1), _day(2026, 11, 4))
+        self._assert_all_period_starts(rows)
+        day = rows.get(resolution=R.DAILY, timestamp=_day(2026, 11, 1))
+        assert day.count == 25
+        assert (R.MONTHLY, '2026-11-01T00:00:00-07:00') in {(r.resolution, _iso(r.timestamp)) for r in rows}
 
 
 class BackfillMonitorHoursTests(TestCase):
@@ -484,7 +598,9 @@ class BackfillSummariesTickDispatchMonitorsTests(TestCase):
             backfill_summaries_tick()
 
         self.job.refresh_from_db()
-        assert self.job.chunk_start == self.job.cursor - timedelta(days=7)
+        cursor_date = self.job.cursor.astimezone(settings.DEFAULT_TIMEZONE).date()
+        expected = cursor_date - timedelta(days=7)
+        assert self.job.chunk_start == _day(expected.year, expected.month, expected.day)
         assert MonitorSummary.objects.filter(monitor=self.monitor).exists()
 
 
