@@ -543,14 +543,14 @@ if "SENTRY_DSN" in os.environ:
     import sentry_sdk
     from sentry_sdk.integrations.django import DjangoIntegration
 
-    from camp.apps.documents.sentry import scrub_documents
+    from camp.utils.sentry import scrub_event
 
     sentry_sdk.init(
         dsn=os.environ["SENTRY_DSN"],
         integrations=[DjangoIntegration(transaction_style="url")],
         release=COMMIT_HASH,
-        # Saved dashboards' bodies and names stay out of error reports.
-        before_send=scrub_documents,
+        # Saved dashboards' bodies and names, and lookup coordinates, stay out of error reports.
+        before_send=scrub_event,
     )
 
 
@@ -582,6 +582,9 @@ SCOUT_KEY = env('SCOUT_KEY')
 SCOUT_NAME = env('SCOUT_NAME')
 
 SCOUT_ERRORS_ENABLED = not DEBUG
+
+# Never record query strings in traces (lookup coordinates must not reach Scout).
+SCOUT_URI_REPORTING = 'path'
 
 if SCOUT_KEY is not None:
     INSTALLED_APPS.insert(0, 'scout_apm.django')
