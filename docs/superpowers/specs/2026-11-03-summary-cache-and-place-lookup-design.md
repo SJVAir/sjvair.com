@@ -203,9 +203,11 @@ dates shift daily never reaches the long cache.
 
 ### Hidden monitors (the user, 2026-11-03)
 
-`?monitor=` answers only for **public** monitors (`Monitor.objects.get_public()`). A hidden
-monitor or a disabled type gets the same 404 as an unknown id, so its ZIP doesn't reveal
-roughly where it is. `resolve_place` is shared, so spec 1's `calheatscore/place/` and
+`?monitor=` answers for any monitor that isn't hidden (`is_hidden=False`). A hidden monitor
+gets the same 404 as an unknown id, so its ZIP doesn't reveal roughly where it is. Other
+monitors answer, CIMIS and other types outside `MONITOR_ENABLED_TYPES` included: that type
+whitelist is for the list endpoints, not for resolving a monitor by id, so `get_public()` is
+not used here. `resolve_place` is shared, so spec 1's `calheatscore/place/` and
 `forecasts/place/` get the same rule. Tests cover all three.
 
 Hidden monitors' per-monitor summaries (and probably raw entries) are readable by anyone
@@ -215,8 +217,8 @@ who has the id. That predates this spec and is out of scope: fixing it means dec
 ### Requests
 
 - `POST regions/places/lookup/` with a JSON body `{"lat": 36.737, "lon": -119.787,
-  "type": "zipcode,city,county"}` (`type` optional). Missing or out-of-range `lat`/`lon`
-  is a 400.
+  "type": "zipcode,city,county"}` (`type` optional; a JSON array of type names works too, and
+  any other kind of value is a 400). Missing or out-of-range `lat`/`lon` is a 400.
 - `GET regions/places/lookup/?monitor=<id>&type=…`. An unknown or hidden monitor is a 404. A monitor
   without a position is a 400 (reuse `resolve_place`'s messages).
 - `q` together with `monitor`, or a POST that also has `q`, is a 400.
