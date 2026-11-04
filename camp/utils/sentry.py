@@ -8,12 +8,18 @@ from urllib.parse import urlsplit
 
 from camp.apps.documents.sentry import is_documents_event, scrub_documents, stacktraces
 
-LOOKUP_PATH = '/api/2.0/regions/places/lookup/'
+# Shared with camp.api.middleware.CoordinateQueryGuardMiddleware.
+LOOKUP_PATH = '/api/2.0/regions/places/lookup'
+
+
+def is_lookup_path(path):
+    """The place lookup's path, with or without its trailing slash."""
+    return path.rstrip('/') == LOOKUP_PATH
 
 
 def is_lookup_event(event):
     url = (event.get('request') or {}).get('url') or ''
-    return urlsplit(url).path.startswith(LOOKUP_PATH)
+    return is_lookup_path(urlsplit(url).path)
 
 
 def scrub_lookup(event):

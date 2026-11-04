@@ -3,7 +3,7 @@ import json
 
 from django.test import SimpleTestCase
 
-from camp.utils.sentry import scrub_event
+from camp.utils.sentry import is_lookup_path, scrub_event
 
 SECRET = '36.737,-119.787'
 
@@ -59,3 +59,19 @@ class ScrubEventTests(SimpleTestCase):
     def test_other_event_untouched(self):
         original = event('https://www.sjvair.com/api/2.0/monitors/')
         assert scrub_event(copy.deepcopy(original), {}) == original
+
+    def test_lookup_path_without_trailing_slash_is_scrubbed(self):
+        scrubbed = scrub_event(event('https://www.sjvair.com/api/2.0/regions/places/lookup?lat=36.737'), {})
+        assert 'data' not in scrubbed['request']
+        assert SECRET not in repr(scrubbed)
+
+
+class LookupPathTests(SimpleTestCase):
+
+    def test_matches_with_and_without_trailing_slash(self):
+        assert is_lookup_path('/api/2.0/regions/places/lookup/')
+        assert is_lookup_path('/api/2.0/regions/places/lookup')
+
+    def test_other_paths_do_not_match(self):
+        assert not is_lookup_path('/api/2.0/regions/places/')
+        assert not is_lookup_path('/api/2.0/regions/places/lookups/')

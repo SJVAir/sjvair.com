@@ -6,7 +6,7 @@ from django.core.cache import cache
 from django.db import connection
 from django.db.models import Count
 from django.utils.decorators import method_decorator
-from django.views.decorators.debug import sensitive_post_parameters
+from django.views.decorators.debug import sensitive_variables
 
 from resticus import generics, http
 
@@ -346,7 +346,9 @@ class PointLookupForm(forms.Form):
     type = forms.CharField(required=False, strip=True)
 
 
-@method_decorator(sensitive_post_parameters('lat', 'lon'), name='post')
+# Keeps the coordinates out of Django's error reports (frame locals). The body is
+# JSON, so sensitive_post_parameters (request.POST only) wouldn't cover it.
+@method_decorator(sensitive_variables('body', 'form', 'lat', 'lon', 'geometry'), name='post')
 class PlaceLookup(generics.Endpoint):
     """
     Resolve a name to the single best-match region (?q=, optional ?type=): without
@@ -394,7 +396,14 @@ class PlaceLookup(generics.Endpoint):
         body = request.data if isinstance(request.data, dict) else {}
         if 'q' in body or 'monitor' in body:
             return http.Http400({'error': 'A POST takes lat and lon only.'})
-        form = PointLookupForm(body)
+        raw_type = body.get('type')
+        if raw_type is None:
+            raw_type = ''
+        elif isinstance(raw_type, list) and all(isinstance(t, str) for t in raw_type):
+            raw_type = ','.join(raw_type)
+        elif not isinstance(raw_type, str):
+            return http.Http400({'error': 'type must be a comma-separated string or a list of strings.'})
+        form = PointLookupForm({**body, 'type': raw_type})
         if not form.is_valid():
             # Messages only, never the values.
             errors = [error for field in form.errors.values() for error in field]

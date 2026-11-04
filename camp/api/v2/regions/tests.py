@@ -963,6 +963,52 @@ class PlaceLookupPointTests(TestCase):
         assert response.status_code == 400
         assert response.json()['error'] == 'Unknown region type: nope.'
 
+    def test_type_json_list_filters(self):
+        assert self.ids(self.post({'lat': 36.5, 'lon': -119.5, 'type': ['zipcode', 'county']})) == [
+            ('county', '99001'), ('zipcode', '99100')]
+
+    def test_type_null_means_default(self):
+        types = {t for t, _ in self.ids(self.post({'lat': 36.5, 'lon': -119.5, 'type': None}))}
+        assert types == {'city', 'county', 'zipcode'}
+
+    def test_type_json_list_unknown_type_400(self):
+        response = self.post({'lat': 36.5, 'lon': -119.5, 'type': ['county', 'nope']})
+        assert response.status_code == 400
+        assert response.json()['error'] == 'Unknown region type: nope.'
+
+    def test_type_of_another_kind_400(self):
+        for value in (5, {'county': True}, ['county', 5], [['county']]):
+            response = self.post({'lat': 36.5, 'lon': -119.5, 'type': value})
+            assert response.status_code == 400, value
+            assert response.json()['error'] == 'type must be a comma-separated string or a list of strings.'
+
+    def test_coordinates_hidden_from_django_error_reports(self):
+        # Django's error emails and debug page read frame locals through this filter.
+        # Resticus turns the exception into a 500, so grab the live stack from
+        # inside the lookup instead of from a traceback.
+        import inspect
+        from django.views.debug import SafeExceptionReporterFilter
+        report_filter = SafeExceptionReporterFilter()
+        seen = {}
+
+        def capture(*args):
+            frame = inspect.currentframe().f_back
+            while frame is not None:
+                seen[frame] = dict(report_filter.get_traceback_frame_variables(None, frame))
+                frame = frame.f_back
+            return []
+
+        with patch('camp.api.v2.regions.endpoints.regions_containing', side_effect=capture):
+            assert self.post({'lat': 36.737, 'lon': -119.787}).status_code == 200
+        endpoint_frames = {f: v for f, v in seen.items() if f.f_code.co_filename.endswith('regions/endpoints.py')}
+        assert any(f.f_code.co_name == 'post' and 'lat' in f.f_locals for f in endpoint_frames)
+        for frame, variables in endpoint_frames.items():
+            for name in ('body', 'form', 'lat', 'lon', 'geometry'):
+                if name in variables:
+                    assert variables[name] == report_filter.cleansed_substitute, (frame.f_code.co_name, name)
+        seen.clear()
+        endpoint_frames.clear()
+
     def test_mtrs_allowed_when_asked(self):
         make_square_region('Section', Region.Type.MTRS, 'M1', (-120, 36, -119, 37))
         assert self.ids(self.post({'lat': 36.5, 'lon': -119.5, 'type': 'mtrs'})) == [('mtrs', 'M1')]
