@@ -256,7 +256,7 @@ Run: `<test command> camp/apps/summaries/tests.py::PacificScheduleTests`
   - `"GET regions/places/lookup/ (monitor)"`: uses `TEST_MONITOR_ID` and skips with a note when it's unset.
   - `"…(type array)"`: `["zipcode","county"]` returns only those types.
 - [ ] **Step 2: Run; expect failures.** Run `deno test --allow-net --allow-env --allow-read --env-file=.env lib/regions/mod_test.ts`.
-- [ ] **Step 3: Implement** the overloads and update the JSDoc and `api-urls.md`. Also (Task 5b): `getMonitors` gains an optional `dataset` (sent as `?dataset=`) and the catalog schema gains `places_url`. Test `getMonitors({ dataset: "weather" })` against the local API (skip with a note when it returns no CIMIS stations).
+- [ ] **Step 3: Implement** the overloads and update the JSDoc and `api-urls.md`. Also (Task 5b): a new `listMonitors(options?: { dataset?: string }, requestOptions?: RequestOptions): Promise<Array<MonitorData>>` in `lib/monitors/list_monitors.ts` wraps the plain list `GET monitors/` (no wrapper exists today; `getMonitors` wraps `current`/`at`, which ignore `dataset`, and stays unchanged). Use the list item type and schema the monitor detail/list already have. The catalog schema gains `places_url`. Test `listMonitors({ dataset: "weather" })` against the local API (skip with a note when it returns no CIMIS stations).
 - [ ] **Step 4: Run `deno fmt --check && deno lint && deno check mod.ts` and the regions tests; expect PASS.** Don't run the account tests (they send a real SMS).
 - [ ] **Step 5: Commit, push, and open a PR into `release/4.8.0`.** No beta. Ask the user before any release. Tell `data-dashboard-26` the PR exists.
 
