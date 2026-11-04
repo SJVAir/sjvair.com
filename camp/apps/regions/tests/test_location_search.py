@@ -26,9 +26,11 @@ class LocationSearchTests(TestCase):
         self.make('Lincoln Elementary', 'Fresno', city=self.fresno)
         self.make('Lincoln Elementary', 'Bakersfield')
         self.make('Lincoln Elementary', 'dinuba')
-        # A CDP whose name starts with a word of the school's name.
+        # A mailing city (Stockton) that isn't its linked CDP's name (Lincoln Village),
+        # and the CDP's name starts with a word of the school's name.
         lincoln_village = Region.objects.create(name='Lincoln Village', slug='lincoln-village', type=Region.Type.CDP, external_id='0641712')
         self.make('Lincoln Elementary', 'Stockton', city=lincoln_village)
+        self.make('Lincoln Elementary', 'Madera')  # sorts between "lincoln village" and "stockton"
         self.make('Abraham Lincoln Jr. High', 'Bakersfield')
         self.make('Roosevelt Elementary', 'Fresno', city=self.fresno)
         self.make('Fresno High', 'Fresno', city=self.fresno)
@@ -40,18 +42,19 @@ class LocationSearchTests(TestCase):
 
     def test_prefix_beats_word_start_beats_substring(self):
         names = [name for name, city in self.search('linc')]
-        assert names[:6] == ['Lincoln Elementary'] * 5 + ['Abraham Lincoln Jr. High']
+        assert names[:7] == ['Lincoln Elementary'] * 6 + ['Abraham Lincoln Jr. High']
 
     def test_same_name_orders_by_city_ignoring_case(self):
         rows = self.search('lincoln elementary')
-        # The Stockton row is in Lincoln Village (its linked CDP), sorted there. Its town
-        # matching "lincoln" doesn't lift it above the others: they all start with q.
-        assert [city for name, city in rows[:5]] == ['Bakersfield', 'dinuba', 'Fresno', 'Stockton', 'Visalia']
+        # The Stockton row sorts as the Stockton it shows, not as its linked CDP (Lincoln
+        # Village, before Madera). Its CDP matching "lincoln" doesn't lift it above the
+        # others: they all start with q.
+        assert [city for name, city in rows[:6]] == ['Bakersfield', 'dinuba', 'Fresno', 'Madera', 'Stockton', 'Visalia']
 
     def test_typo_matches(self):
         rows = self.search('Linclon')
         lincolns = [row for row in rows if 'Lincoln' in row[0]]
-        assert len(lincolns) == 6
+        assert len(lincolns) == 7
         assert self.search('Rosevelt')[0] == ('Roosevelt Elementary', 'Fresno')
 
     def test_town_suffix_ranks_first(self):
@@ -77,16 +80,22 @@ class LocationSearchTests(TestCase):
         assert self.search('fresno high')[:2] == [('Fresno High', 'Fresno'), ('Bullard High', 'Fresno')]
         assert ('FRESNO EOC HEAD START', 'CARUTHERS') in self.search('fresno')
 
-    def test_town_uses_the_linked_city_before_the_source_string(self):
+    def test_town_matches_the_city_name_or_the_linked_city(self):
         self.make('Jefferson Elementary', 'Calwa', city=self.fresno)
 
-        by_linked_city = Location.objects.search('jefferson fresno').first()
-        assert by_linked_city.name == 'Jefferson Elementary'
-        assert by_linked_city.search_rank == 4  # town matched, name part a prefix
+        for q in ['jefferson fresno', 'jefferson calwa']:
+            row = Location.objects.search(q).first()
+            assert row.name == 'Jefferson Elementary'
+            assert row.search_rank == 4  # town matched, name part a prefix
 
-        # The source's own string isn't the town once a city is linked.
-        by_source_string = Location.objects.search('jefferson calwa').filter(name='Jefferson Elementary').first()
-        assert by_source_string is None or by_source_string.search_rank == 1  # whole-q similarity only
+    def test_town_matches_a_mailing_city_unlike_the_linked_one(self):
+        stockton = ('Lincoln Elementary', 'Stockton')
+        # The row's own city_name is a town...
+        assert self.search('lincoln stockton')[0] == stockton
+        # ...and so is its linked CDP's name.
+        assert self.search('lincoln elementary lincoln village')[0] == stockton
+        # Two words that are the CDP's name read best as a name; the row is still found.
+        assert stockton in self.search('lincoln village')
 
     def test_retired_excluded(self):
         self.visalia_lincoln.retire(self.visalia_lincoln.created.date())

@@ -231,7 +231,8 @@ class LocationQuerySet(models.QuerySet):
         "lincoln elementary" by Lincoln Village) doesn't outrank the name
         itself. `search_similarity` is the trigram word similarity of the best
         split's name text. Rows are ordered by both, then city, name, source
-        and code (city: the linked city/CDP region's name, else `city_name`).
+        and code. The city sort is the row's own `city_name` (what it shows),
+        else its linked city/CDP region's name; a town part matches either.
         Doesn't check `q`'s length; a blank `q` matches nothing.
 
         Each split scores rank * 10 + similarity in one CASE, and the row's
@@ -246,7 +247,7 @@ class LocationQuerySet(models.QuerySet):
             return self.none()
 
         qs = self.one_per_place().alias(
-            city_key=Lower(Coalesce(NullIf('city__name', Value('')), 'city_name')),
+            city_key=Lower(Coalesce(NullIf('city_name', Value('')), 'city__name', Value(''))),
         )
         keys = [self._search_key(name, town) for name, town in self._search_splits(q)]
         qs = qs.annotate(search_key=keys[0] if len(keys) == 1 else Greatest(*keys))
@@ -285,11 +286,12 @@ class LocationQuerySet(models.QuerySet):
         return Case(*whens, default=Value(0.0), output_field=FloatField())
 
     def _in_town(self, town):
-        """Rows whose city starts with `town`: the linked city/CDP region's name, or the
-        row's own `city_name` when none is linked. An uncorrelated subquery of city ids
-        rather than the join, so the whole search filter applies at the location scan,
-        ahead of one_per_place()'s per-row subquery. all_objects, like the join: a row's
-        linked city counts even if retired, and it skips the retired_at scan."""
+        """Rows whose city starts with `town`: their own `city_name` (a mailing city,
+        e.g. Stockton) or their linked city/CDP region's name (e.g. Lincoln Village),
+        whichever matches. The region side is an uncorrelated subquery of city ids rather
+        than the join, so the whole search filter applies at the location scan, ahead of
+        one_per_place()'s per-row subquery. all_objects: a row's linked city counts even
+        if retired, and it skips the retired_at scan."""
         from camp.apps.regions.models import Region
         cities = Region.all_objects.filter(type__in=[Region.Type.CITY, Region.Type.CDP], name__istartswith=town)
-        return Q(city__in=cities.values('pk')) | Q(city__isnull=True, city_name__istartswith=town)
+        return Q(city_name__istartswith=town) | Q(city__in=cities.values('pk'))
