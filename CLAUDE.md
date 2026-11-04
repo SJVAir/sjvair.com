@@ -224,6 +224,15 @@ zones are missing there; see SJVAPCD Forecast Setup).
   before the view stack. `camp/utils/sentry.py` scrubs lookup events, and `SCOUT_URI_REPORTING='path'`
   keeps query strings out of Scout traces (site-wide). Answers are cached 24h; re-importing
   boundaries leaves stale answers until they expire.
+- **Location search** `regions/locations/search/?q=` finds schools and child-care sites by name
+  (typo-tolerant, and a town can be part of the query: "lincoln visalia"). `q` is stripped; under 2
+  characters answers an empty 200, over 100 is a 400. Optional `type` (comma list of location
+  types; names the unknown ones in its 400) and `region_type`+`region` (a code, both or neither;
+  county, city, cdp, zipcode or school_district; retired regions still filter, unknown code 404).
+  Returns `{data: [location rows], more}`: 10 rows, stretched to 15 while the following rows repeat
+  the 10th's name; `more` is true when any match was left out. 200s are `public, max-age=3600`,
+  errors `no-cache`; no server-side cache. Labels for the types come from `regions/meta/`
+  `location_types`.
 - **Summary cache rule** (`camp/api/v2/summaries/endpoints.py`): a 200 for a settled period is
   `private, max-age=86400`, any other 200 is `private, max-age=60`; both carry an `ETag` and
   answer `If-None-Match` with a 304 (which keeps the 200's headers). Errors are `no-cache`.

@@ -12,6 +12,7 @@ urlpatterns = [
     path('places/search/', endpoints.PlaceSearch.as_view(), name='place-search'),
     path('places/lookup/', endpoints.PlaceLookup.as_view(), name='place-lookup'),
     path('locations/', endpoints.LocationList.as_view(), name='location-list'),
+    path('locations/search/', endpoints.LocationSearch.as_view(), name='location-search'),
     path('<entry_type>/summaries/', include('camp.api.v2.summaries.region_bulk_urls')),
     path('<region_id>/', endpoints.RegionDetail.as_view(), name='region-detail'),
     path('<region_id>/summaries/', include('camp.api.v2.summaries.region_urls')),

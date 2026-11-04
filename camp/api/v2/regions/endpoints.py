@@ -31,6 +31,22 @@ ALSO_IN_MIN_FRACTION = 0.01
 META_COUNT_CACHE_KEY = 'regions:meta:counts'
 META_COUNT_CACHE_TIMEOUT = 60 * 60
 
+SEARCH_MIN_CHARS = 2
+SEARCH_MAX_CHARS = 100
+SEARCH_LIMIT = 10
+# A name tie at the last row stretches the result this far rather than
+# cutting a run of identically named sites in half.
+SEARCH_TIE_LIMIT = 15
+# Region types a location search can be narrowed to, and the Location field
+# each one is linked through (a CDP is stored in `city`).
+SEARCH_REGION_FIELDS = {
+    'county': 'county',
+    'city': 'city',
+    'cdp': 'city',
+    'zipcode': 'zipcode',
+    'school_district': 'school_district',
+}
+
 
 class PlaceQueryForm(forms.Form):
     q = forms.CharField(required=False, strip=True)
@@ -279,6 +295,71 @@ class LocationList(generics.ListEndpoint):
         )
 
 
+class LocationSearch(generics.Endpoint):
+    """
+    Schools and child-care sites by name: ?q= (2 to 100 characters), best match
+    first, optionally narrowed by ?type= (comma-separated location types) and
+    ?region_type=&region= (a region code; retired regions still filter).
+    Answers up to 10 rows, stretched to 15 when the 10th row's name repeats;
+    `more` says a match was left out.
+    """
+
+    @staticmethod
+    def error(response):
+        response['Cache-Control'] = 'no-cache'
+        return response
+
+    def get(self, request, *args, **kwargs):
+        if any('\x00' in request.GET.get(name, '') for name in ('q', 'type', 'region_type', 'region')):
+            return self.error(http.Http400({'error': "Parameters can't contain null characters."}))
+
+        q = request.GET.get('q', '').strip()
+        if len(q) > SEARCH_MAX_CHARS:
+            return self.error(http.Http400({'error': f'q must be at most {SEARCH_MAX_CHARS} characters.'}))
+
+        types = list(dict.fromkeys(t.strip() for t in request.GET.get('type', '').split(',') if t.strip()))
+        unknown = [t for t in types if t not in Location.Type.values]
+        if unknown:
+            return self.error(http.Http400({'error': f'type is invalid: {", ".join(unknown)}'}))
+
+        region_type = request.GET.get('region_type', '').strip()
+        code = request.GET.get('region', '').strip()
+        if bool(region_type) != bool(code):
+            return self.error(http.Http400({'error': 'The region_type and region parameters go together.'}))
+        region = None
+        if region_type:
+            if region_type not in SEARCH_REGION_FIELDS:
+                return self.error(http.Http400({'error': f'region_type is invalid: {region_type}'}))
+            region = Region.all_objects.filter(type=region_type, external_id=code).first()
+            if region is None:
+                return self.error(http.Http404({'error': 'Region not found.'}))
+
+        if len(q) < SEARCH_MIN_CHARS:
+            rows = []
+        else:
+            locations = Location.objects.search(q).select_related(
+                'county', 'city', 'zipcode', 'school_district', 'replaced_by')
+            if types:
+                locations = locations.filter(type__in=types)
+            if region is not None:
+                locations = locations.filter(**{SEARCH_REGION_FIELDS[region_type]: region})
+            rows = list(locations[:SEARCH_TIE_LIMIT + 1])
+
+        kept = rows[:SEARCH_LIMIT]
+        if len(kept) == SEARCH_LIMIT:
+            tie = kept[-1].name.strip().lower()
+            for row in rows[SEARCH_LIMIT:SEARCH_TIE_LIMIT]:
+                if row.name.strip().lower() != tie:
+                    break
+                kept.append(row)
+        response = http.Http200({
+            'data': [LocationSerializer(row).serialize() for row in kept],
+            'more': len(rows) > len(kept),
+        })
+        response['Cache-Control'] = 'public, max-age=3600'
+        return response
+
+
 class RegionMetaEndpoint(generics.Endpoint):
     """Metadata describing all region types supported by the API."""
 
@@ -306,9 +387,21 @@ class RegionMetaEndpoint(generics.Endpoint):
             }
         return payload
 
+    def get_location_types(self):
+        sources = {config['type']: source for source, config in SOURCES.items()}
+        return {
+            location_type: {
+                'type': location_type,
+                'label': str(Location.SHORT_TYPES[location_type]),
+                'source': sources[location_type],
+            }
+            for location_type in Location.Type.values
+        }
+
     def get(self, request, *args, **kwargs):
         return {'data': {
             'types': self.get_types(),
+            'location_types': self.get_location_types(),
         }}
 
 
