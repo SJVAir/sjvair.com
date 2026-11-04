@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest.mock import patch
 
 import numpy as np
@@ -18,6 +18,8 @@ from django.utils import timezone
 #   last quarter    = 2026-01-01  (Q1: Jan–Mar)
 #   last season     = 2025-12-01  (winter: Dec–Feb; use Mar 1 as "now" for that helper)
 FIXED_NOW = timezone.make_aware(datetime(2026, 4, 1, 10, 30, 0))
+# 2026-04-01 08:30 UTC = 01:30 PDT, inside the Pacific hour the rollups run in.
+ROLLUP_NOW = timezone.make_aware(datetime(2026, 4, 1, 8, 30, 0))
 
 from camp.apps.entries.models import CO, NO2, O3, PM25, SO2
 from camp.apps.monitors.bam.models import BAM1022
@@ -40,6 +42,7 @@ from camp.apps.summaries.aggregators import (
 )
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.panels import TrendPanel
+from camp.apps.summaries.schedule import is_pacific_hour
 from camp.apps.summaries.tasks import (
     daily_monitor_summaries,
     get_summarizable_entry_models,
@@ -49,6 +52,7 @@ from camp.apps.summaries.tasks import (
     quarterly_monitor_summaries,
     rollup_monitor_summaries,
     rollup_region_summaries,
+    seasonal_monitor_summaries,
     summarize_monitor_hour,
     summarize_region_hour,
 )
@@ -999,7 +1003,7 @@ class DailyMonitorSummariesTaskTests(TestCase):
         for h in range(3):
             self._make_hourly_summary(self.yesterday + timedelta(hours=h))
 
-        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
+        with patch('django.utils.timezone.now', return_value=ROLLUP_NOW):
             daily_monitor_summaries()
 
         assert MonitorSummary.objects.filter(
@@ -1110,7 +1114,7 @@ class MonthlyMonitorSummariesTaskTests(TestCase):
         for d in range(3):
             self._make_daily_summary(self.march + timedelta(days=d))
 
-        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
+        with patch('django.utils.timezone.now', return_value=ROLLUP_NOW):
             monthly_monitor_summaries()
 
         assert MonitorSummary.objects.filter(
@@ -1170,7 +1174,7 @@ class QuarterlyMonitorSummariesTaskTests(TestCase):
                 timezone.make_aware(datetime(2026, month, 1), settings.DEFAULT_TIMEZONE)
             )
 
-        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
+        with patch('django.utils.timezone.now', return_value=ROLLUP_NOW):
             quarterly_monitor_summaries()
 
         assert MonitorSummary.objects.filter(
@@ -1205,6 +1209,73 @@ def daily_region_summary(region, day, mean, entry_type='pm25', station_count=1):
         minimum=mean, maximum=mean, mean=mean, stddev=0.0, p25=mean, p75=mean,
         station_count=station_count, weight=float(station_count),
     )
+
+
+def utc(*args):
+    return timezone.make_aware(datetime(*args), dt_timezone.utc)
+
+
+def pacific(*args):
+    return timezone.make_aware(datetime(*args), settings.DEFAULT_TIMEZONE)
+
+
+class PacificScheduleTests(TestCase):
+    def test_true_at_0115_pst(self):
+        assert is_pacific_hour(1, utc(2026, 1, 2, 9, 15))
+
+    def test_true_at_0115_pdt(self):
+        assert is_pacific_hour(1, utc(2026, 7, 2, 8, 15))
+
+    def test_false_at_other_utc_candidate(self):
+        assert not is_pacific_hour(1, utc(2026, 1, 2, 8, 15))  # 00:15 PST
+        assert not is_pacific_hour(1, utc(2026, 7, 2, 9, 15))  # 02:15 PDT
+
+    def test_fall_back_runs_once(self):
+        assert is_pacific_hour(1, utc(2026, 11, 1, 8, 15))  # 01:15 PDT, fold 0
+        assert not is_pacific_hour(1, utc(2026, 11, 1, 9, 15))  # 01:15 PST, fold 1
+
+    def test_spring_forward(self):
+        assert is_pacific_hour(1, utc(2026, 3, 8, 9, 15))  # 01:15 PST
+
+    def test_defaults_to_current_time(self):
+        with patch('django.utils.timezone.now', return_value=utc(2026, 1, 2, 9, 15)):
+            assert is_pacific_hour(1)
+            assert not is_pacific_hour(2)
+
+    def test_daily_task_skips_outside_pacific_hour(self):
+        with patch('camp.apps.summaries.tasks.rollup_monitor_summaries') as rollup:
+            with patch('django.utils.timezone.now', return_value=utc(2026, 1, 2, 8, 0)):
+                daily_monitor_summaries()
+            rollup.assert_not_called()
+
+            with patch('django.utils.timezone.now', return_value=utc(2026, 1, 2, 9, 0)):
+                daily_monitor_summaries()
+            rollup.assert_called_once()
+            _, _, start, end = rollup.call_args.args
+            assert start == pacific(2026, 1, 1)
+            assert end == pacific(2026, 1, 2)
+
+    def test_seasonal_task_rolls_real_season(self):
+        with patch('camp.apps.summaries.tasks.rollup_monitor_summaries') as rollup:
+            with patch('django.utils.timezone.now', return_value=utc(2026, 3, 1, 9, 45)):
+                seasonal_monitor_summaries()
+        _, _, start, end = rollup.call_args.args
+        assert start == pacific(2025, 12, 1)
+        assert end == pacific(2026, 3, 1)
+
+    def test_monthly_task_rolls_month_just_ended(self):
+        with patch('camp.apps.summaries.tasks.rollup_monitor_summaries') as rollup:
+            with patch('django.utils.timezone.now', return_value=utc(2026, 11, 1, 8, 15)):
+                monthly_monitor_summaries()
+        _, _, start, end = rollup.call_args.args
+        assert start == pacific(2026, 10, 1)
+        assert end == pacific(2026, 11, 1)
+
+    def test_explicit_args_bypass_guard(self):
+        with patch('camp.apps.summaries.tasks.rollup_monitor_summaries') as rollup:
+            with patch('django.utils.timezone.now', return_value=utc(2026, 1, 2, 20, 0)):
+                daily_monitor_summaries(day=pacific(2026, 1, 5))
+        rollup.assert_called_once()
 
 
 class TrendPanelTests(TestCase):
