@@ -283,8 +283,8 @@ nearest one. Adding CIMIS to the whitelist would put weather stations in every l
   station is computed in the browser (about 23 stations).
 - The list's response cache keys on the query string already, so `?dataset=weather` is cached
   separately.
-- sdk-js: a new `listMonitors({ dataset? })` wraps the plain `monitors/` list, which no
-  function wraps today. `getMonitors` wraps `current`/`at` and stays unchanged. The catalog
+- sdk-js: the existing `getMonitorsList` (the plain `monitors/` list) takes an optional
+  `dataset` in its options. `getMonitors` wraps `current`/`at` and stays unchanged. The catalog
   schema gains `places_url`. Both go in Part 2's sdk-js PR.
 
 ## Delivery
