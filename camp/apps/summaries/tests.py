@@ -1474,8 +1474,14 @@ class HourlyParentScheduleTests(TestCase):
             assert [r.timestamp for r in rows] == [self.hour], now
 
     def test_run_at_the_next_fire_targets_the_next_hour(self):
+        next_hour = self.hour + timedelta(hours=1)
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=next_hour,
+            resolution=BaseSummary.Resolution.HOURLY,
+            entry_type='pm25', processor='', **compute_stats([10.0], 1),
+        )
         rows = self._run_region(datetime(2026, 11, 2, 11, 50, tzinfo=dt_timezone.utc))
-        assert list(rows.filter(timestamp=self.hour)) == []
+        assert [r.timestamp for r in rows] == [next_hour]
 
     def test_late_run_logs_a_warning(self):
         with self.assertLogs('camp.apps.summaries', level='WARNING') as logs:
