@@ -1,13 +1,15 @@
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone as dt_timezone
 
 from django.conf import settings
 from django.utils import timezone
+from huey import crontab
 
 from camp.utils.datetime import localtime
 
 # Huey crontabs run in UTC. A Pacific hour lands on one of two UTC hours
-# depending on DST, so each rollup is scheduled on both and guarded with
-# is_pacific_hour(). Keys are the Pacific hour, values the UTC hours that
+# depending on DST, so pacific_crontab() matches both and keeps the one that
+# is the Pacific hour. Keys are the Pacific hour, values the UTC hours that
 # contain it in PDT and PST.
 ROLLUP_UTC_HOURS = {1: '8,9', 2: '9,10'}
 
@@ -19,6 +21,26 @@ def is_pacific_hour(hour, now=None):
     """
     local = localtime(now or timezone.now())
     return local.hour == hour and local.fold == 0
+
+
+def pacific_crontab(hour: int, minute: str, **crontab_kwargs) -> Callable[[datetime], bool]:
+    """
+    A Huey periodic-task schedule for a Pacific wall-clock hour. Huey's
+    scheduler calls it with the minute it is scheduling (naive UTC under
+    Huey's utc=True default), so the Pacific-hour decision is made when the
+    task is enqueued, not when a worker gets to it: a run that starts late
+    still runs. Other crontab fields (`day`, `month`, ...) are UTC, which is
+    the same date as Pacific at these early-morning hours.
+    """
+    matches = crontab(hour=ROLLUP_UTC_HOURS[hour], minute=minute, **crontab_kwargs)
+
+    def validate(timestamp):
+        if timezone.is_naive(timestamp):
+            timestamp = timestamp.replace(tzinfo=dt_timezone.utc)
+        timestamp = timestamp.astimezone(dt_timezone.utc)
+        return matches(timestamp.replace(tzinfo=None)) and is_pacific_hour(hour, timestamp)
+
+    return validate
 
 
 # How long after a period ends its latest scheduled rollup runs (Pacific

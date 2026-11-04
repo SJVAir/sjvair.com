@@ -230,9 +230,11 @@ zones are missing there; see SJVAPCD Forecast Setup).
   `ROLLUP_LOCAL_TIME` there holds when each rollup runs after the period ends; a test checks
   the margins against the real crontabs, so moving a rollup past its settle time fails it.
 - **Rollup timing**: Huey crontabs are UTC (its `utc=True` default; `DJANGO_HUEY` doesn't
-  change it), so each daily-and-longer rollup is scheduled on both UTC hours that can hold its
-  Pacific hour (`ROLLUP_UTC_HOURS`: 01:00 Pacific is `8,9`, 02:00 is `9,10`) and returns early
-  unless `is_pacific_hour()` says it's the right one. Explicit period arguments skip the guard.
+  change it), so each daily-and-longer rollup is scheduled with `pacific_crontab()`
+  (`camp/apps/summaries/schedule.py`): it matches both UTC hours that can hold its Pacific hour
+  (`ROLLUP_UTC_HOURS`: 01:00 Pacific is `8,9`, 02:00 is `9,10`) and keeps only the one that is
+  that Pacific hour (fold 0 on fall-back day). The scheduler decides, so a rollup that starts
+  late still runs; the task body only works out "last period" from the current time.
 - **Burn status** (`camp/apps/forecasts/scales.py`): the feed's `status` string is stored as
   received; unknown values are stored and logged by the ingest task. When a new value
   appears, add a level there. The "No Burning For All" string is still unconfirmed.
