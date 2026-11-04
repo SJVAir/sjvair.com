@@ -302,3 +302,45 @@ class SmokeDateRangeTests(DateRangeTestsMixin, TestCase):
 class FireDateRangeTests(DateRangeTestsMixin, TestCase):
     url_name = 'api:v2:hms:fire-list'
     create = staticmethod(create_fire)
+
+
+class PagingOrderTestsMixin:
+    """Pages of one day's rows must not repeat or skip rows: the order needs a unique tiebreaker."""
+    url_name = None
+    create = None
+    list_view = None
+
+    def test_order_has_a_unique_tiebreaker(self):
+        ordering = self.list_view().get_queryset().query.order_by
+        assert ordering[-1] in ('id', 'pk', '-id', '-pk'), ordering
+
+    def test_pages_of_one_day_are_complete(self):
+        made = {str(type(self).create().pk) for _ in range(105)}
+        seen = []
+        for page in (1, 2):
+            response = self.client.get(reverse(self.url_name), {'page': page})
+            seen += [r['id'] for r in response.json()['data']]
+        assert len(seen) == len(set(seen)) == 105
+        assert set(seen) == made
+
+
+class SmokePagingOrderTests(PagingOrderTestsMixin, TestCase):
+    url_name = 'api:v2:hms:smoke-list'
+    create = staticmethod(create_smoke)
+
+    def list_view(self):
+        from camp.api.v2.hms.endpoints import SmokeList
+        view = SmokeList()
+        view.request = type('R', (), {'GET': {}})()
+        return view
+
+
+class FirePagingOrderTests(PagingOrderTestsMixin, TestCase):
+    url_name = 'api:v2:hms:fire-list'
+    create = staticmethod(create_fire)
+
+    def list_view(self):
+        from camp.api.v2.hms.endpoints import FireList
+        view = FireList()
+        view.request = type('R', (), {'GET': {}})()
+        return view

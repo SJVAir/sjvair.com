@@ -39,7 +39,8 @@ class SmokeMixin:
     paginate = True
 
     def get_queryset(self):
-        return super().get_queryset().order_by('-date')
+        # id breaks ties within a day, so pages never repeat or skip rows.
+        return super().get_queryset().order_by('-date', 'id')
 
 
 class SmokeList(SmokeMixin, generics.ListEndpoint):
@@ -65,7 +66,8 @@ class FireMixin:
     paginate = True
 
     def get_queryset(self):
-        return super().get_queryset().order_by('-date')
+        # id breaks ties within a day, so pages never repeat or skip rows.
+        return super().get_queryset().order_by('-date', 'id')
 
 
 class FireList(FireMixin, generics.ListEndpoint):
