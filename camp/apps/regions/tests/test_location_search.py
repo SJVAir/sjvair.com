@@ -31,6 +31,8 @@ class LocationSearchTests(TestCase):
         lincoln_village = Region.objects.create(name='Lincoln Village', slug='lincoln-village', type=Region.Type.CDP, external_id='0641712')
         self.make('Lincoln Elementary', 'Stockton', city=lincoln_village)
         self.make('Lincoln Elementary', 'Madera')  # sorts between "lincoln village" and "stockton"
+        # Starts with "lincoln elementary" and sorts between Stockton and Visalia.
+        self.make('LINCOLN ELEMENTARY PRESCHOOL', 'STOCKTON', type=Location.Type.CHILD_CARE, source='cdss-ccl')
         self.make('Abraham Lincoln Jr. High', 'Bakersfield')
         self.make('Roosevelt Elementary', 'Fresno', city=self.fresno)
         self.make('Fresno High', 'Fresno', city=self.fresno)
@@ -42,7 +44,9 @@ class LocationSearchTests(TestCase):
 
     def test_prefix_beats_word_start_beats_substring(self):
         names = [name for name, city in self.search('linc')]
-        assert names[:7] == ['Lincoln Elementary'] * 6 + ['Abraham Lincoln Jr. High']
+        # The names starting with "linc" (in city order), then the one with a word starting so.
+        assert sorted(names[:7]) == ['LINCOLN ELEMENTARY PRESCHOOL'] + ['Lincoln Elementary'] * 6
+        assert names[7] == 'Abraham Lincoln Jr. High'
 
     def test_same_name_orders_by_city_ignoring_case(self):
         rows = self.search('lincoln elementary')
@@ -50,6 +54,17 @@ class LocationSearchTests(TestCase):
         # Village, before Madera). Its CDP matching "lincoln" doesn't lift it above the
         # others: they all start with q.
         assert [city for name, city in rows[:6]] == ['Bakersfield', 'dinuba', 'Fresno', 'Madera', 'Stockton', 'Visalia']
+
+    def test_exact_name_beats_a_longer_name_with_the_same_start(self):
+        # The preschool starts with q too, but every school named exactly q comes first,
+        # rather than the preschool sorting in among them by city.
+        rows = list(Location.objects.search('lincoln elementary'))
+        assert [(l.name, l.city_name) for l in rows[:7]] == [
+            ('Lincoln Elementary', city) for city in ['Bakersfield', 'dinuba', 'Fresno', 'Madera', 'Stockton', 'Visalia']
+        ] + [('LINCOLN ELEMENTARY PRESCHOOL', 'STOCKTON')]
+        assert [l.search_rank for l in rows[:7]] == [7] * 6 + [6]
+        # Case and surrounding spaces aside.
+        assert Location.objects.search('  LINCOLN elementary ').first().search_rank == 7
 
     def test_typo_matches(self):
         rows = self.search('Linclon')

@@ -222,14 +222,16 @@ class LocationQuerySet(models.QuerySet):
         name matches a name part and whose city starts with the rest (the town).
 
         `search_rank`, best first:
+          7  the name is q (case and surrounding spaces aside)
           6  the name starts with q
           5  a word in the name starts with q (after a space, /, - or ()
           4, 3, 2  a town split matched: its name part matched at tier 3
                    (prefix), 2 (word start) or 1 (substring or similarity)
           1  q is only in the name somewhere, or trigram-similar to it
-        so a query word that happens to start a town name ("fresno high",
-        "lincoln elementary" by Lincoln Village) doesn't outrank the name
-        itself. `search_similarity` is the trigram word similarity of the best
+        so every same-named school ("lincoln elementary") comes before a longer
+        name that starts the same way (LINCOLN ELEMENTARY PRESCHOOL), and a query
+        word that happens to start a town name ("fresno high", "lincoln
+        elementary" by Lincoln Village) doesn't outrank the name itself. `search_similarity` is the trigram word similarity of the best
         split's name text. Rows are ordered by both, then city, name, source
         and code. The city sort is the row's own `city_name` (what it shows),
         else its linked city/CDP region's name; a town part matches either.
@@ -256,7 +258,8 @@ class LocationQuerySet(models.QuerySet):
         return qs
 
     # search_rank for each tier of a whole-query match, and of a town split's name part.
-    _WHOLE_RANKS = {3: 6, 2: 5, 1: 1}
+    # Only the whole query can match a name exactly (tier 4).
+    _WHOLE_RANKS = {4: 7, 3: 6, 2: 5, 1: 1}
     _TOWN_RANKS = {3: 4, 2: 3, 1: 2}
 
     def _search_key(self, name, town=None):
@@ -272,7 +275,9 @@ class LocationQuerySet(models.QuerySet):
         for sep in ' /-(':
             word_start |= Q(name__icontains=sep + name)
         ranks = self._TOWN_RANKS if town else self._WHOLE_RANKS
+        exact = [] if town else [When(name_key=name.lower(), then=ranks[4] * 10)]  # one_per_place's Lower(Trim(name))
         tier_rank = Case(
+            *exact,
             When(name__istartswith=name, then=ranks[3] * 10),
             When(word_start, then=ranks[2] * 10),
             default=ranks[1] * 10,
