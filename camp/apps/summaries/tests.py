@@ -42,7 +42,13 @@ from camp.apps.summaries.aggregators import (
 )
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.panels import TrendPanel
-from camp.apps.summaries.schedule import is_pacific_hour
+from camp.apps.summaries.schedule import (
+    ROLLUP_LOCAL_TIME,
+    SETTLE_MARGIN,
+    is_pacific_hour,
+    is_settled,
+    period_end,
+)
 from camp.apps.summaries.tasks import (
     daily_monitor_summaries,
     get_summarizable_entry_models,
@@ -1339,3 +1345,42 @@ class TrendPanelTests(TestCase):
         assert context['has_data'] is False
         assert context['chart'] == ''
         assert self.panel(Region.objects.get(pk=10)).tiles() == []
+
+
+class SettleTimeTests(TestCase):
+    def test_period_end_each_resolution(self):
+        ts = pacific(2026, 10, 15, 12)
+        assert period_end('hour', ts) == pacific(2026, 10, 15, 13)
+        assert period_end('day', ts) == pacific(2026, 10, 16)
+        assert period_end('month', ts) == pacific(2026, 11, 1)
+        assert period_end('quarter', ts) == pacific(2027, 1, 1)
+        assert period_end('season', ts) == pacific(2026, 12, 1)
+        assert period_end('year', ts) == pacific(2027, 1, 1)
+
+    def test_period_end_season_winter_crosses_year(self):
+        assert period_end('season', pacific(2026, 1, 10)) == pacific(2026, 3, 1)
+        assert period_end('season', pacific(2026, 12, 10)) == pacific(2027, 3, 1)
+
+    def test_period_end_day_across_dst(self):
+        assert period_end('day', pacific(2026, 11, 1, 12)) == pacific(2026, 11, 2)
+        assert period_end('day', pacific(2026, 3, 8, 12)) == pacific(2026, 3, 9)
+
+    def test_month_settles_4h_after_end(self):
+        end = pacific(2026, 11, 1)
+        assert not is_settled('month', end, now=pacific(2026, 11, 1, 3, 59))
+        assert is_settled('month', end, now=pacific(2026, 11, 1, 4))
+
+    def test_defaults_to_current_time(self):
+        end = pacific(2026, 11, 1)
+        with patch('django.utils.timezone.now', return_value=pacific(2026, 11, 1, 4)):
+            assert is_settled('month', end)
+        with patch('django.utils.timezone.now', return_value=pacific(2026, 11, 1, 3)):
+            assert not is_settled('month', end)
+
+    def test_open_range_never_settled(self):
+        assert not is_settled('year', None)
+
+    def test_margin_covers_schedule(self):
+        assert set(ROLLUP_LOCAL_TIME) == set(SETTLE_MARGIN)
+        for resolution, offset in ROLLUP_LOCAL_TIME.items():
+            assert offset + timedelta(hours=1) <= SETTLE_MARGIN[resolution], resolution
