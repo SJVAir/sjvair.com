@@ -310,6 +310,9 @@ class LocationSearch(generics.Endpoint):
         return response
 
     def get(self, request, *args, **kwargs):
+        if any('\x00' in request.GET.get(name, '') for name in ('q', 'type', 'region_type', 'region')):
+            return self.error(http.Http400({'error': "Parameters can't contain null characters."}))
+
         q = request.GET.get('q', '').strip()
         if len(q) > SEARCH_MAX_CHARS:
             return self.error(http.Http400({'error': f'q must be at most {SEARCH_MAX_CHARS} characters.'}))

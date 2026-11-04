@@ -1230,6 +1230,15 @@ class LocationSearchEndpointTests(TestCase):
         assert response.status_code == 200
         assert len(data['data']) == 1
 
+    def test_null_character_is_400(self):
+        for params in ({'q': 'ab\x00'}, {'q': 'lincoln', 'type': 'public_school\x00'},
+                       {'q': 'lincoln', 'region_type': 'county', 'region': '\x00'},
+                       {'q': 'lincoln', 'region_type': 'county\x00', 'region': '06019'}):
+            response, data = self.get(params)
+            assert response.status_code == 400
+            assert response['Cache-Control'] == 'no-cache'
+            assert 'null' in data['error']
+
     def test_unknown_type_is_400(self):
         response, data = self.get({'q': 'lincoln', 'type': 'public_school,college'})
         assert response.status_code == 400

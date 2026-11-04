@@ -231,10 +231,11 @@ class LocationQuerySet(models.QuerySet):
         so every same-named school ("lincoln elementary") comes before a longer
         name that starts the same way (LINCOLN ELEMENTARY PRESCHOOL), and a query
         word that happens to start a town name ("fresno high", "lincoln
-        elementary" by Lincoln Village) doesn't outrank the name itself. `search_similarity` is the trigram word similarity of the best
-        split's name text. Rows are ordered by both, then city, name, source
-        and code. The city sort is the row's own `city_name` (what it shows),
-        else its linked city/CDP region's name; a town part matches either.
+        elementary" by Lincoln Village) doesn't outrank the name itself.
+        `search_similarity` is the trigram word similarity of the best split's
+        name text. Rows are ordered by both, then city, name, source and code.
+        The city sort is the row's own `city_name` (what it shows), else its
+        linked city/CDP region's name; a town part matches either.
         Doesn't check `q`'s length; a blank `q` matches nothing.
 
         Each split scores rank * 10 + similarity in one CASE, and the row's
