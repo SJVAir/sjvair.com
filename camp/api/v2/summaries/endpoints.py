@@ -7,6 +7,7 @@ from resticus.http import Http400
 from django.conf import settings
 from django.db.models import Q
 from django.http import Http404
+from django.utils.cache import get_conditional_response, patch_cache_control, set_response_etag
 from django.utils.functional import cached_property
 
 from camp.api.v2.monitors.filters import MonitorFilter
@@ -15,6 +16,7 @@ from camp.apps.entries.utils import get_entry_model_by_name
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
+from camp.apps.summaries.schedule import is_settled
 from camp.utils.datetime import make_aware
 
 from .filters import BulkMonitorSummaryFilter, BulkRegionSummaryFilter
@@ -29,10 +31,31 @@ from .serializers import (
 
 VALID_RESOLUTIONS = {c.value for c in BaseSummary.Resolution}
 
+SETTLED_MAX_AGE = 24 * 60 * 60
+UNSETTLED_MAX_AGE = 60
+
 
 class SummaryMixin:
     paginate = True
     page_size = 168  # one week of hourly data
+
+    def dispatch(self, request, *args, **kwargs):
+        response = super().dispatch(request, *args, **kwargs)
+        if response.status_code != 200:
+            patch_cache_control(response, no_cache=True)
+            return response
+
+        # Summaries in a settled range no longer change, so they can be cached
+        # for a day; anything still being rolled up (or open-ended) for a minute.
+        range_end = self.get_date_filter().get('timestamp__lt')
+        settled = is_settled(self.resolution, range_end)
+        patch_cache_control(
+            response, private=True,
+            max_age=SETTLED_MAX_AGE if settled else UNSETTLED_MAX_AGE,
+        )
+        if not response.has_header('ETag'):
+            set_response_etag(response)
+        return get_conditional_response(request, etag=response['ETag'], response=response)
 
     @cached_property
     def resolution(self):
