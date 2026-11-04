@@ -256,6 +256,28 @@ zones are missing there; see SJVAPCD Forecast Setup).
   (`ROLLUP_UTC_HOURS`: 01:00 Pacific is `8,9`, 02:00 is `9,10`) and keeps only the one that is
   that Pacific hour (fold 0 on fall-back day). The scheduler decides, so a rollup that starts
   late still runs; the task body only works out "last period" from the current time.
+- **Summary period math** (`camp/apps/summaries/periods.py`): the one place for period
+  starts, ends and hour lists. Starts are Pacific calendar dates built with `make_aware`,
+  never a `timedelta` of a day or more; hours step in UTC. Don't add period math elsewhere.
+- **Hourly parents**: `hourly_monitor_summaries` (:45) and `hourly_region_summaries` (:50)
+  take their hour from the schedule (`hour_for_run` in `schedule.py`), not the clock, so a late
+  start still summarizes the right hour. They run at priority 110/105, above their children
+  (100/90), and log a warning when they start more than 10 minutes late.
+- **`repair_summaries`**: fixes daily-and-longer rows stamped off a Pacific period start and
+  fills region hours missing for hours that have monitor rows. Always scoped (`--monitor`,
+  `--monitor-type`, `--region`, `--region-type`; `--region-hours` needs a region scope). Run
+  `--dry-run` first: it prints the spans it will delete and re-roll and the counts. Day and month
+  work widens to the finished periods overlapping the range; unfinished periods are left for the
+  scheduled rollup. Misaligned rows whose period it won't re-roll are left and reported.
+  Idempotent.
+
+  ```bash
+  docker compose run --rm web python manage.py repair_summaries 2026-10-01 2026-11-04 \
+    --monitor <monitor-id> --region <region-pk> --region-hours --dry-run
+  ```
+- **`check_summary_integrity`** (02:30 Pacific, read-only): logs an error (Sentry) when summary
+  rows in the last 400 days are off a Pacific period start, or when hours of the previous
+  Pacific day have monitor hourly rows but no region hourly rows.
 - **Burn status** (`camp/apps/forecasts/scales.py`): the feed's `status` string is stored as
   received; unknown values are stored and logged by the ingest task. When a new value
   appears, add a level there. The "No Burning For All" string is still unconfirmed.
