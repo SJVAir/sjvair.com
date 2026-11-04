@@ -103,6 +103,14 @@ class MonitorList(CachedEndpointMixin, MonitorMixin, generics.ListEndpoint):
     def get_datasets(self):
         return {'air-quality', *settings.MONITOR_OPT_IN_TYPES.values()}
 
+    def get_cache_key_params(self):
+        # ?dataset=air-quality is the default list (the catalog links it), so
+        # it reads the same prewarmed entry as the bare URL.
+        params = super().get_cache_key_params()
+        if params.get('dataset') == 'air-quality':
+            params.pop('dataset')
+        return params
+
     def get_queryset(self):
         queryset = super().get_queryset()
         dataset = self.request.GET.get('dataset')

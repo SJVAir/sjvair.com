@@ -6,6 +6,7 @@ from io import StringIO
 from pprint import pprint
 
 from django.conf import settings
+from django.core.cache import cache
 from django.test import TestCase, RequestFactory, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -984,6 +985,7 @@ class MonitorListDatasetTests(TestCase):
 
     def setUp(self):
         from django.contrib.gis.geos import Point
+        cache.clear()
         self.factory = RequestFactory()
         self.url = reverse('api:v2:monitors:monitor-list')
         self.cimis = CIMIS.objects.create(
@@ -1025,6 +1027,23 @@ class MonitorListDatasetTests(TestCase):
         response, content = self.get(dataset='air-quality')
         assert response.status_code == 200
         assert [m['id'] for m in content['data']] == [m['id'] for m in default['data']]
+
+    def cache_key(self, **params):
+        view = endpoints.MonitorList()
+        view.request = self.factory.get(self.url, params)
+        view.kwargs = {}
+        return view.get_view_cache_key()
+
+    def test_air_quality_dataset_shares_default_cache_key(self):
+        # The catalog advertises ?dataset=air-quality; it must read the prewarmed bare list.
+        assert self.cache_key(dataset='air-quality') == self.cache_key()
+        assert self.cache_key(dataset='air-quality', _cc='1') == self.cache_key()
+        assert self.cache_key(dataset='weather') != self.cache_key()
+
+    def test_air_quality_dataset_hits_default_cache(self):
+        monitor_list(self.factory.get(self.url))
+        response = monitor_list(self.factory.get(self.url, {'dataset': 'air-quality'}))
+        assert response['X-Cache-Status'] == 'HIT'
 
     def test_unknown_dataset_400(self):
         response, content = self.get(dataset='nope')

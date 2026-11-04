@@ -138,14 +138,22 @@ class CachedEndpointMixin:
         # TODO: Account for self.filter_class, so that the cache
         # isn't polluted with garbage kwargs.
 
-        params = self.request.GET.copy()
-        params.pop('_cc', None)
-        params.pop('_warm', None)
+        params = self.get_cache_key_params()
         if params:
             qs = urllib.parse.urlencode(params, doseq=True)
             key = f'{key}|q:{hashlib.sha1(qs.encode()).hexdigest()}'
 
         return key
+
+    def get_cache_key_params(self):
+        """
+        The query params that pick the cache entry: the request's, minus the
+        control params. Override to drop params that don't change the answer.
+        """
+        params = self.request.GET.copy()
+        params.pop('_cc', None)
+        params.pop('_warm', None)
+        return params
 
     def _finalize_response(self, response, cache_status: str):
         if not isinstance(response, (HttpResponse, StreamingHttpResponse)):
