@@ -1,5 +1,4 @@
-import calendar as cal
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from resticus import generics
 from resticus.http import Http400
@@ -16,6 +15,7 @@ from camp.apps.entries.utils import get_entry_model_by_name
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
+from camp.apps.summaries.periods import period_end
 from camp.apps.summaries.schedule import is_settled
 from camp.utils.datetime import make_aware
 
@@ -90,14 +90,13 @@ class SummaryMixin:
 
         if day is not None:
             start = make_aware(datetime(year, month, day), tz)
-            end = start + timedelta(days=1)
+            end = period_end('day', start)
         elif month is not None:
-            _, days_in_month = cal.monthrange(year, month)
             start = make_aware(datetime(year, month, 1), tz)
-            end = start + timedelta(days=days_in_month)
+            end = period_end('month', start)
         else:
             start = make_aware(datetime(year, 1, 1), tz)
-            end = make_aware(datetime(year + 1, 1, 1), tz)
+            end = period_end('year', start)
 
         return {'timestamp__gte': start, 'timestamp__lt': end}
 

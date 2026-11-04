@@ -1,13 +1,10 @@
-import calendar
-from datetime import datetime, timedelta
+from datetime import timedelta
 from itertools import groupby
 
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Exists, F, OuterRef, Q
 from django.utils import timezone
-
-from camp.utils.datetime import localtime, make_aware
 
 from django_huey import db_task, db_periodic_task
 from huey import crontab
@@ -17,6 +14,7 @@ from camp.apps.entries.stages import Stage
 from camp.apps.entries.utils import get_all_entry_models
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
+from camp.apps.summaries.periods import period_end, period_start
 from camp.apps.summaries.schedule import pacific_crontab
 from camp.apps.summaries.aggregators import compute_monitor_summary, compute_region_summary, rollup_summaries, rollup_region_stats
 from camp.apps.summaries.backfill import (
@@ -267,92 +265,61 @@ def rollup_region_summaries(target_resolution, source_resolution, window_start, 
         )
 
 
-# ---- Calendar helpers ----
-
-def _add_3_months(dt):
-    """Advance a datetime by exactly 3 calendar months, re-localizing for DST."""
-    month = dt.month + 3
-    year = dt.year
-    if month > 12:
-        month -= 12
-        year += 1
-    return make_aware(datetime(year, month, dt.day), settings.DEFAULT_TIMEZONE)
-
-
-def _yesterday():
-    today = localtime().date()
-    yesterday = today - timedelta(days=1)
-    return make_aware(datetime(yesterday.year, yesterday.month, yesterday.day), settings.DEFAULT_TIMEZONE)
-
-
-def _last_month_start():
-    today = localtime().date()
-    first_of_month = today.replace(day=1)
-    last_month_end = first_of_month - timedelta(days=1)
-    return make_aware(datetime(last_month_end.year, last_month_end.month, 1), settings.DEFAULT_TIMEZONE)
-
-
-def _last_quarter_start():
-    today = localtime().date()
-    quarter_month = ((today.month - 1) // 3) * 3 + 1
-    prev_quarter_month = quarter_month - 3
-    if prev_quarter_month <= 0:
-        return make_aware(datetime(today.year - 1, prev_quarter_month + 12, 1), settings.DEFAULT_TIMEZONE)
-    return make_aware(datetime(today.year, prev_quarter_month, 1), settings.DEFAULT_TIMEZONE)
-
-
-def _last_season_start():
-    today = localtime().date()
-    end_month = today.month
-    start_month = end_month - 3 if end_month > 3 else end_month + 9
-    start_year = today.year if end_month > 3 else today.year - 1
-    return make_aware(datetime(start_year, start_month, 1), settings.DEFAULT_TIMEZONE)
-
-
 # ---- Rollup periodic tasks ----
+
+def _previous_period_start(resolution, now=None):
+    """Start of the period before the one containing `now` (default: the current time)."""
+    now = now or timezone.now()
+    return period_start(resolution, period_start(resolution, now) - timedelta(microseconds=1))
+
+
+def _rollup_monitors(target, source, resolution, start):
+    start = start or _previous_period_start(resolution)
+    rollup_monitor_summaries(target, source, start, period_end(resolution, start))
+
+
+def _rollup_regions(target, source, resolution, start):
+    start = start or _previous_period_start(resolution)
+    rollup_region_summaries(target, source, start, period_end(resolution, start))
+
+
+R = BaseSummary.Resolution
+
 
 @db_periodic_task(pacific_crontab(1, '0'), priority=80, queue='summaries')
 def daily_monitor_summaries(day=None):
     """Roll up yesterday's hourly MonitorSummary records into daily ones."""
-    day = day or _yesterday()
-    rollup_monitor_summaries(BaseSummary.Resolution.DAILY, BaseSummary.Resolution.HOURLY, day, day + timedelta(days=1))
+    _rollup_monitors(R.DAILY, R.HOURLY, 'day', day)
 
 
 @db_periodic_task(pacific_crontab(1, '10'), priority=70, queue='summaries')
 def daily_region_summaries(day=None):
     """Roll up yesterday's hourly RegionSummary records into daily ones."""
-    day = day or _yesterday()
-    rollup_region_summaries(BaseSummary.Resolution.DAILY, BaseSummary.Resolution.HOURLY, day, day + timedelta(days=1))
+    _rollup_regions(R.DAILY, R.HOURLY, 'day', day)
 
 
 @db_periodic_task(pacific_crontab(1, '15', day='1'), priority=60, queue='summaries')
 def monthly_monitor_summaries(month_start=None):
     """Roll up last month's daily MonitorSummary records into monthly ones."""
-    month_start = month_start or _last_month_start()
-    _, days_in_month = calendar.monthrange(month_start.year, month_start.month)
-    rollup_monitor_summaries(BaseSummary.Resolution.MONTHLY, BaseSummary.Resolution.DAILY, month_start, month_start + timedelta(days=days_in_month))
+    _rollup_monitors(R.MONTHLY, R.DAILY, 'month', month_start)
 
 
 @db_periodic_task(pacific_crontab(1, '25', day='1'), priority=50, queue='summaries')
 def monthly_region_summaries(month_start=None):
     """Roll up last month's daily RegionSummary records into monthly ones."""
-    month_start = month_start or _last_month_start()
-    _, days_in_month = calendar.monthrange(month_start.year, month_start.month)
-    rollup_region_summaries(BaseSummary.Resolution.MONTHLY, BaseSummary.Resolution.DAILY, month_start, month_start + timedelta(days=days_in_month))
+    _rollup_regions(R.MONTHLY, R.DAILY, 'month', month_start)
 
 
 @db_periodic_task(pacific_crontab(1, '30', month='1,4,7,10', day='1'), priority=40, queue='summaries')
 def quarterly_monitor_summaries(quarter_start=None):
     """Roll up last quarter's monthly MonitorSummary records into quarterly ones."""
-    quarter_start = quarter_start or _last_quarter_start()
-    rollup_monitor_summaries(BaseSummary.Resolution.QUARTERLY, BaseSummary.Resolution.MONTHLY, quarter_start, _add_3_months(quarter_start))
+    _rollup_monitors(R.QUARTERLY, R.MONTHLY, 'quarter', quarter_start)
 
 
 @db_periodic_task(pacific_crontab(1, '35', month='1,4,7,10', day='1'), priority=30, queue='summaries')
 def quarterly_region_summaries(quarter_start=None):
     """Roll up last quarter's monthly RegionSummary records into quarterly ones."""
-    quarter_start = quarter_start or _last_quarter_start()
-    rollup_region_summaries(BaseSummary.Resolution.QUARTERLY, BaseSummary.Resolution.MONTHLY, quarter_start, _add_3_months(quarter_start))
+    _rollup_regions(R.QUARTERLY, R.MONTHLY, 'quarter', quarter_start)
 
 
 @db_periodic_task(pacific_crontab(1, '45', month='3,6,9,12', day='1'), priority=20, queue='summaries')
@@ -361,33 +328,25 @@ def seasonal_monitor_summaries(season_start=None):
     Roll up the past 3 months of monthly MonitorSummary records into a seasonal one.
     Runs Mar 1, Jun 1, Sep 1, Dec 1 to summarize the just-completed season.
     """
-    season_start = season_start or _last_season_start()
-    rollup_monitor_summaries(BaseSummary.Resolution.SEASONAL, BaseSummary.Resolution.MONTHLY, season_start, _add_3_months(season_start))
+    _rollup_monitors(R.SEASONAL, R.MONTHLY, 'season', season_start)
 
 
 @db_periodic_task(pacific_crontab(1, '55', month='3,6,9,12', day='1'), priority=15, queue='summaries')
 def seasonal_region_summaries(season_start=None):
     """Roll up the past 3 months of monthly RegionSummary records into a seasonal one."""
-    season_start = season_start or _last_season_start()
-    rollup_region_summaries(BaseSummary.Resolution.SEASONAL, BaseSummary.Resolution.MONTHLY, season_start, _add_3_months(season_start))
+    _rollup_regions(R.SEASONAL, R.MONTHLY, 'season', season_start)
 
 
 @db_periodic_task(pacific_crontab(2, '0', month='1', day='1'), priority=10, queue='summaries')
 def yearly_monitor_summaries(year_start=None):
     """Roll up last year's monthly MonitorSummary records into yearly ones."""
-    if year_start is None:
-        today = localtime().date()
-        year_start = make_aware(datetime(today.year - 1, 1, 1), settings.DEFAULT_TIMEZONE)
-    rollup_monitor_summaries(BaseSummary.Resolution.YEARLY, BaseSummary.Resolution.MONTHLY, year_start, year_start.replace(year=year_start.year + 1))
+    _rollup_monitors(R.YEARLY, R.MONTHLY, 'year', year_start)
 
 
 @db_periodic_task(pacific_crontab(2, '5', month='1', day='1'), priority=5, queue='summaries')
 def yearly_region_summaries(year_start=None):
     """Roll up last year's monthly RegionSummary records into yearly ones."""
-    if year_start is None:
-        today = localtime().date()
-        year_start = make_aware(datetime(today.year - 1, 1, 1), settings.DEFAULT_TIMEZONE)
-    rollup_region_summaries(BaseSummary.Resolution.YEARLY, BaseSummary.Resolution.MONTHLY, year_start, year_start.replace(year=year_start.year + 1))
+    _rollup_regions(R.YEARLY, R.MONTHLY, 'year', year_start)
 
 
 # ---- Backfill ----
