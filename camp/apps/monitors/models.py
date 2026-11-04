@@ -236,6 +236,15 @@ class Monitor(models.Model):
             return subclasses
         return [subclass for subclass in subclasses if subclass.monitor_type in enabled]
 
+    @classmethod
+    def get_opt_in_subclasses(cls, dataset):
+        """Monitor subclasses served only for `?dataset=<dataset>` (see settings.MONITOR_OPT_IN_TYPES)."""
+        opt_in = settings.MONITOR_OPT_IN_TYPES
+        return [
+            subclass for subclass in cls.get_subclasses()
+            if opt_in.get(subclass.monitor_type) == dataset
+        ]
+
     @property
     def slug(self):
         return slugify(self.name)

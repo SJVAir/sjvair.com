@@ -43,6 +43,10 @@ if COMMIT_HASH is None:
 # Empty means all registered types are exposed.
 MONITOR_ENABLED_TYPES = ['purpleair', 'airgradient', 'bam1022', 'aqview', 'airnow', 'vozbox', 'aqlite']
 
+# Monitor types left out of MONITOR_ENABLED_TYPES that the monitor list still
+# serves when a request asks for their dataset with `?dataset=` ({type: dataset id}).
+MONITOR_OPT_IN_TYPES = {'cimis': 'weather'}
+
 # The counties SJVAir covers, by short name. County geometry comes from the
 # county Region rows (`import_counties`); this list says which of those
 # counties are "ours" for monitor county assignment, ingestion filters

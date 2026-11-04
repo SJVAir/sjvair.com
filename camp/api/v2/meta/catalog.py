@@ -79,7 +79,7 @@ def _other(id, label, units, resolutions):
     return _entry(id, label, 'other', units, resolutions)
 
 
-def _dataset(id, label, description, source, license, geographies, entry_types, meta_url=None):
+def _dataset(id, label, description, source, license, geographies, entry_types, meta_url=None, places_url=''):
     return {
         'id': id,
         'label': label,
@@ -88,6 +88,7 @@ def _dataset(id, label, description, source, license, geographies, entry_types, 
         'license': license,
         'geographies': geographies,
         'meta_url': meta_url() if callable(meta_url) else (meta_url or ''),
+        'places_url': places_url,
         'entry_types': entry_types,
         'retired': None,
     }
@@ -224,6 +225,10 @@ def _monitor_entry_types(weather):
     return entry_types
 
 
+def _monitor_list_url(dataset):
+    return f"{reverse('api:v2:monitors:monitor-list')}?dataset={dataset}"
+
+
 def _air_quality():
     return _dataset(
         'air-quality', 'Air Quality',
@@ -231,6 +236,7 @@ def _air_quality():
         'SJVAir sensors, AirNow, AQview, AQLite', '', ['monitor', 'region'],
         _monitor_entry_types(weather=False),
         meta_url=reverse('api:v2:monitors:monitor-meta'),
+        places_url=_monitor_list_url('air-quality'),
     )
 
 
@@ -242,6 +248,7 @@ def _weather():
         ['monitor'],
         _monitor_entry_types(weather=True),
         meta_url=reverse('api:v2:monitors:monitor-meta'),
+        places_url=_monitor_list_url('weather'),
     )
 
 

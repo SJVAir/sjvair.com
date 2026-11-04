@@ -192,6 +192,11 @@ zones are missing there; see SJVAPCD Forecast Setup).
   added. Don't change its shape.
 - **Catalog** (`meta/datasets/`): each entry type has `display` hints (`precision`, `chart`,
   `y_min`); `burn-status` is an entry type of the forecasts dataset.
+  Each dataset has a `places_url` (`''` when none). `settings.MONITOR_OPT_IN_TYPES`
+  (`{'cimis': 'weather'}`) holds types left out of `MONITOR_ENABLED_TYPES` that
+  `monitors/?dataset=<id>` still lists (non-hidden, then `MonitorFilter`); `air-quality` is
+  the default list, any other value is a 400, and responses without `dataset` are unchanged.
+  `places_url` for `weather` and `air-quality` points there.
 - **Place endpoints** `calheatscore/place/` and `forecasts/place/` take `?region_type=&region=`
   (code; retired regions answer, land use is refused) or `?monitor=` (hidden monitors 404). Heat returns the highest
   score per date among the ZIPs the place covers (a region's ZIPs need >=1% of their own area

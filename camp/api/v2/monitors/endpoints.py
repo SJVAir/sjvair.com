@@ -11,6 +11,7 @@ from resticus.views import Endpoint
 from django import forms
 from django.conf import settings
 from django.contrib.gis.db.models.functions import Distance
+from django.db.models import Q
 from django.http import Http404, HttpResponse, StreamingHttpResponse
 from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
@@ -90,10 +91,27 @@ class MonitorList(CachedEndpointMixin, MonitorMixin, generics.ListEndpoint):
     paginate = False
     streaming = True
 
+    def get(self, request, *args, **kwargs):
+        # Validated ahead of the cache so an error is never stored or served as data.
+        dataset = request.GET.get('dataset')
+        if dataset is not None and dataset not in self.get_datasets():
+            response = http.Http400({'error': f'Unknown dataset: {dataset}.'})
+            response['Cache-Control'] = 'no-cache'
+            return response
+        return super().get(request, *args, **kwargs)
+
+    def get_datasets(self):
+        return {'air-quality', *settings.MONITOR_OPT_IN_TYPES.values()}
+
     def get_queryset(self):
         queryset = super().get_queryset()
-        queryset = queryset.get_public()
-        return queryset
+        dataset = self.request.GET.get('dataset')
+        if dataset in settings.MONITOR_OPT_IN_TYPES.values():
+            lookup = Q()
+            for subclass in Monitor.get_opt_in_subclasses(dataset):
+                lookup |= Q(**subclass.type_queryset_filter())
+            return queryset.filter(is_hidden=False).filter(lookup)
+        return queryset.get_public()
 
 
 class MonitorMetaEndpoint(Endpoint):

@@ -977,3 +977,81 @@ class ZoneAwareTimestampTests(TestCase):
         for active in (timezone.get_current_timezone(), None):
             with timezone.override(active):
                 assert self.at_value(self.BOUNDARY_PARAMS['zoneless']) == Decimal('12.0')
+
+
+class MonitorListDatasetTests(TestCase):
+    fixtures = ['purple-air.yaml', 'default-calibrations.yaml']
+
+    def setUp(self):
+        from django.contrib.gis.geos import Point
+        self.factory = RequestFactory()
+        self.url = reverse('api:v2:monitors:monitor-list')
+        self.cimis = CIMIS.objects.create(
+            name='CIMIS Station',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+
+    def get(self, **params):
+        params.setdefault('_cc', '1')
+        response = monitor_list(self.factory.get(self.url, params))
+        return response, get_response_data(response)
+
+    def types(self, content):
+        return {m['type'] for m in content['data']}
+
+    def test_default_list_excludes_cimis(self):
+        response, content = self.get()
+        assert response.status_code == 200
+        assert content['data']
+        assert 'cimis' not in self.types(content)
+        assert 'purpleair' in self.types(content)
+
+    def test_weather_dataset_lists_only_cimis(self):
+        response, content = self.get(dataset='weather')
+        assert response.status_code == 200
+        assert [m['id'] for m in content['data']] == [str(self.cimis.pk)]
+
+    def test_weather_dataset_excludes_hidden(self):
+        self.cimis.is_hidden = True
+        self.cimis.save()
+        response, content = self.get(dataset='weather')
+        assert response.status_code == 200
+        assert content['data'] == []
+
+    def test_air_quality_dataset_matches_default(self):
+        _, default = self.get()
+        response, content = self.get(dataset='air-quality')
+        assert response.status_code == 200
+        assert [m['id'] for m in content['data']] == [m['id'] for m in default['data']]
+
+    def test_unknown_dataset_400(self):
+        response, content = self.get(dataset='nope')
+        assert response.status_code == 400
+        assert content == {'error': 'Unknown dataset: nope.'}
+        assert response['Cache-Control'] == 'no-cache'
+        # not cached as an answer
+        response, _ = self.get(dataset='nope', _cc='')
+        assert response.status_code == 400
+
+    def test_closest_current_unchanged(self):
+        from camp.apps.calibrations.models import DefaultCalibration
+        DefaultCalibration.objects.get_or_create(monitor_type='cimis', entry_type='temperature')
+        self.cimis.create_entry(entry_models.Temperature, timestamp=timezone.now(), value=Decimal('70.0'))
+        kwargs = {'entry_type': 'temperature'}
+        params = {'latitude': 36.7378, 'longitude': -119.7871, 'dataset': 'weather'}
+        for view, name in ((closest_monitor, 'monitor-closest'), (current_data, 'current-data')):
+            url = reverse(f'api:v2:monitors:{name}', kwargs=kwargs)
+            response = view(self.factory.get(url, params), **kwargs)
+            assert response.status_code == 200
+            assert str(self.cimis.pk) not in [m['id'] for m in get_response_data(response)['data']]
+
+    def test_weather_dataset_cached_separately(self):
+        # Warm the default entry first, then ask for weather without clearing.
+        default = monitor_list(self.factory.get(self.url, {'_cc': '1'}))
+        assert 'cimis' not in self.types(get_response_data(default))
+        response = monitor_list(self.factory.get(self.url, {'dataset': 'weather'}))
+        assert self.types(get_response_data(response)) == {'cimis'}
+        again = monitor_list(self.factory.get(self.url))
+        assert 'cimis' not in self.types(get_response_data(again))
