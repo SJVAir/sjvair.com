@@ -191,7 +191,6 @@ the level's own `color`, not from the per-key Sass rules.
 - **sjvair.com CLAUDE.md** → "Metadata Endpoints": the `monitors/meta/` paragraph no longer
   says to keep the old `levels` dict, describes `school_guidelines`, and notes that the
   forecast `color` and `aqi_category` come from the AQI scale.
-  - sjvair-com-63 also edits CLAUDE.md: rebase before pushing.
 - **data-dashboard docs** (own worktree, docs rules in its TODO.md):
   - DEFERRED.md → Mobile app → "Retire the old air-quality `levels` format": mark it done by
     this spec.
@@ -269,5 +268,6 @@ the level's own `color`, not from the per-key Sass rules.
 ## Coordination
 
 - Once this spec is approved, send the final `school_guidelines` shape and the `levels`
-  removal to data-dashboard-0d, sdk-js-8c and the coordinator (data-dashboard-2c).
+  removal to sdk-js-8c and the coordinator (data-dashboard-2c). Step 4 spec 4 (a later
+  session) reads the shape from data-dashboard ARCHITECTURE.md. Done 2026-11-04.
 - Tell the coordinator when the PR opens.
