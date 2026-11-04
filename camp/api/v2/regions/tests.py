@@ -1,17 +1,25 @@
 import json
 from datetime import date
+from unittest.mock import patch
 
-from django.contrib.gis.geos import GEOSGeometry
+import pytest
+from django.contrib.auth import get_user_model
+from django.contrib.gis.geos import GEOSGeometry, Point
 from django.core.cache import cache
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
-from django.test import TestCase, RequestFactory
+from django.test import Client, TestCase, RequestFactory
 from django.urls import reverse
 
 from camp.api.v2.regions.endpoints import LocationList, RegionDetail, RegionGeoJSON, RegionList, RegionMetaEndpoint
+from camp.apps.monitors.airnow.models import AirNow
 from camp.apps.regions.models import Boundary, Location, Region
+from camp.apps.regions.resolve import regions_containing, round_point
+from camp.apps.regions.tests.test_resolve import make_region as make_square_region
 from camp.utils.test import get_response_data
+
+User = get_user_model()
 
 region_list = RegionList.as_view()
 region_detail = RegionDetail.as_view()
@@ -895,3 +903,166 @@ class LocationLookupTests(TestCase):
         response = self.client.get(reverse('api:v2:regions:location-list'),
             {'source': 'cde-public', 'external_id': self.school.external_id})
         assert response.status_code == 200
+
+
+class PlaceLookupPointTests(TestCase):
+    """POST regions/places/lookup/ with coordinates, and GET ?monitor=."""
+
+    def setUp(self):
+        cache.clear()
+        self.url = reverse('api:v2:regions:place-lookup')
+        self.county = make_square_region('Test County', Region.Type.COUNTY, '99001', (-121, 35, -117, 38))
+        self.city = make_square_region('Test City', Region.Type.CITY, '99002', (-119.8, 36.2, -119.2, 36.8))
+        self.zip_a = make_square_region('99100', Region.Type.ZIPCODE, '99100', (-120, 36, -119, 37))
+        self.zip_b = make_square_region('99200', Region.Type.ZIPCODE, '99200', (-119, 36, -118, 37))
+
+    def post(self, payload, client=None):
+        return (client or self.client).post(
+            self.url, json.dumps(payload), content_type='application/json')
+
+    def ids(self, response):
+        assert response.status_code == 200
+        return [(r['type'], r['external_id']) for r in response.json()['data']]
+
+    def test_point_returns_containing_regions_sorted(self):
+        response = self.post({'lat': 36.5, 'lon': -119.5})
+        assert self.ids(response) == [('city', '99002'), ('county', '99001'), ('zipcode', '99100')]
+        assert set(response.json()['data'][0]['boundary']) == {'id', 'version', 'bbox'}
+
+    def test_point_rounded_before_lookup(self):
+        keys = set()
+        with patch('camp.api.v2.regions.endpoints.regions_containing', wraps=regions_containing) as spy:
+            first = self.post({'lat': 36.73749, 'lon': -119.5})
+            second = self.post({'lat': 36.7371, 'lon': -119.5})
+        keys = {call.args[2] for call in spy.call_args_list}
+        assert len(keys) == 1
+        assert round_point(36.73749, -119.5) == round_point(36.7371, -119.5) == (36.737, -119.5)
+        assert first.json() == second.json()
+
+    def test_type_list_filters(self):
+        assert self.ids(self.post({'lat': 36.5, 'lon': -119.5, 'type': 'county, zipcode'})) == [
+            ('county', '99001'), ('zipcode', '99100')]
+        # Order and repeats in the list don't matter.
+        assert self.ids(self.post({'lat': 36.5, 'lon': -119.5, 'type': 'zipcode,county,county'})) == [
+            ('county', '99001'), ('zipcode', '99100')]
+
+    def test_default_excludes_land_use_and_mtrs(self):
+        make_square_region('Land', Region.Type.LAND_USE, '1', (-120, 36, -119, 37))
+        make_square_region('Section', Region.Type.MTRS, 'M1', (-120, 36, -119, 37))
+        types = {t for t, _ in self.ids(self.post({'lat': 36.5, 'lon': -119.5}))}
+        assert types == {'city', 'county', 'zipcode'}
+
+    def test_explicit_land_use_400(self):
+        response = self.post({'lat': 36.5, 'lon': -119.5, 'type': 'land_use'})
+        assert response.status_code == 400
+        assert response.json()['error'] == "Land-use regions can't be looked up."
+
+    def test_unknown_type_400(self):
+        response = self.post({'lat': 36.5, 'lon': -119.5, 'type': 'nope'})
+        assert response.status_code == 400
+        assert response.json()['error'] == 'Unknown region type: nope.'
+
+    def test_mtrs_allowed_when_asked(self):
+        make_square_region('Section', Region.Type.MTRS, 'M1', (-120, 36, -119, 37))
+        assert self.ids(self.post({'lat': 36.5, 'lon': -119.5, 'type': 'mtrs'})) == [('mtrs', 'M1')]
+
+    def test_point_outside_everything_empty_list(self):
+        response = self.post({'lat': 10, 'lon': 10})
+        assert response.status_code == 200
+        assert response.json()['data'] == []
+
+    def test_point_on_shared_edge_returns_both(self):
+        found = self.ids(self.post({'lat': 36.5, 'lon': -119, 'type': 'zipcode'}))
+        assert found == [('zipcode', '99100'), ('zipcode', '99200')]
+
+    def test_retired_region_excluded(self):
+        self.zip_a.retired_at = timezone.now()
+        self.zip_a.save()
+        assert ('zipcode', '99100') not in self.ids(self.post({'lat': 36.5, 'lon': -119.5}))
+
+    def test_bad_coordinates_400_without_echo(self):
+        cases = [
+            {'lat': 'abc', 'lon': -119.5},
+            {'lat': 'NaN', 'lon': -119.5},
+            {'lat': 91, 'lon': -119.5},
+            {'lat': 36.5, 'lon': -181},
+            {'lat': 36.5, 'lon': 'zzz-7'},
+            {'lat': 36.5},
+        ]
+        for payload in cases:
+            response = self.post(payload)
+            assert response.status_code == 400, payload
+            for echoed in ('abc', 'NaN', '91', '-181', 'zzz-7'):
+                assert echoed not in response.content.decode(), payload
+
+    def test_nonfinite_json_literal_400(self):
+        response = self.client.post(
+            self.url, '{"lat": NaN, "lon": -119.5}', content_type='application/json')
+        assert response.status_code == 400
+
+    def test_coordinates_in_query_string_400(self):
+        response = self.client.get(self.url, {'lat': '36.5', 'lon': '-119.5'})
+        assert response.status_code == 400
+        assert response.json()['error'] == 'Send coordinates in a POST body.'
+        assert '36.5' not in response.content.decode()
+
+    def test_post_with_q_400(self):
+        assert self.post({'q': 'Fresno', 'lat': 36.5, 'lon': -119.5}).status_code == 400
+
+    def test_monitor_mode(self):
+        monitor = AirNow.objects.create(
+            name='M', position=Point(-119.5, 36.5, srid=4326),
+            location='outside')
+        response = self.client.get(self.url, {'monitor': str(monitor.pk), 'type': 'county,zipcode'})
+        assert self.ids(response) == [('county', '99001'), ('zipcode', '99100')]
+
+    def test_hidden_monitor_404(self):
+        monitor = AirNow.objects.create(
+            name='M', position=Point(-119.5, 36.5, srid=4326),
+            location='outside', is_hidden=True)
+        assert self.client.get(self.url, {'monitor': str(monitor.pk)}).status_code == 404
+
+    def test_monitor_without_position_400(self):
+        monitor = AirNow.objects.create(
+            name='No Pos', position=None, location='outside')
+        response = self.client.get(self.url, {'monitor': str(monitor.pk)})
+        assert response.status_code == 400
+        assert response.json()['error'] == 'Monitor has no location.'
+
+    def test_monitor_with_q_400(self):
+        assert self.client.get(self.url, {'monitor': 'abc', 'q': 'Fresno'}).status_code == 400
+
+    def test_name_mode_unchanged(self):
+        response = self.client.get(self.url, {'q': 'Test City', 'type': 'city'})
+        assert response.status_code == 200
+        assert response.json()['data']['external_id'] == '99002'
+        assert self.client.get(self.url, {'q': 'Zzzzzz Qqqq'}).json()['data'] is None
+
+    def test_anonymous_post_without_csrf_token_200(self):
+        client = Client(enforce_csrf_checks=True)
+        assert self.post({'lat': 36.5, 'lon': -119.5}, client=client).status_code == 200
+
+    def test_signed_in_post_without_csrf_token_403(self):
+        try:
+            from resticus.auth import enforce_csrf  # noqa: F401
+        except ImportError:
+            pytest.skip('resticus without the session CSRF fix')
+        user = User.objects.create_user(
+            'lookup@sjvair.com', 'letmein1', full_name='Look Up', phone='+15595550001')
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(user)
+        assert self.post({'lat': 36.5, 'lon': -119.5}, client=client).status_code == 403
+
+    def test_warm_lookup_no_queries(self):
+        payload = {'lat': 36.5, 'lon': -119.5}
+        self.post(payload)
+        with self.assertNumQueries(0):
+            response = self.post(payload)
+        assert response.status_code == 200
+        assert len(response.json()['data']) == 3
+
+    def test_empty_result_is_cached(self):
+        payload = {'lat': 10, 'lon': 10}
+        self.post(payload)
+        with self.assertNumQueries(0):
+            assert self.post(payload).json()['data'] == []

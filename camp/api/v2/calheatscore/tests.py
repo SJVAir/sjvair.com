@@ -10,7 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from camp.apps.calheatscore.models import CalHeatScore
-from camp.apps.monitors.cimis.models import CIMIS
+from camp.apps.monitors.airnow.models import AirNow
 from camp.apps.regions.models import Region
 from camp.apps.regions.tests.test_resolve import make_region
 
@@ -263,9 +263,9 @@ class CalHeatScorePlaceTests(TestCase):
         make_region('Mon Zip', Region.Type.ZIPCODE, '90020', (-100, 30, -99, 31))
         zipcode = Region.objects.get(external_id='90020')
         CalHeatScore.objects.create(region=zipcode, date=date(2026, 7, 12), score=4)
-        monitor = CIMIS.objects.create(
-            name='In', station_number='7', position=Point(-99.5, 30.5, srid=4326),
-            location=CIMIS.LOCATION.outside)
+        monitor = AirNow.objects.create(
+            name='In', position=Point(-99.5, 30.5, srid=4326),
+            location='outside')
         response = self.client.get(self.url, {'monitor': str(monitor.pk), 'date__gte': '2026-07-01'})
         body = response.json()['data']
         assert body['place'] == {'monitor': str(monitor.pk)}
@@ -274,11 +274,18 @@ class CalHeatScorePlaceTests(TestCase):
             {'date': '2026-07-12', 'score': 4, 'score_display': 'Severe', 'zipcode': '90020'}]
 
     def test_monitor_without_position(self):
-        monitor = CIMIS.objects.create(
-            name='No Pos', station_number='9', position=None, location=CIMIS.LOCATION.outside)
+        monitor = AirNow.objects.create(
+            name='No Pos', position=None, location='outside')
         response = self.client.get(self.url, {'monitor': str(monitor.pk)})
         assert response.status_code == 400
         assert response.json()['error'] == 'Monitor has no location.'
+
+    def test_hidden_monitor_404(self):
+        monitor = AirNow.objects.create(
+            name='Hidden', position=Point(-99.5, 30.5, srid=4326),
+            location='outside', is_hidden=True)
+        response = self.client.get(self.url, {'monitor': str(monitor.pk)})
+        assert response.status_code == 404
 
     def test_zip_filters_are_ignored(self):
         CalHeatScore.objects.create(region=self.zip_b, date=date(2026, 7, 12), score=4)

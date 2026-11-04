@@ -18,6 +18,12 @@ ZIP_MIN_FRACTION = 0.01
 # the same 1% floor that drops boundary-disagreement slivers elsewhere.
 ZONE_MIN_FRACTION = 0.01
 
+# Every type a point lookup answers for unless asked otherwise. Land use has
+# no permanent codes, and MTRS sections are too numerous to be useful.
+DEFAULT_LOOKUP_TYPES = tuple(sorted(
+    t for t in Region.Type.values if t not in (Region.Type.LAND_USE, Region.Type.MTRS)))
+_MISS = object()
+
 
 class PlaceError(Exception):
     """A bad place request; the message is the 400 text."""
@@ -28,7 +34,7 @@ class PlaceNotFound(PlaceError):
 
 
 def resolve_place(params):
-    """The Region (retired ones included) or Monitor named by `region_type` + `region`, or `monitor`."""
+    """The Region (retired ones included) or public Monitor named by `region_type` + `region`, or `monitor`."""
     monitor_id = (params.get('monitor') or '').strip()
     region_type = (params.get('region_type') or '').strip()
     region_code = (params.get('region') or '').strip()
@@ -42,7 +48,7 @@ def resolve_place(params):
 
     if monitor_id:
         try:
-            monitor = Monitor.objects.get(pk=monitor_id)
+            monitor = Monitor.objects.get_queryset().get_public().get(pk=monitor_id)
         except (Monitor.DoesNotExist, ValidationError, ValueError):
             raise PlaceNotFound(f'No such monitor: {monitor_id}.')
         if monitor.position is None:
@@ -200,3 +206,45 @@ def _forecast_zone_for(place):
             return by_pk[best], 'overlap'
 
     return None, None
+
+
+def parse_lookup_types(raw):
+    """
+    The sorted, de-duplicated region types in a comma-separated `type` value;
+    the defaults when it is empty.
+    """
+    types = sorted({t.strip() for t in (raw or '').split(',') if t.strip()})
+    if not types:
+        return DEFAULT_LOOKUP_TYPES
+    for region_type in types:
+        if region_type == Region.Type.LAND_USE:
+            raise PlaceError("Land-use regions can't be looked up.")
+        if region_type not in Region.Type.values:
+            raise PlaceError(f'Unknown region type: {region_type}.')
+    return tuple(types)
+
+
+def round_point(lat, lon):
+    """Coordinates to 3 decimals (~100 m): all a lookup needs, and a shared cache key."""
+    return round(lat, 3), round(lon, 3)
+
+
+def regions_containing(geometry, types, key):
+    """
+    The current regions of the given types whose boundary intersects the
+    geometry (a point on a shared edge is in both), ordered by type and code,
+    as RegionListSerializer dicts. The type filter is part of the one query.
+    The dicts (never models: the serializer reads the boundary's bbox) are
+    cached for 24 hours, an empty answer too.
+    """
+    cached = cache.get(key, _MISS)
+    if cached is not _MISS:
+        return cached
+
+    from camp.api.v2.regions.serializers import RegionListSerializer
+
+    regions = (Region.objects.filter(type__in=types).intersects(geometry)
+        .select_related('boundary').order_by('type', 'external_id'))
+    found = RegionListSerializer(regions).serialize()
+    cache.set(key, found, CACHE_TIMEOUT)
+    return found

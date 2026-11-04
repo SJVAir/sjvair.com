@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta, timezone as dt_timezone
 
+from django.contrib.gis.geos import Point
 from django.core.cache import cache
 from django.db import connection
 from django.test import TestCase
@@ -8,7 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from camp.apps.forecasts.models import Forecast
-from camp.apps.monitors.cimis.models import CIMIS
+from camp.apps.monitors.airnow.models import AirNow
 from camp.apps.regions.models import Region
 from camp.apps.regions.tests.test_resolve import make_region
 from camp.utils.datetime import localtime
@@ -182,8 +183,8 @@ class ForecastPlaceTests(TestCase):
 
     def test_monitor_target(self):
         point = self.fresno_city.boundary.geometry.point_on_surface
-        monitor = CIMIS.objects.create(
-            name='M', station_number='5', position=point, location=CIMIS.LOCATION.outside)
+        monitor = AirNow.objects.create(
+            name='M', position=point, location='outside')
         body = self.client.get(self.url, {'monitor': str(monitor.pk)}).json()['data']
         assert body['place'] == {'monitor': str(monitor.pk)}
         assert body['rule'] == 'center'
@@ -191,11 +192,18 @@ class ForecastPlaceTests(TestCase):
         assert len(body['forecasts']) == 2
 
     def test_monitor_without_position(self):
-        monitor = CIMIS.objects.create(
-            name='No Pos', station_number='9', position=None, location=CIMIS.LOCATION.outside)
+        monitor = AirNow.objects.create(
+            name='No Pos', position=None, location='outside')
         response = self.client.get(self.url, {'monitor': str(monitor.pk)})
         assert response.status_code == 400
         assert response.json()['error'] == 'Monitor has no location.'
+
+    def test_hidden_monitor_404(self):
+        monitor = AirNow.objects.create(
+            name='Hidden', position=Point(-99.5, 30.5, srid=4326),
+            location='outside', is_hidden=True)
+        response = self.client.get(self.url, {'monitor': str(monitor.pk)})
+        assert response.status_code == 404
 
     def test_errors_pass_through(self):
         assert self.client.get(self.url, {'region_type': 'land_use', 'region': '1'}).status_code == 400
