@@ -41,11 +41,15 @@ from camp.apps.summaries.aggregators import (
     tdigest_to_dict,
 )
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
+from camp.apps.summaries.periods import iter_hours
 from camp.apps.summaries.panels import TrendPanel
 from camp.apps.summaries import tasks as summary_tasks
 from camp.apps.summaries.schedule import (
     ROLLUP_LOCAL_TIME,
+    HOURLY_FIRE_MINUTE,
+    LATE_RUN_WARNING,
     SETTLE_MARGIN,
+    hour_for_run,
     is_pacific_hour,
     is_settled,
     pacific_crontab,
@@ -903,7 +907,7 @@ class HourlyMonitorSummariesTaskTests(TestCase):
 
     def test_uses_previous_hour_when_called_without_args(self):
         self._make_entry()
-        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
+        with patch('django.utils.timezone.now', return_value=FIXED_NOW.replace(minute=45)):
             hourly_monitor_summaries()
         assert MonitorSummary.objects.filter(
             monitor=self.monitor,
@@ -963,7 +967,7 @@ class HourlyRegionSummariesTaskTests(TestCase):
 
     def test_uses_previous_hour_when_called_without_args(self):
         self._make_monitor_summary()
-        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
+        with patch('django.utils.timezone.now', return_value=FIXED_NOW.replace(minute=50)):
             hourly_region_summaries()
         assert RegionSummary.objects.filter(
             region=self.region,
@@ -1020,71 +1024,6 @@ class DailyMonitorSummariesTaskTests(TestCase):
             timestamp=self.yesterday,
             resolution=BaseSummary.Resolution.DAILY,
         ).exists()
-
-
-class CalendarHelperTests(TestCase):
-    """Tests for the private calendar helpers that compute rollup windows."""
-
-    def test_yesterday(self):
-        from camp.apps.summaries.tasks import _yesterday
-        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
-            result = _yesterday()
-        # FIXED_NOW = 2026-04-01 10:30 UTC = 2026-04-01 03:30 PDT → yesterday in LA = 2026-03-31
-        expected = timezone.make_aware(datetime(2026, 3, 31), settings.DEFAULT_TIMEZONE)
-        assert result == expected
-
-    def test_last_month_start(self):
-        from camp.apps.summaries.tasks import _last_month_start
-        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
-            result = _last_month_start()
-        assert result.year == 2026
-        assert result.month == 3
-        assert result.day == 1
-
-    def test_last_quarter_start(self):
-        from camp.apps.summaries.tasks import _last_quarter_start
-        # Apr 1 → current quarter is Q2, last quarter is Q1 = Jan 1
-        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
-            result = _last_quarter_start()
-        assert result.year == 2026
-        assert result.month == 1
-        assert result.day == 1
-
-    def test_last_season_start(self):
-        from camp.apps.summaries.tasks import _last_season_start
-        # Need "now" to be March in LA time. 2026-03-01 12:00 UTC = 04:00 PST = March in LA.
-        mar_1 = timezone.make_aware(datetime(2026, 3, 1, 12, 0, 0))
-        with patch('django.utils.timezone.now', return_value=mar_1):
-            result = _last_season_start()
-        # March → end_month=3, start_month=12, start_year=2025 → Dec 1 2025
-        assert result.year == 2025
-        assert result.month == 12
-        assert result.day == 1
-
-    def test_window_end_quarterly_is_dst_safe(self):
-        # Jan 1 midnight PST = UTC-8. The quarterly window end (Apr 1) falls in
-        # PDT = UTC-7. Using .replace() would keep the PST offset, giving
-        # Apr 1 08:00 UTC instead of the correct Apr 1 07:00 UTC.
-        from camp.apps.summaries.management.commands.rebuild_summaries import Command
-        jan_1_pst = timezone.make_aware(datetime(2026, 1, 1, 0, 0, 0), settings.DEFAULT_TIMEZONE)
-        apr_1_pdt = timezone.make_aware(datetime(2026, 4, 1, 0, 0, 0), settings.DEFAULT_TIMEZONE)
-
-        result = Command()._window_end(BaseSummary.Resolution.QUARTERLY, jan_1_pst)
-
-        assert result == apr_1_pdt
-        # PDT is UTC-7; PST is UTC-8 — verify the offset changed
-        assert result.utcoffset() != jan_1_pst.utcoffset()
-
-    def test_window_end_seasonal_is_dst_safe(self):
-        # Dec → Mar stays in PST (no DST crossing), so offsets should match.
-        from camp.apps.summaries.management.commands.rebuild_summaries import Command
-        dec_1_pst = timezone.make_aware(datetime(2025, 12, 1, 0, 0, 0), settings.DEFAULT_TIMEZONE)
-        mar_1_pst = timezone.make_aware(datetime(2026, 3, 1, 0, 0, 0), settings.DEFAULT_TIMEZONE)
-
-        result = Command()._window_end(BaseSummary.Resolution.SEASONAL, dec_1_pst)
-
-        assert result == mar_1_pst
-        assert result.utcoffset() == dec_1_pst.utcoffset()
 
 
 class MonthlyMonitorSummariesTaskTests(TestCase):
@@ -1496,3 +1435,207 @@ class SettleTimeTests(TestCase):
                 assert len(monitor_runs) == 1 and monitor_runs[0] < fire, label
                 # And everything is done, plus an hour of slack, inside the settle margin.
                 assert fire + timedelta(hours=1) <= end_utc + SETTLE_MARGIN[resolution], label
+
+
+class HourlyParentScheduleTests(TestCase):
+    """The hourly parents take their hour from the schedule, not from when a worker gets to them."""
+    fixtures = ['purple-air.yaml', 'regions.yaml']
+
+    def setUp(self):
+        self.region = Region.objects.filter(boundary__isnull=False).first()
+        self.monitor = PurpleAir.objects.first()
+        self.monitor.position = self.region.boundary.geometry.point_on_surface
+        self.monitor.save()
+        self.hour = datetime(2026, 11, 2, 9, tzinfo=dt_timezone.utc)
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=self.hour,
+            resolution=BaseSummary.Resolution.HOURLY,
+            entry_type='pm25', processor='', **compute_stats([10.0], 1),
+        )
+
+    def _region_rows(self):
+        return RegionSummary.objects.filter(region=self.region, resolution=BaseSummary.Resolution.HOURLY)
+
+    def _run_region(self, now):
+        with patch('camp.apps.summaries.tasks.timezone.now', return_value=now):
+            hourly_region_summaries()
+        return self._region_rows()
+
+    def test_on_time_run_summarizes_the_hour(self):
+        rows = self._run_region(datetime(2026, 11, 2, 10, 50, tzinfo=dt_timezone.utc))
+        assert [r.timestamp for r in rows] == [self.hour]
+
+    def test_run_after_the_top_of_the_hour_still_summarizes_the_scheduled_hour(self):
+        for now in (
+            datetime(2026, 11, 2, 11, 1, tzinfo=dt_timezone.utc),
+            datetime(2026, 11, 2, 11, 49, 59, tzinfo=dt_timezone.utc),
+        ):
+            self._region_rows().delete()
+            rows = self._run_region(now)
+            assert [r.timestamp for r in rows] == [self.hour], now
+
+    def test_run_at_the_next_fire_targets_the_next_hour(self):
+        next_hour = self.hour + timedelta(hours=1)
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=next_hour,
+            resolution=BaseSummary.Resolution.HOURLY,
+            entry_type='pm25', processor='', **compute_stats([10.0], 1),
+        )
+        rows = self._run_region(datetime(2026, 11, 2, 11, 50, tzinfo=dt_timezone.utc))
+        assert [r.timestamp for r in rows] == [next_hour]
+
+    def test_late_run_logs_a_warning(self):
+        with self.assertLogs('camp.apps.summaries', level='WARNING') as logs:
+            self._run_region(datetime(2026, 11, 2, 11, 1, tzinfo=dt_timezone.utc))
+        assert len(logs.records) == 1
+
+    def test_slightly_late_run_logs_nothing(self):
+        with self.assertNoLogs('camp.apps.summaries', level='WARNING'):
+            self._run_region(datetime(2026, 11, 2, 10, 55, tzinfo=dt_timezone.utc))
+
+    def test_monitor_parent_late_run_summarizes_the_scheduled_hour(self):
+        PM25.objects.create(
+            monitor=self.monitor, timestamp=self.hour + timedelta(minutes=10),
+            stage=PM25.Stage.RAW, processor='', value=12.0, location=self.monitor.location,
+        )
+        MonitorSummary.objects.all().delete()
+        with patch('camp.apps.summaries.tasks.timezone.now',
+                   return_value=datetime(2026, 11, 2, 11, 30, tzinfo=dt_timezone.utc)):
+            hourly_monitor_summaries()
+        assert list(MonitorSummary.objects.values_list('timestamp', flat=True)) == [self.hour]
+
+    def test_priorities(self):
+        def priority(task):
+            return task.task_class.default_priority
+        assert priority(hourly_monitor_summaries) == 110
+        assert priority(hourly_region_summaries) == 105
+        assert priority(summarize_monitor_hour) == 100
+        assert priority(summarize_region_hour) == 90
+
+    def test_hour_for_run_across_the_fall_back_hour(self):
+        # 09:55Z on the fall-back day is 01:55 PST, in the second 01:00 Pacific hour.
+        hour, lateness = hour_for_run(50, now=datetime(2026, 11, 1, 9, 55, tzinfo=dt_timezone.utc))
+        assert hour == datetime(2026, 11, 1, 8, tzinfo=dt_timezone.utc)
+        assert lateness == timedelta(minutes=5)
+
+    def test_hour_for_run_before_the_fire_minute_uses_the_previous_fire(self):
+        hour, lateness = hour_for_run(50, now=datetime(2026, 3, 8, 10, 10, tzinfo=dt_timezone.utc))
+        assert hour == datetime(2026, 3, 8, 8, tzinfo=dt_timezone.utc)
+        assert lateness == timedelta(minutes=20)
+
+    def test_fire_minutes_match_the_crontabs(self):
+        assert HOURLY_FIRE_MINUTE == {'monitor': 45, 'region': 50}
+        assert LATE_RUN_WARNING == timedelta(minutes=10)
+
+
+class SummaryIntegrityCheckTests(TestCase):
+    """The daily check counts misaligned rows and hours with monitor but no region summaries."""
+    fixtures = ['purple-air.yaml', 'regions.yaml']
+
+    # 2026-11-02 02:30 PST; "yesterday" is 2026-11-01, the 25-hour fall-back day.
+    NOW = datetime(2026, 11, 2, 10, 30, tzinfo=dt_timezone.utc)
+
+    def setUp(self):
+        self.region = Region.objects.filter(boundary__isnull=False).first()
+        self.monitor = PurpleAir.objects.first()
+        self.day_start = pacific(2026, 11, 1)
+        self.day_end = pacific(2026, 11, 2)
+
+    def _run(self):
+        return summary_tasks.check_summary_integrity.call_local(now=self.NOW)
+
+    def _monitor_hour(self, ts):
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=ts, resolution=BaseSummary.Resolution.HOURLY,
+            entry_type='pm25', processor='', **compute_stats([10.0], 1),
+        )
+
+    def _region_hour(self, ts):
+        stats = compute_stats([10.0], 1)
+        stats.pop('is_complete', None)
+        RegionSummary.objects.create(
+            region=self.region, timestamp=ts, resolution=BaseSummary.Resolution.HOURLY,
+            entry_type='pm25', station_count=1, **stats,
+        )
+
+    def _fill_day(self, skip=None):
+        for ts in iter_hours(self.day_start, self.day_end):
+            self._monitor_hour(ts)
+            if ts != skip:
+                self._region_hour(ts)
+
+    def test_clean_data_returns_zeros_and_logs_nothing(self):
+        self._fill_day()
+        with self.assertNoLogs('camp.apps.summaries', level='ERROR'):
+            assert self._run() == {'misaligned': 0, 'missing_region_hours': 0}
+
+    def test_logs_how_long_the_run_took(self):
+        self._fill_day()
+        with self.assertLogs('camp.apps.summaries', level='INFO') as logs:
+            self._run()
+        timing = [r for r in logs.records if r.levelname == 'INFO' and 'integrity check took' in r.getMessage()]
+        assert len(timing) == 1
+        assert 'misaligned scan' in timing[0].getMessage()
+
+    def test_misaligned_month_row_is_counted_and_logged(self):
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 2, 28, 23),
+            resolution=BaseSummary.Resolution.MONTHLY,
+            entry_type='pm25', processor='', **compute_stats([10.0], 1),
+        )
+        with self.assertLogs('camp.apps.summaries', level='ERROR') as logs:
+            result = self._run()
+        assert result['misaligned'] == 1
+        assert len(logs.records) == 1
+
+    def test_misaligned_rows_count_both_tables(self):
+        stats = compute_stats([10.0], 1)
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 2, 28, 23),
+            resolution=BaseSummary.Resolution.MONTHLY, entry_type='pm25', processor='', **stats)
+        stats.pop('is_complete', None)
+        RegionSummary.objects.create(
+            region=self.region, timestamp=pacific(2026, 10, 31, 23),
+            resolution=BaseSummary.Resolution.DAILY, entry_type='pm25', station_count=1, **stats)
+        with self.assertLogs('camp.apps.summaries', level='ERROR'):
+            assert self._run()['misaligned'] == 2
+
+    def test_misaligned_rows_older_than_400_days_are_ignored(self):
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2024, 2, 28, 23),
+            resolution=BaseSummary.Resolution.MONTHLY,
+            entry_type='pm25', processor='', **compute_stats([10.0], 1),
+        )
+        assert self._run()['misaligned'] == 0
+
+    def test_hour_without_region_rows_is_counted_and_logged(self):
+        self._fill_day(skip=pacific(2026, 11, 1, 3))
+        with self.assertLogs('camp.apps.summaries', level='ERROR') as logs:
+            result = self._run()
+        assert result['missing_region_hours'] == 1
+        assert len(logs.records) == 1
+
+    def test_repeated_fall_back_hour_is_checked(self):
+        # 01:00 PST is the second 01:00 of the day, an hour after 01:00 PDT.
+        self._fill_day(skip=datetime(2026, 11, 1, 9, tzinfo=dt_timezone.utc))
+        with self.assertLogs('camp.apps.summaries', level='ERROR'):
+            assert self._run()['missing_region_hours'] == 1
+
+    def test_hours_outside_yesterday_are_ignored(self):
+        self._fill_day()
+        self._monitor_hour(self.day_end)  # today's 00:00, no region row yet
+        assert self._run()['missing_region_hours'] == 0
+
+    def test_hour_with_no_monitor_rows_is_not_missing(self):
+        assert self._run() == {'misaligned': 0, 'missing_region_hours': 0}
+
+    def test_fires_once_on_fall_back_day_at_0230_pacific(self):
+        validate = summary_tasks.check_summary_integrity.task_class().validate_datetime
+        start = datetime(2026, 11, 1, tzinfo=dt_timezone.utc)
+        runs = [
+            start + timedelta(minutes=i) for i in range(24 * 60)
+            if validate((start + timedelta(minutes=i)).replace(tzinfo=None))
+        ]
+        assert len(runs) == 1
+        local = localtime(runs[0])
+        assert (local.hour, local.minute, local.fold) == (2, 30, 0)

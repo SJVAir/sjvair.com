@@ -1,4 +1,3 @@
-import calendar
 from datetime import datetime, timedelta
 
 import tqdm
@@ -13,6 +12,7 @@ from django.db.models import Q
 from camp.utils.datetime import make_aware
 from camp.apps.entries.stages import Stage
 from camp.apps.summaries.backfill import backfill_monitor_hours, backfill_region_hours
+from camp.apps.summaries.periods import iter_hours, iter_period_starts, period_end
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.tasks import (
     get_summarizable_entry_models,
@@ -87,7 +87,7 @@ class Command(BaseCommand):
 
         region_ids = list(regions.values_list('pk', flat=True))
 
-        hours = list(self._iter_hours(start, end))
+        hours = list(iter_hours(start, end))
         entry_models = get_summarizable_entry_models()
 
         self.stdout.write(
@@ -143,11 +143,11 @@ class Command(BaseCommand):
     def _rollup(self, rollup_fn, label, ids, start, end):
         R = BaseSummary.Resolution
         levels = [
-            ('daily',     R.DAILY,     R.HOURLY,  list(self._iter_days(start, end))),
-            ('monthly',   R.MONTHLY,   R.DAILY,   list(self._iter_months(start, end))),
-            ('quarterly', R.QUARTERLY, R.MONTHLY, list(self._iter_quarters(start, end))),
-            ('seasonal',  R.SEASONAL,  R.MONTHLY, list(self._iter_seasons(start, end))),
-            ('yearly',    R.YEARLY,    R.MONTHLY, list(self._iter_years(start, end))),
+            ('daily',     R.DAILY,     R.HOURLY,  list(iter_period_starts('day', start, end))),
+            ('monthly',   R.MONTHLY,   R.DAILY,   list(iter_period_starts('month', start, end))),
+            ('quarterly', R.QUARTERLY, R.MONTHLY, list(iter_period_starts('quarter', start, end))),
+            ('seasonal',  R.SEASONAL,  R.MONTHLY, list(iter_period_starts('season', start, end))),
+            ('yearly',    R.YEARLY,    R.MONTHLY, list(iter_period_starts('year', start, end))),
         ]
         for name, target, source, windows in levels:
             if not windows:
@@ -155,7 +155,7 @@ class Command(BaseCommand):
             self.stdout.write(f'\nRolling up {name} {label} summaries ({len(windows):,} windows)...')
             self.stdout.flush()
             for window_start in tqdm.tqdm(windows, file=self.stdout, dynamic_ncols=True):
-                window_end = self._window_end(target, window_start)
+                window_end = period_end(target, window_start)
                 rollup_fn(target, source, window_start, window_end, **{f'{label}_ids': ids})
 
     # ---- Async enqueue methods ----
@@ -207,11 +207,11 @@ class Command(BaseCommand):
         self.stdout.write('\nEnqueuing monitor rollups...')
         self.stdout.flush()
         windows = [
-            (daily_monitor_summaries,     'day',           self._iter_days(start, end)),
-            (monthly_monitor_summaries,   'month_start',   self._iter_months(start, end)),
-            (quarterly_monitor_summaries, 'quarter_start', self._iter_quarters(start, end)),
-            (seasonal_monitor_summaries,  'season_start',  self._iter_seasons(start, end)),
-            (yearly_monitor_summaries,    'year_start',    self._iter_years(start, end)),
+            (daily_monitor_summaries,     'day',           iter_period_starts('day', start, end)),
+            (monthly_monitor_summaries,   'month_start',   iter_period_starts('month', start, end)),
+            (quarterly_monitor_summaries, 'quarter_start', iter_period_starts('quarter', start, end)),
+            (seasonal_monitor_summaries,  'season_start',  iter_period_starts('season', start, end)),
+            (yearly_monitor_summaries,    'year_start',    iter_period_starts('year', start, end)),
         ]
         count = 0
         for task_fn, kwarg, window_iter in windows:
@@ -229,11 +229,11 @@ class Command(BaseCommand):
         self.stdout.write('\nEnqueuing region rollups...')
         self.stdout.flush()
         windows = [
-            (daily_region_summaries,     'day',           self._iter_days(start, end)),
-            (monthly_region_summaries,   'month_start',   self._iter_months(start, end)),
-            (quarterly_region_summaries, 'quarter_start', self._iter_quarters(start, end)),
-            (seasonal_region_summaries,  'season_start',  self._iter_seasons(start, end)),
-            (yearly_region_summaries,    'year_start',    self._iter_years(start, end)),
+            (daily_region_summaries,     'day',           iter_period_starts('day', start, end)),
+            (monthly_region_summaries,   'month_start',   iter_period_starts('month', start, end)),
+            (quarterly_region_summaries, 'quarter_start', iter_period_starts('quarter', start, end)),
+            (seasonal_region_summaries,  'season_start',  iter_period_starts('season', start, end)),
+            (yearly_region_summaries,    'year_start',    iter_period_starts('year', start, end)),
         ]
         count = 0
         for task_fn, kwarg, window_iter in windows:
@@ -249,79 +249,3 @@ class Command(BaseCommand):
         if d is None:
             raise CommandError(f'Invalid date: {value!r}. Use YYYY-MM-DD.')
         return make_aware(datetime(d.year, d.month, d.day), settings.DEFAULT_TIMEZONE)
-
-    def _window_end(self, resolution, window_start):
-        R = BaseSummary.Resolution
-        if resolution == R.DAILY:
-            return window_start + timedelta(days=1)
-        if resolution == R.MONTHLY:
-            _, days = calendar.monthrange(window_start.year, window_start.month)
-            return window_start + timedelta(days=days)
-        if resolution in (R.QUARTERLY, R.SEASONAL):
-            month = window_start.month + 3
-            year = window_start.year
-            if month > 12:
-                month -= 12
-                year += 1
-            return make_aware(datetime(year, month, 1), settings.DEFAULT_TIMEZONE)
-        if resolution == R.YEARLY:
-            return window_start.replace(year=window_start.year + 1)
-
-    def _iter_hours(self, start, end):
-        current = start
-        while current < end:
-            yield current
-            current += timedelta(hours=1)
-
-    def _iter_days(self, start, end):
-        day = start.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_day = end.replace(hour=0, minute=0, second=0, microsecond=0)
-        while day <= end_day:
-            yield day
-            day += timedelta(days=1)
-
-    def _iter_months(self, start, end):
-        month = start.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        while month <= end:
-            yield month
-            if month.month == 12:
-                month = month.replace(year=month.year + 1, month=1)
-            else:
-                month = month.replace(month=month.month + 1)
-
-    def _iter_quarters(self, start, end):
-        # Quarter starts: Jan, Apr, Jul, Oct
-        month = start.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        # Rewind to the start of the current quarter
-        month = month.replace(month=((month.month - 1) // 3) * 3 + 1)
-        while month <= end:
-            yield month
-            next_month = month.month + 3
-            if next_month > 12:
-                month = month.replace(year=month.year + 1, month=next_month - 12)
-            else:
-                month = month.replace(month=next_month)
-
-    def _iter_seasons(self, start, end):
-        # Season starts: Dec, Mar, Jun, Sep
-        season_start_months = {12, 3, 6, 9}
-        month = start.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        # Rewind to the previous season start
-        while month.month not in season_start_months:
-            if month.month == 1:
-                month = month.replace(year=month.year - 1, month=12)
-            else:
-                month = month.replace(month=month.month - 1)
-        while month <= end:
-            yield month
-            next_month = month.month + 3
-            if next_month > 12:
-                month = month.replace(year=month.year + 1, month=next_month - 12)
-            else:
-                month = month.replace(month=next_month)
-
-    def _iter_years(self, start, end):
-        year = start.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-        while year <= end:
-            yield year
-            year = year.replace(year=year.year + 1)

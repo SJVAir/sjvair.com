@@ -705,3 +705,33 @@ class SummaryCacheHeaderTests(TestCase):
             HTTP_ACCEPT_ENCODING='gzip')
         assert response['Cache-Control'] == 'private, max-age=86400'
         assert {'Accept-Encoding', 'Cookie'} <= {v.strip() for v in response['Vary'].split(',')}
+
+
+class MonitorSummaryFallBackDayTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.monitor = PurpleAir.objects.first()
+
+    def _get(self, url_name, resolution, **kwargs):
+        url = reverse(f'api:v2:monitors:{url_name}', kwargs={'monitor_id': self.monitor.pk, 'entry_type': 'pm25', **kwargs})
+        request = self.factory.get(url)
+        request.monitor = self.monitor
+        return monitor_summary_list(request, monitor_id=self.monitor.pk, entry_type='pm25', resolution=resolution, **kwargs)
+
+    def test_day_row_on_fall_back_day_is_in_the_month(self):
+        from datetime import timezone as dt_timezone
+        make_monitor_summary(self.monitor, datetime(2026, 11, 1, 7, tzinfo=dt_timezone.utc), resolution='day')  # 00:00 PDT
+        data = get_response_data(self._get('monitor-summary-daily-month', 'day', year=2026, month=11))
+        assert len(data['data']) == 1
+
+    def test_hourly_day_returns_all_25_hours_of_fall_back_day(self):
+        from datetime import timezone as dt_timezone
+        start = datetime(2026, 11, 1, 7, tzinfo=dt_timezone.utc)
+        for i in range(25):
+            make_monitor_summary(self.monitor, start + timedelta(hours=i))
+        make_monitor_summary(self.monitor, start - timedelta(hours=1))
+        make_monitor_summary(self.monitor, start + timedelta(hours=25))
+        data = get_response_data(self._get('monitor-summary-hourly-day', 'hour', year=2026, month=11, day=1))
+        assert len(data['data']) == 25

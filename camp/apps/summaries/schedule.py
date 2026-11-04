@@ -1,10 +1,10 @@
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone as dt_timezone
 
-from django.conf import settings
 from django.utils import timezone
 from huey import crontab
 
+from camp.apps.summaries.periods import period_end
 from camp.utils.datetime import localtime
 
 # Huey crontabs run in UTC. A Pacific hour lands on one of two UTC hours
@@ -66,41 +66,6 @@ SETTLE_MARGIN = {
 }
 
 
-def _pacific_midnight(year, month, day=1):
-    return timezone.make_aware(datetime(year, month, day), settings.DEFAULT_TIMEZONE)
-
-
-def period_end(resolution, ts):
-    """
-    The end of the period of the given resolution that contains `ts`, as an
-    aware datetime. Day and coarser are Pacific boundaries built from calendar
-    values, never timedelta arithmetic across DST.
-    """
-    if resolution == 'hour':
-        # Hours are absolute: truncating in UTC is intentional (Pacific offsets are whole hours).
-        start = ts.astimezone(dt_timezone.utc).replace(minute=0, second=0, microsecond=0)
-        return start + timedelta(hours=1)
-
-    local = localtime(ts)
-    if resolution == 'day':
-        nxt = local.date() + timedelta(days=1)
-        return _pacific_midnight(nxt.year, nxt.month, nxt.day)
-    if resolution == 'month':
-        return _pacific_midnight(local.year + (local.month == 12), local.month % 12 + 1)
-    if resolution == 'quarter':
-        first = (local.month - 1) // 3 * 3 + 4
-        return _pacific_midnight(local.year + (first > 12), (first - 1) % 12 + 1)
-    if resolution == 'season':
-        # Dec-Feb, Mar-May, Jun-Aug, Sep-Nov: each ends on the 1st of Mar/Jun/Sep/Dec.
-        if local.month == 12:
-            return _pacific_midnight(local.year + 1, 3)
-        end_month = (local.month // 3 + 1) * 3 if local.month >= 3 else 3
-        return _pacific_midnight(local.year, end_month)
-    if resolution == 'year':
-        return _pacific_midnight(local.year + 1, 1)
-    raise ValueError(f'Unknown resolution: {resolution}')
-
-
 def is_settled(resolution, range_end, now=None):
     """
     True when every period in a range ending at `range_end` (exclusive) has
@@ -110,3 +75,35 @@ def is_settled(resolution, range_end, now=None):
         return False
     last_period_end = period_end(resolution, range_end - timedelta(microseconds=1))
     return (now or timezone.now()) >= last_period_end + SETTLE_MARGIN[resolution]
+
+
+# The minute of each hour the hourly parent tasks are scheduled for
+# (crontab minutes in camp/apps/summaries/tasks.py).
+HOURLY_FIRE_MINUTE = {'monitor': 45, 'region': 50}
+
+# A parent that starts this long after its scheduled minute logs a warning.
+LATE_RUN_WARNING = timedelta(minutes=10)
+
+
+def hour_for_run(fire_minute: int, now: datetime | None = None) -> tuple[datetime, timedelta]:
+    """
+    The hour an hourly parent should summarize, and how late it started.
+
+    The hour comes from the schedule, not from when a worker picked the task
+    up: `fire` is the latest HH:`fire_minute` (UTC) at or before `now`, and
+    the hour is the one before the hour holding `fire`. A parent that waited
+    behind other work therefore still summarizes the hour it was scheduled for.
+    Returns (hour, lateness), lateness being `now - fire`.
+
+    That holds only up to 60 minutes late. A parent that starts 60+ minutes
+    after its fire time resolves to the next fire instead: it summarizes the
+    next hour (which that fire's own run summarizes again), the hour it was
+    scheduled for gets no row, and no late-run warning names it, since the
+    lateness it reports is measured from the next fire. The daily
+    check_summary_integrity reports the missing region hours the next day.
+    """
+    now = (now or timezone.now()).astimezone(dt_timezone.utc)
+    fire = now.replace(minute=fire_minute, second=0, microsecond=0)
+    if fire > now:
+        fire -= timedelta(hours=1)
+    return fire.replace(minute=0) - timedelta(hours=1), now - fire
