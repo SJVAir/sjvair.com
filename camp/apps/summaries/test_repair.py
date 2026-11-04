@@ -272,6 +272,79 @@ class RepairSummariesTests(TestCase):
         assert len(deletes) == 3
         assert all('summaries_monitorsummary' in sql for sql in deletes)
 
+    def test_rows_standing_for_periods_after_the_run_are_left_and_reported(self):
+        # A Dec 1-15 2025 run widens day/month work to 2025-01-01 -> 2026-03-01
+        # (year 2025 and the Dec-Feb season are finished). The rows stamped
+        # 2026-02-28T23:00-08:00 stand for March 1 periods, which this run
+        # doesn't re-roll, so it must leave them and say so.
+        self._seed_spring()
+        hour_early = datetime(2026, 3, 1, 7, tzinfo=UTC)
+
+        output = self._repair(start='2025-12-01', end='2025-12-15')
+
+        for model in (MonitorSummary, RegionSummary):
+            for resolution in (R.DAILY, R.MONTHLY, R.SEASONAL):
+                assert model.objects.filter(resolution=resolution, timestamp=hour_early).exists(), (model, resolution)
+            # The May 1 season stands for Mar-May too, and is past the scan.
+            assert model.objects.filter(resolution=R.SEASONAL, timestamp=_pacific(2026, 5, 1)).exists()
+            # February's window holds the Feb 28 23:00 day row, so February (and
+            # the Dec-Feb season above it) is skipped: the Jan 31 23:00 month
+            # row standing for February stays too, and no February row is written.
+            assert model.objects.filter(resolution=R.MONTHLY, timestamp=datetime(2026, 2, 1, 7, tzinfo=UTC)).exists()
+            assert not model.objects.filter(resolution=R.MONTHLY, timestamp=_pacific(2026, 2, 1)).exists()
+            assert not model.objects.filter(resolution=R.SEASONAL, timestamp=_pacific(2025, 12, 1)).exists()
+            # Days are independent of each other: the rest are repaired.
+            assert not model.objects.filter(resolution=R.DAILY, timestamp=datetime(2026, 2, 1, 7, tzinfo=UTC)).exists()
+            assert model.objects.filter(resolution=R.DAILY, timestamp=_pacific(2026, 2, 28)).exists()
+        for kind in ('monitor', 'region'):
+            assert f"{kind} day: 28 misaligned deleted, 1 misaligned outside this run's range (left in place)" in output
+            assert f"{kind} month: 0 misaligned deleted, 2 misaligned outside this run's range (left in place)" in output
+            assert f"{kind} season: 0 misaligned deleted, 1 misaligned outside this run's range (left in place)" in output
+            assert (
+                f'outside: {kind} month at 2026-02-28T23:00:00-08:00 stands for the period '
+                'starting 2026-03-01T00:00:00-08:00'
+            ) in output
+            assert f'skipped: {kind} month starting 2026-02-01T00:00:00-08:00' in output
+            assert f'skipped: {kind} season starting 2025-12-01T00:00:00-08:00' in output
+        assert '  day: deletes misaligned rows standing for the 424 periods 2025-01-01T00:00:00-08:00 -> 2026-03-01T00:00:00-08:00' in output
+        assert '  season: deletes misaligned rows standing for the 1 periods 2025-12-01T00:00:00-08:00 -> 2026-03-01T00:00:00-08:00' in output
+
+        # Widening the range to cover March repairs everything.
+        self._repair(start='2025-12-01', end='2026-06-01')
+        for row in self._non_hourly():
+            assert is_period_start(row.resolution, row.timestamp), (row.resolution, _iso(row.timestamp))
+        feb = MonitorSummary.objects.get(monitor=self.monitor, resolution=R.MONTHLY, timestamp=_pacific(2026, 2, 1))
+        assert feb.count == 28 * 24
+
+    def test_delete_batches_timestamps_and_reports_progress(self):
+        self._seed_spring()
+        with patch.object(repair, 'DELETE_TIMESTAMP_BATCH', 10):
+            with patch('django.utils.timezone.now', return_value=self.NOW):
+                out = StringIO()
+                with CaptureQueriesContext(connection) as ctx:
+                    call_command(
+                        'repair_summaries', '2026-02-01', '2026-06-01',
+                        '--monitor', str(self.monitor.pk), stdout=out,
+                    )
+        deletes = [q['sql'] for q in ctx.captured_queries if q['sql'].startswith('DELETE')]
+        assert len(deletes) == 3 + 1 + 1   # 29 days in batches of 10, one month batch, one season batch
+        output = out.getvalue()
+        assert 'monitor day delete: batch 1/3 (10 rows)' in output
+        assert 'monitor day delete: batch 3/3 (9 rows)' in output
+        assert 'monitor day roll: 50/' in output
+
+    def test_missing_region_hours_reads_hours_by_week_for_all_regions(self):
+        self._seed_spring()
+        other = Region.objects.filter(boundary__isnull=False).exclude(pk=self.region.pk).first()
+        start, end = _pacific(2026, 2, 1), _pacific(2026, 3, 11)   # 38 days: 6 weeks
+        with CaptureQueriesContext(connection) as ctx:
+            missing = repair.missing_region_hours([self.region.pk, other.pk], start, end)
+        # regions, one monitor lookup per region, then 2 per week.
+        assert len(ctx.captured_queries) == 1 + 2 + 2 * 6
+        hours = missing[self.region.pk]
+        assert len(hours) == 24
+        assert _iso(hours[0]) == '2026-03-05T00:00:00-08:00'
+
     def test_region_flags_leave_monitor_rows_alone(self):
         self._seed_spring()
         monitor_rows = self._snapshot()
