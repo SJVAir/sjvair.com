@@ -2,8 +2,9 @@ from django.contrib.gis.db import models
 from django.contrib.gis.db.models import Count, FloatField, Func, F, OuterRef, Subquery, Union
 from django.contrib.gis.db.models.functions import Intersection
 from django.contrib.gis.geos import GEOSGeometry
-from django.db.models import Q
-from django.db.models.functions import Lower, NullIf, Trim
+from django.contrib.postgres.search import TrigramWordSimilarity
+from django.db.models import Case, Q, Value, When
+from django.db.models.functions import Coalesce, Greatest, Lower, NullIf, Trim
 
 import geopandas as gpd
 from shapely.wkt import loads as load_wkt
@@ -180,4 +181,71 @@ class LocationQuerySet(models.QuerySet):
             self.annotate(name_key=Lower(Trim('name')))
             .exclude(child_care & models.Exists(same.filter(external_id__lt=OuterRef('external_id'))))
             .annotate(licenses=models.Case(models.When(child_care, then=count), default=models.Value(1), output_field=models.IntegerField()))
+        )
+
+    # Trigram word similarity at or above this is a (typo-tolerant) match,
+    # as in Region.objects.search_regions.
+    SEARCH_SIMILARITY = 0.3
+    # The most words a town part can have ("san luis obispo").
+    SEARCH_TOWN_WORDS = 3
+
+    @classmethod
+    def _search_splits(cls, q):
+        """(name text, town text or None) pairs to try for `q`: the whole of it, then each
+        name + town split, the town being the last or the first 1-3 words."""
+        text = ' '.join(q.split())
+        words = text.lower().split(' ')
+        splits = [(text, None)]
+        for k in range(1, min(cls.SEARCH_TOWN_WORDS, len(words) - 1) + 1):
+            splits.append((' '.join(words[:-k]), ' '.join(words[-k:])))
+            splits.append((' '.join(words[k:]), ' '.join(words[:k])))
+        return splits
+
+    def search(self, q):
+        """
+        Name search: current rows (one per place) whose name contains `q` or is
+        trigram-similar to it, or -- for a query of two or more words -- whose
+        name matches a name part and whose city starts with the rest (the town).
+
+        Annotates `search_rank` (4 when the town matched, plus the match tier:
+        3 name prefix, 2 word prefix, 1 substring or similarity) and
+        `search_similarity` (of the best split's name text), and orders by
+        them, then city, name, source and code. Doesn't check `q`'s length;
+        a blank `q` matches nothing.
+        """
+        if not q.strip():
+            return self.none()
+
+        qs = self.one_per_place().annotate(
+            city_key=Lower(Coalesce(NullIf('city__name', Value('')), 'city_name')),
+        )
+        ranks, similarities = [], []
+        for i, (name, town) in enumerate(self._search_splits(q)):
+            sim = f'search_similarity_{i}'
+            qs = qs.annotate(**{sim: TrigramWordSimilarity(Value(name), 'name')})
+            word_start = Q()
+            for sep in ' /-(':
+                word_start |= Q(name__icontains=sep + name)
+            tier = Case(
+                When(name__istartswith=name, then=3),
+                When(word_start, then=2),
+                When(Q(name__icontains=name) | Q(**{f'{sim}__gte': self.SEARCH_SIMILARITY}), then=1),
+                default=0,
+            )
+            match = Q(name__icontains=name) | Q(**{f'{sim}__gte': self.SEARCH_SIMILARITY})
+            if town is not None:
+                match &= Q(city_key__startswith=town)
+            ranks.append(Case(When(match, then=tier + (4 if town else 0)), default=0))
+            similarities.append(sim)
+
+        if len(ranks) == 1:
+            qs = qs.annotate(search_rank=ranks[0], search_similarity=models.F(similarities[0]))
+        else:
+            qs = qs.annotate(search_rank=Greatest(*ranks))
+            qs = qs.annotate(search_similarity=Greatest(*(
+                Case(When(search_rank=rank, then=models.F(sim)), default=0.0, output_field=FloatField())
+                for rank, sim in zip(ranks, similarities)
+            )))
+        return qs.filter(search_rank__gt=0).order_by(
+            '-search_rank', '-search_similarity', 'city_key', Lower('name'), 'source', 'external_id',
         )

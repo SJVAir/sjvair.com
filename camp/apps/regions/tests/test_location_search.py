@@ -1,0 +1,134 @@
+from django.contrib.gis.geos import Point
+from django.test import TestCase
+
+from camp.apps.regions.models import Location, Region
+
+
+class LocationSearchTests(TestCase):
+    """Location.objects.search(q): name matching, typo tolerance, town matching and ordering."""
+
+    fixtures = ['regions.yaml']
+
+    def make(self, name, city_name, type=Location.Type.PUBLIC_SCHOOL, source='cde-public', external_id=None, point=None, city=None, **kw):
+        # Rows ~1.1 km apart unless a point is given, so one_per_place() keeps them separate.
+        self.n += 1
+        return Location.objects.create(
+            name=name, city_name=city_name, type=type, source=source,
+            external_id=external_id or str(self.n).zfill(9),
+            point=point or Point(-119.0, 36.0 + self.n * 0.01, srid=4326),
+            city=city, **kw,
+        )
+
+    def setUp(self):
+        self.n = 0
+        self.fresno = Region.objects.get(type=Region.Type.CITY, name='Fresno')
+        self.visalia_lincoln = self.make('Lincoln Elementary', 'Visalia')
+        self.make('Lincoln Elementary', 'Fresno', city=self.fresno)
+        self.make('Lincoln Elementary', 'Bakersfield')
+        self.make('Lincoln Elementary', 'dinuba')
+        self.make('Abraham Lincoln Jr. High', 'Bakersfield')
+        self.make('Roosevelt Elementary', 'Fresno', city=self.fresno)
+        self.make('Fresno High', 'Fresno', city=self.fresno)
+        self.make('FRESNO EOC HEAD START', 'CARUTHERS', type=Location.Type.CHILD_CARE, source='cdss-ccl')
+
+    def search(self, q):
+        return [(l.name, l.city_name) for l in Location.objects.search(q)]
+
+    def test_prefix_beats_word_start_beats_substring(self):
+        names = [name for name, city in self.search('linc')]
+        assert names[:5] == ['Lincoln Elementary'] * 4 + ['Abraham Lincoln Jr. High']
+
+    def test_same_name_orders_by_city_ignoring_case(self):
+        rows = self.search('lincoln elementary')
+        assert [city for name, city in rows[:4]] == ['Bakersfield', 'dinuba', 'Fresno', 'Visalia']
+
+    def test_typo_matches(self):
+        rows = self.search('Linclon')
+        lincolns = [row for row in rows if 'Lincoln' in row[0]]
+        assert len(lincolns) == 5
+        assert self.search('Rosevelt')[0] == ('Roosevelt Elementary', 'Fresno')
+
+    def test_town_suffix_ranks_first(self):
+        assert self.search('lincoln visalia')[0] == ('Lincoln Elementary', 'Visalia')
+
+    def test_town_prefix_ranks_first(self):
+        assert self.search('visalia lincoln')[0] == ('Lincoln Elementary', 'Visalia')
+
+    def test_partial_town(self):
+        assert self.search('lincoln vis')[0] == ('Lincoln Elementary', 'Visalia')
+
+    def test_town_alone_does_not_match(self):
+        assert ('Lincoln Elementary', 'Visalia') not in self.search('roosevelt visalia')
+
+    def test_single_word_never_splits(self):
+        assert self.search('visalia') == []
+
+    def test_town_word_still_matches_names(self):
+        assert self.search('fresno high')[0] == ('Fresno High', 'Fresno')
+        assert ('FRESNO EOC HEAD START', 'CARUTHERS') in self.search('fresno')
+
+    def test_town_uses_the_linked_city_before_the_source_string(self):
+        self.make('Jefferson Elementary', 'Calwa', city=self.fresno)
+
+        by_linked_city = Location.objects.search('jefferson fresno').first()
+        assert by_linked_city.name == 'Jefferson Elementary'
+        assert by_linked_city.search_rank == 7  # town matched (4) + name prefix (3)
+
+        # The source's own string isn't the town once a city is linked.
+        by_source_string = Location.objects.search('jefferson calwa').filter(name='Jefferson Elementary').first()
+        assert by_source_string is None or by_source_string.search_rank < 4
+
+    def test_retired_excluded(self):
+        self.visalia_lincoln.retire(self.visalia_lincoln.created.date())
+        assert ('Lincoln Elementary', 'Visalia') not in self.search('lincoln')
+
+    def test_child_care_licenses_are_one_row(self):
+        point = Point(-119.5, 36.5, srid=4326)
+        self.make('Little Acorns', 'Hanford', type=Location.Type.CHILD_CARE, source='cdss-ccl', external_id='153400002', point=point)
+        self.make('LITTLE ACORNS', 'Hanford', type=Location.Type.CHILD_CARE, source='cdss-ccl', external_id='153400001',
+            point=Point(-119.5, 36.50045, srid=4326))  # ~50 m north
+
+        rows = list(Location.objects.search('little acorns'))
+
+        assert [row.external_id for row in rows] == ['153400001']
+        assert rows[0].licenses == 2
+
+    def test_wildcards_match_literally(self):
+        self.make('100% Kids Club', 'Tulare')
+        self.make('1000 Oaks Preschool', 'Tulare')
+        self.make('Kids_Club', 'Tulare')
+        self.make('KidsZClub', 'Tulare')
+
+        percent = list(Location.objects.search('100%'))
+        assert percent[0].name == '100% Kids Club'
+        assert percent[0].search_rank == 3
+        assert all(row.search_rank < 3 for row in percent if row.name == '1000 Oaks Preschool')
+
+        # `_` is a literal underscore, not "any one character": only Kids_Club
+        # contains "s_c". KidsZClub can only come in on similarity, below it.
+        underscore = list(Location.objects.search('s_c'))
+        names = [row.name for row in underscore]
+        assert 'Kids_Club' in names
+        assert underscore[names.index('Kids_Club')].search_rank >= 1
+        if 'KidsZClub' in names:
+            assert names.index('KidsZClub') > names.index('Kids_Club')
+
+        # A backslash is literal too: as LIKE's escape character, 'a\\b' would be
+        # a prefix of "Abraham Lincoln Jr. High".
+        self.make('A\\B Academy', 'Tulare')
+        prefixed = [row.name for row in Location.objects.search('a\\b') if row.search_rank == 3]
+        assert prefixed == ['A\\B Academy']
+
+    def test_extra_spaces_are_ignored(self):
+        assert self.search('  lincoln   visalia ') == self.search('lincoln visalia')
+
+    def test_location_without_city(self):
+        self.make('Lincoln Annex', '')
+        assert ('Lincoln Annex', '') in self.search('lincoln')
+
+    def test_blank_query_returns_nothing(self):
+        assert self.search('   ') == []
+
+    def test_it_stays_filterable_and_sliceable(self):
+        rows = Location.objects.search('lincoln').filter(city_name='Bakersfield')[:1]
+        assert [(row.name, row.city_name) for row in rows] == [('Lincoln Elementary', 'Bakersfield')]
