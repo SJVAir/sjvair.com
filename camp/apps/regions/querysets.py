@@ -5,6 +5,8 @@ from django.contrib.gis.geos import GEOSGeometry
 from django.contrib.postgres.search import TrigramWordSimilarity
 from django.db.models import Case, Q, Value, When
 from django.db.models.functions import Coalesce, Greatest, Lower, NullIf, Trim
+from django.db.models.lookups import GreaterThanOrEqual
+from django.db.models.query import ModelIterable
 
 import geopandas as gpd
 from shapely.wkt import loads as load_wkt
@@ -144,6 +146,18 @@ class BoundaryQuerySet(models.QuerySet):
         return gpd.GeoDataFrame(records, geometry='geometry', crs=crs)
 
 
+class SearchResultIterable(ModelIterable):
+    """Model instances from LocationQuerySet.search(), with `search_rank` and
+    `search_similarity` split out of the row's `search_key` (rank * 10 + similarity)
+    in Python rather than SQL, where each would repeat the whole key expression."""
+
+    def __iter__(self):
+        for obj in super().__iter__():
+            obj.search_rank = int(obj.search_key // 10)
+            obj.search_similarity = obj.search_key - obj.search_rank * 10
+            yield obj
+
+
 class LocationQuerySet(models.QuerySet):
     """Schools and child-care centers (regions.Location)."""
 
@@ -207,45 +221,75 @@ class LocationQuerySet(models.QuerySet):
         trigram-similar to it, or -- for a query of two or more words -- whose
         name matches a name part and whose city starts with the rest (the town).
 
-        Annotates `search_rank` (4 when the town matched, plus the match tier:
-        3 name prefix, 2 word prefix, 1 substring or similarity) and
-        `search_similarity` (of the best split's name text), and orders by
-        them, then city, name, source and code. Doesn't check `q`'s length;
-        a blank `q` matches nothing.
+        `search_rank`, best first:
+          6  the name starts with q
+          5  a word in the name starts with q (after a space, /, - or ()
+          4, 3, 2  a town split matched: its name part matched at tier 3
+                   (prefix), 2 (word start) or 1 (substring or similarity)
+          1  q is only in the name somewhere, or trigram-similar to it
+        so a query word that happens to start a town name ("fresno high",
+        "lincoln elementary" by Lincoln Village) doesn't outrank the name
+        itself. `search_similarity` is the trigram word similarity of the best
+        split's name text. Rows are ordered by both, then city, name, source
+        and code (city: the linked city/CDP region's name, else `city_name`).
+        Doesn't check `q`'s length; a blank `q` matches nothing.
+
+        Each split scores rank * 10 + similarity in one CASE, and the row's
+        `search_key` annotation is the greatest of them: one expression for the
+        filter and the sort, rather than one per split per use. `search_rank`
+        and `search_similarity` are split out of it in Python as rows are read
+        (SearchResultIterable), so they're attributes, not SQL annotations:
+        filter and order on `search_key`. The result chains like any queryset
+        (filter, select_related, slicing); `.values()` drops the two attributes.
         """
         if not q.strip():
             return self.none()
 
-        qs = self.one_per_place().annotate(
+        qs = self.one_per_place().alias(
             city_key=Lower(Coalesce(NullIf('city__name', Value('')), 'city_name')),
         )
-        ranks, similarities = [], []
-        for i, (name, town) in enumerate(self._search_splits(q)):
-            sim = f'search_similarity_{i}'
-            qs = qs.annotate(**{sim: TrigramWordSimilarity(Value(name), 'name')})
-            word_start = Q()
-            for sep in ' /-(':
-                word_start |= Q(name__icontains=sep + name)
-            tier = Case(
-                When(name__istartswith=name, then=3),
-                When(word_start, then=2),
-                When(Q(name__icontains=name) | Q(**{f'{sim}__gte': self.SEARCH_SIMILARITY}), then=1),
-                default=0,
-            )
-            match = Q(name__icontains=name) | Q(**{f'{sim}__gte': self.SEARCH_SIMILARITY})
-            if town is not None:
-                match &= Q(city_key__startswith=town)
-            ranks.append(Case(When(match, then=tier + (4 if town else 0)), default=0))
-            similarities.append(sim)
+        keys = [self._search_key(name, town) for name, town in self._search_splits(q)]
+        qs = qs.annotate(search_key=keys[0] if len(keys) == 1 else Greatest(*keys))
+        qs = qs.filter(search_key__gte=10).order_by('-search_key', 'city_key', Lower('name'), 'source', 'external_id')
+        qs._iterable_class = SearchResultIterable
+        return qs
 
-        if len(ranks) == 1:
-            qs = qs.annotate(search_rank=ranks[0], search_similarity=models.F(similarities[0]))
-        else:
-            qs = qs.annotate(search_rank=Greatest(*ranks))
-            qs = qs.annotate(search_similarity=Greatest(*(
-                Case(When(search_rank=rank, then=models.F(sim)), default=0.0, output_field=FloatField())
-                for rank, sim in zip(ranks, similarities)
-            )))
-        return qs.filter(search_rank__gt=0).order_by(
-            '-search_rank', '-search_similarity', 'city_key', Lower('name'), 'source', 'external_id',
+    # search_rank for each tier of a whole-query match, and of a town split's name part.
+    _WHOLE_RANKS = {3: 6, 2: 5, 1: 1}
+    _TOWN_RANKS = {3: 4, 2: 3, 1: 2}
+
+    def _search_key(self, name, town=None):
+        """
+        One split's score, rank * 10 + similarity (0 when it doesn't match).
+        Cheapest test first, since most rows match nothing: a town split checks
+        the town, then the name's containment gates the prefix and word-start
+        tests, and only a name that doesn't contain the text pays for the
+        similarity threshold.
+        """
+        similarity = TrigramWordSimilarity(Value(name), 'name')
+        word_start = Q()
+        for sep in ' /-(':
+            word_start |= Q(name__icontains=sep + name)
+        ranks = self._TOWN_RANKS if town else self._WHOLE_RANKS
+        tier_rank = Case(
+            When(name__istartswith=name, then=ranks[3] * 10),
+            When(word_start, then=ranks[2] * 10),
+            default=ranks[1] * 10,
         )
+        whens = [
+            When(name__icontains=name, then=tier_rank + similarity),
+            When(GreaterThanOrEqual(similarity, self.SEARCH_SIMILARITY), then=ranks[1] * 10 + similarity),
+        ]
+        if town:
+            whens.insert(0, When(~self._in_town(town), then=Value(0.0)))
+        return Case(*whens, default=Value(0.0), output_field=FloatField())
+
+    def _in_town(self, town):
+        """Rows whose city starts with `town`: the linked city/CDP region's name, or the
+        row's own `city_name` when none is linked. An uncorrelated subquery of city ids
+        rather than the join, so the whole search filter applies at the location scan,
+        ahead of one_per_place()'s per-row subquery. all_objects, like the join: a row's
+        linked city counts even if retired, and it skips the retired_at scan."""
+        from camp.apps.regions.models import Region
+        cities = Region.all_objects.filter(type__in=[Region.Type.CITY, Region.Type.CDP], name__istartswith=town)
+        return Q(city__in=cities.values('pk')) | Q(city__isnull=True, city_name__istartswith=town)

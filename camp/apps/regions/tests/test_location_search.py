@@ -26,9 +26,13 @@ class LocationSearchTests(TestCase):
         self.make('Lincoln Elementary', 'Fresno', city=self.fresno)
         self.make('Lincoln Elementary', 'Bakersfield')
         self.make('Lincoln Elementary', 'dinuba')
+        # A CDP whose name starts with a word of the school's name.
+        lincoln_village = Region.objects.create(name='Lincoln Village', slug='lincoln-village', type=Region.Type.CDP, external_id='0641712')
+        self.make('Lincoln Elementary', 'Stockton', city=lincoln_village)
         self.make('Abraham Lincoln Jr. High', 'Bakersfield')
         self.make('Roosevelt Elementary', 'Fresno', city=self.fresno)
         self.make('Fresno High', 'Fresno', city=self.fresno)
+        self.make('Bullard High', 'Fresno', city=self.fresno)
         self.make('FRESNO EOC HEAD START', 'CARUTHERS', type=Location.Type.CHILD_CARE, source='cdss-ccl')
 
     def search(self, q):
@@ -36,20 +40,25 @@ class LocationSearchTests(TestCase):
 
     def test_prefix_beats_word_start_beats_substring(self):
         names = [name for name, city in self.search('linc')]
-        assert names[:5] == ['Lincoln Elementary'] * 4 + ['Abraham Lincoln Jr. High']
+        assert names[:6] == ['Lincoln Elementary'] * 5 + ['Abraham Lincoln Jr. High']
 
     def test_same_name_orders_by_city_ignoring_case(self):
         rows = self.search('lincoln elementary')
-        assert [city for name, city in rows[:4]] == ['Bakersfield', 'dinuba', 'Fresno', 'Visalia']
+        # The Stockton row is in Lincoln Village (its linked CDP), sorted there. Its town
+        # matching "lincoln" doesn't lift it above the others: they all start with q.
+        assert [city for name, city in rows[:5]] == ['Bakersfield', 'dinuba', 'Fresno', 'Stockton', 'Visalia']
 
     def test_typo_matches(self):
         rows = self.search('Linclon')
         lincolns = [row for row in rows if 'Lincoln' in row[0]]
-        assert len(lincolns) == 5
+        assert len(lincolns) == 6
         assert self.search('Rosevelt')[0] == ('Roosevelt Elementary', 'Fresno')
 
     def test_town_suffix_ranks_first(self):
         assert self.search('lincoln visalia')[0] == ('Lincoln Elementary', 'Visalia')
+        # Only the Visalia row matched the town, including among rows with no linked city.
+        town_matched = [(l.name, l.city_name) for l in Location.objects.search('lincoln visalia') if 2 <= l.search_rank <= 4]
+        assert town_matched == [('Lincoln Elementary', 'Visalia')]
 
     def test_town_prefix_ranks_first(self):
         assert self.search('visalia lincoln')[0] == ('Lincoln Elementary', 'Visalia')
@@ -64,7 +73,8 @@ class LocationSearchTests(TestCase):
         assert self.search('visalia') == []
 
     def test_town_word_still_matches_names(self):
-        assert self.search('fresno high')[0] == ('Fresno High', 'Fresno')
+        # Bullard High matches as name "high" in town "fresno", below a name starting with q.
+        assert self.search('fresno high')[:2] == [('Fresno High', 'Fresno'), ('Bullard High', 'Fresno')]
         assert ('FRESNO EOC HEAD START', 'CARUTHERS') in self.search('fresno')
 
     def test_town_uses_the_linked_city_before_the_source_string(self):
@@ -72,11 +82,11 @@ class LocationSearchTests(TestCase):
 
         by_linked_city = Location.objects.search('jefferson fresno').first()
         assert by_linked_city.name == 'Jefferson Elementary'
-        assert by_linked_city.search_rank == 7  # town matched (4) + name prefix (3)
+        assert by_linked_city.search_rank == 4  # town matched, name part a prefix
 
         # The source's own string isn't the town once a city is linked.
         by_source_string = Location.objects.search('jefferson calwa').filter(name='Jefferson Elementary').first()
-        assert by_source_string is None or by_source_string.search_rank < 4
+        assert by_source_string is None or by_source_string.search_rank == 1  # whole-q similarity only
 
     def test_retired_excluded(self):
         self.visalia_lincoln.retire(self.visalia_lincoln.created.date())
@@ -101,22 +111,19 @@ class LocationSearchTests(TestCase):
 
         percent = list(Location.objects.search('100%'))
         assert percent[0].name == '100% Kids Club'
-        assert percent[0].search_rank == 3
-        assert all(row.search_rank < 3 for row in percent if row.name == '1000 Oaks Preschool')
+        assert percent[0].search_rank == 6
+        assert all(row.search_rank < 6 for row in percent if row.name == '1000 Oaks Preschool')
 
         # `_` is a literal underscore, not "any one character": only Kids_Club
-        # contains "s_c". KidsZClub can only come in on similarity, below it.
-        underscore = list(Location.objects.search('s_c'))
-        names = [row.name for row in underscore]
-        assert 'Kids_Club' in names
-        assert underscore[names.index('Kids_Club')].search_rank >= 1
-        if 'KidsZClub' in names:
-            assert names.index('KidsZClub') > names.index('Kids_Club')
+        # contains "s_c". KidsZClub could only come in on similarity.
+        underscore = {row.name: row for row in Location.objects.search('s_c')}
+        assert underscore['Kids_Club'].search_rank == 1
+        assert 'KidsZClub' not in underscore or underscore['KidsZClub'].search_similarity >= 0.3
 
         # A backslash is literal too: as LIKE's escape character, 'a\\b' would be
         # a prefix of "Abraham Lincoln Jr. High".
         self.make('A\\B Academy', 'Tulare')
-        prefixed = [row.name for row in Location.objects.search('a\\b') if row.search_rank == 3]
+        prefixed = [row.name for row in Location.objects.search('a\\b') if row.search_rank == 6]
         assert prefixed == ['A\\B Academy']
 
     def test_extra_spaces_are_ignored(self):
@@ -130,5 +137,8 @@ class LocationSearchTests(TestCase):
         assert self.search('   ') == []
 
     def test_it_stays_filterable_and_sliceable(self):
-        rows = Location.objects.search('lincoln').filter(city_name='Bakersfield')[:1]
+        rows = list(Location.objects.search('lincoln').filter(city_name='Bakersfield').select_related('city', 'county')[:1])
         assert [(row.name, row.city_name) for row in rows] == [('Lincoln Elementary', 'Bakersfield')]
+        # search_rank and search_similarity survive the chain (they're set as rows are read).
+        assert rows[0].search_rank == 6
+        assert rows[0].search_similarity == 1.0
