@@ -1,0 +1,351 @@
+"""repair_summaries: delete misaligned period rows, fill missing region hours, re-roll."""
+from datetime import datetime, timedelta, timezone as dt_timezone
+from io import StringIO
+from unittest.mock import patch
+
+from django.conf import settings
+from django.core.management import call_command
+from django.core.management.base import CommandError
+from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
+from django.db import connection
+import pytest
+
+from camp.apps.monitors.purpleair.models import PurpleAir
+from camp.apps.regions.models import Region
+from camp.apps.summaries import repair
+from camp.apps.summaries.aggregators import compute_stats
+from camp.apps.summaries.backfill import backfill_region_hours
+from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
+from camp.apps.summaries.periods import is_period_start, iter_hours
+from camp.apps.summaries.tasks import rollup_monitor_summaries, rollup_region_summaries
+from camp.utils.datetime import make_aware
+
+LA = settings.DEFAULT_TIMEZONE
+R = BaseSummary.Resolution
+UTC = dt_timezone.utc
+
+
+def _pacific(y, m, d, h=0):
+    return make_aware(datetime(y, m, d, h), LA)
+
+
+def _iso(ts):
+    return ts.astimezone(LA).isoformat()
+
+
+class RepairSummariesTests(TestCase):
+    fixtures = ['purple-air.yaml', 'regions.yaml']
+
+    # Today in Pacific, fixed so which periods count as finished doesn't move.
+    NOW = _pacific(2026, 11, 4, 12)
+
+    def setUp(self):
+        self.region = Region.objects.filter(boundary__isnull=False).first()
+        self.monitor = PurpleAir.objects.first()
+        self.monitor.position = self.region.boundary.geometry.point_on_surface
+        self.monitor.save()
+
+    # ---- Setup helpers ----
+
+    def _seed_hours(self, start, end):
+        hours = list(iter_hours(start, end))
+        MonitorSummary.objects.bulk_create([
+            MonitorSummary(
+                monitor=self.monitor, timestamp=hour, resolution=R.HOURLY,
+                entry_type='pm25', processor='', **compute_stats([float(5 + i % 17)], 1),
+            )
+            for i, hour in enumerate(hours)
+        ])
+        grades = dict(self.region.monitors.with_grade().values_list('pk', 'grade'))
+        backfill_region_hours(self.region, hours, grades)
+        return hours
+
+    def _old_rollup(self, target, source, start, end):
+        rollup_monitor_summaries(target, source, start, end, monitor_ids=[self.monitor.pk])
+        rollup_region_summaries(target, source, start, end, region_ids=[self.region.pk])
+
+    def _seed_spring(self):
+        """Hourly rows Feb 1 - Mar 10 2026, then the rows the old backfill and scheduler wrote."""
+        self._seed_hours(_pacific(2026, 2, 1), _pacific(2026, 3, 10))
+
+        # The old backfill stepped back from a PDT midnight in 24-hour steps, so
+        # every standard-time period started at 23:00 the day before.
+        anchor = datetime(2026, 3, 1, 7, tzinfo=UTC)
+        assert _iso(anchor) == '2026-02-28T23:00:00-08:00'
+        for n in range(29):
+            day = anchor - timedelta(days=n)
+            self._old_rollup(R.DAILY, R.HOURLY, day, day + timedelta(days=1))
+        self._old_rollup(R.MONTHLY, R.DAILY, anchor - timedelta(days=28), anchor)
+        self._old_rollup(R.MONTHLY, R.DAILY, anchor, anchor + timedelta(days=31))
+        self._old_rollup(R.SEASONAL, R.MONTHLY, anchor, anchor + timedelta(days=92))
+
+        # The old scheduler's May-July season.
+        may = _pacific(2026, 5, 1)
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=may, resolution=R.SEASONAL,
+            entry_type='pm25', processor='', **compute_stats([10.0], 1),
+        )
+        stats = compute_stats([10.0], 1)
+        stats.pop('is_complete')
+        RegionSummary.objects.create(
+            region=self.region, timestamp=may, resolution=R.SEASONAL,
+            entry_type='pm25', station_count=1, weight=1.0, **stats,
+        )
+
+        # Finding 3: the region's hours for one day were never written.
+        RegionSummary.objects.filter(
+            region=self.region, resolution=R.HOURLY,
+            timestamp__gte=_pacific(2026, 3, 5), timestamp__lt=_pacific(2026, 3, 6),
+        ).delete()
+
+    def _repair(self, *args, start='2026-02-01', end='2026-06-01', now=None):
+        out = StringIO()
+        with patch('django.utils.timezone.now', return_value=now or self.NOW):
+            call_command(
+                'repair_summaries', start, end,
+                '--monitor', str(self.monitor.pk), '--region', str(self.region.pk),
+                *args, stdout=out,
+            )
+        return out.getvalue()
+
+    def _snapshot(self, resolutions=None):
+        def rows(qs, kind, key):
+            if resolutions:
+                qs = qs.filter(resolution__in=resolutions)
+            return {
+                (kind, r.resolution, r.timestamp): (r.count, round(r.mean, 6), r.minimum, r.maximum)
+                for r in qs.filter(**{key: getattr(self, kind).pk})
+            }
+        return {
+            **rows(MonitorSummary.objects.all(), 'monitor', 'monitor_id'),
+            **rows(RegionSummary.objects.all(), 'region', 'region_id'),
+        }
+
+    def _non_hourly(self):
+        return [
+            *MonitorSummary.objects.exclude(resolution=R.HOURLY),
+            *RegionSummary.objects.exclude(resolution=R.HOURLY),
+        ]
+
+    # ---- Tests ----
+
+    def test_dry_run_reports_and_writes_nothing(self):
+        self._seed_spring()
+        before = self._snapshot()
+
+        output = self._repair('--region-hours', '--dry-run')
+
+        assert self._snapshot() == before
+        assert 'region hour: 24 missing hours in 1 region' in output
+        for kind in ('monitor', 'region'):
+            assert f'{kind} day: 29 misaligned to delete' in output
+            assert f'{kind} month: 2 misaligned to delete' in output
+            assert f'{kind} season: 2 misaligned to delete' in output
+            assert f'{kind} quarter: 0 misaligned to delete' in output
+        assert 'Dry run' in output
+
+    def test_repairs_misaligned_rows_and_missing_hours(self):
+        self._seed_spring()
+        output = self._repair('--region-hours')
+
+        for row in self._non_hourly():
+            assert is_period_start(row.resolution, row.timestamp), (row.resolution, _iso(row.timestamp))
+
+        hour_early = datetime(2026, 3, 1, 7, tzinfo=UTC)
+        for model in (MonitorSummary, RegionSummary):
+            assert not model.objects.filter(timestamp=hour_early).exclude(resolution=R.HOURLY).exists()
+            assert not model.objects.filter(resolution=R.SEASONAL, timestamp=_pacific(2026, 5, 1)).exists()
+
+        region_hours = RegionSummary.objects.filter(
+            region=self.region, resolution=R.HOURLY,
+            timestamp__gte=_pacific(2026, 3, 5), timestamp__lt=_pacific(2026, 3, 6),
+        )
+        assert region_hours.count() == 24
+
+        # Pacific facts: one row per hour, so a day's count is its length in hours.
+        days = {
+            _iso(r.timestamp): r.count
+            for r in MonitorSummary.objects.filter(monitor=self.monitor, resolution=R.DAILY)
+        }
+        assert days['2026-02-01T00:00:00-08:00'] == 24
+        assert days['2026-03-08T00:00:00-08:00'] == 23   # spring forward
+        assert days['2026-03-09T00:00:00-07:00'] == 24
+        assert len(days) == 37                           # Feb 1 - Mar 9
+        feb = MonitorSummary.objects.get(monitor=self.monitor, resolution=R.MONTHLY, timestamp=_pacific(2026, 2, 1))
+        assert feb.count == 28 * 24
+        march = MonitorSummary.objects.get(monitor=self.monitor, resolution=R.MONTHLY, timestamp=_pacific(2026, 3, 1))
+        assert march.count == 9 * 24 - 1
+
+        assert 'monitor day: 29 misaligned deleted' in output
+        assert 'region hour: 24 missing hours in 1 region' in output
+
+        repaired = self._snapshot([R.DAILY, R.MONTHLY])
+
+        # A clean rebuild of the same scope writes the same day and month rows.
+        MonitorSummary.objects.exclude(resolution=R.HOURLY).delete()
+        RegionSummary.objects.all().delete()
+        call_command('rebuild_summaries', '2026-02-01', '2026-06-01', '--region', str(self.region.pk), stdout=StringIO())
+        rebuilt = self._snapshot([R.DAILY, R.MONTHLY])
+        assert repaired
+        assert repaired == rebuilt
+
+    def test_unfinished_periods_are_not_written(self):
+        self._seed_spring()
+        self._repair('--region-hours', now=_pacific(2026, 3, 10))
+
+        for model in (MonitorSummary, RegionSummary):
+            assert not model.objects.filter(resolution=R.MONTHLY, timestamp=_pacific(2026, 3, 1)).exists()
+            assert not model.objects.filter(resolution=R.SEASONAL, timestamp=_pacific(2026, 3, 1)).exists()
+            # The finished ones are.
+            assert model.objects.filter(resolution=R.MONTHLY, timestamp=_pacific(2026, 2, 1)).exists()
+            assert model.objects.filter(resolution=R.SEASONAL, timestamp=_pacific(2025, 12, 1)).exists()
+        for row in self._non_hourly():
+            assert is_period_start(row.resolution, row.timestamp), (row.resolution, _iso(row.timestamp))
+
+    def test_second_run_finds_nothing_and_keeps_values(self):
+        self._seed_spring()
+        self._repair('--region-hours')
+        first = self._snapshot()
+
+        output = self._repair('--region-hours')
+
+        assert 'region hour: 0 missing hours' in output
+        for kind in ('monitor', 'region'):
+            for resolution in ('day', 'month', 'quarter', 'season', 'year'):
+                assert f'{kind} {resolution}: 0 misaligned deleted' in output
+        assert self._snapshot() == first
+
+    def test_a_range_inside_a_month_repairs_the_whole_month(self):
+        # Re-rolling February reads every February day row, so a range that
+        # starts mid-month must not leave the month's earlier misaligned days
+        # in place (they would shift or double-count hours in the month row).
+        self._seed_spring()
+        self._repair(start='2026-02-15', end='2026-03-11')
+
+        feb = MonitorSummary.objects.get(monitor=self.monitor, resolution=R.MONTHLY, timestamp=_pacific(2026, 2, 1))
+        assert feb.count == 28 * 24
+        days = MonitorSummary.objects.filter(
+            monitor=self.monitor, resolution=R.DAILY,
+            timestamp__gte=_pacific(2026, 2, 1), timestamp__lt=_pacific(2026, 3, 1),
+        )
+        assert days.count() == 28
+        assert sum(d.count for d in days) == 28 * 24
+        for row in self._non_hourly():
+            assert is_period_start(row.resolution, row.timestamp), (row.resolution, _iso(row.timestamp))
+
+    def test_fall_back_day(self):
+        self._seed_hours(_pacific(2026, 10, 25), _pacific(2026, 11, 4))
+        # Stepping back from a PST midnight puts daylight-time days at 01:00.
+        anchor = datetime(2026, 11, 4, 8, tzinfo=UTC)
+        assert _iso(anchor) == '2026-11-04T00:00:00-08:00'
+        for n in range(1, 11):
+            day = anchor - timedelta(days=n)
+            self._old_rollup(R.DAILY, R.HOURLY, day, day + timedelta(days=1))
+        assert MonitorSummary.objects.filter(timestamp=datetime(2026, 11, 1, 8, tzinfo=UTC)).exists()
+
+        output = self._repair(start='2026-10-26', end='2026-11-04', now=_pacific(2026, 11, 5))
+
+        assert 'monitor day: 8 misaligned deleted' in output
+        for row in self._non_hourly():
+            assert is_period_start(row.resolution, row.timestamp), (row.resolution, _iso(row.timestamp))
+        days = {
+            _iso(r.timestamp): r.count
+            for r in MonitorSummary.objects.filter(monitor=self.monitor, resolution=R.DAILY)
+        }
+        assert days['2026-10-31T00:00:00-07:00'] == 24
+        assert days['2026-11-01T00:00:00-07:00'] == 25   # fall back
+        assert days['2026-11-02T00:00:00-08:00'] == 24
+        october = MonitorSummary.objects.get(monitor=self.monitor, resolution=R.MONTHLY, timestamp=_pacific(2026, 10, 1))
+        assert october.count == 7 * 24
+
+    def test_delete_is_one_statement_per_resolution(self):
+        self._seed_spring()
+        with patch('django.utils.timezone.now', return_value=self.NOW):
+            with CaptureQueriesContext(connection) as ctx:
+                call_command(
+                    'repair_summaries', '2026-02-01', '2026-06-01',
+                    '--monitor', str(self.monitor.pk), stdout=StringIO(),
+                )
+        deletes = [q['sql'] for q in ctx.captured_queries if q['sql'].startswith('DELETE')]
+        # day, month and season each have misaligned monitor rows.
+        assert len(deletes) == 3
+        assert all('summaries_monitorsummary' in sql for sql in deletes)
+
+    def test_region_flags_leave_monitor_rows_alone(self):
+        self._seed_spring()
+        monitor_rows = self._snapshot()
+        monitor_rows = {k: v for k, v in monitor_rows.items() if k[0] == 'monitor'}
+        out = StringIO()
+        with patch('django.utils.timezone.now', return_value=self.NOW):
+            call_command('repair_summaries', '2026-02-01', '2026-06-01', '--region', str(self.region.pk), stdout=out)
+        after = {k: v for k, v in self._snapshot().items() if k[0] == 'monitor'}
+        assert after == monitor_rows
+
+    def test_requires_a_scope(self):
+        with CaptureQueriesContext(connection) as ctx:
+            with pytest.raises(CommandError):
+                call_command('repair_summaries', '2026-02-01', '2026-03-01', stdout=StringIO())
+        assert len(ctx.captured_queries) == 0
+
+    def test_unknown_region(self):
+        with pytest.raises(CommandError, match='999999'):
+            call_command('repair_summaries', '2026-02-01', '2026-03-01', '--region', '999999', stdout=StringIO())
+
+    def test_unknown_monitor(self):
+        with pytest.raises(CommandError, match='nope'):
+            call_command('repair_summaries', '2026-02-01', '2026-03-01', '--monitor', 'nope', stdout=StringIO())
+
+    def test_unknown_types(self):
+        with pytest.raises(CommandError, match='toaster'):
+            call_command('repair_summaries', '2026-02-01', '2026-03-01', '--monitor-type', 'toaster', stdout=StringIO())
+        with pytest.raises(CommandError, match='planet'):
+            call_command('repair_summaries', '2026-02-01', '2026-03-01', '--region-type', 'planet', stdout=StringIO())
+
+    def test_region_hours_needs_region_scope(self):
+        with pytest.raises(CommandError, match='--region-hours'):
+            call_command(
+                'repair_summaries', '2026-02-01', '2026-03-01',
+                '--monitor', str(self.monitor.pk), '--region-hours', stdout=StringIO(),
+            )
+
+    def test_type_flags_scope_by_type(self):
+        self._seed_spring()
+        out = StringIO()
+        with patch('django.utils.timezone.now', return_value=self.NOW):
+            call_command(
+                'repair_summaries', '2026-02-01', '2026-06-01',
+                '--monitor-type', 'purpleair', '--region-type', self.region.type, '--dry-run', stdout=out,
+            )
+        assert 'monitor day: 29 misaligned to delete' in out.getvalue()
+        assert 'region day: 29 misaligned to delete' in out.getvalue()
+
+
+class FindMisalignedTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        for ts, resolution in [
+            (_pacific(2026, 3, 1), R.DAILY),                  # aligned
+            (datetime(2026, 3, 1, 7, tzinfo=UTC), R.DAILY),   # 23:00 the day before
+            (_pacific(2026, 5, 1), R.SEASONAL),               # not Dec/Mar/Jun/Sep
+            (_pacific(2026, 3, 1), R.SEASONAL),               # aligned
+            (datetime(2026, 3, 1, 7, tzinfo=UTC), R.HOURLY),  # hours are never misaligned
+        ]:
+            MonitorSummary.objects.create(
+                monitor=self.monitor, timestamp=ts, resolution=resolution,
+                entry_type='pm25', processor='', **compute_stats([10.0], 1),
+            )
+
+    def test_finds_rows_that_are_not_period_starts(self):
+        found = repair.find_misaligned(MonitorSummary, 'monitor_id', [self.monitor.pk], _pacific(2026, 3, 1), _pacific(2026, 6, 1))
+        assert {k: [_iso(t) for t in v] for k, v in found.items()} == {
+            'day': ['2026-02-28T23:00:00-08:00'],
+            'season': ['2026-05-01T00:00:00-07:00'],
+        }
+
+    def test_none_is_every_row_and_empty_is_none(self):
+        start, end = _pacific(2026, 3, 1), _pacific(2026, 6, 1)
+        assert set(repair.find_misaligned(MonitorSummary, 'monitor_id', None, start, end)) == {'day', 'season'}
+        assert repair.find_misaligned(MonitorSummary, 'monitor_id', [], start, end) == {}
