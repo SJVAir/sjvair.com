@@ -88,9 +88,11 @@ Elementary" rows) can't be told apart by typing more of the name, and parents kn
 town. When `q` has two or more words, it is also tried as a name part plus a town part: the
 town part is the last one or more words, or the first one or more words ("lincoln visalia",
 "lincoln elem visalia", "visalia lincoln"). A split matches a row when the town part is a
-case-insensitive prefix of the row's city (the linked city/CDP region's name, falling back
-to `city_name`) and the name part matches the name by the rules above. Every split is tried;
-a row matches if any split (or the whole of `q`) does.
+case-insensitive prefix of either the row's mailing city (`city_name`) or its linked
+city/CDP region's name, and the name part matches the name by the rules above. Every split is
+tried; a row matches if any split (or the whole of `q`) does. (Both names, because about 7% of
+rows have a mailing city that differs from their linked region: a Stockton school linked to the
+"Lincoln Village" CDP. Changed during the build, 2026-11-04.)
 
 Only current rows (`Location.objects`), grouped with `one_per_place()`, so a child-care
 center's several licenses are one result, represented by its lowest code (stable across
@@ -98,14 +100,18 @@ environments).
 
 ### Ordering
 
-0. **Town matched**, first: a row matched through a name + town split ranks above rows
-   matched on the name alone, since the parent narrowed it on purpose.
-1. **Match tier**, best first: the name starts with the name text; then a word in the name
-   starts with it (after a space, `/`, `-` or `(`); then any other match. The name text is
-   the whole of `q`, or the split's name part for a town-matched row (the best split's).
-2. **Similarity**, highest first (`TrigramWordSimilarity` of the same name text).
-3. **City**, alphabetical, ignoring case: the linked city/CDP region's name, falling back to
-   the row's own `city_name`.
+1. **Match rank**, best first (changed during the build, 2026-11-04: the first version put
+   every town match first, which let a name word that also starts a town name win, e.g.
+   "lincoln elementary" put Stockton's "Lincoln Village" school first and "fresno high" put
+   other Fresno high schools above Fresno High):
+   1. the whole of `q` starts the name;
+   2. the whole of `q` starts a word in the name (after a space, `/`, `-` or `(`);
+   3. a name + town split matches, ordered by how its name part matches (starts the name,
+      starts a word, other);
+   4. the whole of `q` matches only as a substring or by similarity.
+2. **Similarity**, highest first (`TrigramWordSimilarity` of the matching name text).
+3. **City**, alphabetical, ignoring case: the row's mailing city (`city_name`, the one rows
+   show), falling back to the linked city/CDP region's name when blank.
 4. Name (ignoring case), then `source`, then `external_id`: a stable final tie-break.
 
 Prototyped on local data (2026-11-04): "linc" → the Lincoln Elementaries by city; "Linclon"
