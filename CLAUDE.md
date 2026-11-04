@@ -269,7 +269,16 @@ zones are missing there; see SJVAPCD Forecast Setup).
   `--dry-run` first: it prints the spans it will delete and re-roll and the counts. Day and month
   work widens to the finished periods overlapping the range; unfinished periods are left for the
   scheduled rollup. Misaligned rows whose period it won't re-roll are left and reported.
-  Idempotent.
+  It deletes and re-rolls one resolution at a time from days up, so a resolution's old rows are
+  missing only while it re-rolls. `--region-hours` fills only [start, end), not the widened range.
+  Idempotent. Limits:
+  - A misaligned row of an unfinished period (e.g. a partial current-year row) is deleted
+    and nothing replaces it until that period's scheduled rollup.
+  - `--region-type` covers current regions only; a retired region's rows need `--region <pk>`,
+    and `check_summary_integrity` keeps reporting them until then.
+  - An hour whose monitors all have weight 0 (health score 0) correctly gets no region row,
+    so `--region-hours` keeps listing it as missing (and the integrity check does too when
+    that is true of every region in the hour).
 
   ```bash
   docker compose run --rm web python manage.py repair_summaries 2026-10-01 2026-11-04 \
@@ -277,7 +286,7 @@ zones are missing there; see SJVAPCD Forecast Setup).
   ```
 - **`check_summary_integrity`** (02:30 Pacific, read-only): logs an error (Sentry) when summary
   rows in the last 400 days are off a Pacific period start, or when hours of the previous
-  Pacific day have monitor hourly rows but no region hourly rows.
+  Pacific day have monitor hourly rows but no region hourly rows. Logs its run time at info.
 - **Burn status** (`camp/apps/forecasts/scales.py`): the feed's `status` string is stored as
   received; unknown values are stored and logged by the ingest task. When a new value
   appears, add a level there. The "No Burning For All" string is still unconfirmed.

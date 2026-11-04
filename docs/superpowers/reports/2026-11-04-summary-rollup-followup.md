@@ -162,6 +162,24 @@ Command: `repair_summaries 2026-10-01 2026-11-04 --monitor <a> --monitor <b> --r
   in-scope misaligned counts from the dry run. I have no before snapshot of rows outside the
   scope, so "nothing else changed" is not proven by a comparison.
 
+### Known limits of `repair_summaries`
+
+- A misaligned row of an unfinished period is deleted (it stands for a covered period), but
+  unfinished periods are never written, so nothing replaces it until that period's scheduled
+  rollup. Example: a partial current-year row stamped off the year start is gone until the
+  yearly rollup after Dec 31.
+- `--region-type` selects current regions only (`Region.objects`). A retired region's
+  misaligned rows need `--region <pk>`; until then `check_summary_integrity` keeps counting
+  them.
+- An hour whose in-region monitors all have weight 0 (every health score 0) correctly gets no
+  region row, so the `--region-hours` scan keeps listing it as missing (2026-11-04 06:00 UTC
+  above). The integrity check reports such an hour only when no region has a row for it.
+- Since the final review fix, each resolution is deleted and re-rolled before the next (days,
+  months, quarters, seasons, years), so standard-time rows are missing only while their own
+  resolution re-rolls rather than for the whole run. The proof above was run with the earlier
+  order (every delete first); the end result is the same, which
+  `test_result_matches_deleting_everything_first` checks.
+
 ### Full suite
 
 `pytest -n 4 --dist loadscope`: 4287 passed (baseline 4225).
