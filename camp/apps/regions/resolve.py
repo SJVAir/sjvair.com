@@ -252,7 +252,7 @@ def regions_containing(geometry, types, key):
     """
     The current regions of the given types whose boundary intersects the
     geometry (a point on a shared edge is in both), ordered by type and code,
-    as RegionListSerializer dicts. The type filter is part of the one query.
+    as RegionListSerializer dicts. Two queries: the boundaries at the point, then their current regions of those types.
     The dicts (never models: the serializer reads the boundary's bbox) are
     cached for 24 hours, an empty answer too.
     """
@@ -262,7 +262,11 @@ def regions_containing(geometry, types, key):
 
     from camp.api.v2.regions.serializers import RegionListSerializer
 
-    regions = (Region.objects.filter(type__in=types).intersects(geometry)
+    # The boundaries under the point come first, from the spatial index alone:
+    # joined to the type filter in one query, the planner may drive from the
+    # regions of a small type (zipcode) and rescan the index for each.
+    boundary_ids = list(Boundary.objects.filter(geometry__intersects=geometry).values_list('pk', flat=True))
+    regions = (Region.objects.filter(boundary_id__in=boundary_ids, type__in=types)
         .select_related('boundary').order_by('type', 'external_id'))
     found = RegionListSerializer(regions).serialize()
     cache.set(key, found, CACHE_TIMEOUT)
