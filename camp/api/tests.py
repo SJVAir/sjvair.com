@@ -131,3 +131,23 @@ class MonitorAccessMiddlewareTests(TestCase):
         cached = cache.get(cache_key)
         assert isinstance(cached, PurpleAir)
         assert cached.pk == self.monitor.pk
+
+
+class CoordinateQueryGuardMiddlewareTests(TestCase):
+    url = '/api/2.0/regions/places/lookup/'
+
+    def test_coordinates_in_query_are_refused_before_the_view(self):
+        from unittest import mock
+        from camp.api.v2.regions.endpoints import PlaceLookup
+        with mock.patch.object(PlaceLookup, 'get') as view:
+            for query in ('lat=36.737&lon=-119.787', 'lon=-119.787', 'lat=36.737&q=Fresno'):
+                response = self.client.get(f'{self.url}?{query}')
+                assert response.status_code == 400
+                assert 'POST body' in response.json()['error']
+                assert '36.737' not in response.content.decode()
+                assert '119.787' not in response.content.decode()
+            assert not view.called
+
+    def test_other_queries_pass_through(self):
+        response = self.client.get(self.url, {'q': 'Fresno'})
+        assert 'POST body' not in response.content.decode()

@@ -3,12 +3,30 @@ import uuid
 from typing import Optional
 
 from django.core.cache import cache
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils.functional import SimpleLazyObject
 
 from resticus import http
 
 from camp.apps.monitors.models import Monitor
+
+
+class CoordinateQueryGuardMiddleware:
+    """Refuses coordinates in the lookup's query string before anything can log or report them.
+
+    Scout's error capture sends request.GET for any unhandled exception, so a GET with lat/lon
+    must never reach the view stack. Sits right after SecurityMiddleware.
+    """
+    LOOKUP_PATH = '/api/2.0/regions/places/lookup'
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if request.path.startswith(self.LOOKUP_PATH) and ('lat' in request.GET or 'lon' in request.GET):
+            return JsonResponse({'error': 'Send coordinates in a POST body.'}, status=400)
+        return self.get_response(request)
 
 
 class MonitorAccessMiddleware:

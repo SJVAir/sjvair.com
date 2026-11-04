@@ -1,4 +1,5 @@
 import copy
+import json
 
 from django.test import SimpleTestCase
 
@@ -34,6 +35,21 @@ class ScrubEventTests(SimpleTestCase):
         assert scrubbed['request']['method'] == 'POST'
         assert SECRET not in repr(scrubbed)
         assert 'lat=36' not in repr(scrubbed)
+
+    def test_lookup_event_drops_exception_messages_and_breadcrumbs(self):
+        e = event('https://www.sjvair.com/api/2.0/regions/places/lookup/')
+        e['exception']['values'][0]['value'] = "bad point (36.737, -119.787)"
+        e['breadcrumbs'] = {'values': [{'message': 'POST lat=36.737'}]}
+        scrubbed = scrub_event(e, {})
+        assert 'value' not in scrubbed['exception']['values'][0]
+        assert 'breadcrumbs' not in scrubbed
+
+    def test_lookup_url_query_is_stripped(self):
+        e = event('https://www.sjvair.com/api/2.0/regions/places/lookup/?lat=36.737&lon=-119.787')
+        scrubbed = scrub_event(e, {})
+        dumped = json.dumps(scrubbed)
+        assert '36.737' not in dumped and '119.787' not in dumped
+        assert scrubbed['request']['url'] == 'https://www.sjvair.com/api/2.0/regions/places/lookup/'
 
     def test_documents_event_still_scrubbed(self):
         scrubbed = scrub_event(event('https://www.sjvair.com/api/2.0/documents/doc/'), {})

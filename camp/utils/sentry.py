@@ -20,6 +20,11 @@ def scrub_lookup(event):
     request = event['request']
     request.pop('data', None)
     request.pop('query_string', None)
+    if request.get('url'):
+        request['url'] = urlsplit(request['url'])._replace(query='', fragment='').geturl()
+    event.pop('breadcrumbs', None)
+    for value in (event.get('exception') or {}).get('values') or []:
+        value.pop('value', None)
     for stacktrace in stacktraces(event):
         for frame in stacktrace.get('frames') or []:
             frame.pop('vars', None)

@@ -185,6 +185,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'camp.api.middleware.CoordinateQueryGuardMiddleware',
     'django.middleware.gzip.GZipMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
 
