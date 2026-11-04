@@ -11,11 +11,16 @@ from camp.apps.summaries.periods import period_end
 from camp.utils.datetime import make_aware
 
 
+def _count(n, noun):
+    """'1 period', '2 periods', '1,024 missing hours'."""
+    return f'{n:,} {noun}' if n == 1 else f'{n:,} {noun}s'
+
+
 class Command(BaseCommand):
     help = (
-        'Repair daily-and-longer summaries in a date range: delete rows that do not start '
-        'on a Pacific period boundary, optionally fill missing hourly region rows, then '
-        're-roll. Always scoped by monitor and/or region.'
+        'Repair daily-and-longer summaries in a date range: optionally fill missing hourly '
+        'region rows, then per resolution from days up delete the rows that do not start on '
+        'a Pacific period boundary and re-roll it. Always scoped by monitor and/or region.'
     )
 
     def add_arguments(self, parser):
@@ -30,7 +35,9 @@ class Command(BaseCommand):
         parser.add_argument('--region-type', action='append', default=[], metavar='TYPE',
             help='Repair every current region of this type with a boundary, e.g. county (repeatable)')
         parser.add_argument('--region-hours', action='store_true',
-            help='First compute hourly region rows missing for hours that have monitor rows')
+            help='First compute hourly region rows missing for hours that have monitor rows, '
+                 'in only [start, end): day and month re-rolls that widen past it read the '
+                 'region hours already there')
         parser.add_argument('--dry-run', action='store_true',
             help='Report what would change and write nothing')
 
@@ -65,14 +72,19 @@ class Command(BaseCommand):
 
         self.stdout.write(f'Range: {self._fmt(start)} -> {self._fmt(end)}')
         self.stdout.write(f'Monitors: {len(monitor_ids):,} | Regions: {len(region_ids):,}')
+        if options['region_hours']:
+            self.stdout.write(
+                f'Region hours: fills missing hourly region rows {self._fmt(start)} -> {self._fmt(end)} only; '
+                'day and month re-rolls outside it read the region hours already there'
+            )
         self.stdout.write(
             f'Scanning for misaligned rows: {self._fmt(scan_start - timedelta(days=1))} -> {self._fmt(scan_end)}'
         )
         for resolution, span in spans.items():
             unfinished = len(span.periods) - len(span.rolled)
             self.stdout.write(
-                f'  {resolution}: deletes misaligned rows standing for the {len(span.periods):,} '
-                f'periods {self._fmt(span.periods[0])} -> {self._fmt(period_end(resolution, span.periods[-1]))}; '
+                f'  {resolution}: deletes misaligned rows standing for the {_count(len(span.periods), "period")} '
+                f'{self._fmt(span.periods[0])} -> {self._fmt(period_end(resolution, span.periods[-1]))}; '
                 f're-rolls the {len(span.rolled):,} finished'
                 + (f' ({unfinished:,} unfinished left for the scheduled rollup)' if unfinished else '')
             )
@@ -83,52 +95,71 @@ class Command(BaseCommand):
         if options['region_hours']:
             missing = repair.missing_region_hours(region_ids, start, end, progress=progress)
             hours = sum(len(v) for v in missing.values())
-            line = f'region hour: {hours:,} missing hours in {len(missing):,} region(s)'
+            line = f'region hour: {_count(hours, "missing hour")} in {_count(len(missing), "region")}'
             if not dry_run:
                 written = repair.fill_region_hours(missing, progress=progress)
-                line += f', {written:,} rows written'
+                line += f', {_count(written, "row")} written'
             self.stdout.write(line)
 
-        # 2. Delete misaligned rows standing for a covered period; report the rest
-        verb = 'to delete' if dry_run else 'deleted'
-        decisions = {}
+        # 2. Per kind, per resolution from days up: delete the misaligned rows
+        # standing for a covered period, then re-roll that resolution, so a
+        # resolution's old rows are missing only while it re-rolls. Each
+        # resolution reads only the one below, which is already done.
         for kind, ids in scopes:
             model, ids_field, _ = repair.KINDS[kind]
             misaligned = repair.find_misaligned(model, ids_field, ids, scan_start, scan_end)
-            decision = decisions[kind] = repair.decide(spans, misaligned)
-            counts = repair.delete_misaligned(kind, ids, decision.delete, dry_run=dry_run, progress=progress)
-            left = repair.delete_misaligned(kind, ids, decision.outside, dry_run=True)
+            decision = repair.decide(spans, misaligned)
+            beyond, held = repair.split_outside(spans, decision.outside)
             for resolution in repair.RESOLUTIONS:
-                self.stdout.write(
-                    f'{kind} {resolution}: {counts[resolution]:,} misaligned {verb}, '
-                    f'{left[resolution]:,} misaligned outside this run\'s range (left in place)'
-                )
-                outside = decision.outside.get(resolution, [])
-                for ts in outside[:10]:
-                    self.stdout.write(
-                        f'  outside: {kind} {resolution} at {self._fmt(ts)} stands for the period '
-                        f'starting {self._fmt(repair.stands_for(resolution, ts))}; widen the range to repair it'
-                    )
-                if len(outside) > 10:
-                    self.stdout.write(f'  outside: ... and {len(outside) - 10:,} more timestamps')
-                for p in decision.skipped.get(resolution, []):
-                    self.stdout.write(
-                        f'  skipped: {kind} {resolution} starting {self._fmt(p)} is not deleted or re-rolled: '
-                        'its window holds a row left in place'
-                    )
-
-        # 3. Re-roll
-        for kind, ids in scopes:
-            windows = decisions[kind].windows
-            if dry_run:
-                counts = {res: len(w) if ids else 0 for res, w in windows.items()}
-            else:
-                counts = repair.reroll(kind, ids, start, end, now, windows=windows, progress=progress)
-            verb = 'windows to roll' if dry_run else 'windows rolled'
-            for resolution in repair.RESOLUTIONS:
-                self.stdout.write(f'{kind} {resolution}: {counts[resolution]:,} {verb}')
+                self._repair_resolution(kind, ids, resolution, decision, beyond, held,
+                                        start, end, now, dry_run, progress)
 
         self.stdout.write(self.style.SUCCESS('Dry run done.' if dry_run else 'Done.'))
+
+    def _repair_resolution(self, kind, ids, resolution, decision, beyond, held, start, end, now, dry_run, progress):
+        delete = {resolution: decision.delete.get(resolution, [])}
+        counts = repair.delete_misaligned(kind, ids, delete, dry_run=dry_run, progress=progress)
+        far = repair.delete_misaligned(kind, ids, {resolution: beyond.get(resolution, [])}, dry_run=True)
+        kept = repair.delete_misaligned(kind, ids, {resolution: held.get(resolution, [])}, dry_run=True)
+        verb = 'to delete' if dry_run else 'deleted'
+        self.stdout.write(
+            f'{kind} {resolution}: {counts[resolution]:,} misaligned {verb}, '
+            f'{far[resolution]:,} left in place (period outside this run), '
+            f'{kept[resolution]:,} left in place (period skipped)'
+        )
+        self._list_left(kind, resolution, beyond.get(resolution, []),
+                        'outside this run; widen the range to repair it')
+        self._list_left(kind, resolution, held.get(resolution, []),
+                        'which this run skips (see skipped)')
+        causes = decision.causes.get(resolution, {})
+        for p in decision.skipped.get(resolution, []):
+            what, source, ts = causes[p]
+            reason = (
+                f'its window holds the {source} row at {self._fmt(ts)}, left in place' if what == 'row'
+                else f'its window holds the skipped {source} starting {self._fmt(ts)}'
+            )
+            self.stdout.write(
+                f'  skipped: {kind} {resolution} starting {self._fmt(p)} is not deleted or re-rolled: {reason}'
+            )
+
+        windows = decision.windows
+        if dry_run:
+            rolled = len(windows.get(resolution, [])) if ids else 0
+            verb = 'to roll'
+        else:
+            rolled = repair.reroll(kind, ids, start, end, now, windows=windows,
+                                   resolutions=[resolution], progress=progress)[resolution]
+            verb = 'rolled'
+        self.stdout.write(f'{kind} {resolution}: {_count(rolled, "window")} {verb}')
+
+    def _list_left(self, kind, resolution, timestamps, why):
+        for ts in timestamps[:10]:
+            self.stdout.write(
+                f'  left in place: {kind} {resolution} at {self._fmt(ts)} stands for the period '
+                f'starting {self._fmt(repair.stands_for(resolution, ts))}, {why}'
+            )
+        if len(timestamps) > 10:
+            self.stdout.write(f'  left in place: ... and {len(timestamps) - 10:,} more timestamps')
 
     def _progress(self, message):
         self.stdout.write(f'  {message}')

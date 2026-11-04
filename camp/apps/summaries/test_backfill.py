@@ -76,7 +76,7 @@ class ChunkStartForTests(TestCase):
             cursor=_day(2026, 3, 10), chunk_days=3,
         )
         job.refresh_from_db()
-        assert job.cursor.tzinfo != LA   # the database hands back UTC
+        assert job.cursor.utcoffset() == timedelta(0)   # the database hands back UTC
         start = chunk_start_for(job.cursor, job.range_start, 3)
         assert _iso(start) == '2026-03-07T00:00:00-08:00'
 
@@ -178,7 +178,8 @@ class HigherRollupWindowsTests(TestCase):
         assert yearly[3] == _day(2024, 1, 1)
 
     def test_march_first_is_a_month_start_when_given_as_utc(self):
-        # 2026-03-01 00:00 PST is 08:00 UTC, still March 1; the old code saw Feb 28 23:00 as Mar 1 only by luck.
+        # 2026-03-01 00:00 PST is 08:00 UTC: given in UTC it must still read as
+        # March 1 in Pacific, a month and season start.
         day = _day(2026, 3, 1).astimezone(dt_timezone.utc)
         windows = higher_rollup_windows(day)
         assert [w[0] for w in windows] == [R.MONTHLY, R.SEASONAL]
@@ -231,6 +232,40 @@ class BackfillJobDstTests(TestCase):
         assert (R.SEASONAL, '2026-03-01T00:00:00-08:00') in stamps
         day = rows.get(resolution=R.DAILY, timestamp=_day(2026, 3, 8))
         assert day.count == 23
+
+    def test_a_cursor_written_by_the_old_code_runs_to_done(self):
+        # The old code stepped the cursor back in 24-hour steps from a PDT
+        # midnight, so a job paused in standard time holds 23:00 the day before.
+        monitor = PurpleAir.objects.first()
+        MonitorSummary.objects.bulk_create([
+            MonitorSummary(
+                monitor=monitor, timestamp=hour, resolution=R.HOURLY,
+                entry_type='pm25', processor='', **compute_stats([10.0], 1),
+            )
+            for hour in iter_hours(_day(2026, 2, 1), _day(2026, 3, 10))
+        ])
+        cursor = datetime(2026, 3, 5, 7, tzinfo=dt_timezone.utc)
+        assert _iso(cursor) == '2026-03-04T23:00:00-08:00'
+        SummaryBackfillJob.objects.create(
+            range_start=_day(2026, 2, 26), range_end=_day(2026, 3, 10), cursor=cursor,
+        )
+        for _ in range(200):
+            SummaryBackfillJob.objects.update(locked_at=None)
+            with self.captureOnCommitCallbacks(execute=True):
+                backfill_summaries_tick()
+            if SummaryBackfillJob.objects.get().state != SummaryBackfillJob.State.RUNNING:
+                break
+        assert SummaryBackfillJob.objects.get().state == SummaryBackfillJob.State.DONE
+
+        rows = MonitorSummary.objects.exclude(resolution=R.HOURLY)
+        self._assert_all_period_starts(rows)
+        days = {_iso(r.timestamp): r.count for r in rows.filter(resolution=R.DAILY)}
+        # Feb 26 - Mar 4: the old cursor's own day is written whole, none are lost.
+        assert days == {f'2026-{m:02d}-{d:02d}T00:00:00-08:00': 24 for m, d in [
+            (2, 26), (2, 27), (2, 28), (3, 1), (3, 2), (3, 3), (3, 4),
+        ]}
+        march = rows.get(resolution=R.MONTHLY, timestamp=_day(2026, 3, 1))
+        assert _iso(march.timestamp) == '2026-03-01T00:00:00-08:00'
 
     def test_standard_end_backfill_across_fall_back(self):
         rows = self._run_backfill('2026-10-30', '2026-11-04', _day(2026, 10, 1), _day(2026, 11, 4))

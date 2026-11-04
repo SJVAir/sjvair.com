@@ -8,7 +8,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
-from django.db import connection
+from django.db import connection, transaction
 import pytest
 
 from camp.apps.monitors.purpleair.models import PurpleAir
@@ -297,17 +297,28 @@ class RepairSummariesTests(TestCase):
             assert not model.objects.filter(resolution=R.DAILY, timestamp=datetime(2026, 2, 1, 7, tzinfo=UTC)).exists()
             assert model.objects.filter(resolution=R.DAILY, timestamp=_pacific(2026, 2, 28)).exists()
         for kind in ('monitor', 'region'):
-            assert f"{kind} day: 28 misaligned deleted, 1 misaligned outside this run's range (left in place)" in output
-            assert f"{kind} month: 0 misaligned deleted, 2 misaligned outside this run's range (left in place)" in output
-            assert f"{kind} season: 0 misaligned deleted, 1 misaligned outside this run's range (left in place)" in output
+            assert f'{kind} day: 28 misaligned deleted, 1 left in place (period outside this run), 0 left in place (period skipped)' in output
+            assert f'{kind} month: 0 misaligned deleted, 1 left in place (period outside this run), 1 left in place (period skipped)' in output
+            assert f'{kind} season: 0 misaligned deleted, 1 left in place (period outside this run), 0 left in place (period skipped)' in output
             assert (
-                f'outside: {kind} month at 2026-02-28T23:00:00-08:00 stands for the period '
-                'starting 2026-03-01T00:00:00-08:00'
+                f'left in place: {kind} month at 2026-02-28T23:00:00-08:00 stands for the period '
+                'starting 2026-03-01T00:00:00-08:00, outside this run; widen the range to repair it'
             ) in output
-            assert f'skipped: {kind} month starting 2026-02-01T00:00:00-08:00' in output
-            assert f'skipped: {kind} season starting 2025-12-01T00:00:00-08:00' in output
+            assert (
+                f'left in place: {kind} month at 2026-01-31T23:00:00-08:00 stands for the period '
+                'starting 2026-02-01T00:00:00-08:00, which this run skips (see skipped)'
+            ) in output
+            assert (
+                f'skipped: {kind} month starting 2026-02-01T00:00:00-08:00 is not deleted or re-rolled: '
+                'its window holds the day row at 2026-02-28T23:00:00-08:00, left in place'
+            ) in output
+            assert (
+                f'skipped: {kind} season starting 2025-12-01T00:00:00-08:00 is not deleted or re-rolled: '
+                'its window holds the month row at 2026-02-28T23:00:00-08:00, left in place'
+            ) in output
+            assert "outside this run's range" not in output
         assert '  day: deletes misaligned rows standing for the 424 periods 2025-01-01T00:00:00-08:00 -> 2026-03-01T00:00:00-08:00' in output
-        assert '  season: deletes misaligned rows standing for the 1 periods 2025-12-01T00:00:00-08:00 -> 2026-03-01T00:00:00-08:00' in output
+        assert '  season: deletes misaligned rows standing for the 1 period 2025-12-01T00:00:00-08:00 -> 2026-03-01T00:00:00-08:00' in output
 
         # Widening the range to cover March repairs everything.
         self._repair(start='2025-12-01', end='2026-06-01')
@@ -315,6 +326,139 @@ class RepairSummariesTests(TestCase):
             assert is_period_start(row.resolution, row.timestamp), (row.resolution, _iso(row.timestamp))
         feb = MonitorSummary.objects.get(monitor=self.monitor, resolution=R.MONTHLY, timestamp=_pacific(2026, 2, 1))
         assert feb.count == 28 * 24
+
+    def test_a_skip_records_its_cause(self):
+        # A Dec 1-15 2025 run covers days through Feb 2026, so the day row
+        # stamped Feb 28 23:00 (standing for Mar 1) is left in place. February's
+        # window holds that row; the Dec-Feb season above it holds no misaligned
+        # month row, only the skipped February.
+        hour_early = datetime(2026, 3, 1, 7, tzinfo=UTC)
+        spans = repair.plan(_pacific(2025, 12, 1), _pacific(2025, 12, 15), self.NOW)
+        decision = repair.decide(spans, {R.DAILY: [hour_early]})
+        assert decision.skipped == {R.MONTHLY: [_pacific(2026, 2, 1)], R.SEASONAL: [_pacific(2025, 12, 1)]}
+        assert decision.causes == {
+            R.MONTHLY: {_pacific(2026, 2, 1): ('row', R.DAILY, hour_early)},
+            R.SEASONAL: {_pacific(2025, 12, 1): ('period', R.MONTHLY, _pacific(2026, 2, 1))},
+        }
+
+    def test_each_resolution_is_deleted_then_rerolled_before_the_next(self):
+        # Deleting every misaligned row up front leaves standard-time months and
+        # seasons missing for the whole re-roll. Each resolution is instead
+        # deleted and re-rolled before the next, so when months re-roll the
+        # days below them are already clean, and when days re-roll the old
+        # month rows are still there.
+        self._seed_spring()
+        hour_early = datetime(2026, 3, 1, 7, tzinfo=UTC)
+        seen = []
+        real = rollup_monitor_summaries
+
+        def spy(target, source, start, end, **kwargs):
+            rows = MonitorSummary.objects.filter(monitor=self.monitor)
+            seen.append((
+                target,
+                rows.filter(resolution=R.MONTHLY, timestamp=hour_early).exists(),
+                [r.timestamp for r in rows.filter(resolution=R.DAILY, timestamp__gte=start - timedelta(days=1), timestamp__lt=end)],
+            ))
+            return real(target, source, start, end, **kwargs)
+
+        with patch.dict(repair.KINDS, {'monitor': (MonitorSummary, 'monitor_id', spy)}):
+            output = self._repair()
+
+        first_day = next(s for s in seen if s[0] == R.DAILY)
+        assert first_day[1], 'misaligned month rows are deleted only right before months re-roll'
+        months = [s for s in seen if s[0] == R.MONTHLY]
+        assert months
+        for _, old_month_left, days in months:
+            assert not old_month_left
+            assert all(is_period_start(R.DAILY, ts) for ts in days), [_iso(ts) for ts in days]
+        feb = next(s for s in months if s[2] and min(s[2]) == _pacific(2026, 2, 1))
+        assert len(feb[2]) == 28
+
+        lines = output.splitlines()
+
+        def at(prefix, text):
+            return next(i for i, line in enumerate(lines) if line.startswith(prefix) and text in line)
+        for kind in ('monitor', 'region'):
+            order = []
+            for resolution in repair.RESOLUTIONS:
+                order += [at(f'{kind} {resolution}: ', 'misaligned deleted'), at(f'{kind} {resolution}: ', 'windows rolled')]
+            assert order == sorted(order), output
+        assert 'monitor day: 29 misaligned deleted' in output
+
+    def test_result_matches_deleting_everything_first(self):
+        # The same rows as the old order (every delete, then every re-roll).
+        self._seed_spring()
+        with transaction.atomic():
+            spans = repair.plan(_pacific(2026, 2, 1), _pacific(2026, 6, 1), self.NOW)
+            scan_start, scan_end = repair.scan_range(spans)
+            decisions = {}
+            for kind, ids in (('monitor', [self.monitor.pk]), ('region', [self.region.pk])):
+                model, ids_field, _ = repair.KINDS[kind]
+                decisions[kind] = repair.decide(spans, repair.find_misaligned(model, ids_field, ids, scan_start, scan_end))
+                repair.delete_misaligned(kind, ids, decisions[kind].delete)
+            for kind, ids in (('monitor', [self.monitor.pk]), ('region', [self.region.pk])):
+                repair.reroll(kind, ids, None, None, None, windows=decisions[kind].windows)
+            expected = self._snapshot()
+            transaction.set_rollback(True)
+
+        self._repair()
+        assert len(expected) > 1000
+        assert self._snapshot() == expected
+
+    def test_reroll_with_no_windows_rolls_nothing(self):
+        self._seed_spring()
+        before = self._snapshot()
+        counts = repair.reroll('monitor', [self.monitor.pk], _pacific(2026, 2, 1), _pacific(2026, 6, 1), self.NOW, windows={})
+        assert counts == {resolution: 0 for resolution in repair.RESOLUTIONS}
+        assert self._snapshot() == before
+
+    def test_header_states_the_region_hour_span_and_counts_in_words(self):
+        self._seed_spring()
+        output = self._repair('--region-hours', '--dry-run', start='2026-02-15', end='2026-03-11')
+        header = output.split('Dry run: nothing will be written.')[0]
+        assert (
+            'Region hours: fills missing hourly region rows 2026-02-15T00:00:00-08:00 -> '
+            '2026-03-11T00:00:00-07:00 only; day and month re-rolls outside it read the region hours already there'
+        ) in header
+        assert ' 1 periods' not in output
+        assert '  quarter: deletes misaligned rows standing for the 1 period ' in header
+        assert 'region hour: 24 missing hours in 1 region' in output
+        assert 'region(s)' not in output
+        assert '1 windows' not in output
+
+    def test_region_hours_help_states_its_span(self):
+        from camp.apps.summaries.management.commands.repair_summaries import Command
+        parser = Command().create_parser('manage.py', 'repair_summaries')
+        assert 'only [start, end)' in ' '.join(parser.format_help().split())
+
+    def test_missing_region_hours_filters_by_monitor_for_a_small_scope(self):
+        self._seed_spring()
+        # A monitor outside the region with a row in an hour the region already has.
+        other_monitor = PurpleAir.objects.create(name='Elsewhere', position='POINT(0 0)', sensor_id=11235)
+        assert not self.region.monitors.filter(pk=other_monitor.pk).exists()
+        MonitorSummary.objects.create(
+            monitor=other_monitor, timestamp=_pacific(2026, 3, 2, 3), resolution=R.HOURLY,
+            entry_type='pm25', processor='', **compute_stats([10.0], 1),
+        )
+        start, end = _pacific(2026, 3, 1), _pacific(2026, 3, 8)
+
+        def run():
+            with CaptureQueriesContext(connection) as ctx:
+                missing = repair.missing_region_hours([self.region.pk], start, end)
+            hourly = [q['sql'] for q in ctx.captured_queries if 'summaries_monitorsummary' in q['sql']]
+            return missing, hourly
+
+        small, small_sql = run()
+        assert len(small_sql) == 1
+        assert '"monitor_id" IN' in small_sql[0]
+
+        with patch.object(repair, 'REGION_HOUR_MONITOR_FILTER_MAX', 0):
+            wide, wide_sql = run()
+        assert len(wide_sql) == 1
+        assert '"monitor_id" IN' not in wide_sql[0]
+
+        assert small == wide
+        assert len(small[self.region.pk]) == 24
 
     def test_delete_batches_timestamps_and_reports_progress(self):
         self._seed_spring()

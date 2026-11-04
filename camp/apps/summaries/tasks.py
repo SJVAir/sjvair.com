@@ -1,8 +1,8 @@
 import logging
+import time
 from datetime import timedelta
 from itertools import groupby
 
-from django.conf import settings
 from django.db import transaction
 from django.db.models import Exists, F, OuterRef, Q
 from django.utils import timezone
@@ -554,17 +554,20 @@ def check_summary_integrity(now=None):
       region hourly summaries at all.
 
     Read-only. The hour check is two bounded distinct-timestamp queries, not
-    a per-region geo check.
+    a per-region geo check. Logs how long the run took at info level, so the
+    400-day scan's cost shows in production logs.
     """
     from camp.apps.summaries.repair import find_misaligned  # repair imports this module
 
     now = now or timezone.now()
     start = now - INTEGRITY_LOOKBACK
+    began = time.monotonic()
 
     misaligned = 0
     for model, ids_field in ((MonitorSummary, 'monitor_id'), (RegionSummary, 'region_id')):
         found = find_misaligned(model, ids_field, None, start, now)
         misaligned += sum(len(timestamps) for timestamps in found.values())
+    scanned = time.monotonic()
 
     today = period_start('day', now)
     yesterday = period_start('day', today - timedelta(hours=1))
@@ -583,6 +586,10 @@ def check_summary_integrity(now=None):
     missing = [hour for hour in iter_hours(yesterday, today) if hour in monitor_hours and hour not in region_hours]
 
     result = {'misaligned': misaligned, 'missing_region_hours': len(missing)}
+    logger.info(
+        'Summary integrity check took %.1fs (misaligned scan %.1fs, region hours %.1fs)',
+        time.monotonic() - began, scanned - began, time.monotonic() - scanned,
+    )
     if misaligned or missing:
         logger.error(
             'Summary integrity check found %d misaligned row timestamp(s) and %d hour(s) '

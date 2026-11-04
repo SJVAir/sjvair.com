@@ -1569,6 +1569,14 @@ class SummaryIntegrityCheckTests(TestCase):
         with self.assertNoLogs('camp.apps.summaries', level='ERROR'):
             assert self._run() == {'misaligned': 0, 'missing_region_hours': 0}
 
+    def test_logs_how_long_the_run_took(self):
+        self._fill_day()
+        with self.assertLogs('camp.apps.summaries', level='INFO') as logs:
+            self._run()
+        timing = [r for r in logs.records if r.levelname == 'INFO' and 'integrity check took' in r.getMessage()]
+        assert len(timing) == 1
+        assert 'misaligned scan' in timing[0].getMessage()
+
     def test_misaligned_month_row_is_counted_and_logged(self):
         MonitorSummary.objects.create(
             monitor=self.monitor, timestamp=pacific(2026, 2, 28, 23),

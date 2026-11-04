@@ -1,10 +1,12 @@
 """
 Repair summary rows written with wrong period boundaries (see repair_summaries).
 
-Three steps, in order: fill missing hourly region rows, delete daily-and-longer
-rows whose timestamp isn't a Pacific period start, then re-roll everything
-above hourly from the rows below. Each step is idempotent and commits per
-batch, so an interrupted run is finished by running it again.
+Fill missing hourly region rows first; then, per resolution from days up,
+delete the rows of that resolution whose timestamp isn't a Pacific period
+start and re-roll it from the rows below, before moving to the next. A
+resolution's old rows are gone only while that resolution re-rolls, never
+for the whole run. Each step is idempotent and commits per batch, so an
+interrupted run is finished by running it again.
 
 A misaligned row is deleted only when the period it stands for is one this
 run covers (see `stands_for` and `plan`); the rest are left in place and
@@ -41,6 +43,9 @@ DELETE_ID_BATCH = 500
 DELETE_TIMESTAMP_BATCH = 200
 REGION_HOUR_BATCH = 24 * 7
 REGION_HOUR_CHUNK = timedelta(days=7)
+# Up to this many in-scope monitors, the weekly hourly-monitor query filters
+# by monitor id; above it, the range-only query reads less than a long IN list.
+REGION_HOUR_MONITOR_FILTER_MAX = 500
 ROLL_PROGRESS_EVERY = 50
 
 
@@ -139,7 +144,7 @@ def find_misaligned(model, ids_field, ids, start, end):
     return dict(found)
 
 
-Decision = namedtuple('Decision', 'delete outside windows skipped')
+Decision = namedtuple('Decision', 'delete outside windows skipped causes')
 
 
 def decide(spans, misaligned):
@@ -152,6 +157,10 @@ def decide(spans, misaligned):
     - `skipped`: {resolution: [period starts]} covered periods dropped because
       re-rolling them would read a row left in place, or a finer period that
       was itself dropped.
+    - `causes`: {resolution: {period start: cause}} for each skipped period,
+      the cause being ('row', source resolution, timestamp) for a row left in
+      place in its window, else ('period', source resolution, period start)
+      for a skipped finer period in it.
 
     A left-in-place row still sits inside the windows of coarser periods (the
     2026-02-28T23:00-08:00 day row standing for March 1 is inside February), so
@@ -163,6 +172,7 @@ def decide(spans, misaligned):
     source_of = dict(ROLLUPS)
     covered = {resolution: set(span.periods) for resolution, span in spans.items()}
     skipped = {resolution: set() for resolution in RESOLUTIONS}
+    causes = {}
 
     def split():
         delete, outside = {}, {}
@@ -179,12 +189,17 @@ def decide(spans, misaligned):
             source = source_of[target]
             if source == R.HOURLY:
                 continue   # hourly rows are never misaligned
-            blockers = outside.get(source, []) + sorted(skipped[source])
+            blockers = (
+                [('row', source, ts) for ts in sorted(outside.get(source, []))]
+                + [('period', source, sp) for sp in sorted(skipped[source])]
+            )
             for p in sorted(covered[target]):
                 end = period_end(target, p)
-                if any(p <= ts < end for ts in blockers):
+                cause = next((b for b in blockers if p <= b[2] < end), None)
+                if cause:
                     covered[target].discard(p)
                     skipped[target].add(p)
+                    causes.setdefault(target, {})[p] = cause
                     changed = True
         if not changed:
             break
@@ -193,7 +208,22 @@ def decide(spans, misaligned):
         resolution: [p for p in span.rolled if p in covered[resolution]]
         for resolution, span in spans.items()
     }
-    return Decision(delete, outside, windows, {r: sorted(p) for r, p in skipped.items() if p})
+    return Decision(delete, outside, windows, {r: sorted(p) for r, p in skipped.items() if p}, causes)
+
+
+def split_outside(spans, outside):
+    """
+    Split a Decision's `outside` rows by why they stay: (beyond, held), each
+    {resolution: [timestamps]}. `beyond` rows stand for a period outside this
+    run; `held` rows stand for a covered period that `decide` skipped.
+    """
+    beyond, held = {}, {}
+    for resolution, timestamps in outside.items():
+        periods = set(spans[resolution].periods)
+        for ts in timestamps:
+            target = held if stands_for(resolution, ts) in periods else beyond
+            target.setdefault(resolution, []).append(ts)
+    return beyond, held
 
 
 def delete_misaligned(kind, ids, misaligned, dry_run=False, progress=_noop):
@@ -233,7 +263,9 @@ def missing_region_hours(region_ids, start, end, progress=_noop):
     at a time for every region in scope together: one query for the distinct
     (timestamp, monitor) hourly monitor rows in the week and one for the
     distinct (region, timestamp) hourly region rows, both bounded by the
-    (resolution, timestamp) range, never a query per hour or per region.
+    (resolution, timestamp) range, never a query per hour or per region. The
+    monitor query also filters by the in-scope monitors when there are at most
+    REGION_HOUR_MONITOR_FILTER_MAX of them (a county, not the whole network).
     """
     monitor_sets = {}
     for region in Region.all_objects.filter(pk__in=region_ids, boundary__isnull=False).order_by('pk'):
@@ -244,6 +276,9 @@ def missing_region_hours(region_ids, start, end, progress=_noop):
         return {}
     in_scope = frozenset().union(*monitor_sets.values())
     region_pks = list(monitor_sets)
+    monitor_filter = (
+        {'monitor_id__in': sorted(in_scope)} if len(in_scope) <= REGION_HOUR_MONITOR_FILTER_MAX else {}
+    )
 
     chunks = []
     chunk_start = start
@@ -256,7 +291,7 @@ def missing_region_hours(region_ids, start, end, progress=_noop):
         monitors_at = defaultdict(set)
         rows = (
             MonitorSummary.objects
-            .filter(resolution=R.HOURLY, timestamp__gte=lo, timestamp__lt=hi)
+            .filter(resolution=R.HOURLY, timestamp__gte=lo, timestamp__lt=hi, **monitor_filter)
             .values_list('timestamp', 'monitor_id')
             .distinct()
         )
@@ -307,17 +342,21 @@ def reroll_windows(start, end, now):
     return {resolution: span.rolled for resolution, span in plan(start, end, now).items()}
 
 
-def reroll(kind, ids, start, end, now, windows=None, progress=_noop):
-    """Re-roll every resolution above hourly for `ids`. Returns {resolution: windows rolled}."""
+def reroll(kind, ids, start, end, now, windows=None, resolutions=None, progress=_noop):
+    """
+    Re-roll `resolutions` (default: every resolution above hourly, in order)
+    for `ids`, over `windows` (default: reroll_windows; a resolution missing
+    from it rolls nothing). Returns {resolution: windows rolled}.
+    """
     _, _, rollup = KINDS[kind]
-    windows = windows or reroll_windows(start, end, now)
-    counts = {}
+    if windows is None:
+        windows = reroll_windows(start, end, now)
+    counts = {resolution: 0 for resolution in RESOLUTIONS}
     for target, source in ROLLUPS:
-        counts[target] = 0
-        if not ids:
+        if not ids or (resolutions is not None and target not in resolutions):
             continue
-        total = len(windows[target])
-        for ws in windows[target]:
+        total = len(windows.get(target, []))
+        for ws in windows.get(target, []):
             rollup(target, source, ws, period_end(target, ws), **{f'{kind}_ids': ids})
             counts[target] += 1
             if counts[target] % ROLL_PROGRESS_EVERY == 0 or counts[target] == total:

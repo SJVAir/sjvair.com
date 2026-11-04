@@ -94,6 +94,13 @@ def hour_for_run(fire_minute: int, now: datetime | None = None) -> tuple[datetim
     the hour is the one before the hour holding `fire`. A parent that waited
     behind other work therefore still summarizes the hour it was scheduled for.
     Returns (hour, lateness), lateness being `now - fire`.
+
+    That holds only up to 60 minutes late. A parent that starts 60+ minutes
+    after its fire time resolves to the next fire instead: it summarizes the
+    next hour (which that fire's own run summarizes again), the hour it was
+    scheduled for gets no row, and no late-run warning names it, since the
+    lateness it reports is measured from the next fire. The daily
+    check_summary_integrity reports the missing region hours the next day.
     """
     now = (now or timezone.now()).astimezone(dt_timezone.utc)
     fire = now.replace(minute=fire_minute, second=0, microsecond=0)
