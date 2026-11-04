@@ -104,11 +104,14 @@ environments).
    every town match first, which let a name word that also starts a town name win, e.g.
    "lincoln elementary" put Stockton's "Lincoln Village" school first and "fresno high" put
    other Fresno high schools above Fresno High):
-   1. the whole of `q` starts the name;
-   2. the whole of `q` starts a word in the name (after a space, `/`, `-` or `(`);
-   3. a name + town split matches, ordered by how its name part matches (starts the name,
+   1. the name is exactly `q` (ignoring case and surrounding spaces; added during the build so
+      "LINCOLN ELEMENTARY PRESCHOOL" can't sort in among the 13 "Lincoln Elementary" rows and
+      cut the name-tie stretch short);
+   2. the whole of `q` starts the name;
+   3. the whole of `q` starts a word in the name (after a space, `/`, `-` or `(`);
+   4. a name + town split matches, ordered by how its name part matches (starts the name,
       starts a word, other);
-   4. the whole of `q` matches only as a substring or by similarity.
+   5. the whole of `q` matches only as a substring or by similarity.
 2. **Similarity**, highest first (`TrigramWordSimilarity` of the matching name text).
 3. **City**, alphabetical, ignoring case: the row's mailing city (`city_name`, the one rows
    show), falling back to the linked city/CDP region's name when blank.
