@@ -254,6 +254,36 @@ On a branch from `origin/release/4.8.0`, PR into it.
 - Schemas, types, tests against the local API, and `api-urls.md` updated.
 - No beta is cut without the user's yes for that specific release.
 
+## Part 3: Listing weather stations (opt-in monitor types)
+
+Added 2026-11-04 (the user: widgets are next, so this isn't deferred).
+
+**The gap.** The catalog's Weather dataset is CIMIS stations (places of kind `monitor`), but no
+public endpoint lists them. `MONITOR_ENABLED_TYPES` leaves CIMIS out, and the monitor list
+applies `get_public()` before any filter, so the dashboard can't offer stations or match the
+nearest one. Adding CIMIS to the whitelist would put weather stations in every list,
+`closest`, `current`, `at` and `meta` answer, which installed apps read.
+
+**Decided (the user, 2026-11-04): an opt-in setting.**
+- `settings.MONITOR_OPT_IN_TYPES = {'cimis': 'weather'}` maps a monitor type to the catalog
+  dataset that opts it in. Opt-in types never appear by default: every endpoint answers
+  exactly as today without the parameter below.
+- `GET /api/2.0/monitors/?dataset=<id>`:
+  - `weather` returns that dataset's opt-in types only (CIMIS), not hidden, in the usual
+    monitor shape.
+  - `air-quality` returns today's default list.
+  - Without `dataset`, the list is unchanged.
+  - An unknown or non-monitor dataset id is a 400.
+  - Other filters (`device`, `name`, `position`) still apply on top.
+- The catalog's Weather and Air Quality datasets gain `places_url`, the list URL with their
+  `dataset=`. Other datasets get `places_url: ""`. The field is additive.
+- Only the list endpoint opts in. `closest`/`current`/`at`/`meta` are unchanged. The nearest
+  station is computed in the browser (about 23 stations).
+- The list's response cache keys on the query string already, so `?dataset=weather` is cached
+  separately.
+- sdk-js: `getMonitors` takes an optional `dataset` (Part 2's sdk-js PR), and the catalog
+  schema gains `places_url`.
+
 ## Delivery
 
 - sjvair.com: branch `feature/summary-cache-lookup` from `origin/develop`, one PR into

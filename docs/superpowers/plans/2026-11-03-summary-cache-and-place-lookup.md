@@ -190,6 +190,34 @@ Run: `<test command> camp/apps/summaries/tests.py::PacificScheduleTests`
 - [ ] **Step 4: Run the new tests and the documents suite; expect PASS.**
 - [ ] **Step 5: Commit** — `git commit -m "Scrub lookup coordinates from Sentry and Scout"`
 
+### Task 5b: Opt-in monitor types and `?dataset=` on the monitor list
+
+**Files:**
+- Modify: `camp/settings/base.py` (add `MONITOR_OPT_IN_TYPES = {'cimis': 'weather'}` next to `MONITOR_ENABLED_TYPES`), `camp/apps/monitors/models.py` (classmethod `get_opt_in_subclasses(dataset: str) -> list[type[Monitor]]`), `camp/api/v2/monitors/endpoints.py` (`MonitorList.get_queryset`), `camp/api/v2/meta/catalog.py` (`places_url` on every dataset)
+- Test: `camp/api/v2/monitors/tests/test_endpoints.py` (new class `MonitorListDatasetTests`), `camp/api/v2/meta/tests*` (catalog `places_url`)
+
+**Interfaces:**
+- Produces:
+  - `Monitor.get_opt_in_subclasses(dataset)`: the subclasses whose `monitor_type` maps to `dataset` in `settings.MONITOR_OPT_IN_TYPES`.
+  - `GET monitors/?dataset=weather`: `Monitor.objects.filter(is_hidden=False)` limited to those subclasses' `type_queryset_filter()`, then `MonitorFilter` as usual.
+  - `dataset=air-quality`: today's `get_public()` list.
+  - No `dataset`: unchanged.
+  - Any other value: 400 `{'error': 'Unknown dataset: <id>.'}`.
+  - Catalog: each dataset dict gains `places_url`. It's `reverse('api:v2:monitors:monitor-list') + '?dataset=<id>'` for `weather` and `air-quality`, and `''` for the rest. `_dataset()` takes a `places_url` argument.
+- [ ] **Step 1: Write failing tests:**
+  - `test_default_list_excludes_cimis`: a CIMIS monitor and a PurpleAir monitor exist, and the default list has only the PurpleAir.
+  - `test_weather_dataset_lists_only_cimis`
+  - `test_weather_dataset_excludes_hidden`
+  - `test_air_quality_dataset_matches_default`
+  - `test_unknown_dataset_400`
+  - `test_closest_current_unchanged`: CIMIS still absent from `closest/` and `current/`.
+  - `test_weather_dataset_cached_separately`: default first, then `?dataset=weather`, and both are correct.
+  - Catalog: `test_places_url`. Weather and air-quality get their URLs, and the others get `''`.
+- [ ] **Step 2: Run; expect failures.**
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Run `camp/api/v2/monitors/`, `camp/api/v2/meta/` and `camp/apps/monitors/`; expect PASS.** Then rerun the full suite.
+- [ ] **Step 5: Commit** — `git commit -m "List weather stations through an opt-in monitor type"`. Also update CLAUDE.md: a bullet next to "Catalog" covering the opt-in setting, `?dataset=` and `places_url`.
+
 ### Task 6: Verify on real data, document, open the sjvair.com PR
 
 **Files:**
@@ -228,7 +256,7 @@ Run: `<test command> camp/apps/summaries/tests.py::PacificScheduleTests`
   - `"GET regions/places/lookup/ (monitor)"`: uses `TEST_MONITOR_ID` and skips with a note when it's unset.
   - `"…(type array)"`: `["zipcode","county"]` returns only those types.
 - [ ] **Step 2: Run; expect failures.** Run `deno test --allow-net --allow-env --allow-read --env-file=.env lib/regions/mod_test.ts`.
-- [ ] **Step 3: Implement** the overloads and update the JSDoc and `api-urls.md`.
+- [ ] **Step 3: Implement** the overloads and update the JSDoc and `api-urls.md`. Also (Task 5b): `getMonitors` gains an optional `dataset` (sent as `?dataset=`) and the catalog schema gains `places_url`. Test `getMonitors({ dataset: "weather" })` against the local API (skip with a note when it returns no CIMIS stations).
 - [ ] **Step 4: Run `deno fmt --check && deno lint && deno check mod.ts` and the regions tests; expect PASS.** Don't run the account tests (they send a real SMS).
 - [ ] **Step 5: Commit, push, and open a PR into `release/4.8.0`.** No beta. Ask the user before any release. Tell `data-dashboard-26` the PR exists.
 
