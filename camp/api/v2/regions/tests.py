@@ -13,7 +13,7 @@ from django.utils import timezone
 from django.test import Client, TestCase, RequestFactory
 from django.urls import reverse
 
-from camp.api.v2.regions.endpoints import LocationList, RegionDetail, RegionGeoJSON, RegionList, RegionMetaEndpoint
+from camp.api.v2.regions.endpoints import LocationList, LocationSearch, RegionDetail, RegionGeoJSON, RegionList, RegionMetaEndpoint
 from camp.apps.monitors.airnow.models import AirNow
 from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.regions.models import Boundary, Location, Region
@@ -28,6 +28,7 @@ region_detail = RegionDetail.as_view()
 region_meta = RegionMetaEndpoint.as_view()
 region_geojson = RegionGeoJSON.as_view()
 location_list = LocationList.as_view()
+location_search = LocationSearch.as_view()
 
 
 class RegionListTests(TestCase):
@@ -1142,3 +1143,136 @@ class PlaceLookupPointTests(TestCase):
         self.post(payload)
         with self.assertNumQueries(0):
             assert self.post(payload).json()['data'] == []
+
+
+class LocationSearchEndpointTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        cache.clear()
+        self.factory = RequestFactory()
+        self.county = Region.objects.filter(type='county').first()
+        self.n = 0
+
+    def make(self, name, town='Fresno', type=Location.Type.PUBLIC_SCHOOL, **kwargs):
+        self.n += 1
+        return Location.all_objects.create(
+            type=type, source={'child_care': 'cdss-ccl', 'private_school': 'cde-private'}.get(type, 'cde-public'),
+            external_id=f'{self.n:08d}', name=name, address=f'{self.n} Main St', city_name=town,
+            point=Point(-119.0 + self.n / 1000, 36.0, srid=4326), **kwargs)
+
+    def get(self, params):
+        response = location_search(self.factory.get('/', params))
+        return response, get_response_data(response)
+
+    def names(self, data):
+        return [row['name'] for row in data['data']]
+
+    def test_returns_rows_and_more_false(self):
+        for city in ('Visalia', 'Fresno', 'Clovis'):
+            self.make('Lincoln Elementary', town=city, county=self.county)
+        response, data = self.get({'q': 'lincoln'})
+        assert response.status_code == 200
+        assert len(data['data']) == 3
+        assert data['more'] is False
+        assert all(row['regions']['county']['name'] == self.county.name for row in data['data'])
+        assert response['Cache-Control'] == 'public, max-age=3600'
+
+    def test_short_query_is_empty(self):
+        self.make('Lincoln Elementary')
+        response, data = self.get({'q': ' l '})
+        assert response.status_code == 200
+        assert data == {'data': [], 'more': False}
+
+    def test_long_query_is_400(self):
+        response, data = self.get({'q': 'x' * 101})
+        assert response.status_code == 400
+        assert data == {'error': 'q must be at most 100 characters.'}
+        assert response['Cache-Control'] == 'no-cache'
+
+    def test_caps_at_ten(self):
+        for i in range(12):
+            self.make(f'Academy {i:02d}')
+        _, data = self.get({'q': 'academy'})
+        assert len(data['data']) == 10
+        assert data['more'] is True
+
+    def test_stretches_on_name_tie(self):
+        for i in range(9):
+            self.make(f'Academy A{i}', town='Aaa')
+        for i in range(4):
+            self.make('Academy Zeta', town=f'Zz{i}')
+        _, data = self.get({'q': 'academy'})
+        assert len(data['data']) == 13
+        assert data['more'] is False
+
+    def test_stretch_stops_at_fifteen(self):
+        for i in range(9):
+            self.make(f'Academy A{i}', town='Aaa')
+        for i in range(8):
+            self.make('Academy Zeta', town=f'Zz{i}')
+        _, data = self.get({'q': 'academy'})
+        assert len(data['data']) == 15
+        assert data['more'] is True
+
+    def test_type_filter(self):
+        self.make('Lincoln School')
+        self.make('Lincoln Prep', type=Location.Type.PRIVATE_SCHOOL)
+        self.make('Lincoln Kids', type=Location.Type.CHILD_CARE)
+        _, data = self.get({'q': 'lincoln', 'type': 'child_care'})
+        assert self.names(data) == ['Lincoln Kids']
+        _, data = self.get({'q': 'lincoln', 'type': 'public_school,private_school'})
+        assert sorted(self.names(data)) == ['Lincoln Prep', 'Lincoln School']
+
+    def test_type_list_tolerates_blanks_and_repeats(self):
+        self.make('Lincoln School')
+        response, data = self.get({'q': 'lincoln', 'type': 'public_school,,public_school'})
+        assert response.status_code == 200
+        assert len(data['data']) == 1
+
+    def test_unknown_type_is_400(self):
+        response, data = self.get({'q': 'lincoln', 'type': 'public_school,college'})
+        assert response.status_code == 400
+        assert 'college' in data['error']
+        assert 'public_school' not in data['error']
+        assert response['Cache-Control'] == 'no-cache'
+
+    def test_region_filter_each_linked_type(self):
+        regions = {t: Region.objects.filter(type=t).first() for t in ('county', 'city', 'zipcode', 'school_district')}
+        cdp = Region.all_objects.create(type='cdp', name='Testville', external_id='9999', slug='testville')
+        for t, region in regions.items():
+            self.make(f'Lincoln {t}', **{t: region})
+        self.make('Lincoln cdp', city=cdp)
+        self.make('Lincoln nowhere')
+        for t, region in {**regions, 'cdp': cdp}.items():
+            _, data = self.get({'q': 'lincoln', 'region_type': t, 'region': region.external_id})
+            assert self.names(data) == [f'Lincoln {t}'], t
+
+    def test_region_filter_retired_region_still_filters(self):
+        county = Region.objects.filter(type='county').first()
+        self.make('Lincoln School', county=county)
+        self.make('Lincoln Other')
+        county.retire(date(2026, 10, 1))
+        _, data = self.get({'q': 'lincoln', 'region_type': 'county', 'region': county.external_id})
+        assert self.names(data) == ['Lincoln School']
+
+    def test_region_half_pair_is_400(self):
+        for params in ({'region_type': 'county'}, {'region': '019'}):
+            response, data = self.get({'q': 'lincoln', **params})
+            assert response.status_code == 400
+            assert response['Cache-Control'] == 'no-cache'
+
+    def test_region_unlinked_type_is_400(self):
+        response, _ = self.get({'q': 'lincoln', 'region_type': 'census_tract', 'region': '1'})
+        assert response.status_code == 400
+
+    def test_region_unknown_code_is_404(self):
+        response, _ = self.get({'q': 'lincoln', 'region_type': 'county', 'region': 'nope'})
+        assert response.status_code == 404
+        assert response['Cache-Control'] == 'no-cache'
+
+    def test_url_resolves(self):
+        from django.urls import resolve
+        url = reverse('api:v2:regions:location-search')
+        assert url.endswith('/regions/locations/search/')
+        assert resolve(url).func.view_class is LocationSearch
