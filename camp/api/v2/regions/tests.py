@@ -16,6 +16,7 @@ from django.urls import reverse
 from camp.api.v2.regions.endpoints import LocationList, LocationSearch, RegionDetail, RegionGeoJSON, RegionList, RegionMetaEndpoint
 from camp.apps.monitors.airnow.models import AirNow
 from camp.apps.monitors.cimis.models import CIMIS
+from camp.apps.regions import shapes
 from camp.apps.regions.models import Boundary, Location, Region
 from camp.apps.regions.resolve import regions_containing, round_point
 from camp.apps.regions.tests.test_resolve import make_region as make_square_region
@@ -112,6 +113,17 @@ class RegionMetaTests(TestCase):
             'private_school': {'type': 'private_school', 'label': 'Private school', 'source': 'cde-private'},
             'child_care': {'type': 'child_care', 'label': 'Child care', 'source': 'cdss-ccl'},
         }
+
+    def test_buffers(self):
+        response, content = self._fetch_region_meta()
+        buffers = content['data']['buffers']
+        assert buffers == [
+            {'miles': 0, 'label': 'Exact boundary'},
+            {'miles': 1, 'label': '+1 mile'},
+            {'miles': 3, 'label': '+3 miles'},
+            {'miles': 5, 'label': '+5 miles'},
+        ]
+        assert [b['miles'] for b in buffers] == list(shapes.BUFFERS)
 
     def test_returns_200(self):
         response, content = self._fetch_region_meta()

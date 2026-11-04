@@ -398,10 +398,15 @@ class RegionMetaEndpoint(generics.Endpoint):
             for location_type in Location.Type.values
         }
 
+    def get_buffers(self):
+        """The distances every ?buffer= parameter accepts, in miles, with their labels."""
+        return [{'miles': miles, 'label': str(shapes.BUFFER_LABELS[miles])} for miles in shapes.BUFFERS]
+
     def get(self, request, *args, **kwargs):
         return {'data': {
             'types': self.get_types(),
             'location_types': self.get_location_types(),
+            'buffers': self.get_buffers(),
         }}
 
 
