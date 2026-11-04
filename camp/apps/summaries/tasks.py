@@ -15,7 +15,7 @@ from camp.apps.entries.stages import Stage
 from camp.apps.entries.utils import get_all_entry_models
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
-from camp.apps.summaries.periods import period_end, period_start
+from camp.apps.summaries.periods import iter_hours, period_end, period_start
 from camp.apps.summaries.schedule import HOURLY_FIRE_MINUTE, LATE_RUN_WARNING, hour_for_run, pacific_crontab
 from camp.apps.summaries.aggregators import compute_monitor_summary, compute_region_summary, rollup_summaries, rollup_region_stats
 from camp.apps.summaries.backfill import (
@@ -536,3 +536,57 @@ def _backfill_restart_batch(job):
         _backfill_dispatch_monitors(job)
     elif job.phase == SummaryBackfillJob.Phase.REGIONS:
         _backfill_dispatch_regions(job)
+
+
+# ---- Integrity check ----
+
+INTEGRITY_LOOKBACK = timedelta(days=400)
+
+
+@db_periodic_task(pacific_crontab(2, '30'), priority=1, queue='summaries')
+def check_summary_integrity(now=None):
+    """
+    Count, and log as an error (Sentry captures it), two kinds of damage:
+
+    - summary rows whose timestamp isn't a Pacific period start, in either
+      table, over the last 400 days;
+    - hours of the previous Pacific day with monitor hourly summaries but no
+      region hourly summaries at all.
+
+    Read-only. The hour check is two bounded distinct-timestamp queries, not
+    a per-region geo check.
+    """
+    from camp.apps.summaries.repair import find_misaligned  # repair imports this module
+
+    now = now or timezone.now()
+    start = now - INTEGRITY_LOOKBACK
+
+    misaligned = 0
+    for model, ids_field in ((MonitorSummary, 'monitor_id'), (RegionSummary, 'region_id')):
+        found = find_misaligned(model, ids_field, None, start, now)
+        misaligned += sum(len(timestamps) for timestamps in found.values())
+
+    today = period_start('day', now)
+    yesterday = period_start('day', today - timedelta(hours=1))
+
+    def hour_timestamps(model):
+        return set(
+            model.objects.filter(
+                resolution=BaseSummary.Resolution.HOURLY,
+                timestamp__gte=yesterday,
+                timestamp__lt=today,
+            ).values_list('timestamp', flat=True).distinct().order_by()
+        )
+
+    monitor_hours = hour_timestamps(MonitorSummary)
+    region_hours = hour_timestamps(RegionSummary)
+    missing = [hour for hour in iter_hours(yesterday, today) if hour in monitor_hours and hour not in region_hours]
+
+    result = {'misaligned': misaligned, 'missing_region_hours': len(missing)}
+    if misaligned or missing:
+        logger.error(
+            'Summary integrity check found %d misaligned row timestamp(s) and %d hour(s) '
+            'with monitor but no region summaries (%s): %s',
+            misaligned, len(missing), yesterday.date(), ', '.join(h.isoformat() for h in missing),
+        )
+    return result

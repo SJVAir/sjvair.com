@@ -41,6 +41,7 @@ from camp.apps.summaries.aggregators import (
     tdigest_to_dict,
 )
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
+from camp.apps.summaries.periods import iter_hours
 from camp.apps.summaries.panels import TrendPanel
 from camp.apps.summaries import tasks as summary_tasks
 from camp.apps.summaries.schedule import (
@@ -1525,3 +1526,108 @@ class HourlyParentScheduleTests(TestCase):
     def test_fire_minutes_match_the_crontabs(self):
         assert HOURLY_FIRE_MINUTE == {'monitor': 45, 'region': 50}
         assert LATE_RUN_WARNING == timedelta(minutes=10)
+
+
+class SummaryIntegrityCheckTests(TestCase):
+    """The daily check counts misaligned rows and hours with monitor but no region summaries."""
+    fixtures = ['purple-air.yaml', 'regions.yaml']
+
+    # 2026-11-02 02:30 PST; "yesterday" is 2026-11-01, the 25-hour fall-back day.
+    NOW = datetime(2026, 11, 2, 10, 30, tzinfo=dt_timezone.utc)
+
+    def setUp(self):
+        self.region = Region.objects.filter(boundary__isnull=False).first()
+        self.monitor = PurpleAir.objects.first()
+        self.day_start = pacific(2026, 11, 1)
+        self.day_end = pacific(2026, 11, 2)
+
+    def _run(self):
+        return summary_tasks.check_summary_integrity.call_local(now=self.NOW)
+
+    def _monitor_hour(self, ts):
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=ts, resolution=BaseSummary.Resolution.HOURLY,
+            entry_type='pm25', processor='', **compute_stats([10.0], 1),
+        )
+
+    def _region_hour(self, ts):
+        stats = compute_stats([10.0], 1)
+        stats.pop('is_complete', None)
+        RegionSummary.objects.create(
+            region=self.region, timestamp=ts, resolution=BaseSummary.Resolution.HOURLY,
+            entry_type='pm25', station_count=1, **stats,
+        )
+
+    def _fill_day(self, skip=None):
+        for ts in iter_hours(self.day_start, self.day_end):
+            self._monitor_hour(ts)
+            if ts != skip:
+                self._region_hour(ts)
+
+    def test_clean_data_returns_zeros_and_logs_nothing(self):
+        self._fill_day()
+        with self.assertNoLogs('camp.apps.summaries', level='ERROR'):
+            assert self._run() == {'misaligned': 0, 'missing_region_hours': 0}
+
+    def test_misaligned_month_row_is_counted_and_logged(self):
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 2, 28, 23),
+            resolution=BaseSummary.Resolution.MONTHLY,
+            entry_type='pm25', processor='', **compute_stats([10.0], 1),
+        )
+        with self.assertLogs('camp.apps.summaries', level='ERROR') as logs:
+            result = self._run()
+        assert result['misaligned'] == 1
+        assert len(logs.records) == 1
+
+    def test_misaligned_rows_count_both_tables(self):
+        stats = compute_stats([10.0], 1)
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 2, 28, 23),
+            resolution=BaseSummary.Resolution.MONTHLY, entry_type='pm25', processor='', **stats)
+        stats.pop('is_complete', None)
+        RegionSummary.objects.create(
+            region=self.region, timestamp=pacific(2026, 10, 31, 23),
+            resolution=BaseSummary.Resolution.DAILY, entry_type='pm25', station_count=1, **stats)
+        with self.assertLogs('camp.apps.summaries', level='ERROR'):
+            assert self._run()['misaligned'] == 2
+
+    def test_misaligned_rows_older_than_400_days_are_ignored(self):
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2024, 2, 28, 23),
+            resolution=BaseSummary.Resolution.MONTHLY,
+            entry_type='pm25', processor='', **compute_stats([10.0], 1),
+        )
+        assert self._run()['misaligned'] == 0
+
+    def test_hour_without_region_rows_is_counted_and_logged(self):
+        self._fill_day(skip=pacific(2026, 11, 1, 3))
+        with self.assertLogs('camp.apps.summaries', level='ERROR') as logs:
+            result = self._run()
+        assert result['missing_region_hours'] == 1
+        assert len(logs.records) == 1
+
+    def test_repeated_fall_back_hour_is_checked(self):
+        # 01:00 PST is the second 01:00 of the day, an hour after 01:00 PDT.
+        self._fill_day(skip=datetime(2026, 11, 1, 9, tzinfo=dt_timezone.utc))
+        with self.assertLogs('camp.apps.summaries', level='ERROR'):
+            assert self._run()['missing_region_hours'] == 1
+
+    def test_hours_outside_yesterday_are_ignored(self):
+        self._fill_day()
+        self._monitor_hour(self.day_end)  # today's 00:00, no region row yet
+        assert self._run()['missing_region_hours'] == 0
+
+    def test_hour_with_no_monitor_rows_is_not_missing(self):
+        assert self._run() == {'misaligned': 0, 'missing_region_hours': 0}
+
+    def test_fires_once_on_fall_back_day_at_0230_pacific(self):
+        validate = summary_tasks.check_summary_integrity.task_class().validate_datetime
+        start = datetime(2026, 11, 1, tzinfo=dt_timezone.utc)
+        runs = [
+            start + timedelta(minutes=i) for i in range(24 * 60)
+            if validate((start + timedelta(minutes=i)).replace(tzinfo=None))
+        ]
+        assert len(runs) == 1
+        local = localtime(runs[0])
+        assert (local.hour, local.minute, local.fold) == (2, 30, 0)
