@@ -258,7 +258,7 @@ zones are missing there; see SJVAPCD Forecast Setup).
   late still runs; the task body only works out "last period" from the current time.
 - **Summary period math** (`camp/apps/summaries/periods.py`): the one place for period
   starts, ends and hour lists. Starts are Pacific calendar dates built with `make_aware`,
-  never a `timedelta` of a day or more; hours step in UTC. Don't add period math elsewhere.
+  never a `timedelta` of a day or more; hours step in UTC. All summary period math lives here.
 - **Hourly parents**: `hourly_monitor_summaries` (:45) and `hourly_region_summaries` (:50)
   take their hour from the schedule (`hour_for_run` in `schedule.py`), not the clock, so a late
   start still summarizes the right hour. They run at priority 110/105, above their children

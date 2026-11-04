@@ -30,7 +30,7 @@ dates and were correct. Every bad row in production came from the backfill.
 
 ### Reproduction tests
 
-Added in `010b88a4` (failing against the old code) and kept as regression tests:
+Regression tests on this branch (`010b88a4` first added `camp/apps/summaries/test_dst_repro.py` with separate reproduction tests that failed against the old code):
 
 - `camp/apps/summaries/test_backfill.py::BackfillJobDstTests::test_summer_end_backfill_stamps_pacific_period_starts`
 - `camp/apps/summaries/test_backfill.py::BackfillJobDstTests::test_standard_end_backfill_across_fall_back`
@@ -71,8 +71,8 @@ Monitors were unaffected because their parent is top priority.
 
 ### Reproduction tests
 
-Added in `010b88a4` and kept as regression tests (`camp/apps/summaries/tests.py`,
-`HourlyParentScheduleTests`):
+Regression tests on this branch (`camp/apps/summaries/tests.py`, `HourlyParentScheduleTests`;
+`010b88a4` first added the failing reproductions in `test_dst_repro.py`):
 
 - `test_late_run_logs_a_warning`
 - `test_slightly_late_run_logs_nothing`
@@ -131,7 +131,8 @@ Command: `repair_summaries 2026-10-01 2026-11-04 --monitor <a> --monitor <b> --r
   6 quarter) and 24 region rows (18, 4, 2) to delete; 34 day and 1 month windows to roll for
   both tables. Nothing written.
 - Real run: the same 86 rows deleted, 18 region hour rows written for the 10 hours, windows
-  rolled. Second real run: 0 misaligned rows, same windows re-rolled with the same values.
+  rolled. Second real run: 0 misaligned rows deleted and the same window counts rolled (34 day,
+  1 month, for both tables). Per-row values before and after the second run were not saved.
   November's month and the quarter, season and year were left for the scheduled rollup because
   they are unfinished.
 - The 12 Oct 28 rows came back. The other 4 missing hours were gaps already in the data
@@ -142,8 +143,14 @@ Command: `repair_summaries 2026-10-01 2026-11-04 --monitor <a> --monitor <b> --r
 
 - Every non-hourly row in scope is on a Pacific period start (0 misaligned in every
   table and resolution).
-- Kings has hourly rows for every hour that has monitor rows, including Oct 28. The local data
-  is sparse, so days have 10 to 16 rows rather than 24. No Kings data fell on Nov 1.
+- Kings has hourly rows for every hour that has monitor rows, including Oct 28, except one.
+  Both real runs (and the second dry check) list 1 hour that still has no region row:
+  2026-11-04 06:00 UTC (Nov 3, 22:00 PST). Eleven pm25 monitor rows exist for it, from six
+  monitors, but all six have a health score of 0 for that hour, so `get_monitor_weight` is 0 for
+  each and `compute_region_summary` returns `None`. It is correct that no row is written, and
+  the scan will keep listing it (query and output: `task7/missing_hour.out`,
+  `task7/missing_hour_why.out`). The local data is sparse, so days have 10 to 16 rows rather
+  than 24. No Kings data fell on Nov 1.
 - Day rows equal an independent aggregation of the stored hourly rows by Pacific day (count,
   mean, minimum, maximum): 34 monitor-days for the first monitor and 22 for the second, 0
   mismatches, 0 extra day rows.
@@ -151,7 +158,9 @@ Command: `repair_summaries 2026-10-01 2026-11-04 --monitor <a> --monitor <b> --r
   comparison here. It recomputes hourly rows from entries, and the stored hourly rows in this
   database are partial, so it produced more hours and different day values. The comparison
   against the stored hourly rows is the right one.
-- Nothing outside the scope changed.
+- Scope: every command took explicit monitor and region ids, and the delete counts equal the
+  in-scope misaligned counts from the dry run. I have no before snapshot of rows outside the
+  scope, so "nothing else changed" is not proven by a comparison.
 
 ### Full suite
 
