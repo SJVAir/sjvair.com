@@ -306,9 +306,21 @@ class RegionMetaEndpoint(generics.Endpoint):
             }
         return payload
 
+    def get_location_types(self):
+        sources = {config['type']: source for source, config in SOURCES.items()}
+        return {
+            location_type: {
+                'type': location_type,
+                'label': str(Location.SHORT_TYPES[location_type]),
+                'source': sources[location_type],
+            }
+            for location_type in Location.Type.values
+        }
+
     def get(self, request, *args, **kwargs):
         return {'data': {
             'types': self.get_types(),
+            'location_types': self.get_location_types(),
         }}
 
 

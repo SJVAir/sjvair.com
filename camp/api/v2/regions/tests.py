@@ -104,6 +104,14 @@ class RegionMetaTests(TestCase):
         response = region_meta(request)
         return response, get_response_data(response)
 
+    def test_location_types(self):
+        response, content = self._fetch_region_meta()
+        assert content['data']['location_types'] == {
+            'public_school': {'type': 'public_school', 'label': 'Public school', 'source': 'cde-public'},
+            'private_school': {'type': 'private_school', 'label': 'Private school', 'source': 'cde-private'},
+            'child_care': {'type': 'child_care', 'label': 'Child care', 'source': 'cdss-ccl'},
+        }
+
     def test_returns_200(self):
         response, content = self._fetch_region_meta()
         assert response.status_code == 200
@@ -860,7 +868,7 @@ class LocationLookupTests(TestCase):
         assert item['city_name'] == 'Bakersfield'
         assert item['zip'] == '93301'
         assert item['point'] == {'lat': 35.4, 'lng': -119.0}
-        assert item['regions']['county'] == {'type': 'county', 'external_id': self.county.external_id}
+        assert item['regions']['county'] == {'type': 'county', 'external_id': self.county.external_id, 'name': self.county.name}
         assert item['regions']['city'] is None
         assert item['retired'] is None
 

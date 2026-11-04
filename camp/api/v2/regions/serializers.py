@@ -76,7 +76,7 @@ class RegionListSerializer(serializers.Serializer):
 
 
 def _region_ref(region):
-    return {'type': region.type, 'external_id': region.external_id} if region else None
+    return {'type': region.type, 'external_id': region.external_id, 'name': region.name} if region else None
 
 
 class LocationSerializer(serializers.Serializer):
