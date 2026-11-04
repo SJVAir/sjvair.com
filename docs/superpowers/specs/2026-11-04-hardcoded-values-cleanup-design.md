@@ -196,6 +196,8 @@ the level's own `color`, not from the per-key Sass rules.
   - DEFERRED.md → Mobile app → "Retire the old air-quality `levels` format": mark it done by
     this spec.
   - TODO.md "Release 1, step 3" item: update its status.
+  - ARCHITECTURE.md → "Metadata as source of truth": record the final `school_guidelines`
+    shape, so step 4 spec 4's "Can we go outside?" card can find it.
   - Tell the coordinator.
 
 ## Non-goals
