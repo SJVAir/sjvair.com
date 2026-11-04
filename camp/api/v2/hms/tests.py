@@ -257,3 +257,90 @@ class HMSMetaTests(TestCase):
         assert all(level['tier'] is None for level in fire['levels'])
         assert fire['levels'][-1]['max'] is None
         assert fire['levels'][0]['min'] == 0
+
+
+class DateRangeTestsMixin:
+    """Ranges given as date__gte/date__lte, without an exact date."""
+    url_name = None
+    create = None
+
+    def setUp(self):
+        self.records = {offset: type(self).create(days_offset=offset) for offset in (-3, -2, -1, 0)}
+
+    def day(self, offset):
+        return (_today() + timedelta(days=offset)).isoformat()
+
+    def ids(self, params):
+        response = self.client.get(reverse(self.url_name), params)
+        assert response.status_code == 200
+        return {r['id'] for r in response.json()['data']}
+
+    def expected(self, *offsets):
+        return {str(self.records[offset].pk) for offset in offsets}
+
+    def test_date_range_without_date(self):
+        ids = self.ids({'date__gte': self.day(-3), 'date__lte': self.day(-1)})
+        assert ids == self.expected(-3, -2, -1)
+
+    def test_open_ended_range(self):
+        ids = self.ids({'date__gte': self.day(-2)})
+        assert ids == self.expected(-2, -1, 0)
+
+    def test_empty_date_with_range(self):
+        ids = self.ids({'date': '', 'date__gte': self.day(-3), 'date__lte': self.day(-1)})
+        assert ids == self.expected(-3, -2, -1)
+
+    def test_no_date_params_defaults_to_today(self):
+        assert self.ids({}) == self.expected(0)
+
+
+class SmokeDateRangeTests(DateRangeTestsMixin, TestCase):
+    url_name = 'api:v2:hms:smoke-list'
+    create = staticmethod(create_smoke)
+
+
+class FireDateRangeTests(DateRangeTestsMixin, TestCase):
+    url_name = 'api:v2:hms:fire-list'
+    create = staticmethod(create_fire)
+
+
+class PagingOrderTestsMixin:
+    """Pages of one day's rows must not repeat or skip rows: the order needs a unique tiebreaker."""
+    url_name = None
+    create = None
+    list_view = None
+
+    def test_order_has_a_unique_tiebreaker(self):
+        ordering = self.list_view().get_queryset().query.order_by
+        assert ordering[-1] in ('id', 'pk', '-id', '-pk'), ordering
+
+    def test_pages_of_one_day_are_complete(self):
+        made = {str(type(self).create().pk) for _ in range(105)}
+        seen = []
+        for page in (1, 2):
+            response = self.client.get(reverse(self.url_name), {'page': page})
+            seen += [r['id'] for r in response.json()['data']]
+        assert len(seen) == len(set(seen)) == 105
+        assert set(seen) == made
+
+
+class SmokePagingOrderTests(PagingOrderTestsMixin, TestCase):
+    url_name = 'api:v2:hms:smoke-list'
+    create = staticmethod(create_smoke)
+
+    def list_view(self):
+        from camp.api.v2.hms.endpoints import SmokeList
+        view = SmokeList()
+        view.request = type('R', (), {'GET': {}})()
+        return view
+
+
+class FirePagingOrderTests(PagingOrderTestsMixin, TestCase):
+    url_name = 'api:v2:hms:fire-list'
+    create = staticmethod(create_fire)
+
+    def list_view(self):
+        from camp.api.v2.hms.endpoints import FireList
+        view = FireList()
+        view.request = type('R', (), {'GET': {}})()
+        return view

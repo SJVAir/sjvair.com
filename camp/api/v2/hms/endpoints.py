@@ -25,22 +25,31 @@ def get_default_date_queryset(queryset):
     return qs
 
 
+DATE_FILTERS = ('date', 'date__gt', 'date__gte', 'date__lt', 'date__lte')
+
+
+def has_date_filter(params):
+    '''True when the request filters by date at all (an exact date or a range).'''
+    return any(params.get(name) for name in DATE_FILTERS)
+
+
 class SmokeMixin:
     model = Smoke
     serializer_class = SmokeSerializer
     paginate = True
 
     def get_queryset(self):
-        return super().get_queryset().order_by('-date')
+        # id breaks ties within a day, so pages never repeat or skip rows.
+        return super().get_queryset().order_by('-date', 'id')
 
 
 class SmokeList(SmokeMixin, generics.ListEndpoint):
-    """List HMS smoke plumes. Defaults to today's data, falling back to yesterday before noon if today's data isn't yet available."""
+    """List HMS smoke plumes. Without a date filter (date, or a date__gte/date__lte range), defaults to today's data, falling back to yesterday before noon if today's data isn't yet available."""
 
     filter_class = SmokeFilter
 
     def get_queryset(self):
-        if 'date' not in self.request.GET:
+        if not has_date_filter(self.request.GET):
             return get_default_date_queryset(super().get_queryset())
         return super().get_queryset()
 
@@ -57,16 +66,17 @@ class FireMixin:
     paginate = True
 
     def get_queryset(self):
-        return super().get_queryset().order_by('-date')
+        # id breaks ties within a day, so pages never repeat or skip rows.
+        return super().get_queryset().order_by('-date', 'id')
 
 
 class FireList(FireMixin, generics.ListEndpoint):
-    """List HMS active fire detections. Defaults to today's data, falling back to yesterday before noon."""
+    """List HMS active fire detections. Without a date filter (date, or a date__gte/date__lte range), defaults to today's data, falling back to yesterday before noon."""
 
     filter_class = FireFilter
 
     def get_queryset(self):
-        if 'date' not in self.request.GET:
+        if not has_date_filter(self.request.GET):
             return get_default_date_queryset(super().get_queryset())
         return super().get_queryset()
 

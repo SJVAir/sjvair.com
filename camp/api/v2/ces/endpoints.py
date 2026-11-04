@@ -1,8 +1,9 @@
 from django.http import Http404
 
-from resticus import generics
+from resticus import generics, http
 
 from camp.apps.ces.models import CES4, CES5
+from camp.apps.regions.querysets import WITHIN_MODES
 
 from .filters import CES4Filter, CES5Filter
 from .serializers import CES4Serializer, CES5Serializer
@@ -22,7 +23,16 @@ class CES4Mixin:
         )
 
 
-class CES4List(CES4Mixin, generics.ListEndpoint):
+class WithinModeMixin:
+    """A 400 for an unknown ?within_mode=, like the regions list."""
+
+    def get(self, request, *args, **kwargs):
+        if request.GET.get('within_mode', 'contained') not in WITHIN_MODES:
+            return http.Http400({'error': 'within_mode must be contained or overlaps.'})
+        return super().get(request, *args, **kwargs)
+
+
+class CES4List(WithinModeMixin, CES4Mixin, generics.ListEndpoint):
     """List CalEnviroScreen 4.0 scores for all census tracts for a given year (default 2020)."""
 
 
@@ -44,7 +54,7 @@ class CES5Mixin:
     filter_class = CES5Filter
 
 
-class CES5List(CES5Mixin, generics.ListEndpoint):
+class CES5List(WithinModeMixin, CES5Mixin, generics.ListEndpoint):
     """List CalEnviroScreen 5.0 scores for all census tracts."""
 
 

@@ -27,6 +27,29 @@ def overlap_area(geometry: GEOSGeometry):
     )
 
 
+# ?within_mode= values, and the share of a shape's own area that must fall
+# inside the parent for each (see RegionQuerySet.contained_within).
+WITHIN_MODES = ('contained', 'overlaps')
+CONTAINED_MIN_FRACTION = 0.99
+OVERLAPS_MIN_FRACTION = 0.01
+
+
+def area_fraction_inside(queryset, geometry: GEOSGeometry, min_fraction: float):
+    """
+    Rows with at least `min_fraction` of their own `boundary__geometry` area
+    inside `geometry`. Works for any model with a `boundary` foreign key:
+    regions, and records keyed to one boundary vintage (CalEnviroScreen).
+    """
+    area = Func('boundary__geometry', function='ST_Area', output_field=FloatField())
+    return (queryset
+        # ST_Intersects first so the spatial index prunes candidates
+        # before the (expensive) intersection area is computed.
+        .filter(boundary__geometry__intersects=geometry)
+        .annotate(overlap_fraction=overlap_area(geometry) / NullIf(area, 0.0))
+        .filter(overlap_fraction__gte=min_fraction)
+    )
+
+
 class RegionQuerySet(models.QuerySet):
     def current_vintage(self):
         """Leave out retired census tracts (see TRACT_VINTAGE); other types pass through.
@@ -76,17 +99,9 @@ class RegionQuerySet(models.QuerySet):
         return self.filter(boundary__geometry__intersects=geometry)
 
     def _area_fraction_inside(self, geometry: GEOSGeometry, min_fraction: float):
-        """Regions with at least `min_fraction` of their own area inside `geometry`."""
-        area = Func('boundary__geometry', function='ST_Area', output_field=FloatField())
-        return (self
-            # ST_Intersects first so the spatial index prunes candidates
-            # before the (expensive) intersection area is computed.
-            .filter(boundary__geometry__intersects=geometry)
-            .annotate(overlap_fraction=overlap_area(geometry) / NullIf(area, 0.0))
-            .filter(overlap_fraction__gte=min_fraction)
-        )
+        return area_fraction_inside(self, geometry, min_fraction)
 
-    def contained_within(self, geometry: GEOSGeometry, min_fraction: float = 0.99):
+    def contained_within(self, geometry: GEOSGeometry, min_fraction: float = CONTAINED_MIN_FRACTION):
         """
         Filters regions that are (essentially) entirely inside the given
         geometry: at least `min_fraction` of the region's own area must fall
@@ -105,7 +120,7 @@ class RegionQuerySet(models.QuerySet):
         """
         return self._area_fraction_inside(geometry, min_fraction)
 
-    def overlapping(self, geometry: GEOSGeometry, min_fraction: float = 0.01):
+    def overlapping(self, geometry: GEOSGeometry, min_fraction: float = OVERLAPS_MIN_FRACTION):
         """
         Filters regions with at least `min_fraction` of their own area inside
         the given geometry. The mirror of contained_within: that one asks

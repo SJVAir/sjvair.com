@@ -15,6 +15,7 @@ from django.db.models import Q
 
 from camp.apps.regions.locations import SOURCES
 from camp.apps.regions.models import Boundary, Location, Region
+from camp.apps.regions.querysets import WITHIN_MODES
 from camp.apps.regions.resolve import (
     PlaceError, PlaceNotFound, monitor_lookup_key, parse_lookup_types, point_lookup_key,
     regions_containing, resolve_place, round_point)
@@ -24,7 +25,6 @@ from .filters import LOOKUP_MAX_CODES, RegionFilter, parse_codes
 from .serializers import LocationSerializer, RegionListSerializer, RegionSerializer
 
 
-WITHIN_MODES = ('contained', 'overlaps')
 # The share of a region's own area that must fall inside another for the two
 # to count as overlapping (the same floor Region.objects.overlapping uses).
 ALSO_IN_MIN_FRACTION = 0.01
@@ -398,10 +398,15 @@ class RegionMetaEndpoint(generics.Endpoint):
             for location_type in Location.Type.values
         }
 
+    def get_buffers(self):
+        """The distances every ?buffer= parameter accepts, in miles, with their labels."""
+        return [{'miles': miles, 'label': str(shapes.BUFFER_LABELS[miles])} for miles in shapes.BUFFERS]
+
     def get(self, request, *args, **kwargs):
         return {'data': {
             'types': self.get_types(),
             'location_types': self.get_location_types(),
+            'buffers': self.get_buffers(),
         }}
 
 
