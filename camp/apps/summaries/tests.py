@@ -45,7 +45,10 @@ from camp.apps.summaries.panels import TrendPanel
 from camp.apps.summaries import tasks as summary_tasks
 from camp.apps.summaries.schedule import (
     ROLLUP_LOCAL_TIME,
+    HOURLY_FIRE_MINUTE,
+    LATE_RUN_WARNING,
     SETTLE_MARGIN,
+    hour_for_run,
     is_pacific_hour,
     is_settled,
     pacific_crontab,
@@ -903,7 +906,7 @@ class HourlyMonitorSummariesTaskTests(TestCase):
 
     def test_uses_previous_hour_when_called_without_args(self):
         self._make_entry()
-        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
+        with patch('django.utils.timezone.now', return_value=FIXED_NOW.replace(minute=45)):
             hourly_monitor_summaries()
         assert MonitorSummary.objects.filter(
             monitor=self.monitor,
@@ -963,7 +966,7 @@ class HourlyRegionSummariesTaskTests(TestCase):
 
     def test_uses_previous_hour_when_called_without_args(self):
         self._make_monitor_summary()
-        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
+        with patch('django.utils.timezone.now', return_value=FIXED_NOW.replace(minute=50)):
             hourly_region_summaries()
         assert RegionSummary.objects.filter(
             region=self.region,
@@ -1431,3 +1434,88 @@ class SettleTimeTests(TestCase):
                 assert len(monitor_runs) == 1 and monitor_runs[0] < fire, label
                 # And everything is done, plus an hour of slack, inside the settle margin.
                 assert fire + timedelta(hours=1) <= end_utc + SETTLE_MARGIN[resolution], label
+
+
+class HourlyParentScheduleTests(TestCase):
+    """The hourly parents take their hour from the schedule, not from when a worker gets to them."""
+    fixtures = ['purple-air.yaml', 'regions.yaml']
+
+    def setUp(self):
+        self.region = Region.objects.filter(boundary__isnull=False).first()
+        self.monitor = PurpleAir.objects.first()
+        self.monitor.position = self.region.boundary.geometry.point_on_surface
+        self.monitor.save()
+        self.hour = datetime(2026, 11, 2, 9, tzinfo=dt_timezone.utc)
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=self.hour,
+            resolution=BaseSummary.Resolution.HOURLY,
+            entry_type='pm25', processor='', **compute_stats([10.0], 1),
+        )
+
+    def _region_rows(self):
+        return RegionSummary.objects.filter(region=self.region, resolution=BaseSummary.Resolution.HOURLY)
+
+    def _run_region(self, now):
+        with patch('camp.apps.summaries.tasks.timezone.now', return_value=now):
+            hourly_region_summaries()
+        return self._region_rows()
+
+    def test_on_time_run_summarizes_the_hour(self):
+        rows = self._run_region(datetime(2026, 11, 2, 10, 50, tzinfo=dt_timezone.utc))
+        assert [r.timestamp for r in rows] == [self.hour]
+
+    def test_run_after_the_top_of_the_hour_still_summarizes_the_scheduled_hour(self):
+        for now in (
+            datetime(2026, 11, 2, 11, 1, tzinfo=dt_timezone.utc),
+            datetime(2026, 11, 2, 11, 49, 59, tzinfo=dt_timezone.utc),
+        ):
+            self._region_rows().delete()
+            rows = self._run_region(now)
+            assert [r.timestamp for r in rows] == [self.hour], now
+
+    def test_run_at_the_next_fire_targets_the_next_hour(self):
+        rows = self._run_region(datetime(2026, 11, 2, 11, 50, tzinfo=dt_timezone.utc))
+        assert list(rows.filter(timestamp=self.hour)) == []
+
+    def test_late_run_logs_a_warning(self):
+        with self.assertLogs('camp.apps.summaries', level='WARNING') as logs:
+            self._run_region(datetime(2026, 11, 2, 11, 1, tzinfo=dt_timezone.utc))
+        assert len(logs.records) == 1
+
+    def test_slightly_late_run_logs_nothing(self):
+        with self.assertNoLogs('camp.apps.summaries', level='WARNING'):
+            self._run_region(datetime(2026, 11, 2, 10, 55, tzinfo=dt_timezone.utc))
+
+    def test_monitor_parent_late_run_summarizes_the_scheduled_hour(self):
+        PM25.objects.create(
+            monitor=self.monitor, timestamp=self.hour + timedelta(minutes=10),
+            stage=PM25.Stage.RAW, processor='', value=12.0, location=self.monitor.location,
+        )
+        MonitorSummary.objects.all().delete()
+        with patch('camp.apps.summaries.tasks.timezone.now',
+                   return_value=datetime(2026, 11, 2, 11, 30, tzinfo=dt_timezone.utc)):
+            hourly_monitor_summaries()
+        assert list(MonitorSummary.objects.values_list('timestamp', flat=True)) == [self.hour]
+
+    def test_priorities(self):
+        def priority(task):
+            return task.task_class.default_priority
+        assert priority(hourly_monitor_summaries) == 110
+        assert priority(hourly_region_summaries) == 105
+        assert priority(summarize_monitor_hour) == 100
+        assert priority(summarize_region_hour) == 90
+
+    def test_hour_for_run_across_the_fall_back_hour(self):
+        # 09:55Z on the fall-back day is 01:55 PST, in the second 01:00 Pacific hour.
+        hour, lateness = hour_for_run(50, now=datetime(2026, 11, 1, 9, 55, tzinfo=dt_timezone.utc))
+        assert hour == datetime(2026, 11, 1, 8, tzinfo=dt_timezone.utc)
+        assert lateness == timedelta(minutes=5)
+
+    def test_hour_for_run_before_the_fire_minute_uses_the_previous_fire(self):
+        hour, lateness = hour_for_run(50, now=datetime(2026, 3, 8, 10, 10, tzinfo=dt_timezone.utc))
+        assert hour == datetime(2026, 3, 8, 8, tzinfo=dt_timezone.utc)
+        assert lateness == timedelta(minutes=20)
+
+    def test_fire_minutes_match_the_crontabs(self):
+        assert HOURLY_FIRE_MINUTE == {'monitor': 45, 'region': 50}
+        assert LATE_RUN_WARNING == timedelta(minutes=10)

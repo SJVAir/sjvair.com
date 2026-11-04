@@ -75,3 +75,28 @@ def is_settled(resolution, range_end, now=None):
         return False
     last_period_end = period_end(resolution, range_end - timedelta(microseconds=1))
     return (now or timezone.now()) >= last_period_end + SETTLE_MARGIN[resolution]
+
+
+# The minute of each hour the hourly parent tasks are scheduled for
+# (crontab minutes in camp/apps/summaries/tasks.py).
+HOURLY_FIRE_MINUTE = {'monitor': 45, 'region': 50}
+
+# A parent that starts this long after its scheduled minute logs a warning.
+LATE_RUN_WARNING = timedelta(minutes=10)
+
+
+def hour_for_run(fire_minute: int, now: datetime | None = None) -> tuple[datetime, timedelta]:
+    """
+    The hour an hourly parent should summarize, and how late it started.
+
+    The hour comes from the schedule, not from when a worker picked the task
+    up: `fire` is the latest HH:`fire_minute` (UTC) at or before `now`, and
+    the hour is the one before the hour holding `fire`. A parent that waited
+    behind other work therefore still summarizes the hour it was scheduled for.
+    Returns (hour, lateness), lateness being `now - fire`.
+    """
+    now = (now or timezone.now()).astimezone(dt_timezone.utc)
+    fire = now.replace(minute=fire_minute, second=0, microsecond=0)
+    if fire > now:
+        fire -= timedelta(hours=1)
+    return fire.replace(minute=0) - timedelta(hours=1), now - fire

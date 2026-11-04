@@ -1,3 +1,4 @@
+import logging
 from datetime import timedelta
 from itertools import groupby
 
@@ -15,7 +16,7 @@ from camp.apps.entries.utils import get_all_entry_models
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
 from camp.apps.summaries.periods import period_end, period_start
-from camp.apps.summaries.schedule import pacific_crontab
+from camp.apps.summaries.schedule import HOURLY_FIRE_MINUTE, LATE_RUN_WARNING, hour_for_run, pacific_crontab
 from camp.apps.summaries.aggregators import compute_monitor_summary, compute_region_summary, rollup_summaries, rollup_region_stats
 from camp.apps.summaries.backfill import (
     backfill_monitor_hours,
@@ -30,6 +31,8 @@ from camp.apps.summaries.backfill import (
 )
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary, SummaryBackfillJob
 
+logger = logging.getLogger('camp.apps.summaries')
+
 
 def get_summarizable_entry_models():
     """Return entry models that have opted in to summarization via summarize = True."""
@@ -37,6 +40,17 @@ def get_summarizable_entry_models():
 
 
 # ---- Hourly tasks ----
+
+def _scheduled_hour(kind):
+    """The hour an hourly parent was scheduled to summarize; warns if it started late."""
+    fire_minute = HOURLY_FIRE_MINUTE[kind]
+    hour, lateness = hour_for_run(fire_minute, timezone.now())
+    if lateness > LATE_RUN_WARNING:
+        logger.warning(
+            '%s started %s after its :%02d run; summarizing %s',
+            kind, lateness, fire_minute, hour,
+        )
+    return hour
 
 # Hourly summaries run late in the hour (:45/:50) rather than right after it
 # closes, so the previous hour has ~45 min to settle first: late-arriving
@@ -51,13 +65,20 @@ def get_summarizable_entry_models():
 # Pacific hour. The decision is made when the scheduler enqueues the task, so
 # a rollup that starts late (queued behind the hourly fan-outs) still runs.
 #
+# The hourly parents pick their hour from the schedule (schedule.hour_for_run),
+# not from the clock when they run, and sit above their children (110 and 105
+# over 100 and 90) so they start before the children they enqueue: the region
+# parent can't queue behind every pending monitor child and wake up an hour
+# late. A parent that still starts late logs a warning.
+#
 # Task priorities decrease with dependency depth so upstream data is always
 # ready before downstream aggregations consume it:
-#   hourly monitor (100) → hourly region (90) → daily monitor (80) → daily region (70)
+#   hourly monitor parent (110) → hourly region parent (105)
+#   → hourly monitor (100) → hourly region (90) → daily monitor (80) → daily region (70)
 #   → monthly monitor (60) → monthly region (50) → quarterly monitor (40) → quarterly region (30)
 #   → seasonal monitor (20) → seasonal region (15) → yearly monitor (10) → yearly region (5)
 
-@db_periodic_task(crontab(hour='*', minute='45'), priority=100, queue='summaries')
+@db_periodic_task(crontab(hour='*', minute='45'), priority=110, queue='summaries')
 def hourly_monitor_summaries(hour=None):
     """
     Compute hourly MonitorSummary for every (monitor, entry_type, processor) combo
@@ -65,8 +86,7 @@ def hourly_monitor_summaries(hour=None):
     (processor≠'') entries are summarized — CORRECTED and CLEANED are skipped.
     """
     if hour is None:
-        now = timezone.now().replace(minute=0, second=0, microsecond=0)
-        hour = now - timedelta(hours=1)
+        hour = _scheduled_hour('monitor')
 
     for EntryModel in get_summarizable_entry_models():
         combos = (
@@ -106,7 +126,7 @@ def summarize_monitor_hour(monitor_id, hour, entry_type, processor):
     )
 
 
-@db_periodic_task(crontab(hour='*', minute='50'), priority=90, queue='summaries')
+@db_periodic_task(crontab(hour='*', minute='50'), priority=105, queue='summaries')
 def hourly_region_summaries(hour=None):
     """
     Compute one hourly RegionSummary per region per entry_type found in
@@ -119,8 +139,7 @@ def hourly_region_summaries(hour=None):
     over-weights bad sensors.
     """
     if hour is None:
-        now = timezone.now().replace(minute=0, second=0, microsecond=0)
-        hour = now - timedelta(hours=1)
+        hour = _scheduled_hour('region')
 
     entry_models = get_summarizable_entry_models()
 
