@@ -1,9 +1,9 @@
 import json
 
 from django import forms
+from django.contrib.gis.geos import Point
 from django.core.cache import cache
 from django.db import connection
-from django.contrib.gis.geos import Point
 from django.db.models import Count
 from django.utils.decorators import method_decorator
 from django.views.decorators.debug import sensitive_post_parameters
@@ -16,7 +16,8 @@ from django.db.models import Q
 from camp.apps.regions.locations import SOURCES
 from camp.apps.regions.models import Boundary, Location, Region
 from camp.apps.regions.resolve import (
-    PlaceError, PlaceNotFound, _place_key, parse_lookup_types, regions_containing, resolve_place, round_point)
+    PlaceError, PlaceNotFound, monitor_lookup_key, parse_lookup_types, point_lookup_key,
+    regions_containing, resolve_place, round_point)
 from camp.utils.views import CachedEndpointMixin
 
 from .filters import LOOKUP_MAX_CODES, RegionFilter, parse_codes
@@ -384,7 +385,7 @@ class PlaceLookup(generics.Endpoint):
                 return http.Http400({'error': str(err)})
             return self.lookup_response(
                 monitor.position, request.GET.get('type', ''),
-                lambda types: f"{_place_key('regions_containing', monitor)}:{','.join(types)}")
+                lambda types: monitor_lookup_key(monitor, types))
         region_type = form.cleaned_data.get('type', '')
         region = Region.objects.resolve_place(q, type=region_type or None) if q else None
         return {'data': RegionSerializer(region).serialize() if region else None}
@@ -401,4 +402,4 @@ class PlaceLookup(generics.Endpoint):
         lat, lon = round_point(form.cleaned_data['lat'], form.cleaned_data['lon'])
         return self.lookup_response(
             Point(lon, lat, srid=4326), form.cleaned_data['type'],
-            lambda types: f"regions_containing:point:{lat:.3f}:{lon:.3f}:{','.join(types)}")
+            lambda types: point_lookup_key(lat, lon, types))

@@ -9,7 +9,7 @@ from django.core.cache.backends.base import memcache_key_warnings
 from django.test import TestCase
 from django.utils.text import slugify
 
-from camp.apps.monitors.airnow.models import AirNow
+from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.regions.models import Boundary, Region
 from camp.apps.regions.resolve import (
     PlaceError, PlaceNotFound, forecast_zone_for, resolve_place, zips_for,
@@ -82,15 +82,15 @@ class ResolvePlaceTests(ResolveTestCase):
         assert issubclass(PlaceNotFound, PlaceError)
 
     def test_resolve_monitor_without_position(self):
-        monitor = AirNow.objects.create(name='No Pos', position=None, location='outside')
+        monitor = CIMIS.objects.create(name='No Pos', station_number='9', position=None, location=CIMIS.LOCATION.outside)
         with self.assertRaises(PlaceError) as ctx:
             resolve_place({'monitor': str(monitor.pk)})
         assert str(ctx.exception) == 'Monitor has no location.'
         assert not isinstance(ctx.exception, PlaceNotFound)
 
     def test_resolve_monitor(self):
-        monitor = AirNow.objects.create(
-            name='Pos', position=Point(-119.78, 36.74, srid=4326), location='outside')
+        monitor = CIMIS.objects.create(
+            name='Pos', station_number='8', position=Point(-119.78, 36.74, srid=4326), location=CIMIS.LOCATION.outside)
         assert resolve_place({'monitor': str(monitor.pk)}).pk == monitor.pk
 
 
@@ -113,10 +113,10 @@ class ZipsForTests(ResolveTestCase):
 
     def test_zips_for_monitor(self):
         zipcode = make_region('Mon Zip', Region.Type.ZIPCODE, '90020', (-100, 30, -99, 31))
-        inside = AirNow.objects.create(
-            name='In', position=Point(-99.5, 30.5, srid=4326), location='outside')
-        outside = AirNow.objects.create(
-            name='Out', position=Point(-90, 30.5, srid=4326), location='outside')
+        inside = CIMIS.objects.create(
+            name='In', station_number='7', position=Point(-99.5, 30.5, srid=4326), location=CIMIS.LOCATION.outside)
+        outside = CIMIS.objects.create(
+            name='Out', station_number='6', position=Point(-90, 30.5, srid=4326), location=CIMIS.LOCATION.outside)
         assert zips_for(inside) == [zipcode]
         assert zips_for(outside) == []
 
@@ -124,8 +124,8 @@ class ZipsForTests(ResolveTestCase):
         # On the line between two ZIPs: neither contains it; the lower code wins.
         make_region('West Zip', Region.Type.ZIPCODE, '90031', (-101, 30, -100, 31))
         east = make_region('East Zip', Region.Type.ZIPCODE, '90030', (-100, 30, -99, 31))
-        monitor = AirNow.objects.create(
-            name='Edge', position=Point(-100, 30.5, srid=4326), location='outside')
+        monitor = CIMIS.objects.create(
+            name='Edge', station_number='4', position=Point(-100, 30.5, srid=4326), location=CIMIS.LOCATION.outside)
         assert zips_for(monitor) == [east]
 
     def test_zips_for_cached(self):
@@ -183,7 +183,7 @@ class ForecastZoneTests(ResolveTestCase):
 
     def test_monitor_center(self):
         point = self.fresno_city.boundary.geometry.point_on_surface
-        monitor = AirNow.objects.create(name='M', position=point, location='outside')
+        monitor = CIMIS.objects.create(name='M', station_number='5', position=point, location=CIMIS.LOCATION.outside)
         assert forecast_zone_for(monitor) == (self.fresno, 'center')
 
     def test_forecast_zone_cached(self):
@@ -239,15 +239,15 @@ class PlaceCacheKeyTests(ResolveTestCase):
         self.assert_memcached_safe(self.keys_used(self.fresno))
 
     def test_monitor_keys_are_memcached_safe(self):
-        monitor = AirNow.objects.create(
-            name='Pos', position=Point(-121.100784, 37.795162, srid=4326),
-            location='outside')
+        monitor = CIMIS.objects.create(
+            name='Pos', station_number='8', position=Point(-121.100784, 37.795162, srid=4326),
+            location=CIMIS.LOCATION.outside)
         self.assert_memcached_safe(self.keys_used(monitor))
 
     def test_monitor_key_follows_its_position(self):
-        monitor = AirNow.objects.create(
-            name='Pos', position=Point(-121.1, 37.7, srid=4326),
-            location='outside')
+        monitor = CIMIS.objects.create(
+            name='Pos', station_number='8', position=Point(-121.1, 37.7, srid=4326),
+            location=CIMIS.LOCATION.outside)
         before = self.keys_used(monitor)
         monitor.position = Point(-119.78, 36.74, srid=4326)
         assert self.keys_used(monitor) != before

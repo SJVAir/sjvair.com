@@ -6,6 +6,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.gis.geos import GEOSGeometry, Point
 from django.core.cache import cache
+from django.core.cache.backends.base import memcache_key_warnings
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
@@ -14,6 +15,7 @@ from django.urls import reverse
 
 from camp.api.v2.regions.endpoints import LocationList, RegionDetail, RegionGeoJSON, RegionList, RegionMetaEndpoint
 from camp.apps.monitors.airnow.models import AirNow
+from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.regions.models import Boundary, Location, Region
 from camp.apps.regions.resolve import regions_containing, round_point
 from camp.apps.regions.tests.test_resolve import make_region as make_square_region
@@ -930,7 +932,6 @@ class PlaceLookupPointTests(TestCase):
         assert set(response.json()['data'][0]['boundary']) == {'id', 'version', 'bbox'}
 
     def test_point_rounded_before_lookup(self):
-        keys = set()
         with patch('camp.api.v2.regions.endpoints.regions_containing', wraps=regions_containing) as spy:
             first = self.post({'lat': 36.73749, 'lon': -119.5})
             second = self.post({'lat': 36.7371, 'lon': -119.5})
@@ -1028,6 +1029,27 @@ class PlaceLookupPointTests(TestCase):
         response = self.client.get(self.url, {'monitor': str(monitor.pk)})
         assert response.status_code == 400
         assert response.json()['error'] == 'Monitor has no location.'
+
+    def test_cimis_monitor_resolves(self):
+        monitor = CIMIS.objects.create(
+            name='Weather', station_number='6', position=Point(-119.5, 36.5, srid=4326),
+            location=CIMIS.LOCATION.outside)
+        response = self.client.get(self.url, {'monitor': str(monitor.pk), 'type': 'county'})
+        assert self.ids(response) == [('county', '99001')]
+
+    def test_monitor_land_use_400(self):
+        monitor = AirNow.objects.create(
+            name='M', position=Point(-119.5, 36.5, srid=4326), location='outside')
+        assert self.client.get(
+            self.url, {'monitor': str(monitor.pk), 'type': 'land_use'}).status_code == 400
+
+    def test_cache_keys_are_memcached_safe(self):
+        from camp.apps.regions.resolve import monitor_lookup_key, point_lookup_key
+        types = tuple(sorted(Region.Type.values))
+        monitor = AirNow.objects.create(
+            name='M', position=Point(-119.5, 36.5, srid=4326), location='outside')
+        for key in (point_lookup_key(36.5, -119.5, types), monitor_lookup_key(monitor, types)):
+            assert list(memcache_key_warnings(cache.make_key(key))) == [], key
 
     def test_monitor_with_q_400(self):
         assert self.client.get(self.url, {'monitor': 'abc', 'q': 'Fresno'}).status_code == 400

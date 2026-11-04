@@ -34,7 +34,7 @@ class PlaceNotFound(PlaceError):
 
 
 def resolve_place(params):
-    """The Region (retired ones included) or public Monitor named by `region_type` + `region`, or `monitor`."""
+    """The Region (retired ones included) or visible (not hidden) Monitor named by `region_type` + `region`, or `monitor`."""
     monitor_id = (params.get('monitor') or '').strip()
     region_type = (params.get('region_type') or '').strip()
     region_code = (params.get('region') or '').strip()
@@ -48,7 +48,11 @@ def resolve_place(params):
 
     if monitor_id:
         try:
-            monitor = Monitor.objects.get_queryset().get_public().get(pk=monitor_id)
+            # Hidden monitors answer as unknown. Not get_public(): its type
+            # whitelist is for the list endpoints; like a monitor's detail, a
+            # place lookup by id answers for any visible monitor (CIMIS
+            # weather stations among them).
+            monitor = Monitor.objects.filter(is_hidden=False).get(pk=monitor_id)
         except (Monitor.DoesNotExist, ValidationError, ValueError):
             raise PlaceNotFound(f'No such monitor: {monitor_id}.')
         if monitor.position is None:
@@ -227,6 +231,21 @@ def parse_lookup_types(raw):
 def round_point(lat, lon):
     """Coordinates to 3 decimals (~100 m): all a lookup needs, and a shared cache key."""
     return round(lat, 3), round(lon, 3)
+
+
+def _hashed_types(types):
+    # Hashed: every type spelled out is long, and Memcached keys max out at 250.
+    return hashlib.md5(','.join(types).encode()).hexdigest()
+
+
+def point_lookup_key(lat, lon, types):
+    """The cache key for a point lookup (coordinates already rounded)."""
+    return f'regions_containing:point:{lat:.3f}:{lon:.3f}:{_hashed_types(types)}'
+
+
+def monitor_lookup_key(monitor, types):
+    """The cache key for a monitor lookup."""
+    return f"{_place_key('regions_containing', monitor)}:{_hashed_types(types)}"
 
 
 def regions_containing(geometry, types, key):
