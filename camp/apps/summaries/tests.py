@@ -42,6 +42,7 @@ from camp.apps.summaries.aggregators import (
 )
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.panels import TrendPanel
+from camp.apps.summaries import tasks as summary_tasks
 from camp.apps.summaries.schedule import (
     ROLLUP_LOCAL_TIME,
     SETTLE_MARGIN,
@@ -49,6 +50,7 @@ from camp.apps.summaries.schedule import (
     is_settled,
     period_end,
 )
+from camp.utils.datetime import localtime
 from camp.apps.summaries.tasks import (
     daily_monitor_summaries,
     get_summarizable_entry_models,
@@ -1384,3 +1386,54 @@ class SettleTimeTests(TestCase):
         assert set(ROLLUP_LOCAL_TIME) == set(SETTLE_MARGIN)
         for resolution, offset in ROLLUP_LOCAL_TIME.items():
             assert offset + timedelta(hours=1) <= SETTLE_MARGIN[resolution], resolution
+
+    def effective_runs(self, task, start, minutes):
+        """UTC instants in [start, start + minutes) where the task's crontab fires and its Pacific-hour guard passes."""
+        runs = []
+        validate = task.task_class().validate_datetime
+        for i in range(minutes):
+            instant = start + timedelta(minutes=i)
+            if validate(instant.replace(tzinfo=None)):
+                runs.append(instant)
+        return runs
+
+    def test_margin_covers_registered_crontabs(self):
+        # (monitor task, region task, resolution, [period ends in PST and PDT])
+        cases = [
+            ('hourly_monitor_summaries', 'hourly_region_summaries', 'hour',
+             [pacific(2026, 1, 1, 13), pacific(2026, 7, 1, 13)]),
+            ('daily_monitor_summaries', 'daily_region_summaries', 'day',
+             [pacific(2026, 1, 2), pacific(2026, 7, 2)]),
+            ('monthly_monitor_summaries', 'monthly_region_summaries', 'month',
+             [pacific(2026, 2, 1), pacific(2026, 8, 1)]),
+            ('quarterly_monitor_summaries', 'quarterly_region_summaries', 'quarter',
+             [pacific(2027, 1, 1), pacific(2026, 7, 1)]),
+            ('seasonal_monitor_summaries', 'seasonal_region_summaries', 'season',
+             [pacific(2026, 12, 1), pacific(2026, 6, 1)]),
+            ('yearly_monitor_summaries', 'yearly_region_summaries', 'year',
+             [pacific(2027, 1, 1)]),
+        ]
+        for monitor_name, region_name, resolution, ends in cases:
+            monitor_task = getattr(summary_tasks, monitor_name)
+            region_task = getattr(summary_tasks, region_name)
+            for end in ends:
+                label = f'{resolution} {end.isoformat()}'
+                assert period_end(resolution, end - timedelta(microseconds=1)) == end, label
+                end_utc = end.astimezone(dt_timezone.utc)
+                fire = end_utc + ROLLUP_LOCAL_TIME[resolution]
+                window = 60 if resolution == 'hour' else 24 * 60
+                guard_hour = localtime(fire).hour
+
+                def guarded(task):
+                    runs = self.effective_runs(task, end_utc, window)
+                    if resolution != 'hour':
+                        runs = [r for r in runs if is_pacific_hour(guard_hour, r)]
+                    return runs
+
+                # The region task (the later of the pair) runs exactly once, at ROLLUP_LOCAL_TIME.
+                assert guarded(region_task) == [fire], label
+                # The monitor task runs once, before it, so the region rollup has its inputs.
+                monitor_runs = guarded(monitor_task)
+                assert len(monitor_runs) == 1 and monitor_runs[0] < fire, label
+                # And everything is done, plus an hour of slack, inside the settle margin.
+                assert fire + timedelta(hours=1) <= end_utc + SETTLE_MARGIN[resolution], label

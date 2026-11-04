@@ -55,6 +55,7 @@ def period_end(resolution, ts):
     values, never timedelta arithmetic across DST.
     """
     if resolution == 'hour':
+        # Hours are absolute: truncating in UTC is intentional (Pacific offsets are whole hours).
         start = ts.astimezone(dt_timezone.utc).replace(minute=0, second=0, microsecond=0)
         return start + timedelta(hours=1)
 
