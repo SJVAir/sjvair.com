@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from unittest import mock
+from unittest.mock import patch
 
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
@@ -596,3 +597,111 @@ class BulkRegionSummaryListTests(TestCase):
         ]
         assert len(fresno_timestamps) == 2
         assert fresno_timestamps == sorted(fresno_timestamps)
+
+
+class SummaryCacheHeaderTests(TestCase):
+    fixtures = ['purple-air.yaml', 'default-calibrations.yaml', 'regions.yaml']
+
+    LONG = 'max-age=86400'
+    SHORT = 'max-age=60'
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        self.region = Region.objects.get(name='Fresno County')
+        self.kern = Region.objects.get(name='Kern County')
+        sept = timezone.make_aware(datetime(2026, 9, 1))
+        for i in range(30):
+            ts = sept + timedelta(days=i)
+            make_monitor_summary(self.monitor, ts, resolution='day', processor='PM25_EPA_Oct2021')
+            make_monitor_summary(self.monitor, ts, resolution='day')
+            make_region_summary(self.region, ts, resolution='day')
+            make_region_summary(self.kern, ts, resolution='day')
+
+    def _at(self, *args, now, **kwargs):
+        pacific = timezone.make_aware(now)
+        with patch('django.utils.timezone.now', return_value=pacific):
+            return self.client.get(*args, **kwargs)
+
+    def _monitor_url(self, path):
+        return f'/api/2.0/monitors/{self.monitor.pk}/summaries/{path}'
+
+    def _region_url(self, path):
+        return f'/api/2.0/regions/{self.region.sqid}/summaries/{path}'
+
+    def _assert_cache(self, response, max_age):
+        assert response.status_code == 200
+        cc = response['Cache-Control']
+        assert 'private' in cc
+        assert max_age in cc
+        assert response.has_header('ETag')
+
+    def test_settled_month_path_is_long(self):
+        response = self._at(self._monitor_url('pm25/daily/2026/9/'), now=datetime(2026, 10, 5, 12))
+        self._assert_cache(response, self.LONG)
+
+    def test_current_month_path_is_short(self):
+        response = self._at(self._monitor_url('pm25/daily/2026/10/'), now=datetime(2026, 10, 5, 12))
+        self._assert_cache(response, self.SHORT)
+
+    def test_day_inside_margin_is_short(self):
+        response = self._at(self._monitor_url('pm25/daily/2026/9/'), now=datetime(2026, 10, 1, 2))
+        self._assert_cache(response, self.SHORT)
+
+    def test_yearly_without_year_is_short(self):
+        response = self._at(self._monitor_url('pm25/yearly/'), now=datetime(2026, 10, 5, 12))
+        self._assert_cache(response, self.SHORT)
+
+    def test_bulk_range_ending_today_is_short(self):
+        response = self._at('/api/2.0/monitors/pm25/summaries/daily/',
+            {'start': '2026-09-01', 'end': '2026-10-05'}, now=datetime(2026, 10, 5, 12))
+        self._assert_cache(response, self.SHORT)
+
+    def test_bulk_range_ending_a_month_ago_is_long(self):
+        response = self._at('/api/2.0/monitors/pm25/summaries/daily/',
+            {'start': '2026-08-01', 'end': '2026-09-05'}, now=datetime(2026, 10, 5, 12))
+        self._assert_cache(response, self.LONG)
+
+    def test_region_path_and_bulk_get_headers(self):
+        now = datetime(2026, 10, 5, 12)
+        self._assert_cache(self._at(self._region_url('pm25/daily/2026/9/'), now=now), self.LONG)
+        self._assert_cache(self._at(self._region_url('pm25/daily/2026/10/'), now=now), self.SHORT)
+        bulk = '/api/2.0/regions/pm25/summaries/daily/'
+        query = {'region': self.region.sqid}
+        self._assert_cache(self._at(bulk, {**query, 'start': '2026-08-01', 'end': '2026-09-05'}, now=now), self.LONG)
+        self._assert_cache(self._at(bulk, {**query, 'start': '2026-09-01', 'end': '2026-10-05'}, now=now), self.SHORT)
+
+    def test_if_none_match_returns_304_through_gzip(self):
+        url = self._monitor_url('pm25/daily/2026/9/')
+        now = datetime(2026, 10, 5, 12)
+        first = self._at(url, now=now, HTTP_ACCEPT_ENCODING='gzip')
+        assert first.status_code == 200
+        assert first['Content-Encoding'] == 'gzip'
+        etag = first['ETag']
+        second = self._at(url, now=now, HTTP_ACCEPT_ENCODING='gzip', HTTP_IF_NONE_MATCH=etag)
+        assert second.status_code == 304
+        assert second.content == b''
+        # GZipMiddleware weakens the 200's ETag; If-None-Match compares weakly.
+        assert second['ETag'].removeprefix('W/') == etag.removeprefix('W/')
+        assert self.LONG in second['Cache-Control']
+
+    def test_errors_are_no_cache(self):
+        now = datetime(2026, 10, 5, 12)
+        missing = self._at(self._monitor_url('nope/daily/2026/9/'), now=now)
+        assert missing.status_code == 404
+        bad = self._at('/api/2.0/monitors/pm25/summaries/daily/', now=now)
+        assert bad.status_code == 400
+        for response in (missing, bad):
+            assert response['Cache-Control'] == 'no-cache'
+
+    def test_page_two_gets_same_rule(self):
+        with patch.object(BulkMonitorSummaryList, 'page_size', 10):
+            response = self._at('/api/2.0/monitors/pm25/summaries/daily/',
+                {'start': '2026-09-01', 'end': '2026-09-30', 'page': 2}, now=datetime(2026, 10, 5, 12))
+        assert get_response_data(response)['data']
+        self._assert_cache(response, self.LONG)
+
+    def test_vary_and_cache_control_survive_middleware(self):
+        response = self._at(self._monitor_url('pm25/daily/2026/9/'), now=datetime(2026, 10, 5, 12),
+            HTTP_ACCEPT_ENCODING='gzip')
+        assert response['Cache-Control'] == 'private, max-age=86400'
+        assert {'Accept-Encoding', 'Cookie'} <= {v.strip() for v in response['Vary'].split(',')}

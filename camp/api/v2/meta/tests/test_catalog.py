@@ -26,6 +26,13 @@ class DatasetCatalogTests(TestCase):
         assert [d['id'] for d in self.get()['datasets']] == list(catalog.DATASET_IDS)
         assert len(catalog.DATASET_IDS) == 11
 
+    def test_places_url(self):
+        url = reverse('api:v2:monitors:monitor-list')
+        urls = {d['id']: d['places_url'] for d in self.get()['datasets']}
+        assert urls['weather'] == f'{url}?dataset=weather'
+        assert urls['air-quality'] == f'{url}?dataset=air-quality'
+        assert all(v == '' for k, v in urls.items() if k not in ('weather', 'air-quality'))
+
     def test_no_dataset_level_resolutions(self):
         assert all('resolutions' not in d for d in self.get()['datasets'])
 

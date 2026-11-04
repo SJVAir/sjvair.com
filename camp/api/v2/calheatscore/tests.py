@@ -280,6 +280,13 @@ class CalHeatScorePlaceTests(TestCase):
         assert response.status_code == 400
         assert response.json()['error'] == 'Monitor has no location.'
 
+    def test_hidden_monitor_404(self):
+        monitor = CIMIS.objects.create(
+            name='Hidden', station_number='8', position=Point(-99.5, 30.5, srid=4326),
+            location=CIMIS.LOCATION.outside, is_hidden=True)
+        response = self.client.get(self.url, {'monitor': str(monitor.pk)})
+        assert response.status_code == 404
+
     def test_zip_filters_are_ignored(self):
         CalHeatScore.objects.create(region=self.zip_b, date=date(2026, 7, 12), score=4)
         zips = [self.zip_a, self.zip_b]

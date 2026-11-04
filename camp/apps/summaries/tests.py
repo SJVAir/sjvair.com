@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest.mock import patch
 
 import numpy as np
@@ -18,6 +18,8 @@ from django.utils import timezone
 #   last quarter    = 2026-01-01  (Q1: Jan–Mar)
 #   last season     = 2025-12-01  (winter: Dec–Feb; use Mar 1 as "now" for that helper)
 FIXED_NOW = timezone.make_aware(datetime(2026, 4, 1, 10, 30, 0))
+# 2026-04-01 08:30 UTC = 01:30 PDT, inside the Pacific hour the rollups run in.
+ROLLUP_NOW = timezone.make_aware(datetime(2026, 4, 1, 8, 30, 0))
 
 from camp.apps.entries.models import CO, NO2, O3, PM25, SO2
 from camp.apps.monitors.bam.models import BAM1022
@@ -40,6 +42,16 @@ from camp.apps.summaries.aggregators import (
 )
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.panels import TrendPanel
+from camp.apps.summaries import tasks as summary_tasks
+from camp.apps.summaries.schedule import (
+    ROLLUP_LOCAL_TIME,
+    SETTLE_MARGIN,
+    is_pacific_hour,
+    is_settled,
+    pacific_crontab,
+    period_end,
+)
+from camp.utils.datetime import localtime
 from camp.apps.summaries.tasks import (
     daily_monitor_summaries,
     get_summarizable_entry_models,
@@ -49,6 +61,7 @@ from camp.apps.summaries.tasks import (
     quarterly_monitor_summaries,
     rollup_monitor_summaries,
     rollup_region_summaries,
+    seasonal_monitor_summaries,
     summarize_monitor_hour,
     summarize_region_hour,
 )
@@ -999,7 +1012,7 @@ class DailyMonitorSummariesTaskTests(TestCase):
         for h in range(3):
             self._make_hourly_summary(self.yesterday + timedelta(hours=h))
 
-        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
+        with patch('django.utils.timezone.now', return_value=ROLLUP_NOW):
             daily_monitor_summaries()
 
         assert MonitorSummary.objects.filter(
@@ -1110,7 +1123,7 @@ class MonthlyMonitorSummariesTaskTests(TestCase):
         for d in range(3):
             self._make_daily_summary(self.march + timedelta(days=d))
 
-        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
+        with patch('django.utils.timezone.now', return_value=ROLLUP_NOW):
             monthly_monitor_summaries()
 
         assert MonitorSummary.objects.filter(
@@ -1170,7 +1183,7 @@ class QuarterlyMonitorSummariesTaskTests(TestCase):
                 timezone.make_aware(datetime(2026, month, 1), settings.DEFAULT_TIMEZONE)
             )
 
-        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
+        with patch('django.utils.timezone.now', return_value=ROLLUP_NOW):
             quarterly_monitor_summaries()
 
         assert MonitorSummary.objects.filter(
@@ -1205,6 +1218,138 @@ def daily_region_summary(region, day, mean, entry_type='pm25', station_count=1):
         minimum=mean, maximum=mean, mean=mean, stddev=0.0, p25=mean, p75=mean,
         station_count=station_count, weight=float(station_count),
     )
+
+
+def utc(*args):
+    return timezone.make_aware(datetime(*args), dt_timezone.utc)
+
+
+def pacific(*args):
+    return timezone.make_aware(datetime(*args), settings.DEFAULT_TIMEZONE)
+
+
+class PacificScheduleTests(TestCase):
+    def test_true_at_0115_pst(self):
+        assert is_pacific_hour(1, utc(2026, 1, 2, 9, 15))
+
+    def test_true_at_0115_pdt(self):
+        assert is_pacific_hour(1, utc(2026, 7, 2, 8, 15))
+
+    def test_false_at_other_utc_candidate(self):
+        assert not is_pacific_hour(1, utc(2026, 1, 2, 8, 15))  # 00:15 PST
+        assert not is_pacific_hour(1, utc(2026, 7, 2, 9, 15))  # 02:15 PDT
+
+    def test_fall_back_runs_once(self):
+        assert is_pacific_hour(1, utc(2026, 11, 1, 8, 15))  # 01:15 PDT, fold 0
+        assert not is_pacific_hour(1, utc(2026, 11, 1, 9, 15))  # 01:15 PST, fold 1
+
+    def test_spring_forward(self):
+        assert is_pacific_hour(1, utc(2026, 3, 8, 9, 15))  # 01:15 PST
+
+    def test_defaults_to_current_time(self):
+        with patch('django.utils.timezone.now', return_value=utc(2026, 1, 2, 9, 15)):
+            assert is_pacific_hour(1)
+            assert not is_pacific_hour(2)
+
+    def test_explicit_args_run_any_time(self):
+        with patch('camp.apps.summaries.tasks.rollup_monitor_summaries') as rollup:
+            with patch('django.utils.timezone.now', return_value=utc(2026, 1, 2, 20, 0)):
+                daily_monitor_summaries(day=pacific(2026, 1, 5))
+        rollup.assert_called_once()
+
+
+# (task name, Pacific hour, minute, [Pacific days it should run on: PST, PDT and,
+# where the crontab allows it, the fall-back day], (late `now` -> expected window))
+ROLLUP_SCHEDULE = [
+    ('daily_monitor_summaries', 1, 0, [(2026, 1, 2), (2026, 7, 2), (2026, 11, 1), (2026, 3, 8)],
+     (pacific(2026, 1, 2, 2, 20), pacific(2026, 1, 1), pacific(2026, 1, 2))),
+    ('daily_region_summaries', 1, 10, [(2026, 1, 2), (2026, 7, 2), (2026, 11, 1), (2026, 3, 8)],
+     (pacific(2026, 7, 2, 2, 30), pacific(2026, 7, 1), pacific(2026, 7, 2))),
+    ('monthly_monitor_summaries', 1, 15, [(2026, 1, 1), (2026, 7, 1), (2026, 11, 1)],
+     (pacific(2026, 11, 1, 2, 35), pacific(2026, 10, 1), pacific(2026, 11, 1))),
+    ('monthly_region_summaries', 1, 25, [(2026, 1, 1), (2026, 7, 1), (2026, 11, 1)],
+     (pacific(2026, 2, 1, 2, 45), pacific(2026, 1, 1), pacific(2026, 2, 1))),
+    ('quarterly_monitor_summaries', 1, 30, [(2026, 1, 1), (2026, 7, 1)],
+     (pacific(2026, 7, 1, 2, 50), pacific(2026, 4, 1), pacific(2026, 7, 1))),
+    ('quarterly_region_summaries', 1, 35, [(2026, 1, 1), (2026, 7, 1)],
+     (pacific(2026, 1, 1, 2, 55), pacific(2025, 10, 1), pacific(2026, 1, 1))),
+    ('seasonal_monitor_summaries', 1, 45, [(2026, 3, 1), (2026, 6, 1), (2026, 12, 1)],
+     (pacific(2026, 6, 1, 3, 5), pacific(2026, 3, 1), pacific(2026, 6, 1))),
+    ('seasonal_region_summaries', 1, 55, [(2026, 3, 1), (2026, 6, 1), (2026, 12, 1)],
+     (pacific(2026, 3, 1, 3, 15), pacific(2025, 12, 1), pacific(2026, 3, 1))),
+    ('yearly_monitor_summaries', 2, 0, [(2026, 1, 1), (2027, 1, 1)],
+     (pacific(2027, 1, 1, 3, 20), pacific(2026, 1, 1), pacific(2027, 1, 1))),
+    ('yearly_region_summaries', 2, 5, [(2026, 1, 1), (2027, 1, 1)],
+     (pacific(2026, 1, 1, 3, 25), pacific(2025, 1, 1), pacific(2026, 1, 1))),
+]
+
+
+class PacificCrontabTests(TestCase):
+    def fires(self, validate, start, minutes):
+        """Naive-UTC minutes in [start, start + minutes) the validator accepts, as Huey's scheduler passes them."""
+        start = start.astimezone(dt_timezone.utc).replace(tzinfo=None)
+        return [
+            start + timedelta(minutes=i) for i in range(minutes)
+            if validate(start + timedelta(minutes=i))
+        ]
+
+    def test_fires_once_at_the_pacific_hour(self):
+        validate = pacific_crontab(1, '15')
+        for day in [(2026, 1, 2), (2026, 7, 2), (2026, 11, 1), (2026, 3, 8)]:
+            # Scan the two UTC days around the Pacific day, so every candidate hour is seen.
+            runs = self.fires(validate, pacific(*day) - timedelta(hours=12), 48 * 60)
+            fired = [localtime(r.replace(tzinfo=dt_timezone.utc)) for r in runs]
+            assert len(fired) == 2, day  # once on this Pacific day, once on the next
+            first = fired[0]
+            assert (first.date(), first.hour, first.minute, first.fold) == (
+                pacific(*day).date(), 1, 15, 0), day
+
+    def test_fall_back_repeated_hour_fires_once(self):
+        validate = pacific_crontab(1, '15')
+        assert validate(datetime(2026, 11, 1, 8, 15))  # 01:15 PDT, fold 0
+        assert not validate(datetime(2026, 11, 1, 9, 15))  # 01:15 PST, fold 1
+
+    def test_accepts_aware_datetimes(self):
+        validate = pacific_crontab(1, '15')
+        assert validate(utc(2026, 1, 2, 9, 15))
+        assert validate(pacific(2026, 1, 2, 1, 15))
+        assert not validate(utc(2026, 1, 2, 8, 15))
+
+    def test_respects_crontab_fields(self):
+        validate = pacific_crontab(1, '15', day='1')
+        assert validate(datetime(2026, 2, 1, 9, 15))
+        assert not validate(datetime(2026, 2, 2, 9, 15))
+
+    def test_every_rollup_task_fires_once_per_period(self):
+        for name, hour, minute, days, _ in ROLLUP_SCHEDULE:
+            validate = getattr(summary_tasks, name).task_class().validate_datetime
+            for day in days:
+                runs = self.fires(validate, pacific(*day), 24 * 60)
+                assert len(runs) == 1, (name, day, runs)
+                local = localtime(runs[0].replace(tzinfo=dt_timezone.utc))
+                assert (local.date(), local.hour, local.minute, local.fold) == (
+                    pacific(*day).date(), hour, minute, 0), (name, day)
+
+    def test_every_rollup_task_skips_off_days(self):
+        # The day before each scheduled day never fires (except for daily tasks, which fire daily).
+        for name, _, _, days, _ in ROLLUP_SCHEDULE:
+            if name.startswith('daily'):
+                continue
+            validate = getattr(summary_tasks, name).task_class().validate_datetime
+            for day in days:
+                assert self.fires(validate, pacific(*day) - timedelta(days=1), 24 * 60) == [], (name, day)
+
+    def test_late_run_still_rolls_up_the_period(self):
+        # A rollup that starts well after its scheduled minute (the queue was busy)
+        # still rolls up the period it was scheduled for.
+        for name, _, _, _, (now, start, end) in ROLLUP_SCHEDULE:
+            rollup_name = 'rollup_region_summaries' if '_region_' in name else 'rollup_monitor_summaries'
+            with patch(f'camp.apps.summaries.tasks.{rollup_name}') as rollup:
+                with patch('django.utils.timezone.now', return_value=now):
+                    getattr(summary_tasks, name)()
+            rollup.assert_called_once()
+            _, _, got_start, got_end = rollup.call_args.args
+            assert (got_start, got_end) == (start, end), name
 
 
 class TrendPanelTests(TestCase):
@@ -1268,3 +1413,86 @@ class TrendPanelTests(TestCase):
         assert context['has_data'] is False
         assert context['chart'] == ''
         assert self.panel(Region.objects.get(pk=10)).tiles() == []
+
+
+class SettleTimeTests(TestCase):
+    def test_period_end_each_resolution(self):
+        ts = pacific(2026, 10, 15, 12)
+        assert period_end('hour', ts) == pacific(2026, 10, 15, 13)
+        assert period_end('day', ts) == pacific(2026, 10, 16)
+        assert period_end('month', ts) == pacific(2026, 11, 1)
+        assert period_end('quarter', ts) == pacific(2027, 1, 1)
+        assert period_end('season', ts) == pacific(2026, 12, 1)
+        assert period_end('year', ts) == pacific(2027, 1, 1)
+
+    def test_period_end_season_winter_crosses_year(self):
+        assert period_end('season', pacific(2026, 1, 10)) == pacific(2026, 3, 1)
+        assert period_end('season', pacific(2026, 12, 10)) == pacific(2027, 3, 1)
+
+    def test_period_end_day_across_dst(self):
+        assert period_end('day', pacific(2026, 11, 1, 12)) == pacific(2026, 11, 2)
+        assert period_end('day', pacific(2026, 3, 8, 12)) == pacific(2026, 3, 9)
+
+    def test_month_settles_4h_after_end(self):
+        end = pacific(2026, 11, 1)
+        assert not is_settled('month', end, now=pacific(2026, 11, 1, 3, 59))
+        assert is_settled('month', end, now=pacific(2026, 11, 1, 4))
+
+    def test_defaults_to_current_time(self):
+        end = pacific(2026, 11, 1)
+        with patch('django.utils.timezone.now', return_value=pacific(2026, 11, 1, 4)):
+            assert is_settled('month', end)
+        with patch('django.utils.timezone.now', return_value=pacific(2026, 11, 1, 3)):
+            assert not is_settled('month', end)
+
+    def test_open_range_never_settled(self):
+        assert not is_settled('year', None)
+
+    def test_margin_covers_schedule(self):
+        assert set(ROLLUP_LOCAL_TIME) == set(SETTLE_MARGIN)
+        for resolution, offset in ROLLUP_LOCAL_TIME.items():
+            assert offset + timedelta(hours=1) <= SETTLE_MARGIN[resolution], resolution
+
+    def effective_runs(self, task, start, minutes):
+        """UTC instants in [start, start + minutes) where the task's registered schedule fires."""
+        runs = []
+        validate = task.task_class().validate_datetime
+        for i in range(minutes):
+            instant = start + timedelta(minutes=i)
+            if validate(instant.replace(tzinfo=None)):
+                runs.append(instant)
+        return runs
+
+    def test_margin_covers_registered_crontabs(self):
+        # (monitor task, region task, resolution, [period ends in PST and PDT])
+        cases = [
+            ('hourly_monitor_summaries', 'hourly_region_summaries', 'hour',
+             [pacific(2026, 1, 1, 13), pacific(2026, 7, 1, 13)]),
+            ('daily_monitor_summaries', 'daily_region_summaries', 'day',
+             [pacific(2026, 1, 2), pacific(2026, 7, 2)]),
+            ('monthly_monitor_summaries', 'monthly_region_summaries', 'month',
+             [pacific(2026, 2, 1), pacific(2026, 8, 1)]),
+            ('quarterly_monitor_summaries', 'quarterly_region_summaries', 'quarter',
+             [pacific(2027, 1, 1), pacific(2026, 7, 1)]),
+            ('seasonal_monitor_summaries', 'seasonal_region_summaries', 'season',
+             [pacific(2026, 12, 1), pacific(2026, 6, 1)]),
+            ('yearly_monitor_summaries', 'yearly_region_summaries', 'year',
+             [pacific(2027, 1, 1)]),
+        ]
+        for monitor_name, region_name, resolution, ends in cases:
+            monitor_task = getattr(summary_tasks, monitor_name)
+            region_task = getattr(summary_tasks, region_name)
+            for end in ends:
+                label = f'{resolution} {end.isoformat()}'
+                assert period_end(resolution, end - timedelta(microseconds=1)) == end, label
+                end_utc = end.astimezone(dt_timezone.utc)
+                fire = end_utc + ROLLUP_LOCAL_TIME[resolution]
+                window = 60 if resolution == 'hour' else 24 * 60
+
+                # The region task (the later of the pair) runs exactly once, at ROLLUP_LOCAL_TIME.
+                assert self.effective_runs(region_task, end_utc, window) == [fire], label
+                # The monitor task runs once, before it, so the region rollup has its inputs.
+                monitor_runs = self.effective_runs(monitor_task, end_utc, window)
+                assert len(monitor_runs) == 1 and monitor_runs[0] < fire, label
+                # And everything is done, plus an hour of slack, inside the settle margin.
+                assert fire + timedelta(hours=1) <= end_utc + SETTLE_MARGIN[resolution], label

@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta, timezone as dt_timezone
 
+from django.contrib.gis.geos import Point
 from django.core.cache import cache
 from django.db import connection
 from django.test import TestCase
@@ -196,6 +197,13 @@ class ForecastPlaceTests(TestCase):
         response = self.client.get(self.url, {'monitor': str(monitor.pk)})
         assert response.status_code == 400
         assert response.json()['error'] == 'Monitor has no location.'
+
+    def test_hidden_monitor_404(self):
+        monitor = CIMIS.objects.create(
+            name='Hidden', station_number='8', position=Point(-99.5, 30.5, srid=4326),
+            location=CIMIS.LOCATION.outside, is_hidden=True)
+        response = self.client.get(self.url, {'monitor': str(monitor.pk)})
+        assert response.status_code == 404
 
     def test_errors_pass_through(self):
         assert self.client.get(self.url, {'region_type': 'land_use', 'region': '1'}).status_code == 400

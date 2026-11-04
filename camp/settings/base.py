@@ -43,6 +43,10 @@ if COMMIT_HASH is None:
 # Empty means all registered types are exposed.
 MONITOR_ENABLED_TYPES = ['purpleair', 'airgradient', 'bam1022', 'aqview', 'airnow', 'vozbox', 'aqlite']
 
+# Monitor types left out of MONITOR_ENABLED_TYPES that the monitor list still
+# serves when a request asks for their dataset with `?dataset=` ({type: dataset id}).
+MONITOR_OPT_IN_TYPES = {'cimis': 'weather'}
+
 # The counties SJVAir covers, by short name. County geometry comes from the
 # county Region rows (`import_counties`); this list says which of those
 # counties are "ours" for monitor county assignment, ingestion filters
@@ -185,6 +189,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'camp.api.middleware.CoordinateQueryGuardMiddleware',
     'django.middleware.gzip.GZipMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
 
@@ -543,14 +548,14 @@ if "SENTRY_DSN" in os.environ:
     import sentry_sdk
     from sentry_sdk.integrations.django import DjangoIntegration
 
-    from camp.apps.documents.sentry import scrub_documents
+    from camp.utils.sentry import scrub_event
 
     sentry_sdk.init(
         dsn=os.environ["SENTRY_DSN"],
         integrations=[DjangoIntegration(transaction_style="url")],
         release=COMMIT_HASH,
-        # Saved dashboards' bodies and names stay out of error reports.
-        before_send=scrub_documents,
+        # Saved dashboards' bodies and names, and lookup coordinates, stay out of error reports.
+        before_send=scrub_event,
     )
 
 
@@ -582,6 +587,9 @@ SCOUT_KEY = env('SCOUT_KEY')
 SCOUT_NAME = env('SCOUT_NAME')
 
 SCOUT_ERRORS_ENABLED = not DEBUG
+
+# Never record query strings in traces (lookup coordinates must not reach Scout).
+SCOUT_URI_REPORTING = 'path'
 
 if SCOUT_KEY is not None:
     INSTALLED_APPS.insert(0, 'scout_apm.django')

@@ -1,9 +1,12 @@
 import json
 
 from django import forms
+from django.contrib.gis.geos import Point
 from django.core.cache import cache
 from django.db import connection
 from django.db.models import Count
+from django.utils.decorators import method_decorator
+from django.views.decorators.debug import sensitive_variables
 
 from resticus import generics, http
 
@@ -12,6 +15,9 @@ from django.db.models import Q
 
 from camp.apps.regions.locations import SOURCES
 from camp.apps.regions.models import Boundary, Location, Region
+from camp.apps.regions.resolve import (
+    PlaceError, PlaceNotFound, monitor_lookup_key, parse_lookup_types, point_lookup_key,
+    regions_containing, resolve_place, round_point)
 from camp.utils.views import CachedEndpointMixin
 
 from .filters import LOOKUP_MAX_CODES, RegionFilter, parse_codes
@@ -323,17 +329,86 @@ class PlaceSearch(generics.Endpoint):
         return {'data': [RegionSerializer(r).serialize() for r in regions]}
 
 
+class PointLookupForm(forms.Form):
+    """The POST body of a point lookup. Error text never includes the input."""
+    lat = forms.FloatField(min_value=-90, max_value=90, error_messages={
+        'required': 'lat is required.',
+        'invalid': 'lat must be a number between -90 and 90.',
+        'min_value': 'lat must be a number between -90 and 90.',
+        'max_value': 'lat must be a number between -90 and 90.',
+    })
+    lon = forms.FloatField(min_value=-180, max_value=180, error_messages={
+        'required': 'lon is required.',
+        'invalid': 'lon must be a number between -180 and 180.',
+        'min_value': 'lon must be a number between -180 and 180.',
+        'max_value': 'lon must be a number between -180 and 180.',
+    })
+    type = forms.CharField(required=False, strip=True)
+
+
+# Keeps the coordinates out of Django's error reports (frame locals). The body is
+# JSON, so sensitive_post_parameters (request.POST only) wouldn't cover it.
+@method_decorator(sensitive_variables('body', 'form', 'lat', 'lon', 'geometry'), name='post')
 class PlaceLookup(generics.Endpoint):
-    """Resolve a name to the single best-match region. Without ?type, returns the best
-    match among cities, then CDPs, then urban areas (the first of those types with a
-    match). With ?type=<type>, returns the top match within that type directly."""
+    """
+    Resolve a name to the single best-match region (?q=, optional ?type=): without
+    ?type, the best match among cities, then CDPs, then urban areas (the first of
+    those types with a match); with it, the top match within that type.
+
+    Or list the current regions containing a place: POST {lat, lon, type?} (the
+    coordinates go in the body so they stay out of URLs and logs; they are
+    rounded to 3 decimals), or GET ?monitor=<id>&type=. `type` is a
+    comma-separated list; by default every type but land use and MTRS.
+    """
 
     form_class = PlaceQueryForm
 
+    def lookup_response(self, geometry, raw_types, key_for):
+        try:
+            types = parse_lookup_types(raw_types)
+        except PlaceError as err:
+            return http.Http400({'error': str(err)})
+        return {'data': regions_containing(geometry, types, key_for(types))}
+
     def get(self, request):
+        if 'lat' in request.GET or 'lon' in request.GET:
+            return http.Http400({'error': 'Send coordinates in a POST body.'})
         form = PlaceQueryForm(request.GET)
         form.is_valid()
         q = form.cleaned_data.get('q', '')
+        if request.GET.get('monitor', '').strip():
+            if q:
+                return http.Http400({'error': 'Give either q or monitor, not both.'})
+            try:
+                monitor = resolve_place({'monitor': request.GET['monitor']})
+            except PlaceNotFound as err:
+                return http.Http404({'error': str(err)})
+            except PlaceError as err:
+                return http.Http400({'error': str(err)})
+            return self.lookup_response(
+                monitor.position, request.GET.get('type', ''),
+                lambda types: monitor_lookup_key(monitor, types))
         region_type = form.cleaned_data.get('type', '')
         region = Region.objects.resolve_place(q, type=region_type or None) if q else None
         return {'data': RegionSerializer(region).serialize() if region else None}
+
+    def post(self, request):
+        body = request.data if isinstance(request.data, dict) else {}
+        if 'q' in body or 'monitor' in body:
+            return http.Http400({'error': 'A POST takes lat and lon only.'})
+        raw_type = body.get('type')
+        if raw_type is None:
+            raw_type = ''
+        elif isinstance(raw_type, list) and all(isinstance(t, str) for t in raw_type):
+            raw_type = ','.join(raw_type)
+        elif not isinstance(raw_type, str):
+            return http.Http400({'error': 'type must be a comma-separated string or a list of strings.'})
+        form = PointLookupForm({**body, 'type': raw_type})
+        if not form.is_valid():
+            # Messages only, never the values.
+            errors = [error for field in form.errors.values() for error in field]
+            return http.Http400({'error': ' '.join(errors)})
+        lat, lon = round_point(form.cleaned_data['lat'], form.cleaned_data['lon'])
+        return self.lookup_response(
+            Point(lon, lat, srid=4326), form.cleaned_data['type'],
+            lambda types: point_lookup_key(lat, lon, types))

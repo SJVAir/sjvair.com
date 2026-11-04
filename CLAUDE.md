@@ -192,8 +192,13 @@ zones are missing there; see SJVAPCD Forecast Setup).
   added. Don't change its shape.
 - **Catalog** (`meta/datasets/`): each entry type has `display` hints (`precision`, `chart`,
   `y_min`); `burn-status` is an entry type of the forecasts dataset.
+  Each dataset has a `places_url` (`''` when none). `settings.MONITOR_OPT_IN_TYPES`
+  (`{'cimis': 'weather'}`) holds types left out of `MONITOR_ENABLED_TYPES` that
+  `monitors/?dataset=<id>` still lists (non-hidden, then `MonitorFilter`); `air-quality` is
+  the default list, any other value is a 400, and responses without `dataset` are unchanged.
+  `places_url` for `weather` and `air-quality` points there.
 - **Place endpoints** `calheatscore/place/` and `forecasts/place/` take `?region_type=&region=`
-  (code; retired regions answer, land use is refused) or `?monitor=`. Heat returns the highest
+  (code; retired regions answer, land use is refused) or `?monitor=` (hidden monitors 404). Heat returns the highest
   score per date among the ZIPs the place covers (a region's ZIPs need >=1% of their own area
   inside it; a monitor's is the ZIP it touches, the lowest code on a shared edge; ties go to
   the lowest ZIP code). Forecasts return the SJVAPCD zone's latest-issued row per date plus
@@ -208,6 +213,29 @@ zones are missing there; see SJVAPCD Forecast Setup).
   regions with >=1% of their own area inside the parents and adds `also_in`; the default
   `contained` mode is unchanged. `regions/meta/` types carry `count`, `parents`,
   `referenceable` (false for land use) and `browsable` (false for MTRS and land use).
+- **Place lookup** `regions/places/lookup/` has three modes. Name: `GET ?q=` (+ `type`), the best
+  match. Point: `POST {lat, lon, type?}` lists the current regions containing the point;
+  coordinates are rounded to 3 decimals (server too) and only ever travel in the body. Monitor:
+  `GET ?monitor=&type=`. `type` is a comma list (the POST also takes a JSON array); the
+  default is every type but `land_use` and `mtrs`, and asking for `land_use` is a 400. Hidden
+  monitors 404 (this also applies to the heat/forecast place endpoints); other monitors, CIMIS
+  included, answer. Coordinates in a query string (`lat`/`lon`/`latitude`/`longitude`) are
+  refused (400, `no-cache`) by `CoordinateQueryGuardMiddleware` (`camp/api/middleware.py`)
+  before the view stack. `camp/utils/sentry.py` scrubs lookup events, and `SCOUT_URI_REPORTING='path'`
+  keeps query strings out of Scout traces (site-wide). Answers are cached 24h; re-importing
+  boundaries leaves stale answers until they expire.
+- **Summary cache rule** (`camp/api/v2/summaries/endpoints.py`): a 200 for a settled period is
+  `private, max-age=86400`, any other 200 is `private, max-age=60`; both carry an `ETag` and
+  answer `If-None-Match` with a 304 (which keeps the 200's headers). Errors are `no-cache`.
+  A period is settled once its end plus `SETTLE_MARGIN` has passed (`camp/apps/summaries/schedule.py`).
+  `ROLLUP_LOCAL_TIME` there holds when each rollup runs after the period ends; a test checks
+  the margins against the real crontabs, so moving a rollup past its settle time fails it.
+- **Rollup timing**: Huey crontabs are UTC (its `utc=True` default; `DJANGO_HUEY` doesn't
+  change it), so each daily-and-longer rollup is scheduled with `pacific_crontab()`
+  (`camp/apps/summaries/schedule.py`): it matches both UTC hours that can hold its Pacific hour
+  (`ROLLUP_UTC_HOURS`: 01:00 Pacific is `8,9`, 02:00 is `9,10`) and keeps only the one that is
+  that Pacific hour (fold 0 on fall-back day). The scheduler decides, so a rollup that starts
+  late still runs; the task body only works out "last period" from the current time.
 - **Burn status** (`camp/apps/forecasts/scales.py`): the feed's `status` string is stored as
   received; unknown values are stored and logged by the ingest task. When a new value
   appears, add a level there. The "No Burning For All" string is still unconfirmed.
