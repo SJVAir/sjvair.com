@@ -216,11 +216,12 @@ zones are missing there; see SJVAPCD Forecast Setup).
 - **Place lookup** `regions/places/lookup/` has three modes. Name: `GET ?q=` (+ `type`), the best
   match. Point: `POST {lat, lon, type?}` lists the current regions containing the point;
   coordinates are rounded to 3 decimals (server too) and only ever travel in the body. Monitor:
-  `GET ?monitor=&type=`. `type` is a comma list; the default is every type but `land_use` and
-  `mtrs`, and asking for `land_use` is a 400. Hidden monitors 404 (this also applies to the
-  heat/forecast place endpoints); other monitors, CIMIS included, answer. Coordinates in a query
-  string are refused (400) by `CoordinateQueryGuardMiddleware` (`camp/api/middleware.py`) before
-  the view stack. `camp/utils/sentry.py` scrubs lookup events, and `SCOUT_URI_REPORTING='path'`
+  `GET ?monitor=&type=`. `type` is a comma list (the POST also takes a JSON array); the
+  default is every type but `land_use` and `mtrs`, and asking for `land_use` is a 400. Hidden
+  monitors 404 (this also applies to the heat/forecast place endpoints); other monitors, CIMIS
+  included, answer. Coordinates in a query string (`lat`/`lon`/`latitude`/`longitude`) are
+  refused (400, `no-cache`) by `CoordinateQueryGuardMiddleware` (`camp/api/middleware.py`)
+  before the view stack. `camp/utils/sentry.py` scrubs lookup events, and `SCOUT_URI_REPORTING='path'`
   keeps query strings out of Scout traces (site-wide). Answers are cached 24h; re-importing
   boundaries leaves stale answers until they expire.
 - **Summary cache rule** (`camp/api/v2/summaries/endpoints.py`): a 200 for a settled period is
