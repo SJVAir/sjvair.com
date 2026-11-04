@@ -263,3 +263,84 @@ class CES5RegionFilterTests(TestCase):
         data = self.client.get(url, {'region_id': region.sqid}).json()
         assert data['count'] == 1
         assert data['data'][0]['tract'] == '06019000101'
+
+
+class WithinModeTestsMixin:
+    """
+    ?within_mode= on the region filter. Fixture tracts (both vintages):
+      Tract 1.01: lon -119.8 to -119.7, lat 36.7 to 36.8
+      Tract 1.02: lon -119.7 to -119.6, lat 36.7 to 36.8 (shares 1.01's east edge)
+    """
+    fixtures = ['calenviroscreen']
+    url_name = None
+
+    EXACT_1_01 = 'MULTIPOLYGON (((-119.8 36.7, -119.7 36.7, -119.7 36.8, -119.8 36.8, -119.8 36.7)))'
+    # All of 1.01 and the western half of 1.02.
+    STRADDLE = 'MULTIPOLYGON (((-119.8 36.7, -119.65 36.7, -119.65 36.8, -119.8 36.8, -119.8 36.7)))'
+
+    def region(self, geometry_wkt):
+        region = Region.objects.create(
+            name='Within Test', slug=f'within-test-{Region.objects.count()}',
+            type=Region.Type.CITY, external_id=f'97{Region.objects.count()}',
+        )
+        region.boundary = Boundary.objects.create(
+            region=region, version='2020', geometry=GEOSGeometry(geometry_wkt, srid=4326),
+        )
+        region.save()
+        return region
+
+    def get(self, params):
+        return self.client.get(reverse(self.url_name), params)
+
+    def tracts(self, params):
+        response = self.get(params)
+        assert response.status_code == 200
+        return sorted(r['tract'] for r in response.json()['data'])
+
+    def test_absent_includes_touching_tracts(self):
+        region = self.region(self.EXACT_1_01)
+        assert self.tracts({'region_id': region.sqid}) == ['06019000101', '06019000102']
+
+    def test_contained_excludes_touching_tracts(self):
+        region = self.region(self.EXACT_1_01)
+        assert self.tracts({'region_id': region.sqid, 'within_mode': 'contained'}) == ['06019000101']
+
+    def test_overlaps_excludes_touching_tracts(self):
+        region = self.region(self.EXACT_1_01)
+        assert self.tracts({'region_id': region.sqid, 'within_mode': 'overlaps'}) == ['06019000101']
+
+    def test_contained_excludes_straddling_tracts(self):
+        region = self.region(self.STRADDLE)
+        assert self.tracts({'region_id': region.sqid, 'within_mode': 'contained'}) == ['06019000101']
+
+    def test_overlaps_includes_straddling_tracts(self):
+        region = self.region(self.STRADDLE)
+        assert self.tracts({'region_id': region.sqid, 'within_mode': 'overlaps'}) == ['06019000101', '06019000102']
+
+    def test_unknown_within_mode_is_400(self):
+        region = self.region(self.EXACT_1_01)
+        response = self.get({'region_id': region.sqid, 'within_mode': 'sideways'})
+        assert response.status_code == 400
+        assert response.json() == {'error': 'within_mode must be contained or overlaps.'}
+
+    def test_within_mode_without_region_is_ignored(self):
+        assert self.tracts({'within_mode': 'contained'}) == ['06019000101', '06019000102']
+
+
+class CES4WithinModeTests(WithinModeTestsMixin, TestCase):
+    url_name = 'api:v2:ces:ces4-list'
+
+    def test_contained_measures_the_records_own_boundary(self):
+        # Move tract 1.02's 2010 shape inside 1.01: its 2020 shape (the
+        # region's current boundary) stays outside, so only measuring the
+        # 2010 record's own boundary finds it.
+        Boundary.objects.filter(pk=1002).update(geometry=GEOSGeometry(
+            'MULTIPOLYGON (((-119.79 36.71, -119.75 36.71, -119.75 36.75, -119.79 36.75, -119.79 36.71)))', srid=4326,
+        ))
+        region = self.region(self.EXACT_1_01)
+        params = {'region_id': region.sqid, 'within_mode': 'contained', 'year': '2010'}
+        assert self.tracts(params) == ['06019000101', '06019000102']
+
+
+class CES5WithinModeTests(WithinModeTestsMixin, TestCase):
+    url_name = 'api:v2:ces:ces5-list'
