@@ -2,6 +2,10 @@ import json
 from datetime import date
 
 from django.contrib.gis.geos import GEOSGeometry
+from django.core.cache import cache
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
 
@@ -82,6 +86,7 @@ class RegionListTests(TestCase):
 class RegionMetaTests(TestCase):
     def setUp(self):
         self.factory = RequestFactory()
+        cache.clear()
 
     def _fetch_region_meta(self):
         url = reverse('api:v2:regions:region-meta')
@@ -104,7 +109,30 @@ class RegionMetaTests(TestCase):
             'type': 'county',
             'label': 'County',
             'category': 'administrative',
+            'count': 0,
+            'parents': [],
+            'referenceable': True,
+            'browsable': True,
         }
+
+    def test_browsable(self):
+        response, content = self._fetch_region_meta()
+        types = content['data']['types']
+        assert {t for t, info in types.items() if not info['browsable']} == {'mtrs', 'land_use'}
+
+    def test_meta_counts_parents_referenceable(self):
+        make_county('Fresno County', FRESNO_COUNTY_WKT)
+        make_county('Kern County', KERN_COUNTY_WKT)
+        retired = make_county('Old County', ELSEWHERE_WKT)
+        retired.retired_at = timezone.now()
+        retired.save(update_fields=['retired_at'])
+        response, content = self._fetch_region_meta()
+        types = content['data']['types']
+        assert types['county']['count'] == Region.objects.filter(type='county').count() == 2
+        assert types['zipcode']['parents'] == ['county']
+        assert types['county']['parents'] == []
+        assert types['land_use']['referenceable'] is False
+        assert types['zipcode']['referenceable'] is True
 
     def test_category_matches_model_mapping(self):
         response, content = self._fetch_region_meta()
@@ -174,6 +202,16 @@ def make_city(name, slug, geom_wkt):
         region=region,
         version='2020',
         geometry=GEOSGeometry(geom_wkt, srid=4326),
+    )
+    region.boundary = boundary
+    region.save(update_fields=['boundary'])
+    return region
+
+
+def make_zip(code, geom_wkt):
+    region = Region.objects.create(name=code, slug=f'zip-{code}', type=Region.Type.ZIPCODE, external_id=code)
+    boundary = Boundary.objects.create(
+        region=region, version='2020', geometry=GEOSGeometry(geom_wkt, srid=4326),
     )
     region.boundary = boundary
     region.save(update_fields=['boundary'])
@@ -556,6 +594,96 @@ class RegionWithinFilterTests(TestCase):
         )
         ids = self._ids(('type', 'tract'), ('within', self.parent_a.sqid))
         assert ids == {self.inside_a.sqid, sliver_out.sqid}
+
+
+class RegionWithinOverlapsTests(TestCase):
+    def setUp(self):
+        self.fresno = make_county('Fresno County', FRESNO_COUNTY_WKT)
+        self.kern = make_county('Kern County', KERN_COUNTY_WKT)
+        # Straddles Fresno's eastern edge (x=-119.0), about half in Madera's
+        # stand-in, which here is a county east of the line.
+        self.madera = make_county(
+            'Madera County',
+            'MULTIPOLYGON(((-119.0 36.5, -117.5 36.5, -117.5 37.5, -119.0 37.5, -119.0 36.5)))',
+        )
+        self.inside = make_zip('93000', 'MULTIPOLYGON(((-120.2 36.8, -120.0 36.8, -120.0 37.0, -120.2 37.0, -120.2 36.8)))')
+        self.straddler = make_zip('93001', 'MULTIPOLYGON(((-119.3 36.8, -118.7 36.8, -118.7 37.0, -119.3 37.0, -119.3 36.8)))')
+
+    def _get(self, *params):
+        response = region_list(RequestFactory().get('/', list(params)))
+        return response, get_response_data(response)
+
+    def _overlaps(self, parent):
+        return self._get(('type', 'zipcode'), ('within', parent.sqid), ('within_mode', 'overlaps'))
+
+    def test_within_default_unchanged(self):
+        response, data = self._get(('type', 'zipcode'), ('within', self.fresno.sqid))
+        assert {r['id'] for r in data['data']} == {self.inside.sqid}
+        assert 'also_in' not in data['data'][0]
+
+    def test_overlaps_includes_straddler_with_also_in(self):
+        response, data = self._overlaps(self.fresno)
+        rows = {r['id']: r for r in data['data']}
+        assert set(rows) == {self.inside.sqid, self.straddler.sqid}
+        assert rows[self.inside.sqid]['also_in'] == []
+        assert rows[self.straddler.sqid]['also_in'] == [
+            {'type': 'county', 'external_id': self.madera.external_id, 'name': 'Madera County'},
+        ]
+
+    def test_bad_within_mode_400(self):
+        response, data = self._get(('type', 'zipcode'), ('within', self.fresno.sqid), ('within_mode', 'bogus'))
+        assert response.status_code == 400
+        assert data['error'] == 'within_mode must be contained or overlaps.'
+
+    def test_also_in_drops_a_sliver_under_one_percent(self):
+        # Reaches 0.0005 deg into the straddler's top edge: 0.25% of its area.
+        make_county('Sliver County', 'MULTIPOLYGON(((-119.3 36.9995, -118.7 36.9995, -118.7 37.5, -119.3 37.5, -119.3 36.9995)))')
+        response, data = self._overlaps(self.fresno)
+        rows = {r['id']: r for r in data['data']}
+        assert [c['name'] for c in rows[self.straddler.sqid]['also_in']] == ['Madera County']
+
+    def test_also_in_leaves_out_every_within_parent(self):
+        # A third county holding 25% of the straddler: it alone stays in also_in.
+        tulare = make_county('Tulare County', 'MULTIPOLYGON(((-119.3 36.95, -118.7 36.95, -118.7 37.5, -119.3 37.5, -119.3 36.95)))')
+        response, data = self._get(
+            ('type', 'zipcode'), ('within', self.fresno.sqid), ('within', self.madera.sqid),
+            ('within_mode', 'overlaps'))
+        rows = {r['id']: r for r in data['data']}
+        assert rows[self.straddler.sqid]['also_in'] == [
+            {'type': 'county', 'external_id': tulare.external_id, 'name': 'Tulare County'},
+        ]
+        assert rows[self.inside.sqid]['also_in'] == []
+
+    def test_also_in_skips_a_retired_candidate(self):
+        self.madera.retire(date(2026, 10, 1))
+        response, data = self._overlaps(self.fresno)
+        rows = {r['id']: r for r in data['data']}
+        assert rows[self.straddler.sqid]['also_in'] == []
+
+    def test_bad_within_mode_400_on_geojson(self):
+        request = RequestFactory().get('/', [('type', 'zipcode'), ('within', self.fresno.sqid), ('within_mode', 'bogus')])
+        response = region_geojson(request)
+        assert response.status_code == 400
+        assert get_response_data(response)['error'] == 'within_mode must be contained or overlaps.'
+
+    def test_overlaps_applies_to_geojson(self):
+        request = RequestFactory().get('/', [('type', 'zipcode'), ('within', self.fresno.sqid), ('within_mode', 'overlaps')])
+        data = get_response_data(region_geojson(request))
+        assert {f['id'] for f in data['features']} == {self.inside.sqid, self.straddler.sqid}
+
+    def test_overlaps_query_count(self):
+        def count_queries():
+            with CaptureQueriesContext(connection) as ctx:
+                response, data = self._overlaps(self.fresno)
+            return len(ctx), len(data['data'])
+
+        few_queries, few = count_queries()
+        for i in range(4):
+            x = -120.4 + i * 0.05
+            make_zip(f'9310{i}', f'MULTIPOLYGON((({x} 36.6, {x + 0.04} 36.6, {x + 0.04} 36.7, {x} 36.7, {x} 36.6)))')
+        many_queries, many = count_queries()
+        assert (few, many) == (2, 6)
+        assert few_queries == many_queries
 
 
 class RetiredRegionTests(TestCase):

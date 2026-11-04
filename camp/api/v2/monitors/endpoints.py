@@ -17,6 +17,7 @@ from django.utils.functional import cached_property
 from django.views.decorators.csrf import csrf_exempt
 
 from camp.apps.entries.models import BaseEntry, PM25
+from camp.apps.entries.stages import STAGE_DESCRIPTIONS, Stage
 from camp.apps.entries.tasks import data_export
 from camp.apps.entries.utils import get_entry_model_by_name
 from camp.apps.monitors.models import Monitor
@@ -133,6 +134,39 @@ class MonitorMetaEndpoint(Endpoint):
                 }
         return payload
 
+    def get_scale(self, entry_model):
+        if entry_model.Levels is None:
+            return None
+        scale = entry_model.Levels.to_scale(
+            id=entry_model.entry_type,
+            label=entry_model.label,
+            units=entry_model.units or '',
+        )
+        return scale.to_json()
+
+    def get_stages(self):
+        return {
+            stage.value: {
+                'key': stage.value,
+                'label': str(stage.label),
+                'description': STAGE_DESCRIPTIONS[stage],
+            }
+            for stage in Stage
+        }
+
+    def get_processors(self):
+        processors = {}
+        for monitor_model in Monitor.get_enabled_subclasses():
+            for config in monitor_model.ENTRY_CONFIG.values():
+                for stage_processors in config.get('processors', {}).values():
+                    for proc in stage_processors:
+                        processors[proc.name] = {
+                            'key': proc.name,
+                            'label': getattr(proc, 'label', '') or proc.name,
+                            'description': getattr(proc, 'description', ''),
+                        }
+        return dict(sorted(processors.items()))
+
     def get_entries(self):
         payload = {}
         for entry_model in BaseEntry.get_subclasses():
@@ -142,6 +176,7 @@ class MonitorMetaEndpoint(Endpoint):
                 'units': entry_model.units,
                 'epa_aqs_code': entry_model.epa_aqs_code,
                 'levels': entry_model.Levels.as_dict() if entry_model.Levels else None,
+                'scale': self.get_scale(entry_model),
                 'fields': ['timestamp', 'sensor', 'stage', 'processor'] + entry_model.declared_field_names,
             }
         return payload
@@ -153,7 +188,9 @@ class MonitorMetaEndpoint(Endpoint):
             'default_pollutant': self.get_default_pollutant(),
             'available_pollutants': DefaultCalibration.objects.available_pollutants(published),
             'monitors': self.get_monitors(published),
-            'entries': self.get_entries()
+            'entries': self.get_entries(),
+            'stages': self.get_stages(),
+            'processors': self.get_processors(),
         }}
 
 

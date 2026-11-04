@@ -15,6 +15,10 @@ class AirGradientHumidity(BaseProcessor):
         AirGradient Relative Humidity Correction Equation
         https://www.airgradient.com/documentation/calibration-algorithms/
     '''
+    label = "Humidity correction"
+    description = (
+        "Corrects AirGradient and PurpleAir relative humidity readings using AirGradient's published equation, capped at 100 percent."
+    )
 
     entry_model = Humidity
     required_stage = Humidity.Stage.RAW

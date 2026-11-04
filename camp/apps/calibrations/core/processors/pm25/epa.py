@@ -16,6 +16,10 @@ class PM25_EPA_Oct2021(BaseProcessor):
 
     https://document.airnow.gov/airnow-fire-and-smoke-map-questions-and-answers.pdf
     '''
+    label = "EPA correction (Oct 2021)"
+    description = (
+        "Adjusts low-cost sensor PM2.5 using humidity, following the EPA's October 2021 PurpleAir correction for the Fire and Smoke Map."
+    )
     required_context = ['pm25', 'humidity']
     entry_model = PM25
     required_stage = PM25.Stage.CLEANED

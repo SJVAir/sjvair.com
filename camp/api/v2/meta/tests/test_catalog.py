@@ -3,7 +3,10 @@ from django.urls import reverse
 
 from camp.api.v2.meta import catalog
 from camp.api.v2.meta.endpoints import DatasetCatalogEndpoint
+from camp.apps.calheatscore.scales import get_heat_scale
 from camp.apps.calibrations.models import DefaultCalibration
+from camp.apps.forecasts.scales import get_aqi_forecast_scale, get_burn_status_scale
+from camp.apps.hms.scales import get_fire_scale, get_smoke_scale
 from camp.utils.test import get_response_data
 
 datasets_view = DatasetCatalogEndpoint.as_view()
@@ -58,7 +61,7 @@ class DatasetCatalogTests(TestCase):
     def test_meta_urls_and_weather_excludes_air_quality_types(self):
         by_id = {d['id']: d for d in self.get()['datasets']}
         assert by_id['air-quality']['meta_url'] == '/api/2.0/monitors/meta/'
-        assert by_id['hms-smoke']['meta_url'] == ''
+        assert by_id['hms-smoke']['meta_url'] == '/api/2.0/hms/meta/'
         assert 'pm25' not in catalog.dataset_entry_types('weather')
 
     def test_dataset_entry_types(self):
@@ -69,6 +72,48 @@ class DatasetCatalogTests(TestCase):
         listed = {d['id']: [e['id'] for e in d['entry_types']] for d in self.get()['datasets']}
         with self.assertNumQueries(0):
             assert {i: catalog.dataset_entry_types(i) for i in catalog.DATASET_IDS} == listed
+
+    def test_burn_status_listed(self):
+        assert catalog.dataset_entry_types('forecasts') == ['aqi-forecast', 'burn-status']
+        entry = self.entry('forecasts', 'burn-status')
+        assert entry['label'] == 'Burn Status'
+        assert entry['resolutions'] == ['day']
+
+    def test_every_entry_type_has_display(self):
+        for dataset in self.get()['datasets']:
+            for entry in dataset['entry_types']:
+                assert set(entry['display']) == {'precision', 'chart', 'y_min'}, entry['id']
+
+    def test_display_values(self):
+        assert self.entry('air-quality', 'pm25')['display'] == {'precision': 1, 'chart': 'line', 'y_min': 0}
+        assert self.entry('air-quality', 'particulates')['display'] == {'precision': 0, 'chart': 'line', 'y_min': 0}
+        assert self.entry('weather', 'temperature')['display'] == {'precision': 1, 'chart': 'line', 'y_min': None}
+        assert self.entry('calheatscore', 'heat-score')['display'] == {'precision': 0, 'chart': 'bar', 'y_min': 0}
+        assert self.entry('hms-fire', 'fire-frp')['display'] == {'precision': 1, 'chart': 'bar', 'y_min': 0}
+        assert self.entry('emissions', 'facility-nox')['display'] == {'precision': 1, 'chart': 'bar', 'y_min': 0}
+        assert self.entry('emissions', 'methane-emission-rate')['display'] == {'precision': 1, 'chart': 'line', 'y_min': 0}
+        assert self.entry('hms-smoke', 'smoke-density')['display'] == {'precision': None, 'chart': None, 'y_min': None}
+        assert self.entry('forecasts', 'burn-status')['display'] == {'precision': None, 'chart': None, 'y_min': None}
+        assert self.entry('tempo', 'no2')['display'] == {'precision': None, 'chart': 'line', 'y_min': None}
+
+    def test_meta_urls(self):
+        by_id = {d['id']: d for d in self.get()['datasets']}
+        assert by_id['hms-smoke']['meta_url'] == reverse('api:v2:hms:hms-meta')
+        assert by_id['hms-fire']['meta_url'] == reverse('api:v2:hms:hms-meta')
+        assert by_id['forecasts']['meta_url'] == reverse('api:v2:forecasts:forecast-meta')
+        assert by_id['calheatscore']['meta_url'] == reverse('api:v2:calheatscore:calheatscore-meta')
+
+    def test_domain_scale_labels_match_catalog(self):
+        scales = [
+            get_heat_scale(), get_smoke_scale(), get_fire_scale(),
+            get_aqi_forecast_scale(), get_burn_status_scale(),
+        ]
+        assert {s.id for s in scales} == {'heat-score', 'smoke-density', 'fire-frp', 'aqi-forecast', 'burn-status'}
+        for scale in scales:
+            entry = next(
+                e for d in self.get()['datasets'] for e in d['entry_types'] if e['id'] == scale.id
+            )
+            assert scale.label == entry['label'], scale.id
 
     def test_licenses_only_asserted_for_federal_works(self):
         licenses = {d['id']: d['license'] for d in self.get()['datasets']}
@@ -91,7 +136,7 @@ LAUNCH_ENTRY_TYPES = {
     'hms-fire': {'fire-frp'},
     'pesticide-use': {'pounds-applied', 'acres-treated'},
     'pesticide-notices': {'spray-notice'},
-    'forecasts': {'aqi-forecast'},
+    'forecasts': {'aqi-forecast', 'burn-status'},
     'calheatscore': {'heat-score'},
     'calenviroscreen': {'ces-score'},
     'emissions': {

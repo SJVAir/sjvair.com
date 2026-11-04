@@ -10,6 +10,10 @@ __all__ = ['PM25_FEM_Cleaner']
 
 @processors.register()
 class PM25_FEM_Cleaner(BaseProcessor):
+    label = "Range check for reference monitors"
+    description = (
+        "Discards impossible PM2.5 readings from reference-grade monitors and sets small negative values to zero."
+    )
     entry_model = PM25
     required_stage = PM25.Stage.RAW
     next_stage = PM25.Stage.CLEANED

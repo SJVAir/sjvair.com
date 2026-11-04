@@ -375,6 +375,18 @@ class FetchForecastsTests(TestCase):
         assert Forecast.objects.count() == 16
         assert not Forecast.objects.filter(zone_name='Kings').exists()
 
+    @patch('camp.apps.forecasts.tasks.requests.get')
+    def test_unknown_burn_status_stored_and_logged(self, mock_get):
+        content = SAMPLE_FEED_XML.replace(b'status="Discouraged"', b'status="Prohibited"')
+        mock_get.return_value = mock_response(content)
+        with self.assertLogs('camp.apps.forecasts.tasks', 'WARNING') as logs:
+            fetch_forecasts.call_local()
+        assert Forecast.objects.count() == 18
+        assert set(Forecast.objects.values_list('burn_status', flat=True)) == {'Prohibited'}
+        # Once per value per run, not once per row.
+        assert len(logs.records) == 1
+        assert 'Prohibited' in logs.records[0].getMessage()
+
 
 class FetchForecastsCommandTests(TestCase):
     fixtures = ['regions.yaml']

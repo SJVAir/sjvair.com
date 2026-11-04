@@ -82,6 +82,33 @@ class Region(TimeStampedModel):
         Type.CUSTOM: Category.CUSTOM,
     }
 
+    # The region type(s) each type nests under, for browsing down the
+    # hierarchy. These are the types a place normally belongs to (a ZIP
+    # straddles counties, so "belongs" means "overlaps"); types with no
+    # natural parent are empty.
+    TYPE_PARENTS = {
+        Type.COUNTY: [],
+        Type.CITY: [Type.COUNTY.value],
+        Type.ZIPCODE: [Type.COUNTY.value],
+        Type.TRACT: [Type.COUNTY.value],
+        Type.CDP: [Type.COUNTY.value],
+        Type.CONGRESSIONAL_DISTRICT: [],
+        Type.STATE_ASSEMBLY: [],
+        Type.STATE_SENATE: [],
+        Type.SCHOOL_DISTRICT: [Type.COUNTY.value],
+        Type.AIR_DISTRICT: [],
+        Type.URBAN_AREA: [Type.COUNTY.value],
+        Type.LAND_USE: [],
+        Type.PROTECTED: [],
+        Type.AB617_COMMUNITY: [Type.COUNTY.value],
+        Type.MTRS: [],
+        Type.CUSTOM: [],
+    }
+
+    # Types too numerous or unstable to browse as a list (square-mile
+    # sections; land-use polygons, whose codes aren't stable).
+    NON_BROWSABLE_TYPES = frozenset({Type.MTRS, Type.LAND_USE})
+
     # The community layers, each shown as-is (never merged), with the short
     # label the explorers give them: a CDP reads as a "Community". Plain
     # strings, not lazy ones: they end up in cached, JSON-embedded lists.

@@ -18,6 +18,10 @@ class PM25_LCS_Correction(BaseProcessor):
     Returns a cleaned clone of the original entry, or None if the entry
     should be discarded as invalid or is repeated.
     '''
+    label = "Two-sensor check and blend"
+    description = (
+        "Compares a monitor's two PM2.5 sensors, drops bad or stuck readings, and averages them when they agree (or uses the lower one when they don't)."
+    )
 
     entry_model = PM25
     required_stage = PM25.Stage.RAW
@@ -146,6 +150,10 @@ class PM25_LCS_Cleaning(BaseProcessor):
     'cleaned' stage. If sufficient nearby data is available, it may adjust
     the value to smooth out spikes based on AQI-aware thresholds.
     '''
+    label = "Spike cleaning"
+    description = (
+        "Replaces a sudden one-reading jump in PM2.5 with the higher of the neighboring readings when it far exceeds them."
+    )
 
     entry_model = PM25
     required_stage = PM25.Stage.CORRECTED

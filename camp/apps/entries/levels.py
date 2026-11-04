@@ -5,6 +5,12 @@ from typing import Optional, Union, List, Dict, Tuple
 from django.utils.translation import gettext_lazy as _
 
 from camp.utils import classproperty
+from camp.utils.scales import Scale, ScaleLevel
+
+EPA_SOURCE = {
+    'name': 'US EPA AirNow, AQI Basics',
+    'url': 'https://www.airnow.gov/aqi/aqi-basics/',
+}
 
 
 def _blend_hex(hex1, hex2, ratio):
@@ -33,6 +39,8 @@ class Level:
     guidance: Optional[str] = None
     key: Optional[str] = None
     rank: int = 0
+    tier: Optional[int] = None
+    description: str = ''
 
     def __repr__(self):
         return f'Level({self.value}, {self.label!r}, {self.color})'
@@ -68,35 +76,49 @@ class AQLevelMeta(type):
         'GOOD': {
             'label': _('Good'),
             'color': '#00e400',
+            'tier': 0,
+            'description': _('Air quality is satisfactory, and air pollution poses little or no risk.'),
         },
         'MODERATE': {
             'label': _('Moderate'),
             'color': '#ffff00',
+            'tier': 1,
+            'description': _('Air quality is acceptable. However, there may be a risk for some people, particularly those who are unusually sensitive to air pollution.'),
             'guidance': _('Highly sensitive groups should stay indoors and avoid outdoor activities.'),
         },
         'UNHEALTHY_SENSITIVE': {
             'label': _('Unhealthy for Sensitive Groups'),
             'color': '#ff7e00',
+            'tier': 2,
+            'description': _('Members of sensitive groups may experience health effects. The general public is less likely to be affected.'),
             'guidance': _('Sensitive groups should stay indoors and avoid outdoor activities.'),
         },
         'UNHEALTHY': {
             'label': _('Unhealthy'),
             'color': '#ff0000',
+            'tier': 3,
+            'description': _('Some members of the general public may experience health effects; members of sensitive groups may experience more serious health effects.'),
             'guidance': _('Everyone should reduce prolonged or heavy exertion.'),
         },
         'VERY_UNHEALTHY': {
             'label': _('Very Unhealthy'),
             'color': '#8f3f97',
+            'tier': 4,
+            'description': _('Health alert: The risk of health effects is increased for everyone.'),
             'guidance': _('Everyone should avoid prolonged or heavy exertion.'),
         },
         'HAZARDOUS': {
             'label': _('Hazardous'),
             'color': '#7e0023',
+            'tier': 4,
+            'description': _('Health warning of emergency conditions: everyone is more likely to be affected.'),
             'guidance': _('Everyone should stay indoors and avoid physical outdoor activities.'),
         },
         'VERY_HAZARDOUS': {
             'label': _('Very Hazardous'),
             'color': '#7e0023',
+            'tier': 4,
+            'description': _('Health warning of emergency conditions: everyone is more likely to be affected.'),
             'guidance': _('Everyone should stay indoors and avoid physical outdoor activities.'),
         },
     }
@@ -114,6 +136,8 @@ class AQLevelMeta(type):
             rank=rank,
             color=meta['color'],
             guidance=guidance or meta.get('guidance'),
+            tier=meta['tier'],
+            description=meta['description'],
         )
 
 class AQLevel(metaclass=AQLevelMeta):
@@ -202,8 +226,32 @@ class LevelSet:
                 'color': level.color,
                 'range': (level.value, max_value),
                 'guidance': level.guidance,
+                'tier': level.tier,
             }
         return result
+
+    def to_scale(self, id: str, label: str, units: str) -> Scale:
+        levels = sorted(self._levels, key=lambda l: l.value)
+        return Scale(
+            id=id,
+            label=label,
+            units=units,
+            kind='range',
+            source=EPA_SOURCE,
+            levels=tuple(
+                ScaleLevel(
+                    key=level.key,
+                    label=level.label,
+                    color=level.color,
+                    tier=level.tier,
+                    description=level.description,
+                    guidance=level.guidance or '',
+                    min=level.value,
+                    max=levels[i + 1].value if i + 1 < len(levels) else None,
+                )
+                for i, level in enumerate(levels)
+            ),
+        )
 
 
 # Pollutant-specific level sets, breakpoints in each pollutant's native unit.

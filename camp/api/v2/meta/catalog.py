@@ -30,13 +30,46 @@ TEMPO_PRODUCTS = {
 }
 
 
-def _entry(id, label, kind, units, resolutions, **extra):
+# Display hints for ids that don't follow their kind's default: precision is
+# decimal places, chart is 'line' | 'bar' | None, y_min 0 starts the axis at
+# zero and None leaves it auto.
+DISPLAY_OVERRIDES = {
+    'particulates': (0, 'line', 0),
+    'heat-score': (0, 'bar', 0),
+    'aqi-forecast': (0, 'bar', 0),
+    'pounds-applied': (0, 'bar', 0),
+    'acres-treated': (0, 'bar', 0),
+    'spray-notice': (0, 'bar', 0),
+    'fire-frp': (1, 'bar', 0),
+    'ces-score': (1, 'bar', 0),
+    'methane-emission-rate': (1, 'line', 0),
+    'smoke-density': (None, None, None),
+    'burn-status': (None, None, None),
+}
+
+
+# TEMPO ids (no2, ...) share names with monitor entry types, so they carry their own.
+TEMPO_DISPLAY = {'precision': None, 'chart': 'line', 'y_min': None}
+
+
+def display_for(entry_id, kind):
+    if entry_id in DISPLAY_OVERRIDES or entry_id.startswith('facility-'):
+        precision, chart, y_min = DISPLAY_OVERRIDES.get(entry_id, (1, 'bar', 0))
+    elif kind == 'meteorological':
+        precision, chart, y_min = 1, 'line', None
+    else:
+        precision, chart, y_min = 1, 'line', 0
+    return {'precision': precision, 'chart': chart, 'y_min': y_min}
+
+
+def _entry(id, label, kind, units, resolutions, display=None, **extra):
     return {
         'id': id,
         'label': str(label),
         'kind': kind,
         'units': units,
         'resolutions': resolutions,
+        'display': display or display_for(id, kind),
         'retired': None,
         **extra,
     }
@@ -46,7 +79,7 @@ def _other(id, label, units, resolutions):
     return _entry(id, label, 'other', units, resolutions)
 
 
-def _dataset(id, label, description, source, license, geographies, entry_types, meta_url=''):
+def _dataset(id, label, description, source, license, geographies, entry_types, meta_url=None):
     return {
         'id': id,
         'label': label,
@@ -54,7 +87,7 @@ def _dataset(id, label, description, source, license, geographies, entry_types, 
         'source': source,
         'license': license,
         'geographies': geographies,
-        'meta_url': meta_url,
+        'meta_url': meta_url() if callable(meta_url) else (meta_url or ''),
         'entry_types': entry_types,
         'retired': None,
     }
@@ -73,12 +106,14 @@ STATIC_DATASETS = {
         'Daily smoke plume outlines and density from satellite imagery.',
         'NOAA Hazard Mapping System', 'Public domain', ['polygon'],
         [_other('smoke-density', 'Smoke Density', '', ['day'])],
+        meta_url=lambda: reverse('api:v2:hms:hms-meta'),
     ),
     'hms-fire': lambda: _dataset(
         'hms-fire', 'Fire Detections',
         'Satellite-detected active fire points with fire radiative power.',
         'NOAA Hazard Mapping System', 'Public domain', ['point'],
         [_other('fire-frp', 'Fire Radiative Power', 'MW', ['raw'])],
+        meta_url=lambda: reverse('api:v2:hms:hms-meta'),
     ),
     'pesticide-use': lambda: _dataset(
         'pesticide-use', 'Pesticide Use',
@@ -99,13 +134,18 @@ STATIC_DATASETS = {
         'forecasts', 'Air Quality Forecasts',
         'Daily air quality index forecasts for each forecast zone.',
         'San Joaquin Valley Air Pollution Control District', '', ['zone'],
-        [_other('aqi-forecast', 'AQI Forecast', 'AQI', ['day'])],
+        [
+            _other('aqi-forecast', 'AQI Forecast', 'AQI', ['day']),
+            _other('burn-status', 'Burn Status', '', ['day']),
+        ],
+        meta_url=lambda: reverse('api:v2:forecasts:forecast-meta'),
     ),
     'calheatscore': lambda: _dataset(
         'calheatscore', 'CalHeatScore',
         'Daily heat health risk score by ZIP code.',
         'OEHHA CalHeatScore', '', ['zip'],
         [_other('heat-score', 'Heat Score', '', ['day'])],
+        meta_url=lambda: reverse('api:v2:calheatscore:calheatscore-meta'),
     ),
     'calenviroscreen': lambda: _dataset(
         'calenviroscreen', 'CalEnviroScreen',
@@ -128,7 +168,7 @@ STATIC_DATASETS = {
         'Hourly satellite column measurements over the San Joaquin Valley.',
         'NASA TEMPO', 'Public domain', ['point', 'region'],
         [
-            _entry(product.value, product.label, kind, units, ['hour'])
+            _entry(product.value, product.label, kind, units, ['hour'], display=TEMPO_DISPLAY)
             for product, (kind, units) in TEMPO_PRODUCTS.items()
         ],
     ),
