@@ -100,10 +100,15 @@ class RegionList(RegionMixin, generics.ListEndpoint):
         {region pk: [{type, external_id, name}]} for the listed regions: the
         other current regions of the requested parents' type that each
         overlaps by at least ALSO_IN_MIN_FRACTION of its own area. One query
-        pairs every result with its candidates in the database (ST_Intersects
-        on the boundary index first, then the shared area), so the query
+        pairs every result with its candidates in the database, so the query
         count doesn't grow with the number of results and no geometry is
         loaded into Python.
+
+        Both sides are narrowed first in MATERIALIZED CTEs: joined straight to
+        the boundary table, the planner pairs each result with every boundary
+        its bbox touches (MTRS sections, tracts, old vintages: ~300 apiece)
+        and runs ST_Intersection on each before the few candidates filter
+        them out, which took ~4 s for Fresno County's ZIPs (now ~50 ms).
         """
         within_ids = [value for value in self.request.GET.getlist('within') if value.strip()]
         result_ids = [r.pk for r in regions if r.boundary_id]
@@ -119,20 +124,27 @@ class RegionList(RegionMixin, generics.ListEndpoint):
         region_table = connection.ops.quote_name(Region._meta.db_table)
         boundary_table = connection.ops.quote_name(Boundary._meta.db_table)
         sql = f"""
+            WITH candidates AS MATERIALIZED (
+                SELECT c.id, c.type, c.external_id, c.name, cb.geometry
+                FROM {region_table} c
+                JOIN {boundary_table} cb ON cb.id = c.boundary_id
+                WHERE c.id IN ({candidate_sql})
+            ), results AS MATERIALIZED (
+                SELECT r.id, rb.geometry, ST_Area(rb.geometry) AS area
+                FROM {region_table} r
+                JOIN {boundary_table} rb ON rb.id = r.boundary_id
+                WHERE r.id = ANY(%s)
+            )
             SELECT r.id, c.type, c.external_id, c.name
-            FROM {region_table} r
-            JOIN {boundary_table} rb ON rb.id = r.boundary_id
-            JOIN {boundary_table} cb ON ST_Intersects(cb.geometry, rb.geometry)
-            JOIN {region_table} c ON c.boundary_id = cb.id
-            WHERE r.id = ANY(%s)
-              AND c.id IN ({candidate_sql})
-              AND ST_Area(rb.geometry) > 0
-              AND ST_Area(ST_Intersection(rb.geometry, cb.geometry)) >= %s * ST_Area(rb.geometry)
+            FROM results r
+            JOIN candidates c ON ST_Intersects(c.geometry, r.geometry)
+            WHERE r.area > 0
+              AND ST_Area(ST_Intersection(r.geometry, c.geometry)) >= %s * r.area
             ORDER BY c.name, c.id
         """
         result = {}
         with connection.cursor() as cursor:
-            cursor.execute(sql, [result_ids, *candidate_params, ALSO_IN_MIN_FRACTION])
+            cursor.execute(sql, [*candidate_params, result_ids, ALSO_IN_MIN_FRACTION])
             for pk, region_type, external_id, name in cursor.fetchall():
                 result.setdefault(pk, []).append(
                     {'type': region_type, 'external_id': external_id, 'name': name})
