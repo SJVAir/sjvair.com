@@ -213,6 +213,17 @@ zones are missing there; see SJVAPCD Forecast Setup).
   regions with >=1% of their own area inside the parents and adds `also_in`; the default
   `contained` mode is unchanged. `regions/meta/` types carry `count`, `parents`,
   `referenceable` (false for land use) and `browsable` (false for MTRS and land use).
+  `regions/meta/` also lists `buffers` (`[{miles, label}]` from `shapes.BUFFERS` and
+  `BUFFER_LABELS`): the values every `?buffer=` accepts (`regions/<id>/`, pesticide sections,
+  emissions map areas). Clients read the choices from there, so change them only in `shapes.py`.
+- **HMS lists** `hms/smoke/` and `hms/fire/` default to today (yesterday before noon) only when
+  no date filter is given; any of `date`, `date__gte`, `date__lte`, `date__gt`, `date__lt` turns
+  the default off, so month ranges work. Rows are ordered `-date, id`; keep a unique tiebreaker
+  so paged ranges never repeat or skip rows.
+- **CalEnviroScreen** `calenviroscreen/4.0|5.0/?region_id=` matches tracts that touch the
+  region; `&within_mode=contained|overlaps` uses the regions list's 99%/1% area rule
+  (`area_fraction_inside` in `camp/apps/regions/querysets.py`), measured on each record's own
+  boundary vintage. An unknown mode is a 400.
 - **Place lookup** `regions/places/lookup/` has three modes. Name: `GET ?q=` (+ `type`), the best
   match. Point: `POST {lat, lon, type?}` lists the current regions containing the point;
   coordinates are rounded to 3 decimals (server too) and only ever travel in the body. Monitor:
