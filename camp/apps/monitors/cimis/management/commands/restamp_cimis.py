@@ -4,14 +4,16 @@ from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 
 from camp.apps.monitors.cimis.models import CIMIS
-from camp.apps.monitors.cimis.restamp import restamp_station
+from camp.apps.monitors.cimis.restamp import ShortAnswer, restamp_station
 from camp.utils.datetime import localtime
 
 
 class Command(BaseCommand):
     help = (
         "Re-pull CIMIS stations' stored history, from each station's first stored date "
-        'to --end, and stamp it at the start of each hour. One transaction per station.'
+        'to --end, and stamp it at the start of each hour. One transaction per station. '
+        'If the live ingest writes the same hour during a run, the station aborts with '
+        'nothing written; a re-run is safe.'
     )
 
     def add_arguments(self, parser):
@@ -32,6 +34,10 @@ class Command(BaseCommand):
         else:
             end = localtime().date()
 
+        today = localtime().date()
+        if end > today:
+            raise CommandError(f'--end must not be after today ({today}, Pacific).')
+
         monitors = []
         for monitor_id in options['monitors']:
             try:
@@ -48,8 +54,12 @@ class Command(BaseCommand):
             self.stdout.write(f'{monitor.name} ({monitor.pk})')
             try:
                 result = restamp_station(monitor, end=end, dry_run=dry_run)
+            except ShortAnswer as error:
+                failed.append(str(monitor.pk))
+                self.stderr.write(self.style.ERROR(f'  aborted: {error}'))
+                continue
             except Exception as error:
-                failed.append(monitor.pk)
+                failed.append(str(monitor.pk))
                 self.stderr.write(self.style.ERROR(f'  failed, nothing written: {error!r}'))
                 continue
 
@@ -65,6 +75,7 @@ class Command(BaseCommand):
                 self.stdout.write(f'    {entry_type}: {count}')
             self.stdout.write(f'  rows in the window, total: {result.deleted}')
             self.stdout.write(f'  rows written: {result.written}')
+            self.stdout.write(f'  malformed records skipped: {result.skipped}')
 
         if failed:
             raise CommandError(f'Failed for: {", ".join(failed)}')
