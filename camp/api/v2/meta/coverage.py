@@ -23,6 +23,7 @@ from camp.apps.hms.models import Fire, Smoke
 from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.monitors.models import LatestEntry
 from camp.apps.pesticides.models import PesticideNotice, PesticideUse
+from camp.apps.summaries import selection
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.tempo.models import Granule
 
@@ -69,7 +70,7 @@ def entry_model(entry_type):
 
 
 def require_summarized(entry_type, message):
-    if not entry_model(entry_type).summarize:
+    if entry_model(entry_type) not in selection.region_summary_entry_models():
         raise CoverageError(message)
 
 
@@ -102,7 +103,7 @@ def is_summarized(monitor, model, processor):
     (summaries.tasks.hourly_monitor_summaries), so e.g. PM25_FEM_Cleaner's
     CLEANED entries are not.
     """
-    if not model.summarize:
+    if not selection.is_summarized(monitor, model):
         return False
     if processor == '':
         return True

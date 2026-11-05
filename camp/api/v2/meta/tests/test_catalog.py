@@ -54,6 +54,16 @@ class DatasetCatalogTests(TestCase):
         assert self.entry('air-quality', 'pm25')['resolutions'] == ['raw', 'hour', 'day', 'month', 'quarter', 'season', 'year']
         assert self.entry('air-quality', 'pm10')['resolutions'] == ['raw']
 
+    def test_weather_types_have_summary_resolutions(self):
+        for entry_type in ('precipitation', 'temperature', 'eto', 'etr', 'dewpoint'):
+            assert self.entry('weather', entry_type)['resolutions'] == catalog.SUMMARIZED
+
+    def test_wind_direction_stays_raw(self):
+        assert self.entry('weather', 'winddirection')['resolutions'] == ['raw']
+
+    def test_air_quality_temperature_stays_raw(self):
+        assert self.entry('air-quality', 'temperature')['resolutions'] == ['raw']
+
     def test_available_follows_default_calibration(self):
         assert self.entry('air-quality', 'pm25')['available'] is True
         assert self.entry('air-quality', 'no2')['available'] is False
