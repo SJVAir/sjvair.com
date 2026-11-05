@@ -3,11 +3,13 @@ from datetime import date, timedelta
 from unittest.mock import patch
 
 from django.contrib.gis.geos import GEOSGeometry
+from django.core.cache.backends.base import memcache_key_warnings
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
 from camp.apps.monitors.cimis.models import CIMIS
+from camp.apps.pesticides import stats
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product
 from camp.apps.regions.models import Boundary, Region
 
@@ -1892,15 +1894,22 @@ class PesticidePlaceTests(RollupTestMixin, TestCase):
             assert 'errors' in r.json()
 
     def test_odd_commodity_values_answer_200_with_safe_keys(self):
-        from django.core.cache.backends.base import memcache_key_warnings
-        from camp.apps.pesticides import stats
         for value in ('a b', 'x' * 300, 'tab\there'):
-            r = self.get(commodity=value)
+            keys = []
+            real = stats.cached
+
+            def spy(key, build, ttl=None, _real=real, _keys=keys):
+                _keys.append(key)
+                return _real(key, build, ttl=ttl) if ttl is not None else _real(key, build)
+
+            with patch('camp.api.v2.pesticides.endpoints.stats.cached', spy):
+                r = self.get(commodity=value)
             assert r.status_code == 200, value
             data = r.json()['data']
             assert data['months'] == [] and data['years'] == []
-        key = stats.all_years_key('place', 'k', __import__('hashlib').md5(b'x').hexdigest())
-        assert list(memcache_key_warnings(key)) == []
+            assert len(keys) == 1, value
+            assert list(memcache_key_warnings(keys[0])) == [], value
+            assert len(keys[0]) < 250, value
 
     def test_blank_filters_ignored(self):
         plain = self.get().json()['data']

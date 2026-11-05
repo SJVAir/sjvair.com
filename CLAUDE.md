@@ -218,11 +218,12 @@ zones are missing there; see SJVAPCD Forecast Setup).
   `county=`, other regions by the MTRS sections they touch, monitors by their ZIP. Month 0
   (undated records) appears only in `years[].undated` and is included in the year totals.
   Acres and applications count each record once: per-ingredient columns with `chemical`,
-  per-product MAX with `category`/`iarc_group`, `records`/`acres_once` otherwise. Optional
+  MAX per record key (product, commodity, method, section, month) with `category`/`iarc_group`, `records`/`acres_once` otherwise. Optional
   filters `chemical` (CDPR chem code), `commodity` (site code), `category`, `iarc_group`,
   `aerial_ground`, `year__gte`, `year__lte` (1900-2100); bounds are enforced and an invalid
-  value is a 400 (`no-cache`, as are place errors). 200s are `public, max-age=3600`, cached
-  under the pesticides data version with the filters hashed into the key.
+  value is a 400 (`no-cache`, as are place errors). 200s are `public, max-age=3600`. Answers
+  are also cached server-side for 24h under the pesticides data version (an import retires
+  them), with the filters hashed into the key. A monitor outside every ZIP gets empty lists.
 - **Regions**: `regions/?within=...&within_mode=overlaps` (also the geojson variant) keeps
   regions with >=1% of their own area inside the parents and adds `also_in`; the default
   `contained` mode is unchanged. `regions/meta/` types carry `label_plural` (`Region.TYPE_LABELS_PLURAL`,

@@ -1153,6 +1153,26 @@ class MonthlyUseTests(RollupTestMixin, TestCase):
             assert monthly_use(rows, False, False) == {'months': [], 'years': []}
             assert monthly_use(rows, False, True) == {'months': [], 'years': []}
 
+    def test_mtrs_section_is_only_its_own_rows(self):
+        section = Region.objects.get(pk=9101)
+        neighbour = Region.objects.create(
+            name='MDM-T14S-R20E-02', slug='mdm-t14s-r20e-02', type=Region.Type.MTRS,
+            external_id='MDM-T14S-R20E-02')
+        Boundary.objects.create(
+            region=neighbour, version='t',
+            geometry=MultiPolygon(Polygon.from_bbox((-119.78, 36.70, -119.76, 36.72))))
+        PesticideUse.objects.create(
+            year=2023, use_no=50, county_id=9001, mtrs=neighbour, product_id=1,
+            chemical_id=1, commodity_id=1, lbs_chemical=1000, lbs_product=250, amount_treated=10,
+            unit_treated='A', application_date=date(2023, 3, 1), aerial_ground='G')
+        rollup.rebuild_year(2023)
+        rows = rollup_rows_for(section)
+        assert set(rows.values_list('mtrs', flat=True)) == {9101}
+        out = monthly_use(rows, False, False)
+        y2023 = next(y for y in out['years'] if y['year'] == 2023)
+        assert y2023['pounds'] == 670.0
+        assert set(rollup_rows_for(neighbour).values_list('mtrs', flat=True)) == {neighbour.pk}
+
     def test_region_without_sections_is_empty(self):
         region = Region.objects.create(name='Nowhere', slug='nowhere', type=Region.Type.CITY, external_id='NW')
         rows = rollup_rows_for(region)

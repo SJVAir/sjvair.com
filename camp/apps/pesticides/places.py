@@ -330,8 +330,8 @@ def section_ids_for(region):
 
 def rollup_rows_for(place):
     """
-    The rollup rows of a place: a county by its `county` FK, any other region
-    by the MTRS sections touching it, a monitor by the sections of the ZIP it
+    The rollup rows of a place: a county by its `county` FK, an MTRS section by
+    itself, any other region by the MTRS sections touching it, a monitor by the sections of the ZIP it
     sits in (none when it sits in no ZIP).
     """
     rows = PesticideUseRollup.objects.order_by()
@@ -342,6 +342,9 @@ def rollup_rows_for(place):
         place = zips[0]
     if place.type == Region.Type.COUNTY:
         return rows.filter(county=place)
+    if place.type == Region.Type.MTRS:
+        # A section is its own place: `intersects` would add its 8 neighbours.
+        return rows.filter(mtrs=place)
     return rows.filter(mtrs__in=section_ids_for(place))
 
 
