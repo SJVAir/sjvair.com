@@ -17,6 +17,7 @@ from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
 from django.views.decorators.csrf import csrf_exempt
 
+from camp.apps.entries.guidelines import school_guidelines_json
 from camp.apps.entries.models import BaseEntry, PM25
 from camp.apps.entries.stages import STAGE_DESCRIPTIONS, Stage
 from camp.apps.entries.tasks import data_export
@@ -193,7 +194,8 @@ class MonitorMetaEndpoint(Endpoint):
                         }
         return dict(sorted(processors.items()))
 
-    def get_entries(self):
+    def get_entries(self, request):
+        school_guidelines = school_guidelines_json(request)
         payload = {}
         for entry_model in BaseEntry.get_subclasses():
             payload[entry_model.entry_type] = {
@@ -201,8 +203,8 @@ class MonitorMetaEndpoint(Endpoint):
                 'type': entry_model.entry_type,
                 'units': entry_model.units,
                 'epa_aqs_code': entry_model.epa_aqs_code,
-                'levels': entry_model.Levels.as_dict() if entry_model.Levels else None,
                 'scale': self.get_scale(entry_model),
+                'school_guidelines': school_guidelines if entry_model.entry_type == 'pm25' else None,
                 'fields': ['timestamp', 'sensor', 'stage', 'processor'] + entry_model.declared_field_names,
             }
         return payload
@@ -214,7 +216,7 @@ class MonitorMetaEndpoint(Endpoint):
             'default_pollutant': self.get_default_pollutant(),
             'available_pollutants': DefaultCalibration.objects.available_pollutants(published),
             'monitors': self.get_monitors(published),
-            'entries': self.get_entries(),
+            'entries': self.get_entries(request),
             'stages': self.get_stages(),
             'processors': self.get_processors(),
         }}

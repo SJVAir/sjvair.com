@@ -1,7 +1,5 @@
 from decimal import Decimal
 
-import pytest
-
 from django.test import TestCase
 
 from camp.apps.entries import levels
@@ -34,14 +32,12 @@ class PM25BreakpointTests(TestCase):
             assert PM25.Levels.get_level(Decimal(value)).key == key, value
 
     def test_served_ranges(self):
-        # The ranges monitors/meta/ serves to every client.
-        ranges = {
-            key: data['range']
-            for key, data in PM25.Levels.as_dict().items()
-        }
-        assert ranges['UNHEALTHY'] == (55.5, pytest.approx(125.4))
-        assert ranges['VERY_UNHEALTHY'] == (125.5, pytest.approx(225.4))
-        assert ranges['HAZARDOUS'][0] == 225.5
+        # The ranges monitors/meta/ serves to every client, in its scale.
+        scale = PM25.Levels.to_scale('pm25', 'PM2.5', 'µg/m³')
+        by_key = {lvl.key: lvl for lvl in scale.levels}
+        assert (by_key['unhealthy'].min, by_key['unhealthy'].max) == (55.5, 125.5)
+        assert by_key['hazardous'].min == 225.5
+        assert by_key['hazardous'].max is None
 
 
 class EntryLevelsSourceTests(TestCase):

@@ -215,21 +215,6 @@ class LevelSet:
     def lookup(self, key: str) -> Level:
         return self._map[key.upper()]
 
-    def as_dict(self) -> Dict[str, Dict[str, any]]:
-        result = {}
-        levels = sorted(self._levels, key=lambda l: l.value)
-        for i, level in enumerate(levels):
-            max_value = (levels[i + 1].value - 0.1) if i + 1 < len(levels) else 99999
-            result[level.key.upper()] = {
-                'name': level.key,
-                'label': level.label,
-                'color': level.color,
-                'range': (level.value, max_value),
-                'guidance': level.guidance,
-                'tier': level.tier,
-            }
-        return result
-
     def to_scale(self, id: str, label: str, units: str) -> Scale:
         levels = sorted(self._levels, key=lambda l: l.value)
         return Scale(
