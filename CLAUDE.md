@@ -187,9 +187,13 @@ zones are missing there; see SJVAPCD Forecast Setup).
 - **Domain meta endpoints** (each a catalog `meta_url`): `calheatscore/meta/`, `hms/meta/` and
   `forecasts/meta/` return scales keyed by catalog entry-type id (forecasts also lists the
   zones with their regions). `monitors/meta/` adds a `scale` per entry type plus `stages` and
-  `processors` labels. Its old `levels` dict (uppercase keys, `name`, `label`, `color`,
-  `range`, `guidance`) is kept as-is for existing clients (mobile reads it); only `tier` was
-  added. Don't change its shape.
+  `processors` labels. It no longer serves the legacy `levels` dict; `scale` is the only level
+  format. Each entry type has `school_guidelines` (null except `pm25`), defined in
+  `camp/apps/entries/guidelines.py`: activity keys are permanent, the text is verbatim from the
+  old schools page, and the `/guidelines/` pages render from the same source.
+- **Forecast color and category**: the forecast API's `color` and `aqi_category` are the AQI
+  scale level's color and label, computed from `aqi_value`; the stored `aqi_category` is only
+  for the admin.
 - **Catalog** (`meta/datasets/`): each entry type has `display` hints (`precision`, `chart`,
   `y_min`); `burn-status` is an entry type of the forecasts dataset.
   Each dataset has a `places_url` (`''` when none). `settings.MONITOR_OPT_IN_TYPES`
