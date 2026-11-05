@@ -1,0 +1,8 @@
+{% load level_tags %}<thead>
+    <tr class="guidelines-header">
+        <th class="guidelines-label">Air Quality</th>
+        {% for level in levels %}
+        <th class="guidelines-level level-{{ forloop.counter }}" style="{{ level|level_style }}">{{ level.label }}</th>
+        {% endfor %}
+    </tr>
+</thead>

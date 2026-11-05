@@ -1509,3 +1509,28 @@ class SmsAlertsUserFilterTests(TestCase):
         self.flag.superusers = True
         User.objects.filter(pk=self.user.pk).update(is_staff=False, is_superuser=True)
         assert self.allowed() == {self.user.pk}
+
+
+class AccountLevelTagTests(TestCase):
+    fixtures = ['users.yaml', 'purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        self.user = User.objects.get(email='user@sjvair.com')
+        self.client.force_login(self.user)
+
+    def test_alert_tag_uses_level_color(self):
+        Subscription.objects.create(user=self.user, monitor=self.monitor, level='unhealthy')
+        alert = Alert.objects.create(
+            monitor=self.monitor, entry_type='pm100', start_time=timezone.now(),
+        )
+        AlertUpdate.objects.create(alert=alert, level='very_hazardous')
+        html = self.client.get(reverse('account:alerts')).content.decode()
+        assert 'style="background-color: #7e0023; color: #fff"' in html
+        assert 'Very Hazardous' in html
+
+    def test_subscription_tag_good(self):
+        from camp.apps.entries.templatetags.level_tags import level_style
+        Subscription.objects.create(user=self.user, monitor=self.monitor, level='good')
+        html = self.client.get(reverse('account:subscriptions')).content.decode()
+        assert f'style="{level_style(AQLevel.scale.GOOD)}"' in html

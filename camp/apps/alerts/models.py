@@ -64,6 +64,9 @@ class Subscription(TimeStampedModel):
         super().clean()
         self.level = self.level.lower()
 
+    def get_level(self):
+        return AQLevel.scale[self.level.upper()]
+
     def get_threshold(self):
         # No alert record exists below Moderate, so a 'good' subscription
         # behaves as 'moderate'.
