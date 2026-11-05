@@ -22,7 +22,7 @@ class TempoProducts(generics.Endpoint):
     def get(self, request):
         products = []
         for key, label in Granule.Product.choices:
-            if key in QA_PRODUCTS or key not in PRODUCT_COLOR_RANGES:
+            if key in QA_PRODUCTS or key not in PRODUCT_COLOR_RANGES or key not in TEMPO_UNITS:
                 continue  # cldo4 has a color range for preview rendering but isn't user-facing
             levels = _level_set_for(key)
             products.append({

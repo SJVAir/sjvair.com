@@ -1,4 +1,5 @@
 from django.test import RequestFactory, TestCase
+from django.urls import reverse
 
 from camp.apps.entries import levels
 from camp.apps.entries.guidelines import SCHOOL_ACTIVITIES, school_guidelines_json
@@ -54,3 +55,8 @@ class SchoolGuidelinesTests(TestCase):
                 yield node
 
         assert all(type(v) is str or v is None for v in leaves(block))
+
+    def test_source_url_follows_the_route(self):
+        request = RequestFactory().get('/')
+        block = school_guidelines_json(request)
+        assert block['source']['url'] == request.build_absolute_uri(reverse('guidelines-schools'))

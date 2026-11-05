@@ -12,14 +12,14 @@ class CleaningTierTests(TestCase):
         return PM25_LCS_Cleaning.__new__(PM25_LCS_Cleaning)
 
     def test_cleaning_tier_bounds(self):
-        assert cleaning_thresholds() == [
+        assert cleaning_thresholds() == (
             (Decimal('9.0'), None),
             (Decimal('35.4'), 5),
             (Decimal('55.4'), 4),
             (Decimal('125.4'), 3),
             (Decimal('225.4'), 3),
             (Decimal('10000.0'), 3),
-        ]
+        )
 
     def test_tier_edges(self):
         one = Decimal('1')

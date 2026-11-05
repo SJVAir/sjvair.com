@@ -1,5 +1,3 @@
-import json
-
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
 
@@ -39,21 +37,6 @@ class MonitorMetaScaleTests(TestCase):
             if key != 'pm25':
                 assert entry['school_guidelines'] is None, key
 
-    def test_school_guidelines_plain_strings(self):
-        block = self._fetch_entries()['pm25']['school_guidelines']
-
-        def leaves(node):
-            if isinstance(node, dict):
-                for v in node.values():
-                    yield from leaves(v)
-            elif isinstance(node, (list, tuple)):
-                for v in node:
-                    yield from leaves(v)
-            else:
-                yield node
-
-        assert all(type(v) is str or v is None for v in leaves(block))
-        json.dumps(block)
 
     def test_scale_null_without_levels(self):
         assert self._fetch_entries()['humidity']['scale'] is None

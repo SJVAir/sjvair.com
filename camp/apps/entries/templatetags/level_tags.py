@@ -4,7 +4,7 @@ from django import template
 
 register = template.Library()
 
-# Bulma's $text: dark text keeps the contrast the old Sass tags had on light levels.
+# Bulma's $text-strong: dark text on light levels, a touch darker than the old tags' $text (#4a4a4a).
 DARK_TEXT = '#363636'
 LIGHT_TEXT = '#fff'
 

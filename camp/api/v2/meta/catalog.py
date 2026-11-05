@@ -4,9 +4,8 @@ The dataset catalog behind GET /api/2.0/meta/datasets/.
 Dataset ids and entry-type ids are a permanent public contract: never reused,
 and a rename changes only the label.
 """
-from django.urls import reverse
-
 from django.conf import settings
+from django.urls import reverse
 
 from camp.apps.calheatscore.scales import get_heat_scale
 from camp.apps.calibrations.models import DefaultCalibration

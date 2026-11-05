@@ -1,5 +1,6 @@
 from datetime import timedelta
 from decimal import Decimal
+from functools import cache
 
 from camp.apps.entries import levels
 from camp.apps.entries.models import PM25
@@ -24,19 +25,20 @@ SPIKE_MULTIPLIERS = {
 TOP_BOUND = Decimal('10000.0')
 
 
+@cache
 def cleaning_thresholds():
     """
     (max PM2.5, spike multiplier) per tier, lowest first, from levels.PM25.
     A level's max is the next level's start minus 0.1 (PM2.5 is reported to 0.1).
     """
     tiers = list(levels.PM25)
-    return [
+    return tuple(
         (
             Decimal(str(tiers[i + 1].value)) - Decimal('0.1') if i + 1 < len(tiers) else TOP_BOUND,
             SPIKE_MULTIPLIERS[level.key],
         )
         for i, level in enumerate(tiers)
-    ]
+    )
 
 
 @processors.register()

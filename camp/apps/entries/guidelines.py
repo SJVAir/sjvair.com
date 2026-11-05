@@ -8,10 +8,10 @@ original schools page; don't reword it.
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
+from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
 SCHOOL_GUIDELINES_LABEL = _('Outdoor Activity Guidelines for Schools')
-SCHOOL_GUIDELINES_PATH = '/guidelines/schools/'
 
 _NO_RESTRICTIONS = _('No restrictions.')
 _MANAGE = _('Ensure that sensitive individuals are medically managing their condition.')
@@ -106,7 +106,7 @@ def school_guidelines_json(request) -> dict:
         'resolution': 'hour',
         'source': {
             'name': 'SJVAir',
-            'url': request.build_absolute_uri(SCHOOL_GUIDELINES_PATH),
+            'url': request.build_absolute_uri(reverse('guidelines-schools')),
         },
         'activities': [
             {

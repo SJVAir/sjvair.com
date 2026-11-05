@@ -6,6 +6,7 @@ from . import endpoints
 
 from camp.apps.accounts.models import User
 from camp.apps.alerts.models import Subscription
+from camp.apps.entries.levels import AQLevel
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.utils.test import CsrfExemptRequestFactory, debug, get_response_data
 
@@ -29,7 +30,7 @@ class EndpointTests(TestCase):
         Subscription.objects.create(
             user=self.user,
             monitor=self.monitor,
-            level='unhealthy'
+            level=AQLevel.scale.UNHEALTHY.key
         )
 
         url = reverse('api:v1:subscription-list')
@@ -62,7 +63,7 @@ class EndpointTests(TestCase):
         '''
             Test that we can GET the monitor detail endpoint.
         '''
-        payload = {'level': 'unhealthy'}
+        payload = {'level': AQLevel.scale.UNHEALTHY.key}
 
         url = reverse('api:v1:monitors:alerts:subscribe', kwargs={
             'monitor_id': self.monitor.pk
@@ -78,7 +79,7 @@ class EndpointTests(TestCase):
         assert content['data']['monitor'] == str(self.monitor.pk)
         assert self.user.subscriptions.filter(
             monitor_id=self.monitor.pk,
-            level='unhealthy',
+            level=AQLevel.scale.UNHEALTHY.key,
         ).exists()
 
 
@@ -89,10 +90,10 @@ class EndpointTests(TestCase):
         Subscription.objects.create(
             user=self.user,
             monitor=self.monitor,
-            level='unhealthy'
+            level=AQLevel.scale.UNHEALTHY.key
         )
 
-        payload = {'level': 'hazardous'}
+        payload = {'level': AQLevel.scale.HAZARDOUS.key}
 
         url = reverse('api:v1:monitors:alerts:subscribe', kwargs={
             'monitor_id': self.monitor.pk
@@ -108,7 +109,7 @@ class EndpointTests(TestCase):
         assert content['data']['monitor'] == str(self.monitor.pk)
         assert self.user.subscriptions.filter(
             monitor_id=self.monitor.pk,
-            level='hazardous',
+            level=AQLevel.scale.HAZARDOUS.key,
         ).exists()
 
     def test_unsubscribe(self):
@@ -118,7 +119,7 @@ class EndpointTests(TestCase):
         Subscription.objects.create(
             user=self.user,
             monitor=self.monitor,
-            level='unhealthy'
+            level=AQLevel.scale.UNHEALTHY.key
         )
 
         url = reverse('api:v1:monitors:alerts:subscribe', kwargs={
