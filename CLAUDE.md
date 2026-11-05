@@ -213,6 +213,16 @@ zones are missing there; see SJVAPCD Forecast Setup).
   `import_forecast_zones` before deploying the place endpoints, or clear the cached
   `forecast_zone_for:` keys after the import; otherwise places answered without the 3
   custom zones keep that answer for up to 24h.
+  `hms/smoke/place/` takes the same place params plus `date__gte`/`date__lte` (Pacific dates;
+  both: that range; only `date__gte`: through today; only `date__lte`: the 30 days ending
+  there; neither: the last 30 days; at most 366 days, else 400, as is gte after lte). It
+  returns one row per day: `density` is the heaviest `smoke-density` key (`light`, `medium`,
+  `heavy`) or `null`; `coverage` is the share of the place's area under at least each level
+  (0 or 1 for a monitor). Computed on request in `camp/apps/hms/place.py`, measured in
+  EPSG:3310. A day is settled at 22:00 UTC the next day (an hour after `fetch_smoke_final`);
+  a settled range is cached 24h server-side and sent `public, max-age=86400`, any other
+  200 `max-age=900`, errors `no-cache`. A day with no outlines can't be told from a missed
+  fetch (deferred).
 - **Regions**: `regions/?within=...&within_mode=overlaps` (also the geojson variant) keeps
   regions with >=1% of their own area inside the parents and adds `also_in`; the default
   `contained` mode is unchanged. `regions/meta/` types carry `label_plural` (`Region.TYPE_LABELS_PLURAL`,
