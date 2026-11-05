@@ -8,6 +8,7 @@ from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
 from camp.apps.accounts.models import User
+from camp.apps.entries import levels
 from camp.apps.regions.models import Region
 from camp.apps.regions.panels import panels_for
 
@@ -52,6 +53,13 @@ class ForecastModelTests(TestCase):
         # 101 is exactly the levels.AQI.UNHEALTHY_SENSITIVE breakpoint, so this
         # should be that tier's color with no blending toward the next tier.
         assert forecast.color == '#ff7e00'
+
+    def test_forecast_color_is_discrete(self):
+        region = Region.objects.get(name='Fresno County')
+        expected = {75: '#ffff00', 51: '#ffff00', 50: '#00e400', 501: '#7e0023'}
+        for aqi, color in expected.items():
+            forecast = Forecast(region=region, aqi_value=aqi)
+            assert forecast.color == color, aqi
 
     def test_ordering_is_newest_issued_first(self):
         region = Region.objects.get(name='Fresno County')
@@ -280,6 +288,15 @@ class FetchForecastsTests(TestCase):
         assert forecast.published_at.year == 2026
 
     @patch('camp.apps.forecasts.tasks.requests.get')
+    def test_import_stores_scale_label(self, mock_get):
+        mock_get.return_value = mock_response()
+        fetch_forecasts.call_local()
+        rows = list(Forecast.objects.all())
+        assert rows
+        for row in rows:
+            assert row.aqi_category == levels.AQI.get_level(row.aqi_value).label
+
+    @patch('camp.apps.forecasts.tasks.requests.get')
     def test_tomorrow_row_has_next_day_forecast_date(self, mock_get):
         mock_get.return_value = mock_response()
         fetch_forecasts.call_local()
@@ -441,3 +458,29 @@ class ForecastPanelTests(TestCase):
         panel = self.panel()
         assert panel.context['days'] == []
         assert panel.tiles() == []
+
+
+class ForecastPanelBurnTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        self.user = User.objects.create_superuser(email='admin@example.com', password='password', phone='+15595551234', full_name='Admin')
+        self.county = Region.objects.counties().get(name='Fresno County')
+
+    def burn(self, status, text):
+        Forecast.objects.all().delete()
+        today = timezone.localdate()
+        Forecast.objects.create(
+            region=self.county, zone_name='Fresno', forecast_date=today, issued_date=today,
+            published_at=timezone.now(), aqi_value=40, aqi_category='Good',
+            pollutant='PM2.5', burn_status=status, burn_status_text=text,
+        )
+        request = RequestFactory().get('/')
+        request.user = self.user
+        panel = [p for p in panels_for(self.county, request) if isinstance(p, ForecastPanel)][0]
+        return panel.context['days'][0]['items'][0]['burn']
+
+    def test_panel_burn_label(self):
+        assert self.burn('Discouraged', 'Discouraged: Burning Discouraged') == 'Burning Discouraged'
+        assert self.burn('Mystery', 'X') == 'X'
+        assert self.burn('', '') == ''

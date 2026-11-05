@@ -302,8 +302,8 @@ SO2 = LevelSet(
 )
 
 # The EPA Air Quality Index itself (0-500), as opposed to a pollutant's raw
-# concentration. Breakpoints match camp.utils.aqi.aqi_label exactly (301+ is
-# "Hazardous" all the way to 500 -- the EPA AQI has no tier past Hazardous).
+# concentration. 301+ is "Hazardous", including forecasts above 500 -- the EPA
+# AQI has no tier past Hazardous.
 AQI = LevelSet(
     AQLevel.GOOD(0),
     AQLevel.MODERATE(51),
