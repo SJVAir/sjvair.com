@@ -31,8 +31,9 @@ from camp.apps.summaries.backfill import (
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary, SummaryBackfillJob
 from camp.apps.summaries.selection import (
     monitor_summary_entry_models,
+    monitor_types_summarizing,
     region_summary_entry_models,
-    switch_entry_types,
+    switch_entry_models,
 )
 
 logger = logging.getLogger('camp.apps.summaries')
@@ -448,13 +449,11 @@ def backfill_summaries_tick():
 
 def _backfill_dispatch_monitors(job):
     chunk_start = chunk_start_for(job.cursor, job.range_start, job.chunk_days)
-    switch_types = switch_entry_types()
-    switch_models = sorted(
-        (m for m in EntryTypeField.get_model_map().values() if m.entry_type in switch_types),
-        key=lambda m: m.entry_type,
+    # Switch types (CIMIS weather) are checked only on the monitor types that switch them on.
+    monitor_ids = monitors_with_data_in(
+        chunk_start, job.cursor, region_summary_entry_models(),
+        scoped_entry_models={m: monitor_types_summarizing(m) for m in switch_entry_models()},
     )
-    entry_models = region_summary_entry_models() + switch_models
-    monitor_ids = monitors_with_data_in(chunk_start, job.cursor, entry_models)
 
     job.chunk_start = chunk_start
     job.batch_id += 1

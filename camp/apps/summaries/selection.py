@@ -46,6 +46,12 @@ def switch_entry_types():
     )
 
 
+def switch_entry_models():
+    """The entry models of switch_entry_types(), sorted by entry_type."""
+    switch_types = switch_entry_types()
+    return _by_entry_type(m for m in get_all_entry_models() if m.entry_type in switch_types)
+
+
 def monitor_types_summarizing(entry_model):
     """Monitor subclasses for which `entry_model` is summarized."""
     return [m for m in Monitor.get_subclasses() if is_summarized(m, entry_model)]

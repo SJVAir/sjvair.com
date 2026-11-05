@@ -14,6 +14,7 @@ from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
 from camp.apps.summaries.aggregators import compute_stats, compute_region_summary
 from camp.apps.summaries.models import MonitorSummary, RegionSummary
+from camp.apps.summaries.selection import region_summary_entry_models
 
 
 DEFAULT_CHUNK_DAYS = 1
@@ -70,18 +71,36 @@ def higher_rollup_windows(day):
     return windows
 
 
-def monitors_with_data_in(chunk_start, chunk_end, entry_models):
-    """Monitor ids with at least one entry of any given type in [chunk_start, chunk_end)."""
-    conditions = [
-        Exists(EntryModel.objects.filter(
+def monitors_with_data_in(chunk_start, chunk_end, entry_models, scoped_entry_models=None):
+    """
+    Monitor ids with at least one entry of any given type in [chunk_start, chunk_end).
+
+    `scoped_entry_models` ({EntryModel: [monitor types]}) adds types checked
+    only on monitors of the listed types (one query per monitor type), so
+    other monitor types never pay their Exists.
+    """
+    def has_data(EntryModel):
+        return Exists(EntryModel.objects.filter(
             monitor_id=OuterRef('pk'),
             timestamp__gte=chunk_start,
             timestamp__lt=chunk_end,
         ))
-        for EntryModel in entry_models
-    ]
-    combined = reduce(operator.or_, conditions)
-    return list(Monitor.objects.filter(combined).values_list('pk', flat=True).distinct())
+
+    combined = reduce(operator.or_, [has_data(EntryModel) for EntryModel in entry_models])
+    monitor_ids = list(Monitor.objects.filter(combined).values_list('pk', flat=True).distinct())
+
+    by_type = defaultdict(list)
+    for EntryModel, monitor_types in (scoped_entry_models or {}).items():
+        for monitor_type in monitor_types:
+            by_type[monitor_type].append(EntryModel)
+    seen = set(monitor_ids)
+    for monitor_type, models in by_type.items():
+        combined = reduce(operator.or_, [has_data(EntryModel) for EntryModel in models])
+        for pk in monitor_type.objects.filter(combined).values_list('pk', flat=True).distinct():
+            if pk not in seen:
+                seen.add(pk)
+                monitor_ids.append(pk)
+    return monitor_ids
 
 
 def regions_with_monitors():
@@ -157,11 +176,13 @@ def backfill_region_hours(region, hours, monitor_grades):
     given hours, using precomputed monitor_grades ({monitor_id: grade}) to
     avoid a geospatial query per hour. Returns the number of summaries written.
     """
+    # Only the region types: weather types (CIMIS) have monitor rows, never region rows.
+    region_types = [m.entry_type for m in region_summary_entry_models()]
     to_upsert = []
     for hour in hours:
         entry_types = list(
             MonitorSummary.objects
-            .filter(timestamp=hour, resolution=BaseSummary.Resolution.HOURLY)
+            .filter(timestamp=hour, resolution=BaseSummary.Resolution.HOURLY, entry_type__in=region_types)
             .values_list('entry_type', flat=True)
             .distinct()
         )
