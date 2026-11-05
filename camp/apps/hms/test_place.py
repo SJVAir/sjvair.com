@@ -88,6 +88,23 @@ class SmokeDaysTests(TestCase):
         with self.assertNumQueries(0):
             assert smoke_days(None, D, D)[0]['density'] is None
 
+    def test_unknown_density_ignored(self):
+        row = smoke(D, 'light', WHOLE)
+        Smoke.objects.filter(pk=row.pk).update(density='bogus')
+        out = smoke_days(place(), D, D)[0]
+        assert out['density'] is None and out['coverage']['light'] == 0.0
+        assert smoke_days(Point(-119.8, 36.8, srid=4326), D, D)[0]['density'] is None
+
+    def test_self_intersecting_outline_counts(self):
+        bowtie = 'POLYGON((-120.0 36.6, -119.6 37.0, -119.6 36.6, -120.0 37.0, -120.0 36.6))'
+        Smoke.objects.create(
+            date=D, start=datetime(2026, 10, 27, 18, tzinfo=dt_timezone.utc),
+            end=datetime(2026, 10, 27, 22, tzinfo=dt_timezone.utc), satellite='TestSatellite',
+            density='heavy', geometry=MultiPolygon(GEOSGeometry(bowtie, srid=4326)))
+        row = smoke_days(place(), D, D)[0]
+        assert row['density'] == 'heavy'
+        assert 0 < row['coverage']['heavy'] < 1
+
     def test_settle_rule(self):
         utc = dt_timezone.utc
         assert not is_day_settled(D, datetime(2026, 10, 28, 21, 59, tzinfo=utc))

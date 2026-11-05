@@ -24,7 +24,7 @@ POLYGON_SQL = '''
 WITH place AS (
     SELECT %(geom)s::geometry AS g
 ),
-smoke AS (
+smoke AS MATERIALIZED (
     SELECT s.date,
            array_position(%(levels)s::text[], s.density::text) AS rank,
            ST_Intersection(ST_MakeValid(s.geometry), place.g) AS g
