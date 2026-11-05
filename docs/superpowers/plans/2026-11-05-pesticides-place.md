@@ -49,7 +49,7 @@ Group key for the middle row: `(year, month, county_id, mtrs_id, product_id, com
 
 Branch `feature/pesticides-place` from `feature/get-data-layers` (it holds the spec and this plan), in `/home/alex/workspace/sjvair/sjvair.com/.worktrees/pesticides-place`. Copy `.env`, `.env.test` and `docker-compose.override.yml` from the main checkout.
 
-Test command (the `TEST` alias in every task below), run from the worktree; give it its own database by using `.env.test`'s `DATABASE_URL` with the database name `sjvair_layers1` (never paste the password into docs or commits):
+Test command (the `TEST` alias in every task below), run from the worktree; give it its own database by using `.env.test`'s `DATABASE_URL` with the database name `sjvair_places` (shared by the place-layers track, items 1–3, which run one after another) (never paste the password into docs or commits):
 
 ```bash
 podman run --rm --network sjvaircom_sjvair-net --env-file .env.test -e BAM_MIRROR_ENABLED=0 \

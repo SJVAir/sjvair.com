@@ -23,9 +23,12 @@
 - sdk-js: branch from `origin/release/5.0.0`, PR into it. No `v*` tag, publish or beta without the user's explicit yes for that release. sjvair.com: PR into `develop`; no merge without the user's yes.
 - No Claude or AI attribution in commits, PRs or docs.
 
+- Branch `feature/weather-stations-place` from `feature/get-data-layers` in `sjvair.com/.worktrees/weather-stations-place` (copy `.env`, `.env.test`, `docker-compose.override.yml` in), after item 1 (the place-layers track runs 1 → 2 → 3). Its own PR into `develop`.
+- Tests use the track's database `sjvair_places` (`-e DATABASE_URL=…/sjvair_places`).
+
 ## Decision recorded here (no user question)
 
-`monitorEntryTypeSchema` stays a `z.enum` and gains the 12 CIMIS entry ids. Reasons, from the code: SDK responses aren't parsed at runtime (`jsonCall<T>` is a type cast; only `lib/schema.ts` test helpers and `documents` parse), so the enum's job is compile-time typing and autocompletion of `entryType` in `getMonitorEntries`, `getMonitorSummaries`, etc. A metadata-driven list can't give static types. The account subscription schema also uses the enum; widening it is harmless (the server refuses unsupported subscriptions). Item 4 needs the same ids: whichever of item 2 and item 4 merges into `release/5.0.0` first adds them, and the other rebases.
+`monitorEntryTypeSchema` stays a `z.enum` and gains the 12 CIMIS entry ids. Reasons, from the code: SDK responses aren't parsed at runtime (`jsonCall<T>` is a type cast; only `lib/schema.ts` test helpers and `documents` parse), so the enum's job is compile-time typing and autocompletion of `entryType` in `getMonitorEntries`, `getMonitorSummaries`, etc. A metadata-driven list can't give static types. The account subscription schema also uses the enum; widening it is harmless (the server refuses unsupported subscriptions). Item 4 needs the same ids. **This plan owns them** (coordinator, 2026-11-05): item 4's SDK work builds on this PR and doesn't touch `monitor_entry_type.ts`.
 
 ## Review Focus
 
@@ -114,7 +117,7 @@ def test_answer_is_cached(self):
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run (from the worktree, with `.env` and `.env.test` copied in): `podman run --rm --network sjvaircom_sjvair-net --env-file .env.test -e BAM_MIRROR_ENABLED=0 -e TWILIO_AUTH_TOKEN=test-token -v $PWD:/app:z -v ~/workspace/django-resticus/.worktrees/session-csrf/resticus:/usr/local/lib/python3.14/site-packages/resticus:ro,z -w /app sjvair-com-test:latest pytest camp/apps/regions/tests/test_resolve.py -k WeatherStationsFor -v`
+Run (from the worktree, with `.env` and `.env.test` copied in): `podman run --rm --network sjvaircom_sjvair-net --env-file .env.test -e BAM_MIRROR_ENABLED=0 -e TWILIO_AUTH_TOKEN=test-token -v $PWD:/app:z -v ~/workspace/django-resticus/.worktrees/session-csrf/resticus:/usr/local/lib/python3.14/site-packages/resticus:ro,z -w /app sjvair-com-test:latest -e DATABASE_URL=<.env.test URL with db name sjvair_places> pytest camp/apps/regions/tests/test_resolve.py -k WeatherStationsFor -v` (every test run in this plan adds that `DATABASE_URL`: the place-layers track's own database)
 Expected: FAIL with `ImportError: cannot import name 'weather_stations_for'`.
 
 - [ ] **Step 3: Implement `weather_stations_for` in `camp/apps/regions/resolve.py`**
@@ -231,7 +234,7 @@ Run checks with: `deno fmt --check && deno lint && deno check mod.ts && deno tes
 - Test: `lib/monitors/mod_test.ts`
 
 **Interfaces:**
-- Produces: `MonitorEntryType` now also includes `"dewpoint" | "soiltemperature" | "windspeed" | "winddirection" | "precipitation" | "solarradiation" | "netradiation" | "vaporpressure" | "eto" | "etr"` (`temperature` and `humidity` are already there). Item 4 relies on these; if item 4 already added them, skip this task.
+- Produces: `MonitorEntryType` now also includes `"dewpoint" | "soiltemperature" | "windspeed" | "winddirection" | "precipitation" | "solarradiation" | "netradiation" | "vaporpressure" | "eto" | "etr"` (`temperature` and `humidity` are already there). Item 4 relies on these and builds on this PR.
 
 - [ ] **Step 1: Write the failing test** — a step asserting `monitorEntryTypeSchema.safeParse(id).success` for each of the 12 CIMIS ids (`temperature, humidity, dewpoint, soiltemperature, windspeed, winddirection, precipitation, solarradiation, netradiation, vaporpressure, eto, etr`), and a type-level use `const t: MonitorEntryType = "eto";`.
 - [ ] **Step 2: Run** `deno test --allow-net --allow-env --allow-read --env-file=.env lib/monitors/mod_test.ts` — Expected: FAIL (`deno check` error on `"eto"` / safeParse false).

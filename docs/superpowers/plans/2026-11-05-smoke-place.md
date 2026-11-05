@@ -41,12 +41,12 @@ git fetch && git switch -c feature/smoke-place   # from feature/get-data-layers 
 cp ../../.env ../../.env.test ../../docker-compose.override.yml .
 ```
 
-Test command used below (`$T`), with its own database so parallel sessions don't collide. Take `DATABASE_URL` from `.env.test` and change only the database name to `sjvair_smoke_place`:
+Test command used below (`$T`), with its own database so parallel sessions don't collide. Take `DATABASE_URL` from `.env.test` and change only the database name to `sjvair_places`:
 
 ```bash
 T="podman run --rm --network sjvaircom_sjvair-net --env-file .env.test \
   -e BAM_MIRROR_ENABLED=0 -e TWILIO_AUTH_TOKEN=test-token \
-  -e DATABASE_URL=<.env.test URL with db name sjvair_smoke_place> \
+  -e DATABASE_URL=<.env.test URL with db name sjvair_places> \
   -v $PWD:/app:z \
   -v $HOME/workspace/django-resticus/.worktrees/session-csrf/resticus:/usr/local/lib/python3.14/site-packages/resticus:ro,z \
   -w /app sjvair-com-test:latest"
@@ -390,7 +390,7 @@ cd .worktrees/smoke-for-place && cp ../../.env .
   - "getSmokeForPlace sends the place and range": `stubFetch(() => jsonResponse(fixture))`; call with `{region: {type: "county", external_id: "06019"}}` and `{gte: "2026-10-01", lte: "2026-10-31"}`; assert `pathname === "/api/2.0/hms/smoke/place/"`, `region_type=county`, `region=06019`, `date__gte=2026-10-01`, `date__lte=2026-10-31`, and no `date__gte` when `dates` is `{}`.
   - "live: getSmokeForPlace for Fresno County" against the local API: validates the response and asserts `days.length === 30` with no dates. Skip with a note (like the existing data-dependent steps) when the server answers 404 for the route (server not on `feature/smoke-place`).
 
-  Fixture: a real response saved from the local server on `feature/smoke-place` (`/api/2.0/hms/smoke/place/?region_type=county&region=06019&date__gte=2026-10-26&date__lte=2026-10-29`), with at least one non-null day; trim nothing.
+  Fixture: a real response saved from the local server on `feature/smoke-place` (serving the branch swaps the shared web container: ask the coordinator `data-dashboard-b7` first, and tell them when the main checkout is back) (`/api/2.0/hms/smoke/place/?region_type=county&region=06019&date__gte=2026-10-26&date__lte=2026-10-29`), with at least one non-null day; trim nothing.
 
 - [ ] **Step 2: Run to verify they fail**
 

@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Branch `feature/weather-summaries` from `feature/get-data-layers` (which holds the specs), worktree `sjvair.com/.worktrees/weather-summaries`. Copy `.env`, `.env.test`, `docker-compose.override.yml` in. PR into `develop`; merge only with the user's yes.
+- Branch `feature/weather-summaries` from `feature/get-data-layers` (which holds the specs), worktree `sjvair.com/.worktrees/weather-summaries`. Copy `.env`, `.env.test`, `docker-compose.override.yml` in. PR into `develop`; merge only with the user's yes, and **after the place-layers track's PRs** (merge order: place layers first, then weather summaries). Every write to the shared local DB (`restamp_cimis`, rebuilds, re-pulls) and every web-container swap needs the coordinator's OK first.
 - Tests (`TEST`): `podman run --rm --network sjvaircom_sjvair-net --env-file .env.test -e BAM_MIRROR_ENABLED=0 -e TWILIO_AUTH_TOKEN=test-token -e DATABASE_URL=<.env.test URL with db name sjvair_weather> -v $PWD:/app:z -v ~/workspace/django-resticus/.worktrees/session-csrf/resticus:/usr/local/lib/python3.14/site-packages/resticus:ro,z -w /app sjvair-com-test:latest pytest <args>`. Take a full-suite baseline (`-n 4 --dist loadscope`) before Task 1 and compare at the end. Ignore the trailing "not a git repository" line.
 - Summarized CIMIS types (11): `temperature, humidity, dewpoint, soiltemperature, windspeed, precipitation, solarradiation, netradiation, vaporpressure, eto, etr`. `winddirection` stays raw.
 - Air quality unchanged: no model's `summarize` flag changes; region summaries, region rollups and the :45 / :50 hourly parents keep exactly today's entry types.
@@ -359,7 +359,7 @@ Branch `feature/weather-summaries` from `origin/release/5.0.0` in `sdk-js/.workt
 
 **Files:**
 - Modify: `lib/monitors/schemas/monitor_summary.ts`: `sum: z.ZodNumber` in the interface (doc: "The total of the values recorded during this summary's period"), `sum: z.number()` in the schema. Check that `monitor_summary_bulk.ts` reuses it; if it duplicates the fields, add it there too.
-- Modify: `lib/monitors/schemas/monitor_entry_type.ts`: add `dewpoint, soiltemperature, windspeed, winddirection, precipitation, solarradiation, netradiation, vaporpressure, eto, etr`, unless item 2's SDK PR has already added them. Check `origin/release/5.0.0` first and skip this file if so.
+- Don't modify `lib/monitors/schemas/monitor_entry_type.ts`: item 2's SDK PR owns the CIMIS entry types (coordinator, 2026-11-05). Branch this work from item 2's sdk-js branch, or from `origin/release/5.0.0` once that PR has merged, and rebase as needed.
 - Modify: `CHANGELOG.md` (Unreleased).
 - Test: `lib/monitors/mod_test.ts`
 
