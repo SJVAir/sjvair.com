@@ -1,5 +1,8 @@
+import hashlib
+import json
 from types import SimpleNamespace
 
+from django import forms
 from django.db.models import Case, Count, Prefetch, Q, Sum, Value, When
 from django.db.models.functions import Coalesce, Length, NullIf
 from django.shortcuts import get_object_or_404
@@ -7,10 +10,12 @@ from django.shortcuts import get_object_or_404
 from resticus import generics, http
 
 from camp.apps.pesticides import stats
+from camp.apps.pesticides.places import monthly_use, rollup_rows_for
 from camp.apps.pesticides.models import (
     Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseTotal, Product,
 )
 from camp.apps.regions.models import Region
+from camp.apps.regions.resolve import CACHE_TIMEOUT, PlaceError, PlaceNotFound, _place_key, place_json, resolve_place
 from camp.utils.views import CachedEndpointMixin
 
 from .filters import ChemicalFilter, CommodityFilter, PesticideNoticeFilter, PesticideSummaryFilter, PesticideUseFilter, ProductFilter
@@ -361,3 +366,68 @@ class EntitySearch(CachedEndpointMixin, EntitySearchBase):
     `detail` string -- the CDPR chem code, registration number, or site code, labeled.
     """
     cache_timeout = 60 * 5
+
+
+class PesticidePlaceForm(forms.Form):
+    chemical = forms.IntegerField(required=False, min_value=1, max_value=2_147_483_647)
+    commodity = forms.CharField(required=False)
+    category = forms.ChoiceField(required=False, choices=Chemical.Category.choices)
+    iarc_group = forms.ChoiceField(required=False, choices=Chemical.IARCGroup.choices)
+    aerial_ground = forms.ChoiceField(required=False, choices=PesticideUse.AerialGround.choices)
+    year__gte = forms.IntegerField(required=False, min_value=1900, max_value=2100)
+    year__lte = forms.IntegerField(required=False, min_value=1900, max_value=2100)
+
+
+class PesticidePlace(generics.Endpoint):
+    """Monthly and yearly pesticide use for a place (?region_type= & ?region=,
+    or ?monitor=; filterable by ?chemical=, ?commodity=, ?category=,
+    ?iarc_group=, ?aerial_ground=, ?year__gte=, ?year__lte=)."""
+
+    @staticmethod
+    def error(response_class, err):
+        response = response_class({'error': str(err)})
+        response['Cache-Control'] = 'no-cache'
+        return response
+
+    def get(self, request, *args, **kwargs):
+        try:
+            place = resolve_place(request.GET)
+        except PlaceNotFound as err:
+            return self.error(http.Http404, err)
+        except PlaceError as err:
+            return self.error(http.Http400, err)
+
+        form = PesticidePlaceForm(request.GET)
+        if not form.is_valid():
+            response = http.Http400({'errors': form.errors.get_json_data()})
+            response['Cache-Control'] = 'no-cache'
+            return response
+        # Blank values are not filters.
+        filters = {k: v for k, v in form.cleaned_data.items() if v not in (None, '')}
+
+        def build():
+            rows = rollup_rows_for(place)
+            if 'chemical' in filters:
+                rows = rows.filter(chemical__chem_code=filters['chemical'])
+            if 'commodity' in filters:
+                rows = rows.filter(commodity__site_code=filters['commodity'])
+            if 'category' in filters:
+                rows = rows.filter(chemical__categories__contains=[filters['category']])
+            if 'iarc_group' in filters:
+                rows = rows.filter(chemical__iarc_group=filters['iarc_group'])
+            if 'aerial_ground' in filters:
+                rows = rows.filter(method=filters['aerial_ground'])
+            if 'year__gte' in filters:
+                rows = rows.filter(year__gte=filters['year__gte'])
+            if 'year__lte' in filters:
+                rows = rows.filter(year__lte=filters['year__lte'])
+            chemical_scoped = 'chemical' in filters
+            multi_chemical = not chemical_scoped and ('category' in filters or 'iarc_group' in filters)
+            return monthly_use(rows, chemical_scoped, multi_chemical)
+
+        key = stats.all_years_key('place', _place_key('pesticides', place), hashlib.md5(json.dumps(sorted(filters.items())).encode()).hexdigest())
+        data = stats.cached(key, build, ttl=CACHE_TIMEOUT)
+
+        response = http.Http200({'data': {'place': place_json(place), **data}})
+        response['Cache-Control'] = 'public, max-age=3600'
+        return response
