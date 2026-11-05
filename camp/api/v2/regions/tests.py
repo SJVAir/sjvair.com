@@ -139,11 +139,34 @@ class RegionMetaTests(TestCase):
         assert county == {
             'type': 'county',
             'label': 'County',
+            'label_plural': 'Counties',
             'category': 'administrative',
             'count': 0,
             'parents': [],
             'referenceable': True,
             'browsable': True,
+        }
+
+    def test_label_plural(self):
+        response, content = self._fetch_region_meta()
+        plurals = {t: info['label_plural'] for t, info in content['data']['types'].items()}
+        assert plurals == {
+            'county': 'Counties',
+            'city': 'Cities',
+            'zipcode': 'ZIP Codes',
+            'tract': 'Census Tracts',
+            'cdp': 'Census Designated Places',
+            'congressional_district': 'Congressional Districts',
+            'state_assembly': 'State Assembly Districts',
+            'state_senate': 'State Senate Districts',
+            'school_district': 'School Districts',
+            'air_district': 'Air Districts',
+            'urban_area': 'Urban Areas',
+            'land_use': 'Land Use Areas',
+            'protected': 'Protected Areas',
+            'ab617': 'AB 617 Communities',
+            'mtrs': 'MTRS Sections',
+            'custom': 'Custom Regions',
         }
 
     def test_browsable(self):
