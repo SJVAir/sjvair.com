@@ -26,6 +26,14 @@ class TempoProductsTests(TestCase):
         keys = {product['key'] for product in response.json()}
         assert keys == {'no2', 'o3tot', 'hcho'}
 
+    def test_tempo_products_unchanged(self):
+        response = self.client.get(reverse('api:v2:tempo:product-list'))
+        assert [(p['key'], p['label'], p['units']) for p in response.json()] == [
+            ('no2', 'Nitrogen Dioxide', 'molecules/cm²'),
+            ('o3tot', 'Total Ozone', 'molecules/cm²'),
+            ('hcho', 'Formaldehyde', 'molecules/cm²'),
+        ]
+
     def test_each_product_has_label_units_and_legend(self):
         response = self.client.get(reverse('api:v2:tempo:product-list'))
 

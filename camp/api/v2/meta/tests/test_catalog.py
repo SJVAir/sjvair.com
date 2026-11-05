@@ -1,3 +1,7 @@
+import json
+import os
+from pathlib import Path
+
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
@@ -11,6 +15,8 @@ from camp.utils.test import get_response_data
 
 datasets_view = DatasetCatalogEndpoint.as_view()
 
+SNAPSHOT = Path(__file__).with_name('catalog_snapshot.json')
+
 
 class DatasetCatalogTests(TestCase):
     fixtures = ['default-calibrations.yaml']
@@ -21,6 +27,14 @@ class DatasetCatalogTests(TestCase):
     def entry(self, dataset, entry_type):
         ds = next(d for d in self.get()['datasets'] if d['id'] == dataset)
         return next(e for e in ds['entry_types'] if e['id'] == entry_type)
+
+    def test_catalog_unchanged(self):
+        # Pins the whole catalog. Regenerate on purpose only:
+        # WRITE_CATALOG_SNAPSHOT=1 pytest camp/api/v2/meta/tests/test_catalog.py
+        data = json.loads(json.dumps(self.get()))
+        if os.environ.get('WRITE_CATALOG_SNAPSHOT') == '1':
+            SNAPSHOT.write_text(json.dumps(data, sort_keys=True, indent=1, ensure_ascii=False) + '\n')
+        assert data == json.loads(SNAPSHOT.read_text())
 
     def test_lists_every_domain(self):
         assert [d['id'] for d in self.get()['datasets']] == list(catalog.DATASET_IDS)
