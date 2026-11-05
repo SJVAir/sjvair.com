@@ -6,6 +6,7 @@ from resticus.http import Http400
 
 from camp.apps.regions.models import Region
 from camp.apps.tempo.models import Granule
+from camp.apps.tempo.products import QA_PRODUCTS, TEMPO_UNITS
 from camp.apps.tempo.queries import point_series, region_series
 from camp.apps.tempo.rendering import PRODUCT_COLOR_RANGES, _level_set_for
 
@@ -13,11 +14,6 @@ from .filters import GranuleFilter, default_to_today
 from .forms import TempoPointForm, TempoSeriesForm
 from .serializers import GranuleSerializer
 
-PRODUCT_UNITS = {
-    'no2': 'molecules/cm²',
-    'o3tot': 'molecules/cm²',
-    'hcho': 'molecules/cm²',
-}
 
 
 class TempoProducts(generics.Endpoint):
@@ -26,13 +22,13 @@ class TempoProducts(generics.Endpoint):
     def get(self, request):
         products = []
         for key, label in Granule.Product.choices:
-            if key not in PRODUCT_COLOR_RANGES or key not in PRODUCT_UNITS:
-                continue  # cldo4 has a color range for preview rendering but no units/legend -- not user-facing
+            if key in QA_PRODUCTS or key not in PRODUCT_COLOR_RANGES:
+                continue  # cldo4 has a color range for preview rendering but isn't user-facing
             levels = _level_set_for(key)
             products.append({
                 'key': key,
                 'label': str(label),
-                'units': PRODUCT_UNITS[key],
+                'units': TEMPO_UNITS[key],
                 'legend': [
                     {'value': level.value, 'label': str(level.label), 'color': level.color}
                     for level in levels
