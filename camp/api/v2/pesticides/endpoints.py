@@ -1,3 +1,5 @@
+import hashlib
+import json
 from types import SimpleNamespace
 
 from django import forms
@@ -367,13 +369,13 @@ class EntitySearch(CachedEndpointMixin, EntitySearchBase):
 
 
 class PesticidePlaceForm(forms.Form):
-    chemical = forms.IntegerField(required=False)
+    chemical = forms.IntegerField(required=False, min_value=1, max_value=2_147_483_647)
     commodity = forms.CharField(required=False)
     category = forms.ChoiceField(required=False, choices=Chemical.Category.choices)
     iarc_group = forms.ChoiceField(required=False, choices=Chemical.IARCGroup.choices)
     aerial_ground = forms.ChoiceField(required=False, choices=PesticideUse.AerialGround.choices)
-    year__gte = forms.IntegerField(required=False)
-    year__lte = forms.IntegerField(required=False)
+    year__gte = forms.IntegerField(required=False, min_value=1900, max_value=2100)
+    year__lte = forms.IntegerField(required=False, min_value=1900, max_value=2100)
 
 
 class PesticidePlace(generics.Endpoint):
@@ -423,7 +425,7 @@ class PesticidePlace(generics.Endpoint):
             multi_chemical = not chemical_scoped and ('category' in filters or 'iarc_group' in filters)
             return monthly_use(rows, chemical_scoped, multi_chemical)
 
-        key = stats.all_years_key('place', _place_key('pesticides', place), sorted(filters.items()))
+        key = stats.all_years_key('place', _place_key('pesticides', place), hashlib.md5(json.dumps(sorted(filters.items())).encode()).hexdigest())
         data = stats.cached(key, build, ttl=CACHE_TIMEOUT)
 
         response = http.Http200({'data': {'place': place_json(place), **data}})

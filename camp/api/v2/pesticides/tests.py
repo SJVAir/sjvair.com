@@ -1,11 +1,13 @@
 import pytest
 from datetime import date, timedelta
+from unittest.mock import patch
 
 from django.contrib.gis.geos import GEOSGeometry
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product
 from camp.apps.regions.models import Boundary, Region
 
@@ -1850,11 +1852,6 @@ class RegionClipTests(TestCase):
         assert self.get('location-list', region=self.region.sqid, buffer=2).status_code == 400
 
 
-from unittest.mock import patch
-
-from camp.apps.monitors.cimis.models import CIMIS
-
-
 class PesticidePlaceTests(RollupTestMixin, TestCase):
     fixtures = ['pesticides-explorer']
 
@@ -1888,10 +1885,22 @@ class PesticidePlaceTests(RollupTestMixin, TestCase):
         assert d['months'] == [] and d['years'] == []
 
     def test_bad_filter_values_are_400(self):
-        for bad in ({'year__gte': 'abc'}, {'category': 'nope'}, {'aerial_ground': 'X'}, {'iarc_group': '9'}, {'chemical': 'x'}):
+        for bad in ({'year__gte': 'abc'}, {'category': 'nope'}, {'aerial_ground': 'X'}, {'iarc_group': '9'}, {'chemical': 'x'},
+                    {'chemical': 0}, {'chemical': 2**31}, {'year__gte': 1899}, {'year__lte': 2101}, {'year__gte': 10**12}):
             r = self.get(**bad)
             assert r.status_code == 400 and r['Cache-Control'] == 'no-cache'
             assert 'errors' in r.json()
+
+    def test_odd_commodity_values_answer_200_with_safe_keys(self):
+        from django.core.cache.backends.base import memcache_key_warnings
+        from camp.apps.pesticides import stats
+        for value in ('a b', 'x' * 300, 'tab\there'):
+            r = self.get(commodity=value)
+            assert r.status_code == 200, value
+            data = r.json()['data']
+            assert data['months'] == [] and data['years'] == []
+        key = stats.all_years_key('place', 'k', __import__('hashlib').md5(b'x').hexdigest())
+        assert list(memcache_key_warnings(key)) == []
 
     def test_blank_filters_ignored(self):
         plain = self.get().json()['data']
