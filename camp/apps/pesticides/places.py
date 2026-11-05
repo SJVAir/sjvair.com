@@ -19,6 +19,9 @@ from urllib.parse import urlencode
 from django.contrib.gis.geos import Point
 from django.contrib.gis.measure import D
 from django.core.cache import cache
+from django.core.exceptions import EmptyResultSet
+from django.db import connection
+from django.db.models import Max, Sum
 from django.urls import reverse
 
 from camp.api.v2.pesticides.sections import radius_bbox
@@ -26,6 +29,7 @@ from camp.apps.pesticides import stats
 from camp.apps.pesticides.models import PesticideNotice, PesticideUseRollup, PesticideUseTotal
 from camp.apps.regions import nearby, schools, shapes
 from camp.apps.regions.models import Location, Region
+from camp.apps.regions.resolve import CACHE_TIMEOUT, _place_geometry, _place_key, zips_for
 from camp.utils.gis import EPSG_CALIFORNIA_ALBERS
 
 PLACE_REGION_TYPES = (
@@ -297,6 +301,122 @@ def region_area(region, buffer=0):
 
     label = _REGION_LABEL_PREFIX.get(region.type, '') + region.name
     return Area(label=label, kind='region', region=region, section_pks=section_pks, buffer=buffer)
+
+
+def section_ids_for(region):
+    """
+    The pks of the current MTRS sections whose boundary touches the region's,
+    sorted; empty without a boundary. Cached for 24 hours under the region's
+    boundary, so a warm call costs no queries. Not used for counties, which
+    the place endpoint reads by their `county` FK.
+    """
+    key = _place_key('pesticide_sections', region)
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+
+    geometry = _place_geometry(region)
+    if geometry is None:
+        found = []
+    else:
+        found = list(
+            Region.objects.filter(type=Region.Type.MTRS, boundary__geometry__intersects=geometry)
+            .order_by('pk')
+            .values_list('pk', flat=True)
+        )
+    cache.set(key, found, CACHE_TIMEOUT)
+    return found
+
+
+def rollup_rows_for(place):
+    """
+    The rollup rows of a place: a county by its `county` FK, an MTRS section by
+    itself, any other region by the MTRS sections touching it, a monitor by the sections of the ZIP it
+    sits in (none when it sits in no ZIP).
+    """
+    rows = PesticideUseRollup.objects.order_by()
+    if not isinstance(place, Region):
+        zips = zips_for(place)
+        if not zips:
+            return rows.none()
+        place = zips[0]
+    if place.type == Region.Type.COUNTY:
+        return rows.filter(county=place)
+    if place.type == Region.Type.MTRS:
+        # A section is its own place: `intersects` would add its 8 neighbours.
+        return rows.filter(mtrs=place)
+    return rows.filter(mtrs__in=section_ids_for(place))
+
+
+# One use record: a record has one product, and every record of a product
+# carries the same ingredient rows.
+_RECORD_KEY = ('year', 'month', 'county', 'mtrs', 'product', 'commodity', 'method')
+
+
+def monthly_use(rows, chemical_scoped, multi_chemical):
+    """
+    Pounds, acres and applications of `rows` (a PesticideUseRollup queryset)
+    per month and per year, in one query.
+
+    The counting rule: pounds always sum `lbs_chemical` over the rows. With
+    `chemical_scoped` (one chemical) each row is that chemical's ingredient
+    rows, so acres and applications sum `acres_treated` and `applications`.
+    With `multi_chemical` (a category or IARC filter, no chemical) a record
+    with several matching ingredients has several rows, so acres and
+    applications take the MAX per record key and sum those. Otherwise
+    (unfiltered) they sum `acres_once` and `records`, which count each record
+    once on its designated row.
+
+    Month 0 (no application date) feeds each year's totals and its `undated`,
+    never `months`. A year's totals include its undated use.
+    """
+    if multi_chemical and not chemical_scoped:
+        # Rows with no product share one MAX per key, so records of different
+        # products can merge there and undercount. Only a handful of such rows
+        # exist (27 locally); accepted.
+        inner = (
+            rows.order_by()
+            .values(*_RECORD_KEY)
+            .annotate(p=Sum('lbs_chemical'), a=Max('acres_treated'), n=Max('applications'))
+        )
+        try:
+            sql, params = inner.query.sql_with_params()
+        except EmptyResultSet:
+            # .none(), or a place with no sections (`mtrs__in=[]`): nothing to wrap.
+            grouped = []
+        else:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    'SELECT g.year, g.month, SUM(g.p), SUM(g.a), SUM(g.n) '
+                    f'FROM ({sql}) g GROUP BY g.year, g.month ORDER BY g.year, g.month',
+                    params,
+                )
+                grouped = cursor.fetchall()
+    else:
+        acres, applications = (
+            ('acres_treated', 'applications') if chemical_scoped else ('acres_once', 'records'))
+        grouped = (
+            rows.order_by('year', 'month')
+            .values('year', 'month')
+            .annotate(p=Sum('lbs_chemical'), a=Sum(acres), n=Sum(applications))
+            .values_list('year', 'month', 'p', 'a', 'n')
+        )
+
+    months = []
+    years = {}
+    for year, month, pounds, acres, applications in grouped:
+        values = {'pounds': pounds or 0.0, 'acres': acres or 0.0, 'applications': int(applications or 0)}
+        totals = years.setdefault(year, {
+            'year': year, 'pounds': 0.0, 'acres': 0.0, 'applications': 0,
+            'undated': {'pounds': 0.0, 'acres': 0.0, 'applications': 0},
+        })
+        for name, value in values.items():
+            totals[name] += value
+        if month == 0:
+            totals['undated'] = values
+        else:
+            months.append({'year': year, 'month': month, **values})
+    return {'months': months, 'years': [years[year] for year in sorted(years)]}
 
 
 def schools_nearby(region, year, all_years=False, concern=False):

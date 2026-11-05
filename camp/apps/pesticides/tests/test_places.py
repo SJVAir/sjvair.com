@@ -1,6 +1,6 @@
 from datetime import date
 
-from django.contrib.gis.geos import Point
+from django.contrib.gis.geos import MultiPolygon, Point, Polygon
 import math
 from unittest import mock
 
@@ -12,8 +12,12 @@ from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
-from camp.apps.pesticides import places, stats
-from camp.apps.pesticides.models import Chemical, PesticideNotice, PesticideUseRollup
+from camp.apps.monitors.purpleair.models import PurpleAir
+from camp.apps.pesticides import places, rollup, stats
+from camp.apps.pesticides.models import (
+    Chemical, PesticideNotice, PesticideUse, PesticideUseRollup, ProductChemical,
+)
+from camp.apps.pesticides.places import monthly_use, rollup_rows_for
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
 from camp.apps.regions.models import Boundary, Location, Region
 from camp.apps.regions.tests.test_locations import make_district
@@ -1031,3 +1035,154 @@ class SchoolsTabFilterTests(RollupTestMixin, TestCase):
         response = self.client.get(district.get_pesticides_tab_url('schools'))
         assert response.context['school_districts'] == []
         assert 'id_schools_district' not in response.content.decode()
+
+
+class SectionIdsForTests(TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def make_region(self, external_id, with_boundary=True):
+        region = Region.objects.create(
+            name=external_id, slug=external_id.lower(), type=Region.Type.CITY, external_id=external_id)
+        if with_boundary:
+            region.boundary = Boundary.objects.create(
+                region=region, version='t',
+                geometry=MultiPolygon(Polygon.from_bbox((-119.9, 36.6, -119.7, 36.8))))
+            region.save()
+        return region
+
+    def test_sections_touching_region(self):
+        assert places.section_ids_for(self.make_region('X1')) == [9101]
+
+    def test_no_boundary_is_empty(self):
+        assert places.section_ids_for(self.make_region('X2', with_boundary=False)) == []
+
+    def test_cached(self):
+        region = self.make_region('X3')
+        places.section_ids_for(region)
+        with self.assertNumQueries(0):
+            assert places.section_ids_for(region) == [9101]
+
+
+class MonthlyUseTests(RollupTestMixin, TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        super().setUp()
+        self.fresno = Region.objects.get(pk=9001)
+
+    def test_county_months_and_years(self):
+        out = monthly_use(rollup_rows_for(self.fresno), chemical_scoped=False, multi_chemical=False)
+        # 2023 Fresno: uses 1 (Mar,100lb,10ac), 2 (Apr,50,5), 4 (Jun,20,2), 6 (Aug,500,50)
+        assert out['months'][:2] == [
+            {'year': 2022, 'month': 3, 'pounds': 80.0, 'acres': 8.0, 'applications': 1},
+            {'year': 2022, 'month': 8, 'pounds': 400.0, 'acres': 40.0, 'applications': 1},
+        ]
+        assert [(m['year'], m['month']) for m in out['months']] == [
+            (2022, 3), (2022, 8), (2023, 3), (2023, 4), (2023, 6), (2023, 8)]
+        assert [y['year'] for y in out['years']] == [2022, 2023]
+        y2023 = next(y for y in out['years'] if y['year'] == 2023)
+        assert y2023 == {'year': 2023, 'pounds': 670.0, 'acres': 67.0, 'applications': 4,
+                         'undated': {'pounds': 0.0, 'acres': 0.0, 'applications': 0}}
+        assert isinstance(y2023['applications'], int)
+
+    def test_undated_in_year_not_months(self):
+        PesticideUse.objects.filter(pk=1).update(application_date=None)
+        rollup.rebuild_year(2023)
+        out = monthly_use(rollup_rows_for(self.fresno), False, False)
+        assert not any(m['year'] == 2023 and m['month'] == 3 for m in out['months'])
+        assert all(1 <= m['month'] <= 12 for m in out['months'])
+        y = next(y for y in out['years'] if y['year'] == 2023)
+        assert y['pounds'] == 670.0 and y['undated'] == {'pounds': 100.0, 'acres': 10.0, 'applications': 1}
+
+    def test_year_with_only_undated_use_has_a_row(self):
+        PesticideUse.objects.filter(pk__in=[7, 9]).update(application_date=None)
+        rollup.rebuild_year(2022)
+        out = monthly_use(rollup_rows_for(self.fresno), False, False)
+        assert not any(m['year'] == 2022 for m in out['months'])
+        y = next(y for y in out['years'] if y['year'] == 2022)
+        assert y == {'year': 2022, 'pounds': 480.0, 'acres': 48.0, 'applications': 2,
+                     'undated': {'pounds': 480.0, 'acres': 48.0, 'applications': 2}}
+
+    def test_multi_ingredient_counted_once(self):
+        # Product 1 gets a second ingredient, chlorpyrifos marked carcinogen: use 1 becomes two rows.
+        Chemical.objects.filter(pk=2).update(categories=['carcinogen'])
+        ProductChemical.objects.create(product_id=1, chemical_id=2, pct_active=5)
+        PesticideUse.objects.create(
+            year=2023, use_no=1, county_id=9001, mtrs_id=9101, product_id=1,
+            chemical_id=2, commodity_id=1, lbs_chemical=7, lbs_product=250, amount_treated=10,
+            unit_treated='A', application_date=date(2023, 3, 1), aerial_ground='G')
+        rollup.rebuild_year(2023)
+        rows = rollup_rows_for(self.fresno).filter(
+            chemical__categories__contains=['carcinogen'], year=2023, month=3)
+        out = monthly_use(rows, chemical_scoped=False, multi_chemical=True)
+        assert out['months'] == [{'year': 2023, 'month': 3, 'pounds': 107.0, 'acres': 10.0, 'applications': 1}]
+        assert out['years'] == [{'year': 2023, 'pounds': 107.0, 'acres': 10.0, 'applications': 1,
+                                 'undated': {'pounds': 0.0, 'acres': 0.0, 'applications': 0}}]
+        # Unfiltered, the record also counts once (records / acres_once).
+        out = monthly_use(rollup_rows_for(self.fresno).filter(year=2023, month=3), False, False)
+        assert out['months'][0]['applications'] == 1 and out['months'][0]['acres'] == 10.0
+
+    def test_chemical_scoped_uses_ingredient_rows(self):
+        rows = rollup_rows_for(self.fresno).filter(chemical__chem_code=253)
+        out = monthly_use(rows, chemical_scoped=True, multi_chemical=False)
+        assert out['months'] == [{'year': 2023, 'month': 6, 'pounds': 20.0, 'acres': 2.0, 'applications': 1}]
+
+    def test_region_via_sections_and_monitor_via_zip(self):
+        zipcode = Region.objects.create(
+            name='93701', slug='93701', type=Region.Type.ZIPCODE, external_id='93701')
+        zipcode.boundary = Boundary.objects.create(
+            region=zipcode, version='t',
+            geometry=MultiPolygon(Polygon.from_bbox((-119.81, 36.69, -119.77, 36.73))))
+        zipcode.save()
+
+        rows = rollup_rows_for(zipcode)
+        assert set(rows.values_list('mtrs', flat=True)) == {9101}
+        out = monthly_use(rows, False, False)
+        y2023 = next(y for y in out['years'] if y['year'] == 2023)
+        assert y2023['pounds'] == 670.0 and y2023['applications'] == 4
+
+        monitor = PurpleAir(name='Test monitor')
+        with mock.patch('camp.apps.pesticides.places.zips_for', return_value=[zipcode]):
+            assert monthly_use(rollup_rows_for(monitor), False, False) == out
+        with mock.patch('camp.apps.pesticides.places.zips_for', return_value=[]):
+            rows = rollup_rows_for(monitor)
+            assert not rows.exists()
+            assert monthly_use(rows, False, False) == {'months': [], 'years': []}
+            assert monthly_use(rows, False, True) == {'months': [], 'years': []}
+
+    def test_mtrs_section_is_only_its_own_rows(self):
+        section = Region.objects.get(pk=9101)
+        neighbour = Region.objects.create(
+            name='MDM-T14S-R20E-02', slug='mdm-t14s-r20e-02', type=Region.Type.MTRS,
+            external_id='MDM-T14S-R20E-02')
+        Boundary.objects.create(
+            region=neighbour, version='t',
+            geometry=MultiPolygon(Polygon.from_bbox((-119.78, 36.70, -119.76, 36.72))))
+        PesticideUse.objects.create(
+            year=2023, use_no=50, county_id=9001, mtrs=neighbour, product_id=1,
+            chemical_id=1, commodity_id=1, lbs_chemical=1000, lbs_product=250, amount_treated=10,
+            unit_treated='A', application_date=date(2023, 3, 1), aerial_ground='G')
+        rollup.rebuild_year(2023)
+        rows = rollup_rows_for(section)
+        assert set(rows.values_list('mtrs', flat=True)) == {9101}
+        out = monthly_use(rows, False, False)
+        y2023 = next(y for y in out['years'] if y['year'] == 2023)
+        assert y2023['pounds'] == 670.0
+        assert set(rollup_rows_for(neighbour).values_list('mtrs', flat=True)) == {neighbour.pk}
+
+    def test_region_without_sections_is_empty(self):
+        region = Region.objects.create(name='Nowhere', slug='nowhere', type=Region.Type.CITY, external_id='NW')
+        rows = rollup_rows_for(region)
+        for multi in (False, True):
+            assert monthly_use(rows, False, multi) == {'months': [], 'years': []}
+
+    def test_one_query(self):
+        rows = rollup_rows_for(self.fresno)
+        for kwargs in ({'chemical_scoped': False, 'multi_chemical': False},
+                       {'chemical_scoped': False, 'multi_chemical': True},
+                       {'chemical_scoped': True, 'multi_chemical': False}):
+            with self.assertNumQueries(1):
+                monthly_use(rows, **kwargs)
