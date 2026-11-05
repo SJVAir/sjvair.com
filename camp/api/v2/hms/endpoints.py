@@ -3,12 +3,17 @@ from datetime import timedelta
 from resticus import generics, http
 
 from django.conf import settings
+from django.core.cache import cache
 from django.utils import timezone
 
 from camp.apps.hms.models import Fire, Smoke
+from camp.apps.hms.place import is_day_settled, smoke_days
 from camp.apps.hms.scales import get_fire_scale, get_smoke_scale
+from camp.apps.regions.resolve import (
+    CACHE_TIMEOUT, PlaceError, PlaceNotFound, _place_geometry, _place_key, place_json, resolve_place)
 
 from .filters import FireFilter, SmokeFilter
+from .forms import SmokePlaceForm
 from .serializers import FireSerializer, SmokeSerializer
 
 
@@ -58,6 +63,48 @@ class SmokeDetail(SmokeMixin, generics.DetailEndpoint):
     """Retrieve a single HMS smoke plume record."""
     lookup_field = 'id'
     lookup_url_kwarg = 'smoke_id'
+
+
+SMOKE_PLACE_SETTLED_MAX_AGE = 86400
+SMOKE_PLACE_MAX_AGE = 900
+
+
+def _no_cache(response):
+    response['Cache-Control'] = 'no-cache'
+    return response
+
+
+class SmokePlace(generics.Endpoint):
+    """Per-day smoke over a place: the heaviest density that day and the share
+    of the place under at least each level (?region_type= & ?region=, or
+    ?monitor=; ?date__gte= and ?date__lte=, at most 366 days; defaults to the
+    last 30 days through today). A day with no smoke has a null density."""
+
+    def get(self, request, *args, **kwargs):
+        try:
+            place = resolve_place(request.GET)
+        except PlaceNotFound as err:
+            return _no_cache(http.Http404({'error': str(err)}))
+        except PlaceError as err:
+            return _no_cache(http.Http400({'error': str(err)}))
+
+        form = SmokePlaceForm(request.GET)
+        if not form.is_valid():
+            return _no_cache(http.Http400({'errors': form.errors.get_json_data()}))
+        start, end = form.cleaned_data['range']
+
+        settled = is_day_settled(end)
+        key = f"{_place_key('smoke_days', place)}:{start}:{end}"
+        days = cache.get(key) if settled else None
+        if days is None:
+            days = smoke_days(_place_geometry(place), start, end)
+            if settled:
+                cache.set(key, days, CACHE_TIMEOUT)
+
+        response = http.Http200({'data': {'place': place_json(place), 'days': days}})
+        max_age = SMOKE_PLACE_SETTLED_MAX_AGE if settled else SMOKE_PLACE_MAX_AGE
+        response['Cache-Control'] = f'public, max-age={max_age}'
+        return response
 
 
 class FireMixin:
