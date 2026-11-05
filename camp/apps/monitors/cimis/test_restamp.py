@@ -13,7 +13,7 @@ from django.test import TestCase
 
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.cimis.models import CIMIS
-from camp.apps.monitors.cimis.restamp import RestampResult, ShortAnswer, restamp_station
+from camp.apps.monitors.cimis.restamp import RestampResult, ShortAnswer, delete_window, restamp_station
 from camp.apps.monitors.models import LatestEntry, Monitor
 from camp.utils.datetime import localtime
 
@@ -41,10 +41,11 @@ def make_record(day, hour, station='2', temp=None, humidity=None):
     }
 
 
-def fake_api(station='2', days=None, error_on=None, temp_offset=0, extra=None):
+def fake_api(station='2', days=None, error_on=None, temp_offset=0, extra=None, hours=None):
     '''
     An API stand-in returning 24 hours for every requested date (or only
-    `days`, when given), and raising on the date `error_on`.
+    `days`, when given), and raising on the date `error_on`. `hours` maps a
+    date to the labels answered for it (a partial day).
     '''
     def get_hourly_data(station_numbers, start_date, end_date, data_items):
         assert start_date == end_date
@@ -54,7 +55,7 @@ def fake_api(station='2', days=None, error_on=None, temp_offset=0, extra=None):
             return [{'Name': 'cimis', 'Records': []}]
         records = []
         for number in station_numbers:
-            for hour in HOURS:
+            for hour in (hours or {}).get(start_date, HOURS):
                 record = make_record(start_date, hour, station=number)
                 record['HlyAirTmp']['Value'] = f"{float(record['HlyAirTmp']['Value']) + temp_offset:.1f}"
                 records.append(record)
@@ -103,6 +104,16 @@ def all_rows(monitor):
     }
 
 
+def through(end):
+    '''Make `end` today (Pacific) for the restamp.'''
+    return patch('camp.apps.monitors.cimis.restamp.today', return_value=end)
+
+
+def restamp_through(monitor, end, **kwargs):
+    with through(end):
+        return restamp_station(monitor, **kwargs)
+
+
 class RestampStationTests(TestCase):
     def setUp(self):
         self.monitor = make_station('2')
@@ -113,7 +124,7 @@ class RestampStationTests(TestCase):
         before = all_rows(self.monitor)
         latest_before = set(LatestEntry.objects.filter(monitor=self.monitor).values_list('entry_type', 'entry_id', 'timestamp'))
 
-        result = restamp_station(self.monitor, end=days[-1], dry_run=True, api=fake_api())
+        result = restamp_through(self.monitor, end=days[-1], dry_run=True, api=fake_api())
 
         assert isinstance(result, RestampResult)
         assert result.monitor_id == self.monitor.pk
@@ -130,7 +141,7 @@ class RestampStationTests(TestCase):
     def test_nothing_stored_does_nothing(self):
         api = fake_api()
 
-        result = restamp_station(self.monitor, end=date(2025, 7, 16), dry_run=False, api=api)
+        result = restamp_through(self.monitor, end=date(2025, 7, 16), dry_run=False, api=api)
 
         assert result.start is None
         assert (result.labels, result.deleted, result.written) == (0, 0, 0)
@@ -145,7 +156,7 @@ class RestampStationTests(TestCase):
             for day in [days[0], days[2]] for hour in HOURS
         }
 
-        result = restamp_station(self.monitor, end=days[-1], dry_run=False, api=fake_api())
+        result = restamp_through(self.monitor, end=days[-1], dry_run=False, api=fake_api())
 
         expected = {
             (self.monitor.parse_timestamp(make_record(day, hour)),
@@ -174,11 +185,11 @@ class RestampStationTests(TestCase):
         days = [date(2025, 1, 14), date(2025, 1, 15), date(2025, 1, 16)]
         store_legacy(self.monitor, days)
 
-        restamp_station(self.monitor, end=days[-1], dry_run=False, api=fake_api())
+        restamp_through(self.monitor, end=days[-1], dry_run=False, api=fake_api())
         first = all_rows(self.monitor)
         latest_first = set(LatestEntry.objects.filter(monitor=self.monitor).values_list('entry_type', 'timestamp'))
 
-        result = restamp_station(self.monitor, end=days[-1], dry_run=False, api=fake_api())
+        result = restamp_through(self.monitor, end=days[-1], dry_run=False, api=fake_api())
 
         assert result.start == days[0]
         assert all_rows(self.monitor) == first
@@ -190,8 +201,8 @@ class RestampStationTests(TestCase):
         start = date(2025, 1, 14)
         store_legacy(self.monitor, [start, start + timedelta(days=1)])
 
-        restamp_station(self.monitor, end=start + timedelta(days=1), dry_run=False, api=fake_api())
-        restamp_station(self.monitor, end=start + timedelta(days=1), dry_run=False, api=fake_api())
+        restamp_through(self.monitor, end=start + timedelta(days=1), dry_run=False, api=fake_api())
+        restamp_through(self.monitor, end=start + timedelta(days=1), dry_run=False, api=fake_api())
 
         first_hour = entry_models.Temperature.objects.filter(monitor_id=self.monitor.pk, timestamp=utc(start, 8))
         assert first_hour.count() == 1
@@ -207,7 +218,7 @@ class RestampStationTests(TestCase):
         old_latest = LatestEntry.objects.get(monitor=self.monitor, entry_type='temperature')
         assert old_latest.timestamp == self.monitor.legacy_timestamp(make_record(days[-1], '2400'))
 
-        restamp_station(self.monitor, end=days[-1], dry_run=False, api=fake_api())
+        restamp_through(self.monitor, end=days[-1], dry_run=False, api=fake_api())
 
         newest = self.monitor.parse_timestamp(make_record(days[-1], '2400'))
         for entry_type, EntryModel in [('temperature', entry_models.Temperature), ('humidity', entry_models.Humidity)]:
@@ -225,7 +236,7 @@ class RestampStationTests(TestCase):
         latest_before = set(LatestEntry.objects.filter(monitor=self.monitor).values_list('entry_type', 'entry_id', 'timestamp'))
 
         with pytest.raises(RuntimeError):
-            restamp_station(self.monitor, end=days[-1], dry_run=False, api=fake_api(error_on=days[-1]))
+            restamp_through(self.monitor, end=days[-1], dry_run=False, api=fake_api(error_on=days[-1]))
 
         assert all_rows(self.monitor) == before
         latest_after = set(LatestEntry.objects.filter(monitor=self.monitor).values_list('entry_type', 'entry_id', 'timestamp'))
@@ -250,7 +261,7 @@ class RestampStationTests(TestCase):
         purple_before = rows(purple)
 
         # The response also carries the other station's records.
-        restamp_station(self.monitor, end=days[-1], dry_run=False, api=fake_api(temp_offset=1))
+        restamp_through(self.monitor, end=days[-1], dry_run=False, api=fake_api(temp_offset=1))
 
         assert all_rows(other) == other_before
         assert set(LatestEntry.objects.filter(monitor=other).values_list('entry_type', 'entry_id', 'timestamp')) == other_latest
@@ -259,27 +270,38 @@ class RestampStationTests(TestCase):
 
     fixtures = ['purple-air.yaml']
 
-    def test_rows_after_end_survive(self):
-        # PST, so the old and new stamps of (end, 2400) differ.
-        days = [date(2025, 1, 14), date(2025, 1, 15), date(2025, 1, 16)]
+    def test_runs_through_today_and_keeps_todays_new_style_rows(self):
+        # PST. Earlier days were stored the old way; today's first hours were
+        # already written the new way by the live ingest, and the API answers
+        # for today only with the hours so far. The window ends at the old
+        # stamp of (today, 2400), 00:00 tomorrow: the new stamp of tomorrow's
+        # 0100, which can't be stored yet, so nothing past the window is lost.
+        days = [date(2025, 1, 14), date(2025, 1, 15)]
+        today = date(2025, 1, 16)
         store_legacy(self.monitor, days)
-        after_end = {
-            (timestamp, value) for timestamp, value in rows(self.monitor)
-            if timestamp >= self.monitor.legacy_timestamp(make_record(days[2], '0100'))
+        so_far = HOURS[:6]
+        # Today's 0100 has the old stamp of yesterday's 2400 (00:00 PST), so
+        # the live ingest couldn't write it; the restamp does.
+        for hour in so_far[1:]:
+            self.monitor.handle_payload(make_record(today, hour))
+        assert len(rows(self.monitor)) == 48 + 5
+
+        api = fake_api(hours={today: so_far})
+        result = restamp_through(self.monitor, end=today, dry_run=False, api=api)
+
+        assert result.end == today
+        assert {call.kwargs['start_date'] for call in api.get_hourly_data.call_args_list} == {*days, today}
+        expected = {
+            (self.monitor.parse_timestamp(make_record(day, hour)), Decimal(make_record(day, hour)['HlyAirTmp']['Value']))
+            for day, hours in [(days[0], HOURS), (days[1], HOURS), (today, so_far)] for hour in hours
         }
-        assert len(after_end) == 24
+        assert rows(self.monitor) == expected
+        _window_start, window_end = delete_window(self.monitor, days[0], today)
+        assert window_end == self.monitor.parse_timestamp(make_record(today + timedelta(days=1), '0100'))
 
-        api = fake_api()
-        restamp_station(self.monitor, end=days[1], dry_run=False, api=api)
-
-        assert after_end <= rows(self.monitor)
-        assert len(rows(self.monitor)) == 48 + 24
-        assert {call.kwargs['start_date'] for call in api.get_hourly_data.call_args_list} == set(days[:2])
-        # The last label of the run is restamped; the old stamp of (end, 2400)
-        # was inside the window and is gone.
-        stamps = {timestamp for timestamp, _value in rows(self.monitor)}
-        assert self.monitor.parse_timestamp(make_record(days[1], '2400')) in stamps
-        assert self.monitor.legacy_timestamp(make_record(days[1], '2400')) not in stamps
+    def test_today_is_the_pacific_date(self):
+        from camp.apps.monitors.cimis import restamp
+        assert restamp.today() == localtime().date()
 
     def test_a_malformed_record_is_skipped_and_the_rest_written(self):
         days = [date(2025, 7, 15), date(2025, 7, 16)]
@@ -288,7 +310,7 @@ class RestampStationTests(TestCase):
         bad['Hour'] = 'xx00'
 
         with patch('camp.apps.monitors.cimis.restamp.sentry_sdk.capture_exception') as capture:
-            result = restamp_station(self.monitor, end=days[-1], dry_run=False, api=fake_api(extra=[bad]))
+            result = restamp_through(self.monitor, end=days[-1], dry_run=False, api=fake_api(extra=[bad]))
 
         assert result.skipped == 1
         assert capture.call_count == 1
@@ -306,7 +328,7 @@ class RestampStationTests(TestCase):
 
         for dry_run in (True, False):
             with pytest.raises(ShortAnswer, match='2025-07-16'):
-                restamp_station(self.monitor, end=days[-1], dry_run=dry_run, api=fake_api(days={days[0], days[2]}))
+                restamp_through(self.monitor, end=days[-1], dry_run=dry_run, api=fake_api(days={days[0], days[2]}))
 
         assert all_rows(self.monitor) == before
 
@@ -314,7 +336,7 @@ class RestampStationTests(TestCase):
         days = [date(2025, 7, 15), date(2025, 7, 17)]
         store_legacy(self.monitor, days)
 
-        result = restamp_station(self.monitor, end=days[-1], dry_run=False, api=fake_api(days=set(days)))
+        result = restamp_through(self.monitor, end=days[-1], dry_run=False, api=fake_api(days=set(days)))
 
         assert result.labels == 48
         assert len(rows(self.monitor)) == 48
@@ -325,11 +347,10 @@ class RestampCommandTests(TestCase):
         with pytest.raises(CommandError):
             call_command('restamp_cimis', stdout=StringIO())
 
-    def test_command_rejects_an_end_after_today(self):
+    def test_command_has_no_end_option(self):
         monitor = make_station('2')
-        tomorrow = localtime().date() + timedelta(days=1)
-        with pytest.raises(CommandError, match='after today'):
-            call_command('restamp_cimis', '--monitor', monitor.pk, '--end', tomorrow.isoformat(), stdout=StringIO())
+        with pytest.raises(CommandError):
+            call_command('restamp_cimis', '--monitor', monitor.pk, '--end', '2025-07-16', stdout=StringIO())
 
     def test_command_reports_a_short_answer(self):
         monitor = make_station('2')
@@ -338,9 +359,9 @@ class RestampCommandTests(TestCase):
         before = all_rows(monitor)
         err = StringIO()
 
-        with patch('camp.apps.monitors.cimis.restamp.CIMISAPI', return_value=fake_api(days={days[0]})):
+        with patch('camp.apps.monitors.cimis.restamp.CIMISAPI', return_value=fake_api(days={days[0]})), through(days[-1]):
             with pytest.raises(CommandError, match=re.escape(str(monitor.pk))):
-                call_command('restamp_cimis', '--monitor', monitor.pk, '--end', '2025-07-16', stdout=StringIO(), stderr=err)
+                call_command('restamp_cimis', '--monitor', monitor.pk, stdout=StringIO(), stderr=err)
 
         assert 'no labels' in err.getvalue()
         assert '2025-07-16' in err.getvalue()
@@ -356,8 +377,8 @@ class RestampCommandTests(TestCase):
         store_legacy(monitor, days)
         out = StringIO()
 
-        with patch('camp.apps.monitors.cimis.restamp.CIMISAPI', return_value=fake_api()):
-            call_command('restamp_cimis', '--monitor', monitor.pk, '--end', '2025-07-16', stdout=out)
+        with patch('camp.apps.monitors.cimis.restamp.CIMISAPI', return_value=fake_api()), through(days[-1]):
+            call_command('restamp_cimis', '--monitor', monitor.pk, stdout=out)
 
         output = out.getvalue()
         assert '2025-07-15' in output
@@ -375,8 +396,8 @@ class RestampCommandTests(TestCase):
         before = all_rows(monitor)
         out = StringIO()
 
-        with patch('camp.apps.monitors.cimis.restamp.CIMISAPI', return_value=fake_api()):
-            call_command('restamp_cimis', '--monitor', monitor.pk, '--end', '2025-07-16', '--dry-run', stdout=out)
+        with patch('camp.apps.monitors.cimis.restamp.CIMISAPI', return_value=fake_api()), through(days[-1]):
+            call_command('restamp_cimis', '--monitor', monitor.pk, '--dry-run', stdout=out)
 
         assert all_rows(monitor) == before
         assert 'dry run' in out.getvalue().lower()

@@ -137,7 +137,20 @@ def rebuild_latest_entries(monitor):
             monitor.update_latest_entry(newest)
 
 
-def restamp_station(monitor: CIMIS, end: date, dry_run: bool, api: CIMISAPI | None = None) -> RestampResult:
+def today():
+    return localtime().date()
+
+
+def restamp_station(monitor: CIMIS, dry_run: bool, api: CIMISAPI | None = None) -> RestampResult:
+    '''
+    Re-stamp everything from the station's first stored date through today
+    (Pacific). Always through today: the window ends at the old stamp of
+    (end, 2400), which is 00:00 of the next day, and in PST that is also the
+    new stamp of the next day's 0100. With a past end, a next day already
+    ingested the new way would lose that hour (deleted, not re-fetched).
+    Through today, the next day's 0100 is still in the future.
+    '''
+    end = today()
     start = first_stored_date(monitor)
     if start is None or start > end:
         return RestampResult(monitor_id=monitor.pk, start=start, end=end, labels=0, deleted=0, written=0)

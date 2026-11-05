@@ -174,9 +174,9 @@ rows for weather: region paths use the entry models' `summarize` flag only.
 Order for an environment: deploy, `restamp_cimis` per station, then rebuild per station.
 
 ```bash
-# 1. Re-stamp (always from the station's first stored date; --end defaults to today, a future one is refused)
+# 1. Re-stamp (always from the station's first stored date through today, Pacific)
 docker compose run --rm web python manage.py restamp_cimis --monitor <id> --dry-run
-docker compose run --rm web python manage.py restamp_cimis --monitor <id> [--monitor <id> ...] [--end YYYY-MM-DD]
+docker compose run --rm web python manage.py restamp_cimis --monitor <id> [--monitor <id> ...]
 
 # 2. Build the summaries (per station, from the first CIMIS date)
 docker compose run --rm web python manage.py rebuild_summaries <first CIMIS date> <today> \
@@ -186,7 +186,9 @@ docker compose run --rm web python manage.py rebuild_summaries <first CIMIS date
 `restamp_cimis` (`camp/apps/monitors/cimis/restamp.py`) fetches every date first, skips and
 counts malformed records, and aborts a station when a date with stored rows comes back empty.
 One transaction per station; it rebuilds `LatestEntry`. A collision with live ingest aborts
-that station, and a re-run is safe. Run `--dry-run` first.
+that station, and a re-run is safe. Run `--dry-run` first. There is no `--end`: the delete
+window ends at 00:00 of the day after the last date, which in PST is that next day's new-style
+0100 row, so a past end would delete an hour it never re-fetches.
 
 ## Region and Location Codes
 

@@ -1,17 +1,15 @@
-from datetime import date
-
 from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 
 from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.monitors.cimis.restamp import ShortAnswer, restamp_station
-from camp.utils.datetime import localtime
 
 
 class Command(BaseCommand):
     help = (
         "Re-pull CIMIS stations' stored history, from each station's first stored date "
-        'to --end, and stamp it at the start of each hour. One transaction per station. '
+        'through today (Pacific), and stamp it at the start of each hour. One transaction '
+        'per station. '
         'If the live ingest writes the same hour during a run, the station aborts with '
         'nothing written; a re-run is safe.'
     )
@@ -19,24 +17,11 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--monitor', action='append', dest='monitors', default=[],
                             help='CIMIS monitor id (repeatable; required)')
-        parser.add_argument('--end', type=str, help='Last date YYYY-MM-DD (inclusive; default today, Pacific)')
         parser.add_argument('--dry-run', action='store_true', help='Fetch and count; write nothing')
 
     def handle(self, *args, **options):
         if not options['monitors']:
             raise CommandError('--monitor is required (one or more CIMIS monitor ids).')
-
-        if options['end']:
-            try:
-                end = date.fromisoformat(options['end'])
-            except ValueError:
-                raise CommandError('--end must be in YYYY-MM-DD format.')
-        else:
-            end = localtime().date()
-
-        today = localtime().date()
-        if end > today:
-            raise CommandError(f'--end must not be after today ({today}, Pacific).')
 
         monitors = []
         for monitor_id in options['monitors']:
@@ -53,7 +38,7 @@ class Command(BaseCommand):
         for monitor in monitors:
             self.stdout.write(f'{monitor.name} ({monitor.pk})')
             try:
-                result = restamp_station(monitor, end=end, dry_run=dry_run)
+                result = restamp_station(monitor, dry_run=dry_run)
             except ShortAnswer as error:
                 failed.append(str(monitor.pk))
                 self.stderr.write(self.style.ERROR(f'  aborted: {error}'))
