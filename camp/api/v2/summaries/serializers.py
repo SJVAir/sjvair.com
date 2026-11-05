@@ -16,6 +16,7 @@ class MonitorSummarySerializer(serializers.Serializer):
         'resolution',
         'processor',
         'count',
+        ('sum', lambda s: s.sum_value),
         'expected_count',
         'minimum',
         'maximum',
