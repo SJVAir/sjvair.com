@@ -1,10 +1,11 @@
 from collections import defaultdict
-from datetime import datetime, time, timedelta
+from datetime import timedelta
 
 import sentry_sdk
 
 from django.conf import settings
 from django.contrib.gis.geos import Point
+from django.utils import timezone
 
 from django_huey import db_task, db_periodic_task
 from huey import crontab
@@ -15,7 +16,7 @@ from camp.apps.regions.counties import COUNTY_NAMES
 from camp.apps.summaries.periods import iter_hours, period_end, period_start
 from camp.apps.summaries.selection import is_summarized
 from camp.apps.summaries.tasks import summarize_monitor_hours
-from camp.utils.datetime import localtime, make_aware
+from camp.utils.datetime import localtime
 
 
 def parse_hms_coordinate(value):
@@ -132,10 +133,10 @@ def finalize_cimis_data():
     on-arrival summaries. Hours the re-pull changed outside that day (in
     summer, the 2400 PST hour is after Pacific midnight) are added.
     """
-    yesterday = localtime().date() - timedelta(days=1)
+    day_start = period_start('day', period_start('day', timezone.now()) - timedelta(microseconds=1))
+    yesterday = localtime(day_start).date()
     changed = _ingest_cimis_data(yesterday)
 
-    day_start = make_aware(datetime.combine(yesterday, time()), settings.DEFAULT_TIMEZONE)
     day_hours = set(iter_hours(day_start, period_end('day', day_start)))
     for monitor_id in CIMIS.objects.values_list('pk', flat=True):
         hours = day_hours | changed.get(str(monitor_id), set())

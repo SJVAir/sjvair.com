@@ -1488,9 +1488,11 @@ class SettleTimeTests(TestCase):
         assert not is_settled('day', None, late=True)
 
     def test_late_margin_covers_finalize(self):
-        # A late type's last change is the first finalize_cimis_data run after the period ends
-        # (the re-pull and re-roll), so the margin covers that run plus an hour of slack.
-        # For hours the worst case is the first hour of a day.
+        # A late type's last change is the finalize_cimis_data run that re-pulls and re-rolls
+        # the period, so the margin covers that run plus an hour of slack. For day and longer
+        # that is the first run after the period ends. For hours it is the first run on the day
+        # after the hour's Pacific date (finalize covers yesterday only), so the worst case is
+        # the first hour of a day.
         cases = [
             ('hour', [pacific(2026, 1, 1, 1), pacific(2026, 7, 1, 1)]),
             ('day', [pacific(2026, 1, 2), pacific(2026, 7, 2)]),

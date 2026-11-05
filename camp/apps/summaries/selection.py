@@ -37,7 +37,15 @@ def region_summary_entry_models():
 
 
 def switch_entry_types():
-    """Entry types turned on by some monitor type's ENTRY_CONFIG and not by the model flag."""
+    """
+    Entry types turned on by some monitor type's ENTRY_CONFIG and not by the model flag.
+
+    The summaries endpoint picks its `late` settle margin per entry type from
+    this set (camp/api/v2/summaries/endpoints.py), not per monitor: every
+    monitor's rows of a switch type get the late margin. That holds while only
+    CIMIS uses the switch. A second monitor type switching on an air type would
+    need a per-monitor decision there.
+    """
     return frozenset(
         entry_model.entry_type
         for monitor_model in Monitor.get_subclasses()

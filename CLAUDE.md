@@ -186,9 +186,11 @@ docker compose run --rm web python manage.py rebuild_summaries <first CIMIS date
 `restamp_cimis` (`camp/apps/monitors/cimis/restamp.py`) fetches every date first, skips and
 counts malformed records, and aborts a station when a date with stored rows comes back empty.
 One transaction per station; it rebuilds `LatestEntry`. A collision with live ingest aborts
-that station, and a re-run is safe. Run `--dry-run` first. There is no `--end`: the delete
-window ends at 00:00 of the day after the last date, which in PST is that next day's new-style
-0100 row, so a past end would delete an hour it never re-fetches.
+that station, and a re-run is safe. Dry-run the largest station first. Run it away from
+:40-:50 (the live import runs at :45); a collision may still log one `IntegrityError` in the
+live import, which its next run self-heals. There is no `--end`: the delete window ends at 00:00
+of the day after the last date, which in PST is that next day's new-style 0100 row, so a past
+end would delete an hour it never re-fetches.
 
 ## Region and Location Codes
 
