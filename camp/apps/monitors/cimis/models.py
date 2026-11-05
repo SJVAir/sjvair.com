@@ -14,7 +14,9 @@ CIMIS_TZ = timezone(timedelta(hours=-8), 'PST')
 
 
 class CIMIS(Monitor):
-    LAST_ACTIVE_LIMIT = int(60 * 60 * 3)
+    # Readings are stamped at the start of their hour, one hour earlier than
+    # the old end-of-hour stamps in PST, so 4h keeps the old 3h lag tolerance.
+    LAST_ACTIVE_LIMIT = int(60 * 60 * 4)
 
     DATA_PROVIDERS = [{
         'name': 'California Department of Water Resources',
