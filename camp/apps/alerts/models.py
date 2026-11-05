@@ -6,7 +6,6 @@ from django.utils.translation import gettext as _
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from django_sqids import SqidsField, shuffle_alphabet
-from model_utils import Choices
 from model_utils.models import TimeStampedModel
 
 from camp.apps.entries.fields import EntryTypeField
@@ -14,13 +13,6 @@ from camp.apps.entries.levels import AQLevel
 
 
 class Subscription(TimeStampedModel):
-    LEVELS = Choices(  # Legacy
-        ('unhealthy_sensitive', 'Unhealthy for Sensitive Groups'),
-        ('unhealthy', 'Unhealthy'),
-        ('very_unhealthy', 'Very Unhealthy'),
-        ('hazardous', 'Hazardous'),
-    )
-
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,

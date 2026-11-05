@@ -29,7 +29,7 @@ class EndpointTests(TestCase):
         Subscription.objects.create(
             user=self.user,
             monitor=self.monitor,
-            level=Subscription.LEVELS.unhealthy
+            level='unhealthy'
         )
 
         url = reverse('api:v1:subscription-list')
@@ -62,7 +62,7 @@ class EndpointTests(TestCase):
         '''
             Test that we can GET the monitor detail endpoint.
         '''
-        payload = {'level': Subscription.LEVELS.unhealthy}
+        payload = {'level': 'unhealthy'}
 
         url = reverse('api:v1:monitors:alerts:subscribe', kwargs={
             'monitor_id': self.monitor.pk
@@ -78,7 +78,7 @@ class EndpointTests(TestCase):
         assert content['data']['monitor'] == str(self.monitor.pk)
         assert self.user.subscriptions.filter(
             monitor_id=self.monitor.pk,
-            level=Subscription.LEVELS.unhealthy,
+            level='unhealthy',
         ).exists()
 
 
@@ -89,10 +89,10 @@ class EndpointTests(TestCase):
         Subscription.objects.create(
             user=self.user,
             monitor=self.monitor,
-            level=Subscription.LEVELS.unhealthy
+            level='unhealthy'
         )
 
-        payload = {'level': Subscription.LEVELS.hazardous}
+        payload = {'level': 'hazardous'}
 
         url = reverse('api:v1:monitors:alerts:subscribe', kwargs={
             'monitor_id': self.monitor.pk
@@ -108,7 +108,7 @@ class EndpointTests(TestCase):
         assert content['data']['monitor'] == str(self.monitor.pk)
         assert self.user.subscriptions.filter(
             monitor_id=self.monitor.pk,
-            level=Subscription.LEVELS.hazardous,
+            level='hazardous',
         ).exists()
 
     def test_unsubscribe(self):
@@ -118,7 +118,7 @@ class EndpointTests(TestCase):
         Subscription.objects.create(
             user=self.user,
             monitor=self.monitor,
-            level=Subscription.LEVELS.unhealthy
+            level='unhealthy'
         )
 
         url = reverse('api:v1:monitors:alerts:subscribe', kwargs={
