@@ -74,6 +74,18 @@ class WeatherStationsPlaceTests(TestCase):
         hidden = make_station('H', '20', -119.75, 36.75, is_hidden=True)
         assert self.client.get(self.url, {'monitor': str(hidden.pk)}).status_code == 404
 
+    def test_station_hidden_after_caching_is_dropped(self):
+        a = make_station('A', '1', -119.75, 36.75)
+        b = make_station('B', '2', -119.74, 36.75)
+        c = make_station('C', '3', -119.50, 36.75)
+        params = {'region_type': 'county', 'region': 'box'}
+        first = self.client.get(self.url, params).json()['data']['stations']
+        assert [s['id'] for s in first] == [str(a.pk), str(b.pk), str(c.pk)]
+        b.is_hidden = True
+        b.save()
+        second = self.client.get(self.url, params).json()['data']['stations']
+        assert [s['id'] for s in second] == [str(a.pk), str(c.pk)]
+
     def test_url_does_not_shadow_monitor_routes(self):
         assert resolve('/api/2.0/monitors/weather/place/').func.view_class is WeatherStationsPlace
         assert resolve('/api/2.0/monitors/pm25/closest/').url_name == 'monitor-closest'

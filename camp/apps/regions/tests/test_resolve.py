@@ -324,3 +324,8 @@ class WeatherStationsForTests(TestCase):
         weather_stations_for(self.region)
         with self.assertNumQueries(0):
             weather_stations_for(self.region)
+
+    def test_empty_answer_is_cached(self):
+        assert weather_stations_for(self.region) == []
+        with self.assertNumQueries(0):
+            assert weather_stations_for(self.region) == []
