@@ -1848,3 +1848,90 @@ class RegionClipTests(TestCase):
         assert names(region=self.region.sqid) == ['Inside']
         assert names(region=self.region.sqid, buffer=1) == ['Inside', 'Near']
         assert self.get('location-list', region=self.region.sqid, buffer=2).status_code == 400
+
+
+from unittest.mock import patch
+
+from camp.apps.monitors.cimis.models import CIMIS
+
+
+class PesticidePlaceTests(RollupTestMixin, TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        super().setUp()
+        self.url = reverse('api:v2:pesticides:pesticide-place')
+        self.params = {'region_type': 'county', 'region': '06019'}
+
+    def get(self, **extra):
+        return self.client.get(self.url, {**self.params, **extra})
+
+    def test_county(self):
+        r = self.get()
+        assert r.status_code == 200 and r['Cache-Control'] == 'public, max-age=3600'
+        data = r.json()['data']
+        assert data['place'] == {'region': {'type': 'county', 'external_id': '06019', 'name': 'Fresno County'}}
+        assert {'year': 2023, 'month': 8, 'pounds': 500.0, 'acres': 50.0, 'applications': 1} in data['months']
+
+    def test_filters(self):
+        d = self.get(chemical=253, year__gte=2023).json()['data']
+        assert [y['year'] for y in d['years']] == [2023] and d['years'][0]['pounds'] == 20.0
+        d = self.client.get(self.url, {'region_type': 'county', 'region': '06029', 'aerial_ground': 'A', 'year__lte': 2022}).json()['data']
+        assert d['years'] == [{'year': 2022, 'pounds': 60.0, 'acres': 6.0, 'applications': 1,
+                               'undated': {'pounds': 0.0, 'acres': 0.0, 'applications': 0}}]
+
+    def test_iarc_group_filters(self):
+        # Glyphosate (2A) is the only IARC chemical; Fresno 2023 uses 1 and 2 are its.
+        d = self.get(iarc_group='2A', year__gte=2023).json()['data']
+        assert [(y['year'], y['pounds']) for y in d['years']] == [(2023, 150.0)]
+        d = self.get(iarc_group='1').json()['data']
+        assert d['months'] == [] and d['years'] == []
+
+    def test_bad_filter_values_are_400(self):
+        for bad in ({'year__gte': 'abc'}, {'category': 'nope'}, {'aerial_ground': 'X'}, {'iarc_group': '9'}, {'chemical': 'x'}):
+            r = self.get(**bad)
+            assert r.status_code == 400 and r['Cache-Control'] == 'no-cache'
+            assert 'errors' in r.json()
+
+    def test_blank_filters_ignored(self):
+        plain = self.get().json()['data']
+        blank = self.get(chemical='', commodity='', category='', iarc_group='', aerial_ground='',
+                         year__gte='', year__lte='').json()['data']
+        assert blank == plain
+
+    def test_place_errors(self):
+        for params, status in (
+            ({'region_type': 'land_use', 'region': '1'}, 400),
+            ({'region_type': 'county', 'region': 'nope'}, 404),
+            ({}, 400),
+            ({'region_type': 'county', 'region': '06019', 'monitor': '1'}, 400),
+        ):
+            r = self.client.get(self.url, params)
+            assert r.status_code == status, params
+            assert r['Cache-Control'] == 'no-cache' and 'error' in r.json()
+
+    def test_retired_region_answers(self):
+        Region.all_objects.filter(type='county', external_id='06019').update(retired_at=timezone.now())
+        r = self.get()
+        assert r.status_code == 200
+        assert r.json()['data']['years']
+
+    def test_monitor_without_zip_is_empty(self):
+        monitor = CIMIS.objects.create(
+            name='M', station_number='7', position=Point(-119.79, 36.71, srid=4326),
+            location=CIMIS.LOCATION.outside)
+        with patch('camp.apps.pesticides.places.zips_for', return_value=[]):
+            r = self.client.get(self.url, {'monitor': str(monitor.pk)})
+        assert r.status_code == 200
+        data = r.json()['data']
+        assert data['place'] == {'monitor': str(monitor.pk)}
+        assert data['months'] == [] and data['years'] == []
+
+    def test_rebuild_retires_cache(self):
+        first = self.get().json()['data']
+        PesticideUse.objects.filter(pk=6).delete()
+        with self.captureOnCommitCallbacks(execute=True):
+            rollup.rebuild_year(2023)
+        second = self.get().json()['data']
+        assert next(y for y in first['years'] if y['year'] == 2023)['pounds'] == 670.0
+        assert next(y for y in second['years'] if y['year'] == 2023)['pounds'] == 170.0
