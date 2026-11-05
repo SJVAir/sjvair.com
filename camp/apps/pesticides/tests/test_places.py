@@ -1,6 +1,6 @@
 from datetime import date
 
-from django.contrib.gis.geos import Point
+from django.contrib.gis.geos import MultiPolygon, Point, Polygon
 import math
 from unittest import mock
 
@@ -1031,3 +1031,32 @@ class SchoolsTabFilterTests(RollupTestMixin, TestCase):
         response = self.client.get(district.get_pesticides_tab_url('schools'))
         assert response.context['school_districts'] == []
         assert 'id_schools_district' not in response.content.decode()
+
+
+class SectionIdsForTests(TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def make_region(self, external_id, with_boundary=True):
+        region = Region.objects.create(
+            name=external_id, slug=external_id.lower(), type=Region.Type.CITY, external_id=external_id)
+        if with_boundary:
+            region.boundary = Boundary.objects.create(
+                region=region, version='t',
+                geometry=MultiPolygon(Polygon.from_bbox((-119.9, 36.6, -119.7, 36.8))))
+            region.save()
+        return region
+
+    def test_sections_touching_region(self):
+        assert places.section_ids_for(self.make_region('X1')) == [9101]
+
+    def test_no_boundary_is_empty(self):
+        assert places.section_ids_for(self.make_region('X2', with_boundary=False)) == []
+
+    def test_cached(self):
+        region = self.make_region('X3')
+        places.section_ids_for(region)
+        with self.assertNumQueries(0):
+            assert places.section_ids_for(region) == [9101]

@@ -26,6 +26,7 @@ from camp.apps.pesticides import stats
 from camp.apps.pesticides.models import PesticideNotice, PesticideUseRollup, PesticideUseTotal
 from camp.apps.regions import nearby, schools, shapes
 from camp.apps.regions.models import Location, Region
+from camp.apps.regions.resolve import CACHE_TIMEOUT, _place_geometry, _place_key
 from camp.utils.gis import EPSG_CALIFORNIA_ALBERS
 
 PLACE_REGION_TYPES = (
@@ -297,6 +298,31 @@ def region_area(region, buffer=0):
 
     label = _REGION_LABEL_PREFIX.get(region.type, '') + region.name
     return Area(label=label, kind='region', region=region, section_pks=section_pks, buffer=buffer)
+
+
+def section_ids_for(region):
+    """
+    The pks of the current MTRS sections whose boundary touches the region's,
+    sorted; empty without a boundary. Cached for 24 hours under the region's
+    boundary, so a warm call costs no queries. Not used for counties, which
+    the place endpoint reads by their `county` FK.
+    """
+    key = _place_key('pesticide_sections', region)
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+
+    geometry = _place_geometry(region)
+    if geometry is None:
+        found = []
+    else:
+        found = list(
+            Region.objects.filter(type=Region.Type.MTRS, boundary__geometry__intersects=geometry)
+            .order_by('pk')
+            .values_list('pk', flat=True)
+        )
+    cache.set(key, found, CACHE_TIMEOUT)
+    return found
 
 
 def schools_nearby(region, year, all_years=False, concern=False):
