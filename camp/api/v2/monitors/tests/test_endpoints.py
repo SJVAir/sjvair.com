@@ -1074,3 +1074,73 @@ class MonitorListDatasetTests(TestCase):
         assert self.types(get_response_data(response)) == {'cimis'}
         again = monitor_list(self.factory.get(self.url))
         assert 'cimis' not in self.types(get_response_data(again))
+
+
+class MonitorListRegionTests(TestCase):
+    fixtures = ['purple-air.yaml', 'default-calibrations.yaml']
+
+    def setUp(self):
+        from camp.apps.regions.models import Region
+        from camp.apps.regions.tests.test_resolve import make_region
+        cache.clear()
+        self.factory = RequestFactory()
+        self.url = reverse('api:v2:monitors:monitor-list')
+        from django.contrib.gis.geos import Point
+        self.a, self.b, self.c = (
+            PurpleAir.objects.create(
+                name=f'Region test {i}', sensor_id=91000 + i,
+                position=Point(-119.7 + i * 0.1, 36.7, srid=4326),
+                location=PurpleAir.LOCATION.outside,
+            )
+            for i in range(3)
+        )
+
+        def around(monitor, name):
+            x, y = monitor.position.x, monitor.position.y
+            return make_region(name, Region.Type.CUSTOM, name, (x - 0.0001, y - 0.0001, x + 0.0001, y + 0.0001))
+
+        self.region_a = around(self.a, 'Around A')
+        self.region_b = around(self.b, 'Around B')
+
+    def get(self, params):
+        params = list(params) + [('_cc', '1')]
+        response = monitor_list(self.factory.get(self.url, params))
+        return response, get_response_data(response)
+
+    def ids(self, content):
+        return {m['id'] for m in content['data']}
+
+    def test_region_scopes_the_list(self):
+        response, content = self.get([('region', self.region_a.sqid)])
+        assert response.status_code == 200
+        assert self.ids(content) == {str(self.a.pk)}
+
+    def test_repeated_region_is_a_union(self):
+        _, content = self.get([('region', self.region_a.sqid), ('region', self.region_b.sqid)])
+        assert self.ids(content) == {str(self.a.pk), str(self.b.pk)}
+
+    def test_without_region_is_unchanged(self):
+        _, default = self.get([])
+        _, blank = self.get([('region', '')])
+        assert len(default['data']) > 2
+        assert self.ids(blank) == self.ids(default)
+
+    def test_unknown_region_404s_and_is_not_cached(self):
+        response = monitor_list(self.factory.get(self.url, {'region': 'not-a-real-sqid'}))
+        assert response.status_code == 404
+        response = monitor_list(self.factory.get(self.url, {'region': 'not-a-real-sqid'}))
+        assert response.status_code == 404
+
+    def test_cache_key_varies_by_region(self):
+        def key(params):
+            view = endpoints.MonitorList()
+            view.request = self.factory.get(self.url, params)
+            view.kwargs = {}
+            return view.get_view_cache_key()
+
+        assert key([('region', self.region_a.sqid)]) != key([])
+        assert key([('region', self.region_a.sqid)]) != key([('region', self.region_b.sqid)])
+        # Cached per region: a second region's request isn't served the first's list.
+        monitor_list(self.factory.get(self.url, {'region': self.region_a.sqid}))
+        content = get_response_data(monitor_list(self.factory.get(self.url, {'region': self.region_b.sqid})))
+        assert self.ids(content) == {str(self.b.pk)}

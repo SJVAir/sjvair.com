@@ -22,7 +22,7 @@ from camp.apps.regions.resolve import (
 from camp.utils.views import CachedEndpointMixin
 
 from .filters import LOOKUP_MAX_CODES, RegionFilter, parse_codes
-from .serializers import LocationSerializer, RegionListSerializer, RegionSerializer
+from .serializers import LocationSerializer, PlaceSearchSerializer, RegionListSerializer, RegionSerializer
 
 
 # The share of a region's own area that must fall inside another for the two
@@ -424,8 +424,11 @@ class PlaceSearch(generics.Endpoint):
         region_type = form.cleaned_data.get('type', '')
         if not q:
             return {'data': []}
-        regions = Region.objects.search_regions(q, type=region_type or None)
-        return {'data': [RegionSerializer(r).serialize() for r in regions]}
+        regions = (Region.objects
+            .search_regions(q, type=region_type or None)
+            .select_related('boundary')
+            .with_county())
+        return {'data': [PlaceSearchSerializer(r).serialize() for r in regions]}
 
 
 class PointLookupForm(forms.Form):

@@ -119,8 +119,16 @@ class MonitorList(CachedEndpointMixin, MonitorMixin, generics.ListEndpoint):
             lookup = Q()
             for subclass in Monitor.get_opt_in_subclasses(dataset):
                 lookup |= Q(**subclass.type_queryset_filter())
-            return queryset.filter(is_hidden=False).filter(lookup)
-        return queryset.get_public()
+            queryset = queryset.filter(is_hidden=False).filter(lookup)
+        else:
+            queryset = queryset.get_public()
+
+        # ?region=<sqid>, repeatable: monitors in any of them. An unknown id is a 404
+        # (never cached); blank values are ignored.
+        region_ids = [value for value in self.request.GET.getlist('region') if value.strip()]
+        if region_ids:
+            queryset = queryset.scope_to(region_ids=region_ids)
+        return queryset
 
 
 class MonitorMetaEndpoint(Endpoint):

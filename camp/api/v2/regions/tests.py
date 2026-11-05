@@ -347,6 +347,30 @@ class TestPlaceSearch(TestCase):
         assert response.status_code == 200
         assert response.json()['data'] == []
 
+    def test_rows_carry_bbox_not_geometry(self):
+        result = self.client.get(self.url, {'q': 'Clovis'}).json()['data'][0]
+        assert set(result) == {'id', 'name', 'slug', 'type', 'external_id', 'retired', 'boundary', 'county'}
+        assert set(result['boundary']) == {'id', 'version', 'bbox'}
+        assert result['boundary']['bbox'] == [-119.83, 36.75, -119.73, 36.85]
+
+    def test_county_on_non_county_rows(self):
+        county = make_county('Fresno County', FRESNO_COUNTY_WKT)
+        county.external_id = '019'
+        county.save(update_fields=['external_id'])
+        make_region(Region.Type.CITY, 'Fresnoville Elsewhere', 'fresnoville', ELSEWHERE_WKT)
+        rows = {r['name']: r for r in self.client.get(self.url, {'q': 'Fresno'}).json()['data']}
+        assert rows['Fresno']['county'] == {'type': 'county', 'external_id': '019', 'name': 'Fresno County'}
+        assert rows['Fresno County']['county'] is None
+        assert rows['Fresnoville Elsewhere']['county'] is None
+
+    def test_search_is_one_query(self):
+        make_county('Fresno County', FRESNO_COUNTY_WKT)
+        make_city('Fresno Heights', 'fresno-heights', CLOVIS_CITY_WKT)
+        with CaptureQueriesContext(connection) as queries:
+            data = self.client.get(self.url, {'q': 'Fresno'}).json()['data']
+        assert len(data) >= 3
+        assert len([q for q in queries if 'regions_' in q['sql']]) == 1
+
     def test_empty_query_returns_empty_list(self):
         response = self.client.get(self.url)
         assert response.status_code == 200

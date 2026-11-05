@@ -1,10 +1,10 @@
 from django.contrib.gis.db import models
 from django.contrib.gis.db.models import Count, FloatField, Func, F, OuterRef, Subquery, Union
-from django.contrib.gis.db.models.functions import Intersection
+from django.contrib.gis.db.models.functions import Intersection, PointOnSurface
 from django.contrib.gis.geos import GEOSGeometry
 from django.contrib.postgres.search import TrigramWordSimilarity
 from django.db.models import Case, Q, Value, When
-from django.db.models.functions import Coalesce, Greatest, Lower, NullIf, Trim
+from django.db.models.functions import Coalesce, Greatest, JSONObject, Lower, NullIf, Trim
 from django.db.models.lookups import GreaterThanOrEqual
 from django.db.models.query import ModelIterable
 
@@ -51,6 +51,25 @@ def area_fraction_inside(queryset, geometry: GEOSGeometry, min_fraction: float):
 
 
 class RegionQuerySet(models.QuerySet):
+    def with_county(self):
+        """
+        Annotate `county`: {type, external_id, name} of the current county holding
+        each region's point-on-surface (the lowest code if two do), or None. A
+        region spanning counties gets the one its point-on-surface falls in.
+        One correlated subquery, no extra round trips.
+        """
+        from camp.apps.regions.models import Region
+
+        county = (
+            Region.objects
+            .filter(type=Region.Type.COUNTY, boundary__geometry__contains=OuterRef('county_anchor'))
+            .order_by('external_id', 'pk')
+            .values(json=JSONObject(type='type', external_id='external_id', name='name'))[:1]
+        )
+        return (self
+            .annotate(county_anchor=PointOnSurface('boundary__geometry'))
+            .annotate(county=Subquery(county)))
+
     def current_vintage(self):
         """Leave out retired census tracts (see TRACT_VINTAGE); other types pass through.
         Tracts with no boundary at all are left out too."""
