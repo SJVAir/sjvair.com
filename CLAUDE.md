@@ -213,6 +213,11 @@ zones are missing there; see SJVAPCD Forecast Setup).
   `import_forecast_zones` before deploying the place endpoints, or clear the cached
   `forecast_zone_for:` keys after the import; otherwise places answered without the 3
   custom zones keep that answer for up to 24h.
+  `monitors/weather/place/` (same addressing) lists weather-dataset stations active within
+  `MONITOR_ACTIVE_WINDOW_DAYS`: inside the place first (distance 0, `inside`, by distance from the
+  point-on-surface), then up to 5 within 25 miles by distance from the edge, always at least the
+  nearest one; `distance` in miles; selection cached 24h in `resolve.py` (`weather_stations_for`),
+  rows serialized fresh.
 - **Regions**: `regions/?within=...&within_mode=overlaps` (also the geojson variant) keeps
   regions with >=1% of their own area inside the parents and adds `also_in`; the default
   `contained` mode is unchanged. `regions/meta/` types carry `label_plural` (`Region.TYPE_LABELS_PLURAL`,
