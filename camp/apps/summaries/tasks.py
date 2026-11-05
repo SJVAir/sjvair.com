@@ -182,6 +182,50 @@ def summarize_region_hour(region_id, hour, entry_type):
     )
 
 
+# ---- On-arrival summaries (CIMIS weather) ----
+#
+# CIMIS readings often land hours late, after the :45 parent has moved on
+# (and that parent skips weather types anyway). Each CIMIS import summarizes
+# the hours it wrote, and its daily finalize re-pull re-summarizes yesterday.
+
+def rollup_windows_for(hours, now):
+    """
+    {resolution: [period starts]} holding `hours`, for each resolution above
+    hourly, keeping only periods that have ended by `now`. No widening: only
+    the periods the hours fall in.
+    """
+    from camp.apps.summaries.repair import RESOLUTIONS
+
+    windows = {}
+    for resolution in RESOLUTIONS:
+        starts = {period_start(resolution, hour) for hour in hours}
+        windows[resolution] = sorted(s for s in starts if period_end(resolution, s) <= now)
+    return windows
+
+
+@db_task(priority=100, queue='summaries')
+def summarize_monitor_hours(monitor_id, hours):
+    """
+    Summarize one monitor's `hours` (hour starts, spanning at most 2 days) and
+    re-roll the finished periods holding them. Only for monitor types with
+    their own summarized types (CIMIS); monitor rows only, never region rows.
+    """
+    from camp.apps.summaries.repair import reroll
+
+    if not hours:
+        return
+    monitor = Monitor.objects.get(pk=monitor_id)
+    entry_models = monitor_summary_entry_models(monitor)
+    if not set(entry_models) & set(switch_entry_models()):
+        return
+
+    now = timezone.now()
+    start = min(hours)
+    end = max(hours) + timedelta(hours=1)
+    backfill_monitor_hours(monitor, start, end, entry_models)
+    reroll('monitor', [monitor.pk], start, end, now, windows=rollup_windows_for(hours, now))
+
+
 # ---- Rollup helpers ----
 
 def rollup_monitor_summaries(target_resolution, source_resolution, window_start, window_end, monitor_ids=None):

@@ -1,4 +1,5 @@
-from datetime import timedelta
+from collections import defaultdict
+from datetime import datetime, time, timedelta
 
 import sentry_sdk
 
@@ -11,7 +12,10 @@ from huey import crontab
 from camp.apps.monitors.cimis.api import CIMISAPI
 from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.regions.counties import COUNTY_NAMES
-from camp.utils.datetime import localtime
+from camp.apps.summaries.periods import iter_hours, period_end, period_start
+from camp.apps.summaries.selection import is_summarized
+from camp.apps.summaries.tasks import summarize_monitor_hours
+from camp.utils.datetime import localtime, make_aware
 
 
 def parse_hms_coordinate(value):
@@ -64,12 +68,18 @@ def process_cimis_station(station):
 
 
 def _ingest_cimis_data(target_date):
+    """
+    Ingest every station's readings for `target_date`. Returns
+    {monitor_id: {hour starts}} of the summarized entries it created or
+    changed; a re-pulled, unchanged value adds nothing.
+    """
+    changed = defaultdict(set)
     monitors_by_station = {
         monitor.station_number: monitor
         for monitor in CIMIS.objects.all()
     }
     if not monitors_by_station:
-        return
+        return changed
 
     api = CIMISAPI()
     providers = api.get_hourly_data(
@@ -82,8 +92,13 @@ def _ingest_cimis_data(target_date):
     for provider in providers:
         for record in provider.get('Records', []):
             monitor = monitors_by_station.get(record.get('Station'))
-            if monitor is not None:
-                process_cimis_data.call_local(record, monitor=monitor)
+            if monitor is None:
+                continue
+            for entry in process_cimis_data.call_local(record, monitor=monitor) or []:
+                if is_summarized(CIMIS, type(entry)):
+                    changed[str(monitor.pk)].add(period_start('hour', entry.timestamp))
+
+    return changed
 
 
 @db_periodic_task(crontab(minute='45'), priority=50)
@@ -91,7 +106,9 @@ def import_cimis_data():
     # CIMIS dates are Pacific; TIME_ZONE is UTC, whose date rolls over at
     # 4-5 PM here, and asking for that date misses the rest of the evening.
     today = localtime().date()
-    _ingest_cimis_data(today)
+    changed = _ingest_cimis_data(today)
+    for monitor_id, hours in changed.items():
+        summarize_monitor_hours(monitor_id, sorted(hours))
 
 
 # Huey crontabs run in UTC: 12:00 is 4-5 AM Pacific, after yesterday's
@@ -108,9 +125,21 @@ def finalize_cimis_data():
     upserts on (monitor, timestamp, sensor, stage, processor), so a
     value CIMIS revised during QC gets applied here instead of silently
     discarded, and an unchanged value is a no-op.
+
+    Then every station's summaries for all of yesterday (Pacific) are
+    re-summarized and the finished periods holding them re-rolled, changed
+    or not: the daily safety net for readings that slipped past the
+    on-arrival summaries. Hours the re-pull changed outside that day (in
+    summer, the 2400 PST hour is after Pacific midnight) are added.
     """
     yesterday = localtime().date() - timedelta(days=1)
-    _ingest_cimis_data(yesterday)
+    changed = _ingest_cimis_data(yesterday)
+
+    day_start = make_aware(datetime.combine(yesterday, time()), settings.DEFAULT_TIMEZONE)
+    day_hours = set(iter_hours(day_start, period_end('day', day_start)))
+    for monitor_id in CIMIS.objects.values_list('pk', flat=True):
+        hours = day_hours | changed.get(str(monitor_id), set())
+        summarize_monitor_hours(str(monitor_id), sorted(hours))
 
 
 @db_task(priority=50)
