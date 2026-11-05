@@ -376,10 +376,12 @@ class RegionMetaEndpoint(generics.Endpoint):
         counts = self.get_counts()
         for region_type, label in Region.Type.choices:
             category = Region.TYPE_CATEGORIES[region_type]
+            name_template = Region.TYPE_NAME_TEMPLATES.get(region_type)
             payload[region_type] = {
                 'type': region_type,
                 'label': label,
                 'label_plural': Region.TYPE_LABELS_PLURAL[region_type],
+                'name_template': str(name_template) if name_template is not None else None,
                 'category': category.value,
                 'count': counts.get(region_type, 0),
                 'parents': Region.TYPE_PARENTS[region_type],

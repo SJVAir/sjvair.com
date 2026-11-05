@@ -74,6 +74,15 @@ class Region(TimeStampedModel):
         Type.CUSTOM: _('Custom Regions'),
     }
 
+    # How a region of this type is shown, `{name}` standing for its name.
+    # Types not listed show the name as it is.
+    TYPE_NAME_TEMPLATES = {
+        Type.ZIPCODE: _('ZIP {name}'),
+        Type.TRACT: _('Census Tract {name}'),
+        Type.URBAN_AREA: _('{name} Urban Area'),
+        Type.AB617_COMMUNITY: _('{name} AB 617 Community'),
+    }
+
     # Maps each Type to the Category it belongs to, mirroring the
     # groupings above. Kept as an explicit mapping (rather than deriving
     # it from Type ordering) so the API's category field doesn't silently

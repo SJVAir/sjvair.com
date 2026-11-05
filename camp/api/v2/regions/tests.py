@@ -140,6 +140,7 @@ class RegionMetaTests(TestCase):
             'type': 'county',
             'label': 'County',
             'label_plural': 'Counties',
+            'name_template': None,
             'category': 'administrative',
             'count': 0,
             'parents': [],
@@ -168,6 +169,20 @@ class RegionMetaTests(TestCase):
             'mtrs': 'MTRS Sections',
             'custom': 'Custom Regions',
         }
+
+    def test_name_template(self):
+        response, content = self._fetch_region_meta()
+        templates = {t: info['name_template'] for t, info in content['data']['types'].items()}
+        assert templates == {t: None for t in Region.Type.values} | {
+            'zipcode': 'ZIP {name}',
+            'tract': 'Census Tract {name}',
+            'urban_area': '{name} Urban Area',
+            'ab617': '{name} AB 617 Community',
+        }
+
+    def test_name_templates_hold_name_once(self):
+        for template in Region.TYPE_NAME_TEMPLATES.values():
+            assert str(template).count('{name}') == 1
 
     def test_browsable(self):
         response, content = self._fetch_region_meta()
