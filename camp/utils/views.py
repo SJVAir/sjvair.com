@@ -277,7 +277,36 @@ class PageTemplate(generic.TemplateView):
         except TemplateDoesNotExist:
             raise Http404
 
-        return self.render_to_response({})
+        return self.render_to_response(self.get_page_context())
+
+    def get_page_context(self):
+        return {}
+
+
+class GuidelinesPage(PageTemplate):
+    """The /guidelines/ pages, built from the PM2.5 and AQI level sets."""
+
+    def get_page_context(self):
+        from camp.apps.entries import levels
+        from camp.apps.entries.guidelines import SCHOOL_ACTIVITIES
+        from camp.apps.entries.models import PM25
+        from camp.apps.entries.templatetags.level_tags import level_range
+
+        pm25_levels = list(levels.PM25)
+        pm25_ranges = level_range(levels.PM25, 1)
+        aqi_ranges = level_range(levels.AQI, 0)
+        return {
+            'levels': pm25_levels,
+            'pm25_units': PM25.units,
+            'columns': [
+                {'level': level, 'pm25_range': pm25, 'aqi_range': aqi}
+                for level, pm25, aqi in zip(pm25_levels, pm25_ranges, aqi_ranges, strict=True)
+            ],
+            'activities': [
+                {'activity': activity, 'cells': [activity.levels[level.key] for level in pm25_levels]}
+                for activity in SCHOOL_ACTIVITIES
+            ],
+        }
 
 
 class GetTheApp(vanilla.TemplateView):

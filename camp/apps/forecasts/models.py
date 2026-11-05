@@ -47,5 +47,10 @@ class Forecast(TimeStampedModel):
         return f'{self.zone_name} forecast for {self.forecast_date} (issued {self.issued_date})'
 
     @property
+    def level(self):
+        # The AQI scale level for aqi_value; the stored aqi_category is only for the admin.
+        return levels.AQI.get_level(self.aqi_value)
+
+    @property
     def color(self):
-        return levels.AQI.get_color(self.aqi_value)
+        return self.level.color

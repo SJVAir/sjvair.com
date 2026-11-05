@@ -11,8 +11,8 @@ from django.utils import timezone
 from django_huey import db_periodic_task
 from huey import crontab
 
+from camp.apps.entries import levels
 from camp.apps.regions.models import Region
-from camp.utils.aqi import aqi_label
 
 from .models import Forecast
 from .scales import BURN_STATUS_VALUES
@@ -155,7 +155,7 @@ def fetch_forecasts():
                             issued_date=issued_date,
                             published_at=published_at,
                             aqi_value=aqi_value,
-                            aqi_category=aqi_label(aqi_value),
+                            aqi_category=str(levels.AQI.get_level(aqi_value).label),
                             pollutant=pollutant,
                             burn_status=burn_status,
                             burn_status_text=burn_el.text or '',

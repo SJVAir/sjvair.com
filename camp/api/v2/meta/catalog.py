@@ -4,14 +4,19 @@ The dataset catalog behind GET /api/2.0/meta/datasets/.
 Dataset ids and entry-type ids are a permanent public contract: never reused,
 and a rename changes only the label.
 """
+from django.conf import settings
 from django.urls import reverse
 
+from camp.apps.calheatscore.scales import get_heat_scale
 from camp.apps.calibrations.models import DefaultCalibration
+from camp.apps.emissions import pollutants
 from camp.apps.entries.models import meteorological
-from camp.apps.monitors.cimis.models import CIMIS
+from camp.apps.forecasts.scales import get_aqi_forecast_scale, get_burn_status_scale
+from camp.apps.hms.scales import get_fire_scale, get_smoke_scale
 from camp.apps.monitors.models import Monitor
 from camp.apps.summaries.models import BaseSummary
 from camp.apps.tempo.models import Granule
+from camp.apps.tempo.products import TEMPO_UNITS
 
 SUMMARY_RESOLUTIONS = [r.value for r in BaseSummary.Resolution]
 SUMMARIZED = ['raw', *SUMMARY_RESOLUTIONS]
@@ -21,12 +26,12 @@ SUMMARY_RULES = {
     'complete_after_period_end': ['month', 'quarter', 'season', 'year'],
 }
 
-# Units and kind per TEMPO product; labels come from Granule.Product.
-TEMPO_PRODUCTS = {
-    Granule.Product.NO2: ('pollutant', 'molecules/cm²'),
-    Granule.Product.O3TOT: ('other', 'molecules/cm²'),
-    Granule.Product.HCHO: ('pollutant', 'molecules/cm²'),
-    Granule.Product.CLDO4: ('other', 'fraction'),
+# Kind per TEMPO product; labels come from Granule.Product, units from TEMPO_UNITS.
+TEMPO_KINDS = {
+    Granule.Product.NO2: 'pollutant',
+    Granule.Product.O3TOT: 'other',
+    Granule.Product.HCHO: 'pollutant',
+    Granule.Product.CLDO4: 'other',
 }
 
 
@@ -79,6 +84,11 @@ def _other(id, label, units, resolutions):
     return _entry(id, label, 'other', units, resolutions)
 
 
+def _from_scale(scale, resolutions):
+    """An entry type whose label and units come from its domain scale."""
+    return _other(scale.id, scale.label, scale.units, resolutions)
+
+
 def _dataset(id, label, description, source, license, geographies, entry_types, meta_url=None, places_url=''):
     return {
         'id': id,
@@ -96,24 +106,21 @@ def _dataset(id, label, description, source, license, geographies, entry_types, 
 
 # Criteria pollutants and ammonia from camp.apps.emissions.pollutants (tons/yr).
 # Individual toxics (lbs/yr, rows in the database) are not listed.
-FACILITY_POLLUTANTS = [
-    ('nox', 'NOx'), ('rog', 'ROG'), ('pm', 'Total PM'), ('pm10', 'PM10'),
-    ('sox', 'SOx'), ('co', 'CO'), ('tog', 'TOG'), ('nh3', 'NH3'),
-]
+FACILITY_POLLUTANTS = pollutants.CRITERIA + pollutants.PRECURSORS
 
 STATIC_DATASETS = {
     'hms-smoke': lambda: _dataset(
         'hms-smoke', 'Wildfire Smoke',
         'Daily smoke plume outlines and density from satellite imagery.',
         'NOAA Hazard Mapping System', 'Public domain', ['polygon'],
-        [_other('smoke-density', 'Smoke Density', '', ['day'])],
+        [_from_scale(get_smoke_scale(), ['day'])],
         meta_url=lambda: reverse('api:v2:hms:hms-meta'),
     ),
     'hms-fire': lambda: _dataset(
         'hms-fire', 'Fire Detections',
         'Satellite-detected active fire points with fire radiative power.',
         'NOAA Hazard Mapping System', 'Public domain', ['point'],
-        [_other('fire-frp', 'Fire Radiative Power', 'MW', ['raw'])],
+        [_from_scale(get_fire_scale(), ['raw'])],
         meta_url=lambda: reverse('api:v2:hms:hms-meta'),
     ),
     'pesticide-use': lambda: _dataset(
@@ -136,8 +143,8 @@ STATIC_DATASETS = {
         'Daily air quality index forecasts for each forecast zone.',
         'San Joaquin Valley Air Pollution Control District', '', ['zone'],
         [
-            _other('aqi-forecast', 'AQI Forecast', 'AQI', ['day']),
-            _other('burn-status', 'Burn Status', '', ['day']),
+            _from_scale(get_aqi_forecast_scale(), ['day']),
+            _from_scale(get_burn_status_scale(), ['day']),
         ],
         meta_url=lambda: reverse('api:v2:forecasts:forecast-meta'),
     ),
@@ -145,7 +152,7 @@ STATIC_DATASETS = {
         'calheatscore', 'CalHeatScore',
         'Daily heat health risk score by ZIP code.',
         'OEHHA CalHeatScore', '', ['zip'],
-        [_other('heat-score', 'Heat Score', '', ['day'])],
+        [_from_scale(get_heat_scale(), ['day'])],
         meta_url=lambda: reverse('api:v2:calheatscore:calheatscore-meta'),
     ),
     'calenviroscreen': lambda: _dataset(
@@ -159,8 +166,8 @@ STATIC_DATASETS = {
         'Annual facility emissions of criteria pollutants and ammonia, and satellite-detected methane source rates.',
         'CARB CEIDARS facility inventory, Carbon Mapper', '', ['point', 'region'],
         [
-            *(_other(f'facility-{key}', f'{label} (facilities)', 'tons/yr', ['year'])
-              for key, label in FACILITY_POLLUTANTS),
+            *(_other(f'facility-{p.key}', f'{p.label} (facilities)', p.unit_label, ['year'])
+              for p in FACILITY_POLLUTANTS),
             _other('methane-emission-rate', 'Methane Emission Rate', 'kg/h', ['raw']),
         ],
     ),
@@ -169,8 +176,8 @@ STATIC_DATASETS = {
         'Hourly satellite column measurements over the San Joaquin Valley.',
         'NASA TEMPO', 'Public domain', ['point', 'region'],
         [
-            _entry(product.value, product.label, kind, units, ['hour'], display=TEMPO_DISPLAY)
-            for product, (kind, units) in TEMPO_PRODUCTS.items()
+            _entry(product.value, product.label, kind, TEMPO_UNITS[product], ['hour'], display=TEMPO_DISPLAY)
+            for product, kind in TEMPO_KINDS.items()
         ],
     ),
 }
@@ -192,12 +199,13 @@ def _kind(entry_model):
 
 def _monitor_entry_models(weather):
     """
-    Entry models for the weather dataset (CIMIS's ENTRY_CONFIG) or the air-quality
-    one (every enabled monitor type except CIMIS). CIMIS is not in
-    MONITOR_ENABLED_TYPES, so weather reads it directly.
+    Entry models for the weather dataset (the monitor types opted in to it by
+    settings.MONITOR_OPT_IN_TYPES) or the air-quality one (every enabled monitor
+    type not opted in to another dataset).
     """
-    monitor_models = [CIMIS] if weather else [
-        m for m in Monitor.get_enabled_subclasses() if m is not CIMIS
+    opt_in = settings.MONITOR_OPT_IN_TYPES
+    monitor_models = Monitor.get_opt_in_subclasses('weather') if weather else [
+        m for m in Monitor.get_enabled_subclasses() if m.monitor_type not in opt_in
     ]
     models = {}
     for monitor_model in monitor_models:

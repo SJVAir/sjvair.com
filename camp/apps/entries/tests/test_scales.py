@@ -20,16 +20,6 @@ def level_for(scale, v):
 
 
 class ScaleTests(TestCase):
-    def test_as_dict_keeps_shape_and_adds_tier(self):
-        assert levels.PM25.as_dict()['MODERATE'] == {
-            'name': 'moderate',
-            'label': 'Moderate',
-            'color': '#ffff00',
-            'range': (9.1, 35.4),
-            'guidance': 'Highly sensitive groups should stay indoors and avoid outdoor activities.',
-            'tier': 1,
-        }
-
     def test_aq_tiers(self):
         for name, levelset in SETS.items():
             for lvl in levelset:
@@ -44,17 +34,6 @@ class ScaleTests(TestCase):
         assert level_for(s, 9.1).key == 'moderate'
         assert level_for(s, 9.0999).key == 'good'
         assert level_for(s, 600).key == 'hazardous'
-
-    def test_scale_and_dict_agree(self):
-        for name, levelset in SETS.items():
-            s = levelset.to_scale(name.lower(), name, 'x')
-            by_key = {l.key: l for l in s.levels}
-            for entry in levelset.as_dict().values():
-                lvl = by_key[entry['name']]
-                assert entry['range'][0] == lvl.min
-                assert entry['color'] == lvl.color
-                assert entry['label'] == lvl.label
-                assert entry['tier'] == lvl.tier
 
     def test_epa_descriptions(self):
         s = levels.PM100.to_scale('pm100', 'PM10', 'µg/m³')

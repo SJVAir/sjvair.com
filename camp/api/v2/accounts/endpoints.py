@@ -44,7 +44,7 @@ class AlertList(generics.ListEndpoint):
     fields = [
         'sqid', 'created', 'modified', 'monitor', 'entry_type', 'start_time', 'end_time',
         # The latest AlertUpdate's level key (e.g. 'unhealthy'), looked up in
-        # the entry type's levels from monitors/meta/.
+        # the entry type's scale from monitors/meta/.
         ('level', lambda alert: alert.latest.level if alert.latest else None),
     ]
 

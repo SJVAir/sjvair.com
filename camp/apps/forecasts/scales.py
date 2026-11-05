@@ -38,3 +38,11 @@ def get_burn_status_scale():
             for key, value, label, color in _BURN_LEVELS
         ),
     )
+
+
+def burn_status_label(value):
+    """The burn scale's label for a stored burn_status, or None for an unknown value."""
+    for _, level_value, label, _ in _BURN_LEVELS:
+        if level_value == value:
+            return label
+    return None

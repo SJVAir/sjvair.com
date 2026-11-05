@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest.mock import patch
 
+from camp.apps.tempo.products import TEMPO_UNITS
+
 import numpy as np
 from django.conf import settings
 from django.contrib.gis.geos import MultiPolygon, Polygon
@@ -25,6 +27,21 @@ class TempoProductsTests(TestCase):
         assert response.status_code == 200
         keys = {product['key'] for product in response.json()}
         assert keys == {'no2', 'o3tot', 'hcho'}
+
+    def test_tempo_products_unchanged(self):
+        response = self.client.get(reverse('api:v2:tempo:product-list'))
+        assert [(p['key'], p['label'], p['units']) for p in response.json()] == [
+            ('no2', 'Nitrogen Dioxide', 'molecules/cm²'),
+            ('o3tot', 'Total Ozone', 'molecules/cm²'),
+            ('hcho', 'Formaldehyde', 'molecules/cm²'),
+        ]
+
+    def test_product_without_units_is_skipped(self):
+        units = {k: v for k, v in TEMPO_UNITS.items() if k != Granule.Product.HCHO}
+        with patch.dict('camp.api.v2.tempo.endpoints.TEMPO_UNITS', units, clear=True):
+            response = self.client.get(reverse('api:v2:tempo:product-list'))
+        assert response.status_code == 200
+        assert [p['key'] for p in response.json()] == ['no2', 'o3tot']
 
     def test_each_product_has_label_units_and_legend(self):
         response = self.client.get(reverse('api:v2:tempo:product-list'))

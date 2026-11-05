@@ -101,6 +101,21 @@ class ForecastDetailTests(TestCase):
         assert data['pollutant'] == 'O3'
         assert data['color'] == self.forecast.color
 
+    def test_api_aqi_category_from_scale(self):
+        out_of_range = create_forecast(self.fresno, date(2026, 7, 12), aqi_value=520)
+        Forecast.objects.filter(pk=out_of_range.pk).update(aqi_category='Out of Range')
+        usg = create_forecast(self.fresno, date(2026, 7, 13), aqi_value=120)
+        Forecast.objects.filter(pk=usg.pk).update(aqi_category='Moderate')
+
+        def detail(forecast):
+            url = reverse('api:v2:forecasts:forecast-detail', kwargs={'forecast_id': forecast.sqid})
+            return self.client.get(url).json()['data']
+
+        data = detail(out_of_range)
+        assert data['aqi_category'] == 'Hazardous'
+        assert data['color'] == '#7e0023'
+        assert detail(usg)['aqi_category'] == 'Unhealthy for Sensitive Groups'
+
     def test_detail_not_found(self):
         url = reverse('api:v2:forecasts:forecast-detail', kwargs={'forecast_id': 'doesnotexist'})
         response = self.client.get(url)

@@ -15,7 +15,9 @@ class ForecastSerializer(serializers.Serializer):
         ('id', lambda f: f.sqid),
         ('region', lambda f: region_json(f.region)),
         'zone_name', 'forecast_date', 'issued_date', 'published_at',
-        'aqi_value', 'aqi_category', 'pollutant', 'color',
+        'aqi_value',
+        ('aqi_category', lambda f: str(f.level.label)),
+        'pollutant', 'color',
         'burn_status', 'burn_status_text',
         'air_alert', 'air_alert_start', 'air_alert_end',
     )

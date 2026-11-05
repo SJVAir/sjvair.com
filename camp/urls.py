@@ -44,6 +44,8 @@ urlpatterns = [
     path('', include('camp.apps.workspace.urls')),
 
     # @sjvair/monitor-map specific routes
+    path('guidelines/', views.GuidelinesPage.as_view(template_name='pages/guidelines/index.html'), name='guidelines'),
+    path('guidelines/schools/', views.GuidelinesPage.as_view(template_name='pages/guidelines/schools.html'), name='guidelines-schools'),
     path('monitor/<monitor_id>/', views.PageTemplate.as_view(template_name='pages/index.html')),
     path('widget/', views.RenderStatic.as_view(static_file='widget/index.html')),
 

@@ -20,9 +20,23 @@ class MonitorMetaScaleTests(TestCase):
         assert len(scale['levels']) == 6
         assert scale['levels'][0]['tier'] == 0
 
-    def test_levels_dict_unchanged(self):
-        levels = self._fetch_entries()['pm25']['levels']
-        assert set(levels['GOOD'].keys()) == {'name', 'label', 'color', 'range', 'guidance', 'tier'}
+    def test_levels_key_removed(self):
+        entries = self._fetch_entries()
+        assert all('levels' not in e for e in entries.values())
+
+    def test_school_guidelines_pm25_only(self):
+        entries = self._fetch_entries()
+        block = entries['pm25']['school_guidelines']
+        assert block['resolution'] == 'hour'
+        assert block['label'] == 'Outdoor Activity Guidelines for Schools'
+        assert block['source'] == {'name': 'SJVAir', 'url': 'http://testserver/guidelines/schools/'}
+        assert [a['key'] for a in block['activities']] == ['recess', 'pe', 'athletics', 'events']
+        assert block['activities'][0]['levels']['good'] == ['No restrictions.']
+        assert block['activities'][3]['duration'] is None
+        for key, entry in entries.items():
+            if key != 'pm25':
+                assert entry['school_guidelines'] is None, key
+
 
     def test_scale_null_without_levels(self):
         assert self._fetch_entries()['humidity']['scale'] is None
