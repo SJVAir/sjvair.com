@@ -1,12 +1,42 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from camp.apps.entries import levels
 from camp.apps.entries.models import PM25
 
 from camp.apps.calibrations import processors
 from ..base import BaseProcessor
 
 __all__ = ['PM25_LCS_Correction', 'PM25_LCS_Cleaning']
+
+
+# Spike multiplier per PM2.5 level; Good is never cleaned.
+SPIKE_MULTIPLIERS = {
+    'good': None,
+    'moderate': 5,
+    'unhealthy_sensitive': 4,
+    'unhealthy': 3,
+    'very_unhealthy': 3,
+    'hazardous': 3,
+}
+
+# Upper bound for the top level, which has none on the scale.
+TOP_BOUND = Decimal('10000.0')
+
+
+def cleaning_thresholds():
+    """
+    (max PM2.5, spike multiplier) per tier, lowest first, from levels.PM25.
+    A level's max is the next level's start minus 0.1 (PM2.5 is reported to 0.1).
+    """
+    tiers = list(levels.PM25)
+    return [
+        (
+            Decimal(str(tiers[i + 1].value)) - Decimal('0.1') if i + 1 < len(tiers) else TOP_BOUND,
+            SPIKE_MULTIPLIERS[level.key],
+        )
+        for i, level in enumerate(tiers)
+    ]
 
 
 @processors.register()
@@ -216,17 +246,8 @@ class PM25_LCS_Cleaning(BaseProcessor):
         Returns:
             Decimal: Cleaned PM2.5 value
         '''
-        thresholds = [
-            (Decimal('9.0'), None), # Good
-            (Decimal('35.4'), 5), # Moderate
-            (Decimal('55.4'), 4), # USG
-            (Decimal('125.4'), 3), # Unhealthy
-            (Decimal('225.4'), 3), # Very Unhealthy
-            (Decimal('10000.0'), 3), # Hazardous fallback
-        ]
-
         threshold = None
-        for max_pm, multiplier in thresholds:
+        for max_pm, multiplier in cleaning_thresholds():
             if current_value <= max_pm:
                 threshold = multiplier
                 break
