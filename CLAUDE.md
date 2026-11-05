@@ -221,6 +221,13 @@ zones are missing there; see SJVAPCD Forecast Setup).
   `regions/meta/` also lists `buffers` (`[{miles, label}]` from `shapes.BUFFERS` and
   `BUFFER_LABELS`): the values every `?buffer=` accepts (`regions/<id>/`, pesticide sections,
   emissions map areas). Clients read the choices from there, so change them only in `shapes.py`.
+- **Place search** `regions/places/search/?q=` returns list-shaped rows (`boundary` has `bbox`, no
+  geometry; the picker searches as you type) plus `county` (`{type, external_id, name}` of the
+  county holding the region's point-on-surface, `null` for counties and regions outside every
+  county), via `RegionQuerySet.with_county()`: one query, no per-row lookups.
+- **Monitor list** `monitors/?region=<sqid>` (repeatable, a union) scopes the list with
+  `scope_to`, like `at/`; blank values are ignored, an unknown id is a 404 (not cached). The
+  list cache key includes it.
 - **HMS lists** `hms/smoke/` and `hms/fire/` default to today (yesterday before noon) only when
   no date filter is given; any of `date`, `date__gte`, `date__lte`, `date__gt`, `date__lt` turns
   the default off, so month ranges work. Rows are ordered `-date, id`; keep a unique tiebreaker

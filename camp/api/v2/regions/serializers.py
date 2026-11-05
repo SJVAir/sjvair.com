@@ -75,6 +75,17 @@ class RegionListSerializer(serializers.Serializer):
     )
 
 
+class PlaceSearchSerializer(serializers.Serializer):
+    """
+    A place search row: the list shape (bbox, no geometry; the picker searches
+    as you type) plus the containing county, from RegionQuerySet.with_county().
+    A county's own row has none.
+    """
+    fields = RegionListSerializer.fields + (
+        ('county', lambda r: None if r.type == r.Type.COUNTY else r.county),
+    )
+
+
 def _region_ref(region):
     return {'type': region.type, 'external_id': region.external_id, 'name': region.name} if region else None
 
