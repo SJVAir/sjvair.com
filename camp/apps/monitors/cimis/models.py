@@ -27,31 +27,40 @@ class CIMIS(Monitor):
     DEVICE = 'CIMIS Weather Station'
 
     EXPECTED_INTERVAL = '1h'
+
+    # 'summarize': True opts a type into CIMIS monitor summaries (see
+    # camp/apps/summaries/selection.py). Wind direction is circular, so a
+    # mean of it means nothing: it stays raw-only.
     ENTRY_CONFIG = {
         entry_models.Temperature: {
             'fields': {'value': 'HlyAirTmp'},
             'allowed_stages': [entry_models.Temperature.Stage.RAW],
             'default_stage': entry_models.Temperature.Stage.RAW,
+            'summarize': True,
         },
         entry_models.Humidity: {
             'fields': {'value': 'HlyRelHum'},
             'allowed_stages': [entry_models.Humidity.Stage.RAW],
             'default_stage': entry_models.Humidity.Stage.RAW,
+            'summarize': True,
         },
         entry_models.DewPoint: {
             'fields': {'value': 'HlyDewPnt'},
             'allowed_stages': [entry_models.DewPoint.Stage.RAW],
             'default_stage': entry_models.DewPoint.Stage.RAW,
+            'summarize': True,
         },
         entry_models.SoilTemperature: {
             'fields': {'value': 'HlySoilTmp'},
             'allowed_stages': [entry_models.SoilTemperature.Stage.RAW],
             'default_stage': entry_models.SoilTemperature.Stage.RAW,
+            'summarize': True,
         },
         entry_models.WindSpeed: {
             'fields': {'value': 'HlyWindSpd'},
             'allowed_stages': [entry_models.WindSpeed.Stage.RAW],
             'default_stage': entry_models.WindSpeed.Stage.RAW,
+            'summarize': True,
         },
         entry_models.WindDirection: {
             'fields': {'value': 'HlyWindDir'},
@@ -62,31 +71,37 @@ class CIMIS(Monitor):
             'fields': {'value': 'HlyPrecip'},
             'allowed_stages': [entry_models.Precipitation.Stage.RAW],
             'default_stage': entry_models.Precipitation.Stage.RAW,
+            'summarize': True,
         },
         entry_models.SolarRadiation: {
             'fields': {'value': 'HlySolRad'},
             'allowed_stages': [entry_models.SolarRadiation.Stage.RAW],
             'default_stage': entry_models.SolarRadiation.Stage.RAW,
+            'summarize': True,
         },
         entry_models.NetRadiation: {
             'fields': {'value': 'HlyNetRad'},
             'allowed_stages': [entry_models.NetRadiation.Stage.RAW],
             'default_stage': entry_models.NetRadiation.Stage.RAW,
+            'summarize': True,
         },
         entry_models.VaporPressure: {
             'fields': {'value': 'HlyVapPres'},
             'allowed_stages': [entry_models.VaporPressure.Stage.RAW],
             'default_stage': entry_models.VaporPressure.Stage.RAW,
+            'summarize': True,
         },
         entry_models.ETo: {
             'fields': {'value': 'HlyAsceEto'},
             'allowed_stages': [entry_models.ETo.Stage.RAW],
             'default_stage': entry_models.ETo.Stage.RAW,
+            'summarize': True,
         },
         entry_models.ETr: {
             'fields': {'value': 'HlyAsceEtr'},
             'allowed_stages': [entry_models.ETr.Stage.RAW],
             'default_stage': entry_models.ETr.Stage.RAW,
+            'summarize': True,
         },
     }
 

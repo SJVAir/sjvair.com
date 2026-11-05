@@ -14,8 +14,12 @@ from camp.apps.entries.stages import Stage
 from camp.apps.summaries.backfill import backfill_monitor_hours, backfill_region_hours
 from camp.apps.summaries.periods import iter_hours, iter_period_starts, period_end
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
+from camp.apps.summaries.selection import (
+    is_summarized,
+    monitor_summary_entry_models,
+    region_summary_entry_models,
+)
 from camp.apps.summaries.tasks import (
-    get_summarizable_entry_models,
     rollup_monitor_summaries,
     rollup_region_summaries,
 )
@@ -88,7 +92,6 @@ class Command(BaseCommand):
         region_ids = list(regions.values_list('pk', flat=True))
 
         hours = list(iter_hours(start, end))
-        entry_models = get_summarizable_entry_models()
 
         self.stdout.write(
             f'Date range: {start:%Y-%m-%d %H:%M} → {end:%Y-%m-%d %H:%M} '
@@ -100,16 +103,16 @@ class Command(BaseCommand):
         # Monitor summaries
         if not regions_only:
             if enqueue:
-                self._enqueue_monitor_summaries(monitor_ids, hours, entry_models)
+                self._enqueue_monitor_summaries(monitors, hours)
                 self._enqueue_monitor_rollups(start, end)
             else:
-                self._backfill_monitor_summaries(monitors, start, end, entry_models)
+                self._backfill_monitor_summaries(monitors, start, end)
                 self._rollup(rollup_monitor_summaries, 'monitor', monitor_ids, start, end)
 
         # Region summaries
         if not monitors_only:
             if enqueue:
-                self._enqueue_region_summaries(region_ids, hours, entry_models)
+                self._enqueue_region_summaries(region_ids, hours, region_summary_entry_models())
                 self._enqueue_region_rollups(start, end)
             else:
                 self._backfill_region_summaries(list(regions), hours)
@@ -117,11 +120,11 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS('Done.'))
 
-    def _backfill_monitor_summaries(self, monitors, start, end, entry_models):
+    def _backfill_monitor_summaries(self, monitors, start, end):
         self.stdout.write(f'\nComputing hourly monitor summaries...')
         self.stdout.flush()
         for monitor in tqdm.tqdm(monitors, file=self.stdout, dynamic_ncols=True):
-            backfill_monitor_hours(monitor, start, end, entry_models)
+            backfill_monitor_hours(monitor, start, end, monitor_summary_entry_models(monitor))
 
     def _backfill_region_summaries(self, regions, hours):
         region_monitor_grades = {}
@@ -160,17 +163,32 @@ class Command(BaseCommand):
 
     # ---- Async enqueue methods ----
 
-    def _enqueue_monitor_summaries(self, monitor_ids, hours, entry_models):
+    def _enqueue_monitor_summaries(self, monitors, hours):
         from camp.apps.summaries.tasks import summarize_monitor_hour
         self.stdout.write('\nEnqueuing hourly monitor summaries...')
         self.stdout.flush()
+
+        # Each entry model only for the monitors whose type summarizes it.
+        monitor_types = {m.pk: type(m) for m in monitors}
+        entry_models = sorted(
+            {EntryModel for monitor_type in set(monitor_types.values())
+             for EntryModel in monitor_summary_entry_models(monitor_type)},
+            key=lambda m: m.entry_type,
+        )
+        # Checked per monitor's type rather than against Monitor.get_subclasses(),
+        # so a bare Monitor row (no subclass) keeps the flag types, as before.
+        scoped_ids = {
+            EntryModel: [pk for pk, t in monitor_types.items() if is_summarized(t, EntryModel)]
+            for EntryModel in entry_models
+        }
+
         count = 0
         for hour in tqdm.tqdm(hours, file=self.stdout, dynamic_ncols=True):
             for EntryModel in entry_models:
                 combos = (
                     EntryModel.objects
                     .filter(
-                        monitor_id__in=monitor_ids,
+                        monitor_id__in=scoped_ids[EntryModel],
                         timestamp__gte=hour,
                         timestamp__lt=hour + timedelta(hours=1),
                     )

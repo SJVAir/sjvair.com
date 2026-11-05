@@ -12,7 +12,6 @@ from huey import crontab
 
 from camp.apps.entries.fields import EntryTypeField
 from camp.apps.entries.stages import Stage
-from camp.apps.entries.utils import get_all_entry_models
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
 from camp.apps.summaries.periods import iter_hours, period_end, period_start
@@ -30,13 +29,13 @@ from camp.apps.summaries.backfill import (
     regions_with_monitors,
 )
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary, SummaryBackfillJob
+from camp.apps.summaries.selection import (
+    monitor_summary_entry_models,
+    region_summary_entry_models,
+    switch_entry_types,
+)
 
 logger = logging.getLogger('camp.apps.summaries')
-
-
-def get_summarizable_entry_models():
-    """Return entry models that have opted in to summarization via summarize = True."""
-    return [m for m in get_all_entry_models() if m.summarize]
 
 
 # ---- Hourly tasks ----
@@ -84,11 +83,14 @@ def hourly_monitor_summaries(hour=None):
     Compute hourly MonitorSummary for every (monitor, entry_type, processor) combo
     that has entries in the previous hour. Only RAW (processor='') and CALIBRATED
     (processor≠'') entries are summarized — CORRECTED and CLEANED are skipped.
+
+    Only the region types: types a monitor type opts into through its
+    ENTRY_CONFIG (CIMIS weather) are summarized by that monitor's ingest.
     """
     if hour is None:
         hour = _scheduled_hour('monitor')
 
-    for EntryModel in get_summarizable_entry_models():
+    for EntryModel in region_summary_entry_models():
         combos = (
             EntryModel.objects
             .filter(
@@ -141,7 +143,7 @@ def hourly_region_summaries(hour=None):
     if hour is None:
         hour = _scheduled_hour('region')
 
-    entry_models = get_summarizable_entry_models()
+    entry_models = region_summary_entry_models()
 
     region_ids = (Region.objects
         .filter(
@@ -374,7 +376,7 @@ def yearly_region_summaries(year_start=None):
 def backfill_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id):
     """Compute one monitor's hourly summaries for a backfill chunk, then report completion."""
     monitor = Monitor.objects.get(pk=monitor_id)
-    entry_models = get_summarizable_entry_models()
+    entry_models = monitor_summary_entry_models(monitor)
     backfill_monitor_hours(monitor, chunk_start, chunk_end, entry_models)
 
     SummaryBackfillJob.objects.filter(
@@ -446,7 +448,12 @@ def backfill_summaries_tick():
 
 def _backfill_dispatch_monitors(job):
     chunk_start = chunk_start_for(job.cursor, job.range_start, job.chunk_days)
-    entry_models = get_summarizable_entry_models()
+    switch_types = switch_entry_types()
+    switch_models = sorted(
+        (m for m in EntryTypeField.get_model_map().values() if m.entry_type in switch_types),
+        key=lambda m: m.entry_type,
+    )
+    entry_models = region_summary_entry_models() + switch_models
     monitor_ids = monitors_with_data_in(chunk_start, job.cursor, entry_models)
 
     job.chunk_start = chunk_start
@@ -572,17 +579,19 @@ def check_summary_integrity(now=None):
     today = period_start('day', now)
     yesterday = period_start('day', today - timedelta(hours=1))
 
-    def hour_timestamps(model):
+    def hour_timestamps(queryset):
         return set(
-            model.objects.filter(
+            queryset.filter(
                 resolution=BaseSummary.Resolution.HOURLY,
                 timestamp__gte=yesterday,
                 timestamp__lt=today,
             ).values_list('timestamp', flat=True).distinct().order_by()
         )
 
-    monitor_hours = hour_timestamps(MonitorSummary)
-    region_hours = hour_timestamps(RegionSummary)
+    # Only the region types: weather types have monitor rows and never region rows.
+    region_types = [m.entry_type for m in region_summary_entry_models()]
+    monitor_hours = hour_timestamps(MonitorSummary.objects.filter(entry_type__in=region_types))
+    region_hours = hour_timestamps(RegionSummary.objects.all())
     missing = [hour for hour in iter_hours(yesterday, today) if hour in monitor_hours and hour not in region_hours]
 
     result = {'misaligned': misaligned, 'missing_region_hours': len(missing)}

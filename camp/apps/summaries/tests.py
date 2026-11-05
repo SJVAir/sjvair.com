@@ -44,6 +44,7 @@ from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummar
 from camp.apps.summaries.periods import iter_hours
 from camp.apps.summaries.panels import TrendPanel
 from camp.apps.summaries import tasks as summary_tasks
+from camp.apps.summaries.selection import region_summary_entry_models
 from camp.apps.summaries.schedule import (
     ROLLUP_LOCAL_TIME,
     HOURLY_FIRE_MINUTE,
@@ -58,7 +59,6 @@ from camp.apps.summaries.schedule import (
 from camp.utils.datetime import localtime
 from camp.apps.summaries.tasks import (
     daily_monitor_summaries,
-    get_summarizable_entry_models,
     hourly_monitor_summaries,
     hourly_region_summaries,
     monthly_monitor_summaries,
@@ -785,14 +785,14 @@ class RollupRegionSummariesTests(TestCase):
         assert daily.first().region == self.region
 
 
-class GetSummarizableEntryModelsTests(TestCase):
+class RegionSummaryEntryModelsTests(TestCase):
     def test_returns_expected_models(self):
-        models = get_summarizable_entry_models()
+        models = region_summary_entry_models()
         assert {m.__name__ for m in models} == {'PM25', 'O3', 'CO', 'NO2', 'SO2'}
 
     def test_excluded_types_not_present(self):
         from camp.apps.entries.models import CO2, Humidity, Pressure, Temperature
-        models = get_summarizable_entry_models()
+        models = region_summary_entry_models()
         excluded = {Temperature, Humidity, Pressure, CO2}
         for m in models:
             assert m not in excluded
