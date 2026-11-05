@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
@@ -6,6 +6,11 @@ from django.contrib.gis.db import models
 
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.models import Monitor
+
+
+# CIMIS labels each hourly reading with the hour it ends, in fixed PST
+# (no daylight saving), so 0100 is 00:00-01:00 PST and 2400 is 23:00-24:00.
+CIMIS_TZ = timezone(timedelta(hours=-8), 'PST')
 
 
 class CIMIS(Monitor):
@@ -98,6 +103,19 @@ class CIMIS(Monitor):
     }
 
     def parse_timestamp(self, record):
+        '''
+        The start of the hour the record covers. CIMIS hour labels are
+        hour-ending in fixed PST, so 2400 is 23:00 on the record's own date.
+        '''
+        day = datetime.strptime(record['Date'], '%Y-%m-%d').replace(tzinfo=CIMIS_TZ)
+        hour = int(record['Hour'].zfill(4)[:2])
+        return day + timedelta(hours=hour - 1)
+
+    def legacy_timestamp(self, record):
+        '''
+        How readings were stamped before parse_timestamp: the end of the hour
+        on the Pacific wall clock. Only for finding those old rows.
+        '''
         date_str = record['Date']
         hour_str = record['Hour'].zfill(4)
 

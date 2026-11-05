@@ -189,7 +189,8 @@ class ProcessCimisStationTests(TestCase):
         assert result is False
 
 
-from datetime import datetime
+def utc(*args):
+    return datetime(*args, tzinfo=dt_timezone.utc)
 
 
 class CimisParseTimestampTests(TestCase):
@@ -201,15 +202,29 @@ class CimisParseTimestampTests(TestCase):
             location=CIMIS.LOCATION.outside,
         )
 
-    def test_parses_normal_hour(self):
-        timestamp = self.monitor.parse_timestamp({'Date': '2026-07-01', 'Hour': '0100'})
-        local = timestamp.astimezone(timestamp.tzinfo)
-        assert (local.year, local.month, local.day, local.hour, local.minute) == (2026, 7, 1, 1, 0)
+    def test_summer_label_is_the_start_of_the_hour_in_pst(self):
+        # 0100 = 00:00-01:00 PST
+        assert self.monitor.parse_timestamp({'Date': '2026-07-01', 'Hour': '0100'}) == utc(2026, 7, 1, 8)
 
-    def test_parses_midnight_boundary_hour_2400(self):
-        timestamp = self.monitor.parse_timestamp({'Date': '2026-07-01', 'Hour': '2400'})
-        local = timestamp.astimezone(timestamp.tzinfo)
-        assert (local.year, local.month, local.day, local.hour, local.minute) == (2026, 7, 2, 0, 0)
+    def test_winter_label_is_the_start_of_the_hour_in_pst(self):
+        assert self.monitor.parse_timestamp({'Date': '2026-01-15', 'Hour': '1300'}) == utc(2026, 1, 15, 20)
+
+    def test_2400_is_the_last_hour_of_the_same_date(self):
+        assert self.monitor.parse_timestamp({'Date': '2026-07-01', 'Hour': '2400'}) == utc(2026, 7, 2, 7)
+
+    def test_fall_back_day_has_24_distinct_hours(self):
+        stamps = {self.monitor.parse_timestamp({'Date': '2026-11-01', 'Hour': f'{h:02d}00'}) for h in range(1, 25)}
+        assert len(stamps) == 24
+        assert min(stamps) == utc(2026, 11, 1, 8) and max(stamps) == utc(2026, 11, 2, 7)
+
+    def test_spring_forward_day_has_24_distinct_hours(self):
+        stamps = {self.monitor.parse_timestamp({'Date': '2026-03-08', 'Hour': f'{h:02d}00'}) for h in range(1, 25)}
+        assert len(stamps) == 24
+
+    def test_legacy_timestamp_matches_the_old_parsing(self):
+        # end of hour, Pacific wall clock
+        assert self.monitor.legacy_timestamp({'Date': '2026-07-01', 'Hour': '1300'}) == utc(2026, 7, 1, 20)
+        assert self.monitor.legacy_timestamp({'Date': '2026-01-15', 'Hour': '2400'}) == utc(2026, 1, 16, 8)
 
 
 class CimisHandlePayloadTests(TestCase):
@@ -241,6 +256,8 @@ class CimisHandlePayloadTests(TestCase):
         from camp.apps.entries import models as entry_models
         assert entry_models.Temperature in entry_types
         assert entry_models.Humidity in entry_types
+        # 1300 on 2026-07-01 is the hour starting 12:00 PST (20:00 UTC)
+        assert {e.timestamp for e in entries} == {utc(2026, 7, 1, 20)}
 
     def test_ingests_estimated_qc_flagged_values(self):
         entries = self.monitor.handle_payload(self.make_record())
@@ -311,6 +328,7 @@ class ProcessCimisDataTests(TestCase):
 
         assert entries is not False
         assert len(entries) == 1
+        assert entries[0].timestamp == utc(2026, 7, 1, 20)
 
     def test_returns_false_for_unknown_station(self):
         from camp.apps.monitors.cimis.tasks import process_cimis_data
@@ -528,6 +546,9 @@ class FinalizeCimisDataTests(TestCase):
         from camp.apps.entries import models as entry_models
         entries = entry_models.Temperature.objects.filter(monitor=monitor)
         assert entries.count() == 1
+        # 2400 is the hour starting 23:00 PST on the record's date
+        pst_day = datetime.strptime(record['Date'], '%Y-%m-%d')
+        assert entries.get().timestamp == utc(pst_day.year, pst_day.month, pst_day.day, 7) + timedelta(days=1)
 
     @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
     def test_rerun_applies_a_qc_revised_value(self, MockAPI):
