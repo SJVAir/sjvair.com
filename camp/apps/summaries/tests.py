@@ -1464,7 +1464,12 @@ class SettleTimeTests(TestCase):
             for end in ends:
                 label = f'{resolution} {end.isoformat()}'
                 end_utc = end.astimezone(dt_timezone.utc)
-                runs = self.effective_runs(cimis_tasks.finalize_cimis_data, end_utc, 48 * 60)
+                runs = self.effective_runs(cimis_tasks.finalize_cimis_data, end_utc, 72 * 60)
+                if resolution == 'hour':
+                    # finalize re-summarizes (Pacific date of the run) - 1 day, so the run that
+                    # covers an hour is the first one on the day after the hour's own Pacific date.
+                    hour_date = localtime(end - timedelta(microseconds=1)).date()
+                    runs = [r for r in runs if localtime(r).date() - timedelta(days=1) >= hour_date]
                 assert runs, label
                 assert runs[0] + timedelta(hours=1) <= end_utc + LATE_SETTLE_MARGIN[resolution], label
 
