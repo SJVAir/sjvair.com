@@ -17,6 +17,7 @@ from camp.apps.regions.models import Region
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.periods import period_end
 from camp.apps.summaries.schedule import is_settled
+from camp.apps.summaries.selection import switch_entry_types
 from camp.utils.datetime import make_aware
 
 from .filters import BulkMonitorSummaryFilter, BulkRegionSummaryFilter
@@ -48,7 +49,8 @@ class SummaryMixin:
         # Summaries in a settled range no longer change, so they can be cached
         # for a day; anything still being rolled up (or open-ended) for a minute.
         range_end = self.get_date_filter().get('timestamp__lt')
-        settled = is_settled(self.resolution, range_end)
+        late = self.entry_model.entry_type in switch_entry_types()
+        settled = is_settled(self.resolution, range_end, late=late)
         patch_cache_control(
             response, private=True,
             max_age=SETTLED_MAX_AGE if settled else UNSETTLED_MAX_AGE,

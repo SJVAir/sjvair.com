@@ -23,6 +23,7 @@ ROLLUP_NOW = timezone.make_aware(datetime(2026, 4, 1, 8, 30, 0))
 
 from camp.apps.entries.models import CO, NO2, O3, PM25, SO2
 from camp.apps.monitors.bam.models import BAM1022
+from camp.apps.monitors.cimis import tasks as cimis_tasks
 from camp.apps.monitors.models import Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.qaqc.models import HealthCheck
@@ -49,6 +50,7 @@ from camp.apps.summaries.schedule import (
     ROLLUP_LOCAL_TIME,
     HOURLY_FIRE_MINUTE,
     LATE_RUN_WARNING,
+    LATE_SETTLE_MARGIN,
     SETTLE_MARGIN,
     hour_for_run,
     is_pacific_hour,
@@ -1435,6 +1437,36 @@ class SettleTimeTests(TestCase):
                 assert len(monitor_runs) == 1 and monitor_runs[0] < fire, label
                 # And everything is done, plus an hour of slack, inside the settle margin.
                 assert fire + timedelta(hours=1) <= end_utc + SETTLE_MARGIN[resolution], label
+
+    def test_late_margin_settles_later(self):
+        assert set(LATE_SETTLE_MARGIN) == set(SETTLE_MARGIN)
+        end = pacific(2026, 11, 2)
+        assert is_settled('day', end, now=pacific(2026, 11, 2, 3))
+        assert not is_settled('day', end, now=pacific(2026, 11, 2, 3), late=True)
+        assert not is_settled('day', end, now=pacific(2026, 11, 2, 6, 59), late=True)
+        assert is_settled('day', end, now=pacific(2026, 11, 2, 7), late=True)
+        assert not is_settled('day', None, late=True)
+
+    def test_late_margin_covers_finalize(self):
+        # A late type's last change is the first finalize_cimis_data run after the period ends
+        # (the re-pull and re-roll), so the margin covers that run plus an hour of slack.
+        # For hours the worst case is the first hour of a day.
+        cases = [
+            ('hour', [pacific(2026, 1, 1, 1), pacific(2026, 7, 1, 1)]),
+            ('day', [pacific(2026, 1, 2), pacific(2026, 7, 2)]),
+            ('month', [pacific(2026, 2, 1), pacific(2026, 8, 1)]),
+            ('quarter', [pacific(2027, 1, 1), pacific(2026, 7, 1)]),
+            ('season', [pacific(2026, 12, 1), pacific(2026, 6, 1)]),
+            ('year', [pacific(2027, 1, 1)]),
+        ]
+        assert {r for r, _ in cases} == set(LATE_SETTLE_MARGIN)
+        for resolution, ends in cases:
+            for end in ends:
+                label = f'{resolution} {end.isoformat()}'
+                end_utc = end.astimezone(dt_timezone.utc)
+                runs = self.effective_runs(cimis_tasks.finalize_cimis_data, end_utc, 48 * 60)
+                assert runs, label
+                assert runs[0] + timedelta(hours=1) <= end_utc + LATE_SETTLE_MARGIN[resolution], label
 
 
 class HourlyParentScheduleTests(TestCase):

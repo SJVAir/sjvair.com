@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from unittest import mock
 from unittest.mock import patch
 
+from django.contrib.gis.geos import Point
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
 from django.utils import timezone
@@ -13,6 +14,7 @@ from camp.api.v2.summaries.endpoints import (
     RegionSummaryList,
 )
 from camp.apps.monitors.bam.models import BAM1022
+from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.regions.models import Region
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
@@ -705,6 +707,20 @@ class SummaryCacheHeaderTests(TestCase):
             HTTP_ACCEPT_ENCODING='gzip')
         assert response['Cache-Control'] == 'private, max-age=86400'
         assert {'Accept-Encoding', 'Cookie'} <= {v.strip() for v in response['Vary'].split(',')}
+
+    def test_weather_summary_response_uses_the_late_margin(self):
+        station = CIMIS.objects.create(
+            name='Station', station_number='9', position=Point(-119.7, 36.7, srid=4326),
+            location=CIMIS.LOCATION.outside)
+        # Yesterday's last hour ended at midnight: past the usual 2h margin at 03:30, not the 30h late one.
+        now = datetime(2026, 10, 5, 3, 30)
+        weather = self._at(f'/api/2.0/monitors/{station.pk}/summaries/temperature/hourly/2026/10/4/', now=now)
+        self._assert_cache(weather, self.SHORT)
+        air = self._at(self._monitor_url('pm25/hourly/2026/10/4/'), now=now)
+        self._assert_cache(air, self.LONG)
+        later = self._at(f'/api/2.0/monitors/{station.pk}/summaries/temperature/hourly/2026/10/4/',
+            now=datetime(2026, 10, 6, 6))
+        self._assert_cache(later, self.LONG)
 
 
 class MonitorSummaryFallBackDayTests(TestCase):
