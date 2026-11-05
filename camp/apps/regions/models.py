@@ -54,6 +54,26 @@ class Region(TimeStampedModel):
         AGRICULTURAL = 'agricultural', _('Agricultural Survey Geography')
         CUSTOM = 'custom', _('Custom')
 
+    # Plural of each type's label, e.g. for a "browse by type" list. Every type has one.
+    TYPE_LABELS_PLURAL = {
+        Type.COUNTY: _('Counties'),
+        Type.CITY: _('Cities'),
+        Type.ZIPCODE: _('ZIP Codes'),
+        Type.TRACT: _('Census Tracts'),
+        Type.CDP: _('Census Designated Places'),
+        Type.CONGRESSIONAL_DISTRICT: _('Congressional Districts'),
+        Type.STATE_ASSEMBLY: _('State Assembly Districts'),
+        Type.STATE_SENATE: _('State Senate Districts'),
+        Type.SCHOOL_DISTRICT: _('School Districts'),
+        Type.AIR_DISTRICT: _('Air Districts'),
+        Type.URBAN_AREA: _('Urban Areas'),
+        Type.LAND_USE: _('Land Use Areas'),
+        Type.PROTECTED: _('Protected Areas'),
+        Type.AB617_COMMUNITY: _('AB 617 Communities'),
+        Type.MTRS: _('MTRS Sections'),
+        Type.CUSTOM: _('Custom Regions'),
+    }
+
     # Maps each Type to the Category it belongs to, mirroring the
     # groupings above. Kept as an explicit mapping (rather than deriving
     # it from Type ordering) so the API's category field doesn't silently

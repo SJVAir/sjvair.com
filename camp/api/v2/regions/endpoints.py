@@ -379,6 +379,7 @@ class RegionMetaEndpoint(generics.Endpoint):
             payload[region_type] = {
                 'type': region_type,
                 'label': label,
+                'label_plural': Region.TYPE_LABELS_PLURAL[region_type],
                 'category': category.value,
                 'count': counts.get(region_type, 0),
                 'parents': Region.TYPE_PARENTS[region_type],

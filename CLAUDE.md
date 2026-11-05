@@ -215,8 +215,9 @@ zones are missing there; see SJVAPCD Forecast Setup).
   custom zones keep that answer for up to 24h.
 - **Regions**: `regions/?within=...&within_mode=overlaps` (also the geojson variant) keeps
   regions with >=1% of their own area inside the parents and adds `also_in`; the default
-  `contained` mode is unchanged. `regions/meta/` types carry `count`, `parents`,
-  `referenceable` (false for land use) and `browsable` (false for MTRS and land use).
+  `contained` mode is unchanged. `regions/meta/` types carry `label_plural` (`Region.TYPE_LABELS_PLURAL`,
+  Title Case like `label`), `count`, `parents`, `referenceable` (false for land use) and
+  `browsable` (false for MTRS and land use).
   `regions/meta/` also lists `buffers` (`[{miles, label}]` from `shapes.BUFFERS` and
   `BUFFER_LABELS`): the values every `?buffer=` accepts (`regions/<id>/`, pesticide sections,
   emissions map areas). Clients read the choices from there, so change them only in `shapes.py`.
