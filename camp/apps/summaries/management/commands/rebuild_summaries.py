@@ -25,6 +25,20 @@ from camp.apps.summaries.tasks import (
 )
 
 
+def finished_period_starts(resolution, start, end, now):
+    '''
+    Starts of the `resolution` periods overlapping [start, end) that have
+    ended by `now`. An unfinished period (today, this month, ...) is left for
+    its scheduled rollup, as repair does: a row written now would hold a
+    partial period, and nothing updates month-and-longer rows before the
+    period ends.
+    '''
+    return [
+        ws for ws in iter_period_starts(resolution, start, end)
+        if period_end(resolution, ws) <= now
+    ]
+
+
 class Command(BaseCommand):
     help = 'Backfill or recalculate summaries for a date range.'
 
@@ -47,11 +61,12 @@ class Command(BaseCommand):
         from camp.apps.monitors.models import Monitor
         from camp.apps.regions.models import Region
 
+        now = timezone.now()
         start = self._parse_date(options['start'])
         end = (
             self._parse_date(options['end'])
             if options['end']
-            else timezone.now().replace(minute=0, second=0, microsecond=0)
+            else now.replace(minute=0, second=0, microsecond=0)
         )
 
         if start >= end:
@@ -104,19 +119,19 @@ class Command(BaseCommand):
         if not regions_only:
             if enqueue:
                 self._enqueue_monitor_summaries(monitors, hours)
-                self._enqueue_monitor_rollups(start, end)
+                self._enqueue_monitor_rollups(start, end, now)
             else:
                 self._backfill_monitor_summaries(monitors, start, end)
-                self._rollup(rollup_monitor_summaries, 'monitor', monitor_ids, start, end)
+                self._rollup(rollup_monitor_summaries, 'monitor', monitor_ids, start, end, now)
 
         # Region summaries
         if not monitors_only:
             if enqueue:
                 self._enqueue_region_summaries(region_ids, hours, region_summary_entry_models())
-                self._enqueue_region_rollups(start, end)
+                self._enqueue_region_rollups(start, end, now)
             else:
                 self._backfill_region_summaries(list(regions), hours)
-                self._rollup(rollup_region_summaries, 'region', region_ids, start, end)
+                self._rollup(rollup_region_summaries, 'region', region_ids, start, end, now)
 
         self.stdout.write(self.style.SUCCESS('Done.'))
 
@@ -143,14 +158,14 @@ class Command(BaseCommand):
                 continue
             backfill_region_hours(region, hours, monitor_grades)
 
-    def _rollup(self, rollup_fn, label, ids, start, end):
+    def _rollup(self, rollup_fn, label, ids, start, end, now):
         R = BaseSummary.Resolution
         levels = [
-            ('daily',     R.DAILY,     R.HOURLY,  list(iter_period_starts('day', start, end))),
-            ('monthly',   R.MONTHLY,   R.DAILY,   list(iter_period_starts('month', start, end))),
-            ('quarterly', R.QUARTERLY, R.MONTHLY, list(iter_period_starts('quarter', start, end))),
-            ('seasonal',  R.SEASONAL,  R.MONTHLY, list(iter_period_starts('season', start, end))),
-            ('yearly',    R.YEARLY,    R.MONTHLY, list(iter_period_starts('year', start, end))),
+            ('daily',     R.DAILY,     R.HOURLY,  finished_period_starts('day', start, end, now)),
+            ('monthly',   R.MONTHLY,   R.DAILY,   finished_period_starts('month', start, end, now)),
+            ('quarterly', R.QUARTERLY, R.MONTHLY, finished_period_starts('quarter', start, end, now)),
+            ('seasonal',  R.SEASONAL,  R.MONTHLY, finished_period_starts('season', start, end, now)),
+            ('yearly',    R.YEARLY,    R.MONTHLY, finished_period_starts('year', start, end, now)),
         ]
         for name, target, source, windows in levels:
             if not windows:
@@ -216,7 +231,7 @@ class Command(BaseCommand):
                     count += 1
         self.stdout.write(f'  → {count:,} tasks enqueued')
 
-    def _enqueue_monitor_rollups(self, start, end):
+    def _enqueue_monitor_rollups(self, start, end, now):
         from camp.apps.summaries.tasks import (
             daily_monitor_summaries, monthly_monitor_summaries,
             quarterly_monitor_summaries, seasonal_monitor_summaries,
@@ -225,11 +240,11 @@ class Command(BaseCommand):
         self.stdout.write('\nEnqueuing monitor rollups...')
         self.stdout.flush()
         windows = [
-            (daily_monitor_summaries,     'day',           iter_period_starts('day', start, end)),
-            (monthly_monitor_summaries,   'month_start',   iter_period_starts('month', start, end)),
-            (quarterly_monitor_summaries, 'quarter_start', iter_period_starts('quarter', start, end)),
-            (seasonal_monitor_summaries,  'season_start',  iter_period_starts('season', start, end)),
-            (yearly_monitor_summaries,    'year_start',    iter_period_starts('year', start, end)),
+            (daily_monitor_summaries,     'day',           finished_period_starts('day', start, end, now)),
+            (monthly_monitor_summaries,   'month_start',   finished_period_starts('month', start, end, now)),
+            (quarterly_monitor_summaries, 'quarter_start', finished_period_starts('quarter', start, end, now)),
+            (seasonal_monitor_summaries,  'season_start',  finished_period_starts('season', start, end, now)),
+            (yearly_monitor_summaries,    'year_start',    finished_period_starts('year', start, end, now)),
         ]
         count = 0
         for task_fn, kwarg, window_iter in windows:
@@ -238,7 +253,7 @@ class Command(BaseCommand):
                 count += 1
         self.stdout.write(f'  → {count:,} tasks enqueued')
 
-    def _enqueue_region_rollups(self, start, end):
+    def _enqueue_region_rollups(self, start, end, now):
         from camp.apps.summaries.tasks import (
             daily_region_summaries, monthly_region_summaries,
             quarterly_region_summaries, seasonal_region_summaries,
@@ -247,11 +262,11 @@ class Command(BaseCommand):
         self.stdout.write('\nEnqueuing region rollups...')
         self.stdout.flush()
         windows = [
-            (daily_region_summaries,     'day',           iter_period_starts('day', start, end)),
-            (monthly_region_summaries,   'month_start',   iter_period_starts('month', start, end)),
-            (quarterly_region_summaries, 'quarter_start', iter_period_starts('quarter', start, end)),
-            (seasonal_region_summaries,  'season_start',  iter_period_starts('season', start, end)),
-            (yearly_region_summaries,    'year_start',    iter_period_starts('year', start, end)),
+            (daily_region_summaries,     'day',           finished_period_starts('day', start, end, now)),
+            (monthly_region_summaries,   'month_start',   finished_period_starts('month', start, end, now)),
+            (quarterly_region_summaries, 'quarter_start', finished_period_starts('quarter', start, end, now)),
+            (seasonal_region_summaries,  'season_start',  finished_period_starts('season', start, end, now)),
+            (yearly_region_summaries,    'year_start',    finished_period_starts('year', start, end, now)),
         ]
         count = 0
         for task_fn, kwarg, window_iter in windows:

@@ -877,6 +877,46 @@ class RebuildSummariesCommandTests(TestCase):
         with pytest.raises((CommandError, SystemExit)):
             self._run('not-a-date')
 
+    def test_rolls_only_finished_periods(self):
+        # Now is mid-August: today, August, Q3, summer and 2026 haven't ended.
+        LA = settings.DEFAULT_TIMEZONE
+        pacific = lambda *args: timezone.make_aware(datetime(*args), LA)
+        now = pacific(2026, 8, 15, 12, 30)
+        start = pacific(2025, 11, 30)
+        PM25.objects.bulk_create([
+            PM25(monitor=self.monitor, timestamp=ts, stage=PM25.Stage.RAW, processor='',
+                 value=10.0, location=self.monitor.location)
+            for ts in iter_hours(start, pacific(2026, 8, 15, 11))
+            if timezone.localtime(ts, LA).hour % 6 == 0 or ts >= pacific(2026, 8, 14)
+        ])
+
+        with patch('django.utils.timezone.now', return_value=now):
+            self._run('2025-11-30', f'--monitor={self.monitor.pk}', '--monitors-only')
+
+        R = BaseSummary.Resolution
+
+        def stamps(resolution):
+            return {
+                timezone.localtime(ts, LA).date().isoformat()
+                for ts in MonitorSummary.objects
+                .filter(monitor=self.monitor, resolution=resolution)
+                .values_list('timestamp', flat=True)
+            }
+
+        # Today's hours are written; today's day row isn't.
+        assert pacific(2026, 8, 15, 10) in set(
+            MonitorSummary.objects.filter(resolution=R.HOURLY).values_list('timestamp', flat=True)
+        )
+        assert '2026-08-14' in stamps(R.DAILY)
+        assert '2026-08-15' not in stamps(R.DAILY)
+        assert '2025-11-30' in stamps(R.DAILY)
+        assert stamps(R.MONTHLY) == {f'{m}-01' for m in [
+            '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07',
+        ]}
+        assert stamps(R.QUARTERLY) == {'2025-10-01', '2026-01-01', '2026-04-01'}
+        assert stamps(R.SEASONAL) == {'2025-09-01', '2025-12-01', '2026-03-01'}
+        assert stamps(R.YEARLY) == {'2025-01-01'}
+
 
 # ---- Periodic task tests ----
 
