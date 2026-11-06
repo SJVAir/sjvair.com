@@ -260,9 +260,9 @@
     },
     {
      "display": {
-      "chart": "line",
-      "precision": 1,
-      "y_min": null
+      "chart": "bar",
+      "precision": 2,
+      "y_min": 0
      },
      "id": "eto",
      "kind": "meteorological",
@@ -281,9 +281,9 @@
     },
     {
      "display": {
-      "chart": "line",
-      "precision": 1,
-      "y_min": null
+      "chart": "bar",
+      "precision": 2,
+      "y_min": 0
      },
      "id": "etr",
      "kind": "meteorological",
@@ -344,9 +344,9 @@
     },
     {
      "display": {
-      "chart": "line",
-      "precision": 1,
-      "y_min": null
+      "chart": "bar",
+      "precision": 2,
+      "y_min": 0
      },
      "id": "precipitation",
      "kind": "meteorological",
