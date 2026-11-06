@@ -192,6 +192,9 @@ class MonitorNotFoundTests(TestCase):
     def setUp(self):
         cache.clear()
         self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        # Load the URLconf with DEBUG off: under DEBUG it imports debug_toolbar, which
+        # the test settings don't install, so a DEBUG test can't be the first to load it.
+        reverse('api:v2:monitors:monitor-list')
 
     def assert_not_found(self, ids):
         for route in MONITOR_ROUTES:
