@@ -10,7 +10,7 @@ from django.utils.translation import gettext as _
 from resticus import exceptions, http
 
 from camp.apps.monitors.models import Monitor
-from camp.utils.ids import is_small_uuid
+from camp.utils.ids import parse_small_uuid
 from camp.utils.sentry import is_lookup_path
 
 
@@ -82,13 +82,15 @@ class MonitorAccessMiddleware:
 
     def _get_monitor(self, monitor_id: str) -> Monitor:
         # Malformed and unknown ids answer the same 404, so neither reveals the id format.
-        if not is_small_uuid(monitor_id):
+        parsed = parse_small_uuid(monitor_id)
+        if parsed is None:
             raise not_found()
-        key = f'{self.CACHE_PREFIX}{monitor_id}'
+        # Key by the canonical form: the raw value may carry whitespace that memcached refuses.
+        key = f'{self.CACHE_PREFIX}{parsed}'
         monitor: Optional[Monitor] = cache.get(key)
         if monitor is None:
             try:
-                monitor = Monitor._default_manager.get(pk=monitor_id)
+                monitor = Monitor._default_manager.get(pk=parsed)
             except Monitor.DoesNotExist:
                 raise not_found()
             cache.set(key, monitor, timeout=self.CACHE_TIMEOUT)

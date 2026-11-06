@@ -1,8 +1,10 @@
 import uuid
+import warnings
 
 from urllib.parse import quote
 
 from django.core.cache import cache
+from django.core.cache.backends.base import CacheKeyWarning
 from django.test import TestCase, RequestFactory, override_settings
 from django.urls import reverse
 from django.utils.functional import SimpleLazyObject
@@ -212,6 +214,14 @@ class MonitorNotFoundTests(TestCase):
 
     def test_parseable_noncanonical_id_is_not_found(self):
         self.assert_not_found(['a' * 22])
+
+    def test_ids_memcached_would_refuse_are_not_found(self):
+        # Base64 decoding skips whitespace and control characters, so these still parse.
+        # Production's memcached refuses them as cache keys, and locmem only warns, so
+        # the test turns the warning into the error memcached raises.
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', CacheKeyWarning)
+            self.assert_not_found([UNKNOWN_ID + ' ', UNKNOWN_ID + '\t', 'AAAAAAAAAAA AAAAAAAAAAA'])
 
     def test_write_with_bad_id_is_json_404(self):
         response = self.client.post(
