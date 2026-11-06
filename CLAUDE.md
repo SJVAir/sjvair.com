@@ -219,6 +219,16 @@ zones are missing there; see SJVAPCD Forecast Setup).
   nearest one when the place has a boundary and any station is active; `distance` in miles;
   selection (empty included) cached 24h in `resolve.py` (`weather_stations_for`), rows serialized
   fresh, so a station hidden since then is dropped and the list can be shorter for up to 24h.
+  `hms/smoke/place/` takes the same place params plus `date__gte`/`date__lte` (Pacific dates;
+  both: that range; only `date__gte`: through today; only `date__lte`: the 30 days ending
+  there; neither: the last 30 days; at most 366 days, else 400, as is gte after lte). It
+  returns one row per day: `density` is the heaviest `smoke-density` key (`light`, `medium`,
+  `heavy`) or `null`; `coverage` is the share of the place's area under at least each level
+  (0 or 1 for a monitor). Computed on request in `camp/apps/hms/place.py`, measured in
+  EPSG:3310. A day is settled at 22:00 UTC the next day (an hour after `fetch_smoke_final`);
+  a settled range is cached 24h server-side and sent `public, max-age=86400`, any other
+  200 `max-age=900`, errors `no-cache`. A day with no outlines can't be told from a missed
+  fetch (deferred).
 - **Pesticide place** `pesticides/place/` takes the same addressing (`?region_type=&region=` or
   `?monitor=`) and returns `months` and `years` from `PesticideUseRollup`: counties by
   `county=`, other regions by the MTRS sections they touch, monitors by their ZIP. Month 0
