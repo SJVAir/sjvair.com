@@ -1,5 +1,9 @@
+import uuid
+
+from urllib.parse import quote
+
 from django.core.cache import cache
-from django.test import TestCase, RequestFactory
+from django.test import TestCase, RequestFactory, override_settings
 from django.urls import reverse
 from django.utils.functional import SimpleLazyObject
 
@@ -8,6 +12,7 @@ from resticus.http import Http401
 from camp.api.middleware import MonitorAccessMiddleware
 from camp.api.v1.monitors import endpoints
 from camp.apps.monitors.purpleair.models import PurpleAir
+from camp.utils.ids import is_small_uuid
 
 monitor_detail = endpoints.MonitorDetail.as_view()
 
@@ -166,3 +171,74 @@ class CoordinateQueryGuardMiddlewareTests(TestCase):
     def test_other_queries_pass_through(self):
         response = self.client.get(self.url, {'q': 'Fresno'})
         assert 'POST body' not in response.content.decode()
+
+
+BAD_IDS = ['nonexistent', 'abc!', 'z' * 32, 'jR']
+UNKNOWN_ID = 'AAAAAAAAAAAAAAAAAAAAAA'
+NOT_FOUND = {'detail': [{'message': 'Resource not found'}]}
+MONITOR_ROUTES = [
+    '/api/2.0/monitors/{}/',
+    '/api/2.0/monitors/{}/entries/',
+    '/api/2.0/monitors/{}/entries/pm25/',
+    '/api/2.0/monitors/{}/summaries/pm25/daily/2026/',
+    '/api/1.0/monitors/{}/',
+]
+
+
+class MonitorNotFoundTests(TestCase):
+    '''Every failed monitor lookup, malformed or unknown, answers the same JSON 404.'''
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        cache.clear()
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+
+    def assert_not_found(self, ids):
+        for route in MONITOR_ROUTES:
+            for monitor_id in ids:
+                response = self.client.get(route.format(quote(monitor_id, safe='')))
+                assert response.status_code == 404, (route, monitor_id, response.content[:200])
+                assert response.json()['errors'] == NOT_FOUND, (route, monitor_id)
+
+    def test_bad_and_unknown_ids_share_one_404(self):
+        self.assert_not_found(BAD_IDS + [UNKNOWN_ID])
+
+    @override_settings(DEBUG=True)
+    def test_bad_and_unknown_ids_share_one_404_debug(self):
+        self.assert_not_found(BAD_IDS + [UNKNOWN_ID])
+
+    def test_parseable_noncanonical_id_is_not_found(self):
+        self.assert_not_found(['a' * 22])
+
+    def test_write_with_bad_id_is_json_404(self):
+        response = self.client.post(
+            '/api/2.0/monitors/nonexistent/entries/', {}, HTTP_ACCESS_KEY=str(uuid.uuid4()))
+        assert response.status_code == 404
+        assert response.json()['errors'] == NOT_FOUND
+
+    def test_write_with_unknown_id_is_json_404(self):
+        response = self.client.post(
+            f'/api/2.0/monitors/{UNKNOWN_ID}/entries/', {}, HTTP_ACCESS_KEY=str(uuid.uuid4()))
+        assert response.status_code == 404
+        assert response.json()['errors'] == NOT_FOUND
+
+    def test_valid_id_still_200_and_cached(self):
+        response = self.client.get(f'/api/2.0/monitors/{self.monitor.pk}/')
+        assert response.status_code == 200
+        assert cache.get(f'monitor:{self.monitor.pk}').pk == self.monitor.pk
+
+    def test_failed_lookup_is_not_cached(self):
+        self.client.get(f'/api/2.0/monitors/{UNKNOWN_ID}/')
+        assert cache.get(f'monitor:{UNKNOWN_ID}') is None
+
+
+class IsSmallUUIDTests(TestCase):
+    def test_real_id(self):
+        assert is_small_uuid('jLI5fer7S0uyR7eMYNSPpg')
+
+    def test_parseable_noncanonical(self):
+        assert is_small_uuid('a' * 22)
+
+    def test_bad_ids(self):
+        for value in BAD_IDS + ['']:
+            assert not is_small_uuid(value), value

@@ -4,13 +4,19 @@ from typing import Optional
 
 from django.core.cache import cache
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404
 from django.utils.functional import SimpleLazyObject
+from django.utils.translation import gettext as _
 
-from resticus import http
+from resticus import exceptions, http
 
 from camp.apps.monitors.models import Monitor
+from camp.utils.ids import is_small_uuid
 from camp.utils.sentry import is_lookup_path
+
+
+def not_found():
+    # A plain str (not lazy): resticus wraps only str reasons in its errors shape.
+    return exceptions.NotFound(_('Resource not found'))
 
 
 class CoordinateQueryGuardMiddleware:
@@ -60,14 +66,31 @@ class MonitorAccessMiddleware:
                 if access_key is None:
                     return http.Http401('Access key required')
 
-                if access_key != request.monitor.access_key:
+                try:
+                    monitor_access_key = request.monitor.access_key
+                except exceptions.NotFound as err:
+                    return err.response
+                if access_key != monitor_access_key:
                     return http.Http401('Invalid access key')
 
-    def _get_monitor(self, monitor_id: int) -> Monitor:
+    def process_exception(self, request, exception):
+        # A lazy lookup that fails outside resticus's dispatch (e.g. an endpoint's own
+        # dispatch reading request.monitor first) still answers the JSON 404.
+        if isinstance(exception, exceptions.NotFound):
+            return exception.response
+        return None
+
+    def _get_monitor(self, monitor_id: str) -> Monitor:
+        # Malformed and unknown ids answer the same 404, so neither reveals the id format.
+        if not is_small_uuid(monitor_id):
+            raise not_found()
         key = f'{self.CACHE_PREFIX}{monitor_id}'
         monitor: Optional[Monitor] = cache.get(key)
         if monitor is None:
-            monitor = get_object_or_404(Monitor, pk=monitor_id)
+            try:
+                monitor = Monitor._default_manager.get(pk=monitor_id)
+            except Monitor.DoesNotExist:
+                raise not_found()
             cache.set(key, monitor, timeout=self.CACHE_TIMEOUT)
         return monitor
 
