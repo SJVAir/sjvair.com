@@ -1,18 +1,21 @@
 import pickle
 
-from datetime import date
+from datetime import date, timedelta
 from unittest import mock
 
 from django.contrib.gis.geos import MultiPolygon, Point, Polygon
 from django.core.cache import cache
 from django.core.cache.backends.base import memcache_key_warnings
 from django.test import TestCase
+from django.utils import timezone
 from django.utils.text import slugify
 
+from camp.apps.entries import models as entry_models
 from camp.apps.monitors.cimis.models import CIMIS
+from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.regions.models import Boundary, Region
 from camp.apps.regions.resolve import (
-    PlaceError, PlaceNotFound, forecast_zone_for, resolve_place, zips_for,
+    PlaceError, PlaceNotFound, forecast_zone_for, resolve_place, weather_stations_for, zips_for,
 )
 
 
@@ -251,3 +254,78 @@ class PlaceCacheKeyTests(ResolveTestCase):
         before = self.keys_used(monitor)
         monitor.position = Point(-119.78, 36.74, srid=4326)
         assert self.keys_used(monitor) != before
+
+
+def make_station(name, number, lon, lat, active=True, latest=None, **kw):
+    position = None if lon is None else Point(lon, lat, srid=4326)
+    station = CIMIS.objects.create(
+        name=name, station_number=number, position=position, location=CIMIS.LOCATION.outside, **kw)
+    if active:
+        station.create_entry(
+            entry_models.Temperature, timestamp=latest or timezone.now(), value=60, sensor='')
+    return station
+
+
+class WeatherStationsForTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.region = make_region('Box County', Region.Type.COUNTY, 'box', (-119.9, 36.6, -119.6, 36.9))
+
+    def test_inside_first_then_nearby_outside(self):
+        a = make_station('A', '1', -119.75, 36.75)
+        b = make_station('B', '2', -119.62, 36.88)
+        c = make_station('C', '3', -119.50, 36.75)
+        make_station('D', '4', -119.00, 36.75)
+        rows = weather_stations_for(self.region)
+        assert [r[0] for r in rows] == [str(a.pk), str(b.pk), str(c.pk)]
+        assert rows[0][1:] == (0.0, True) and rows[1][1:] == (0.0, True)
+        assert rows[2][2] is False and abs(rows[2][1] - 5.5) <= 0.2
+
+    def test_at_most_five_outside(self):
+        ids = [make_station(f'S{i}', str(10 + i), -119.58 + 0.02 * i, 36.75).pk for i in range(7)]
+        rows = weather_stations_for(self.region)
+        assert [r[0] for r in rows] == [str(pk) for pk in ids[:5]]
+
+    def test_far_place_gets_single_nearest(self):
+        far = make_station('Far', '5', -119.00, 36.75)
+        make_station('Farther', '6', -118.50, 36.75)
+        rows = weather_stations_for(self.region)
+        assert len(rows) == 1 and rows[0][0] == str(far.pk) and rows[0][2] is False
+        assert 30 < rows[0][1] < 36
+
+    def test_excluded_stations(self):
+        make_station('Hidden', '7', -119.75, 36.75, is_hidden=True)
+        make_station('Stale', '8', -119.74, 36.75, active=False)
+        make_station('Old', '9', -119.73, 36.75, latest=timezone.now() - timedelta(days=91))
+        make_station('NoPos', '10', None, None)
+        PurpleAir.objects.create(name='PA', sensor_id=1, position=Point(-119.75, 36.76, srid=4326))
+        assert weather_stations_for(self.region) == []
+
+    def test_monitor_place_measures_from_monitor(self):
+        pa = PurpleAir.objects.create(name='PA', sensor_id=1, position=Point(-119.75, 36.75, srid=4326))
+        near = make_station('Near', '11', -119.70, 36.75)
+        rows = weather_stations_for(pa)
+        assert rows == [(str(near.pk), rows[0][1], False)] and abs(rows[0][1] - 2.8) <= 0.2
+
+    def test_station_place_is_itself_first(self):
+        me = make_station('Me', '12', -119.75, 36.75)
+        other = make_station('Other', '13', -119.70, 36.75)
+        rows = weather_stations_for(me)
+        assert rows[0] == (str(me.pk), 0.0, True)
+        assert [r[0] for r in rows] == [str(me.pk), str(other.pk)]
+
+    def test_region_without_boundary_is_empty(self):
+        make_station('A', '1', -119.75, 36.75)
+        bare = make_region('Bare', Region.Type.CITY, 'bare', None)
+        assert weather_stations_for(bare) == []
+
+    def test_answer_is_cached(self):
+        make_station('A', '1', -119.75, 36.75)
+        weather_stations_for(self.region)
+        with self.assertNumQueries(0):
+            weather_stations_for(self.region)
+
+    def test_empty_answer_is_cached(self):
+        assert weather_stations_for(self.region) == []
+        with self.assertNumQueries(0):
+            assert weather_stations_for(self.region) == []

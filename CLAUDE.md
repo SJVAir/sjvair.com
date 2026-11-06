@@ -213,6 +213,12 @@ zones are missing there; see SJVAPCD Forecast Setup).
   `import_forecast_zones` before deploying the place endpoints, or clear the cached
   `forecast_zone_for:` keys after the import; otherwise places answered without the 3
   custom zones keep that answer for up to 24h.
+  `monitors/weather/place/` (same addressing) lists weather-dataset stations active within
+  `MONITOR_ACTIVE_WINDOW_DAYS`: inside the place first (distance 0, `inside`, by distance from the
+  point-on-surface), then up to 5 within 25 miles by distance from the edge, and at least the
+  nearest one when the place has a boundary and any station is active; `distance` in miles;
+  selection (empty included) cached 24h in `resolve.py` (`weather_stations_for`), rows serialized
+  fresh, so a station hidden since then is dropped and the list can be shorter for up to 24h.
   `hms/smoke/place/` takes the same place params plus `date__gte`/`date__lte` (Pacific dates;
   both: that range; only `date__gte`: through today; only `date__lte`: the 30 days ending
   there; neither: the last 30 days; at most 366 days, else 400, as is gte after lte). It

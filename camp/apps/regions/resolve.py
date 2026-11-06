@@ -4,6 +4,9 @@ the ZIPs and SJVAPCD forecast zone that place falls in.
 """
 import hashlib
 
+from django.conf import settings
+from django.contrib.gis.db.models.functions import Distance
+from django.contrib.gis.measure import D
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db.models import Q
@@ -17,6 +20,11 @@ ZIP_MIN_FRACTION = 0.01
 # The share of a place's own area a zone must hold for the 'overlap' rule:
 # the same 1% floor that drops boundary-disagreement slivers elsewhere.
 ZONE_MIN_FRACTION = 0.01
+
+# Weather stations offered for a place: every one inside it, then up to
+# STATION_OUTSIDE_LIMIT others within STATION_RADIUS_MILES of its edge.
+STATION_RADIUS_MILES = 25
+STATION_OUTSIDE_LIMIT = 5
 
 # Every type a point lookup answers for unless asked otherwise. Land use has
 # no permanent codes, and MTRS sections are too numerous to be useful.
@@ -210,6 +218,59 @@ def _forecast_zone_for(place):
             return by_pk[best], 'overlap'
 
     return None, None
+
+
+def weather_stations_for(place):
+    """
+    The weather stations (opt-in 'weather' monitor types; visible, positioned,
+    with data in the active window) for a place, as (station pk, miles, inside)
+    rows in response order: every station inside the place first (0.0 miles,
+    nearest the region's point-on-surface first), then up to 5 others within
+    25 miles of its edge (or of the monitor), nearest first. When that leaves
+    nothing, the single nearest station however far. A monitor place is
+    'inside' only for itself, when it is a station. Cached for 24 hours.
+    """
+    key = _place_key('weather_stations_for', place)
+    cached = cache.get(key, _MISS)
+    if cached is not _MISS:
+        return cached
+
+    result = _weather_stations_for(place)
+    cache.set(key, result, CACHE_TIMEOUT)
+    return result
+
+
+def _weather_stations_for(place):
+    geometry = _place_geometry(place)
+    if geometry is None:
+        return []
+
+    lookup = Q()
+    for subclass in Monitor.get_opt_in_subclasses('weather'):
+        lookup |= Q(**subclass.type_queryset_filter())
+    if not lookup:
+        return []
+    stations = (Monitor.objects.filter(is_hidden=False, position__isnull=False).filter(lookup)
+        .get_active(settings.MONITOR_ACTIVE_WINDOW_DAYS * 24 * 60 * 60))
+
+    is_region = isinstance(place, Region)
+    if is_region:
+        origin = geometry.point_on_surface
+        inside = list(stations.filter(position__intersects=geometry)
+            .annotate(distance=Distance('position', origin, spheroid=True))
+            .order_by('distance', 'pk').values_list('pk', flat=True))
+    else:
+        inside = list(stations.filter(pk=place.pk).values_list('pk', flat=True))
+
+    outside = (stations.exclude(pk__in=inside)
+        .annotate(distance=Distance('position', geometry, spheroid=True)).order_by('distance', 'pk'))
+    near = [(pk, d) for pk, d in outside.filter(distance__lte=D(mi=STATION_RADIUS_MILES))
+        .values_list('pk', 'distance')[:STATION_OUTSIDE_LIMIT]]
+    if not inside and not near:
+        near = list(outside.values_list('pk', 'distance')[:1])
+
+    return ([(str(pk), 0.0, True) for pk in inside]
+        + [(str(pk), round(d.mi, 1), False) for pk, d in near])
 
 
 def parse_lookup_types(raw):
