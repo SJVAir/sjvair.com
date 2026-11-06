@@ -145,8 +145,10 @@ Three commits, so the owner can take them one at a time:
    and `data["meta"]` works. Test: an endpoint returning `Http400(gettext_lazy("…"))` under
    DEBUG answers 400 with `errors.detail[0].message` and `meta.traceback`.
 3. **The `ValidationError` 400 body.** `dispatch`'s `except ValidationError` builds
-   `{"errors": {"detail": [{"message": m, "code": …}]}}` from `err.messages`, so the params
-   are filled in and every message is kept. **Builder's call:** for a `ValidationError` with
+   `{"errors": {"detail": [{"message": m}, …]}}` from `err.messages`, so the params are
+   filled in and every message is kept. No `code` key: other resticus error bodies carry only
+   `message`, and a Django code like `'invalid'` would collide with sdk-js's documents
+   refusal codes (see the client check). **Builder's call:** for a `ValidationError` with
    `message_dict`, key the messages by field (like `form.errors.get_json_data()`, which
    resticus's own `exceptions.ValidationError` uses), with `detail` for non-field messages.
    Tests: a single message with params, a list, and a dict.
@@ -154,9 +156,20 @@ Three commits, so the owner can take them one at a time:
 Client check for commit 3 (requested by the coordinator). Only a Django `ValidationError`
 that reaches `dispatch` is affected. Every other resticus error is already
 `{"errors": {"detail": [...]}}`, so the new body matches a shape clients already handle:
-- sdk-js `genericAPIErrorHandler` copies `body.errors` into `cause.details`. With today's
-  bare-string body `details` is `undefined`. `documents/refusal.ts` reads
-  `errors.detail[0].message/code` and already falls back when they're missing.
+- sdk-js `genericAPIErrorHandler` copies `body.errors` into `cause.details`
+  (`lib/http/error.ts:46`, on both `release/5.0.0` and `main`). With today's bare-string body
+  `details` is `undefined`.
+- sdk-js documents refusal codes (`lib/documents/refusal.ts`, `toDocumentRefusal`, on
+  `release/5.0.0`) take `errors.detail[0].code` when it's a string, and otherwise
+  `fallbackCode(status)`: 401 `unauthorized`, 403 `forbidden`, 404 `not_found`, anything else
+  `unknown`. None of the changes here can change a documents refusal code:
+  - The documents endpoints (`camp/api/v2/documents/`) are plain `Endpoint`s that return their
+    own `refuse(code, …)` bodies. Their ids are `CharField`s (no parse failure), and they use
+    no `generics.get_object`, Django `ValidationError` or `Http404`, and no `monitor_id`.
+    Commits 1–3 and the monitor 404 change don't reach them.
+  - Even if they did, the new bodies carry no `code`, so the code would still come from the
+    status. The uniform monitor 404 maps to `not_found`, exactly as today's null-message 404
+    does.
 - mobile `extractFieldErrors` (`src/lib/utils/form-errors.ts`) maps `details` per field. For a
   `detail`-only body it returns `{detail: …}`, so a screen that reads only named fields (e.g.
   account `Management.svelte`) shows no toast. That's already true today for every other
