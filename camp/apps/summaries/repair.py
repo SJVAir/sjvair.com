@@ -18,6 +18,7 @@ from datetime import timedelta
 from camp.apps.regions.models import Region
 from camp.apps.summaries.backfill import backfill_region_hours
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
+from camp.apps.summaries.selection import region_summary_entry_models
 from camp.apps.summaries.periods import is_period_start, iter_period_starts, period_end, period_start
 from camp.apps.summaries.tasks import rollup_monitor_summaries, rollup_region_summaries
 
@@ -286,12 +287,18 @@ def missing_region_hours(region_ids, start, end, progress=_noop):
         chunks.append((chunk_start, min(chunk_start + REGION_HOUR_CHUNK, end)))
         chunk_start = chunks[-1][1]
 
+    # Only the region types: weather types have monitor rows and never region rows.
+    region_types = [m.entry_type for m in region_summary_entry_models()]
+
     missing = defaultdict(list)
     for n, (lo, hi) in enumerate(chunks, 1):
         monitors_at = defaultdict(set)
         rows = (
             MonitorSummary.objects
-            .filter(resolution=R.HOURLY, timestamp__gte=lo, timestamp__lt=hi, **monitor_filter)
+            .filter(
+                resolution=R.HOURLY, timestamp__gte=lo, timestamp__lt=hi,
+                entry_type__in=region_types, **monitor_filter,
+            )
             .values_list('timestamp', 'monitor_id')
             .distinct()
         )

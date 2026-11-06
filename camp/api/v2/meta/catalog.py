@@ -15,6 +15,7 @@ from camp.apps.forecasts.scales import get_aqi_forecast_scale, get_burn_status_s
 from camp.apps.hms.scales import get_fire_scale, get_smoke_scale
 from camp.apps.monitors.models import Monitor
 from camp.apps.summaries.models import BaseSummary
+from camp.apps.summaries.selection import is_summarized
 from camp.apps.tempo.models import Granule
 from camp.apps.tempo.products import TEMPO_UNITS
 
@@ -197,9 +198,10 @@ def _kind(entry_model):
     return 'pollutant'
 
 
-def _monitor_entry_models(weather):
+def _monitor_dataset(weather):
     """
-    Entry models for the weather dataset (the monitor types opted in to it by
+    (entry models sorted by entry_type, {entry_type: producing monitor models})
+    for the weather dataset (the monitor types opted in to it by
     settings.MONITOR_OPT_IN_TYPES) or the air-quality one (every enabled monitor
     type not opted in to another dataset).
     """
@@ -208,16 +210,23 @@ def _monitor_entry_models(weather):
         m for m in Monitor.get_enabled_subclasses() if m.monitor_type not in opt_in
     ]
     models = {}
+    producers = {}
     for monitor_model in monitor_models:
         for entry_model in monitor_model.ENTRY_CONFIG:
             models[entry_model.entry_type] = entry_model
-    return [models[key] for key in sorted(models)]
+            producers.setdefault(entry_model.entry_type, []).append(monitor_model)
+    return [models[key] for key in sorted(models)], producers
+
+
+def _monitor_entry_models(weather):
+    return _monitor_dataset(weather)[0]
 
 
 def _monitor_entry_types(weather):
     available = None if weather else set(DefaultCalibration.objects.available_pollutants())
     entry_types = []
-    for entry_model in _monitor_entry_models(weather):
+    entry_models, producers = _monitor_dataset(weather)
+    for entry_model in entry_models:
         kind = _kind(entry_model)
         extra = {}
         if available is not None and kind == 'pollutant':
@@ -227,7 +236,7 @@ def _monitor_entry_types(weather):
             entry_model.label,
             kind,
             entry_model.units or '',
-            SUMMARIZED if entry_model.summarize else RAW_ONLY,
+            SUMMARIZED if any(is_summarized(m, entry_model) for m in producers[entry_model.entry_type]) else RAW_ONLY,
             **extra,
         ))
     return entry_types

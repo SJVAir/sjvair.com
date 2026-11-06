@@ -2,6 +2,8 @@ from datetime import datetime, timedelta
 from unittest import mock
 from unittest.mock import patch
 
+import pytest
+from django.contrib.gis.geos import Point
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
 from django.utils import timezone
@@ -13,6 +15,7 @@ from camp.api.v2.summaries.endpoints import (
     RegionSummaryList,
 )
 from camp.apps.monitors.bam.models import BAM1022
+from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.regions.models import Region
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
@@ -120,6 +123,14 @@ class MonitorSummaryListTests(TestCase):
         assert 'resolution' in record
         assert 'is_complete' in record
 
+    def test_monitor_summary_rows_include_sum(self):
+        day = timezone.make_aware(datetime(2026, 3, 16, 0, 0, 0))
+        row = make_monitor_summary(self.monitor, day, resolution='day')
+        MonitorSummary.objects.filter(pk=row.pk).update(sum_value=0.03)
+        response = self._get('monitor-summary-daily-year', 'pm25', 'day', year=2026)
+        data = get_response_data(response)
+        assert data['data'][0]['sum'] == pytest.approx(0.03)
+
     def test_missing_monitor_returns_404(self):
         url = reverse('api:v2:monitors:monitor-summary-hourly-year', kwargs={
             'monitor_id': self.monitor.pk,
@@ -210,6 +221,13 @@ class BulkMonitorSummaryListTests(TestCase):
     def test_url_lives_beside_the_other_entry_type_endpoints(self):
         url = reverse('api:v2:monitors:monitor-summary-bulk-daily', kwargs={'entry_type': 'pm25'})
         assert url.endswith('/monitors/pm25/summaries/daily/')
+
+    def test_rows_include_sum(self):
+        response = self._get(query=self.march)
+        data = get_response_data(response)
+        rows = [r for g in data['data'] for r in g['summaries']]
+        assert rows
+        assert all(r['sum'] == pytest.approx(300.0) for r in rows)
 
     def test_returns_200(self):
         response = self._get(query=self.march)
@@ -448,6 +466,11 @@ class RegionSummaryListTests(TestCase):
     def test_hourly_year_returns_200(self):
         response = self._get('region-summary-hourly-year', 'pm25', 'hour', year=2026)
         assert response.status_code == 200
+
+    def test_region_summary_rows_have_no_sum(self):
+        response = self._get('region-summary-hourly-year', 'pm25', 'hour', year=2026)
+        data = get_response_data(response)
+        assert 'sum' not in data['data'][0]
 
     def test_response_has_station_count(self):
         response = self._get('region-summary-hourly-year', 'pm25', 'hour', year=2026)
@@ -705,6 +728,20 @@ class SummaryCacheHeaderTests(TestCase):
             HTTP_ACCEPT_ENCODING='gzip')
         assert response['Cache-Control'] == 'private, max-age=86400'
         assert {'Accept-Encoding', 'Cookie'} <= {v.strip() for v in response['Vary'].split(',')}
+
+    def test_weather_summary_response_uses_the_late_margin(self):
+        station = CIMIS.objects.create(
+            name='Station', station_number='9', position=Point(-119.7, 36.7, srid=4326),
+            location=CIMIS.LOCATION.outside)
+        # Yesterday's last hour ended at midnight: past the usual 2h margin at 03:30, not the 30h late one.
+        now = datetime(2026, 10, 5, 3, 30)
+        weather = self._at(f'/api/2.0/monitors/{station.pk}/summaries/temperature/hourly/2026/10/4/', now=now)
+        self._assert_cache(weather, self.SHORT)
+        air = self._at(self._monitor_url('pm25/hourly/2026/10/4/'), now=now)
+        self._assert_cache(air, self.LONG)
+        later = self._at(f'/api/2.0/monitors/{station.pk}/summaries/temperature/hourly/2026/10/4/',
+            now=datetime(2026, 10, 6, 6))
+        self._assert_cache(later, self.LONG)
 
 
 class MonitorSummaryFallBackDayTests(TestCase):

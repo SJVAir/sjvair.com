@@ -12,7 +12,6 @@ from huey import crontab
 
 from camp.apps.entries.fields import EntryTypeField
 from camp.apps.entries.stages import Stage
-from camp.apps.entries.utils import get_all_entry_models
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
 from camp.apps.summaries.periods import iter_hours, period_end, period_start
@@ -30,13 +29,14 @@ from camp.apps.summaries.backfill import (
     regions_with_monitors,
 )
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary, SummaryBackfillJob
+from camp.apps.summaries.selection import (
+    monitor_summary_entry_models,
+    monitor_types_summarizing,
+    region_summary_entry_models,
+    switch_entry_models,
+)
 
 logger = logging.getLogger('camp.apps.summaries')
-
-
-def get_summarizable_entry_models():
-    """Return entry models that have opted in to summarization via summarize = True."""
-    return [m for m in get_all_entry_models() if m.summarize]
 
 
 # ---- Hourly tasks ----
@@ -84,11 +84,14 @@ def hourly_monitor_summaries(hour=None):
     Compute hourly MonitorSummary for every (monitor, entry_type, processor) combo
     that has entries in the previous hour. Only RAW (processor='') and CALIBRATED
     (processor≠'') entries are summarized — CORRECTED and CLEANED are skipped.
+
+    Only the region types: types a monitor type opts into through its
+    ENTRY_CONFIG (CIMIS weather) are summarized by that monitor's ingest.
     """
     if hour is None:
         hour = _scheduled_hour('monitor')
 
-    for EntryModel in get_summarizable_entry_models():
+    for EntryModel in region_summary_entry_models():
         combos = (
             EntryModel.objects
             .filter(
@@ -141,7 +144,7 @@ def hourly_region_summaries(hour=None):
     if hour is None:
         hour = _scheduled_hour('region')
 
-    entry_models = get_summarizable_entry_models()
+    entry_models = region_summary_entry_models()
 
     region_ids = (Region.objects
         .filter(
@@ -177,6 +180,50 @@ def summarize_region_hour(region_id, hour, entry_type):
         entry_type=entry_type,
         defaults=stats,
     )
+
+
+# ---- On-arrival summaries (CIMIS weather) ----
+#
+# CIMIS readings often land hours late, after the :45 parent has moved on
+# (and that parent skips weather types anyway). Each CIMIS import summarizes
+# the hours it wrote, and its daily finalize re-pull re-summarizes yesterday.
+
+def rollup_windows_for(hours, now):
+    """
+    {resolution: [period starts]} holding `hours`, for each resolution above
+    hourly, keeping only periods that have ended by `now`. No widening: only
+    the periods the hours fall in.
+    """
+    from camp.apps.summaries.repair import RESOLUTIONS
+
+    windows = {}
+    for resolution in RESOLUTIONS:
+        starts = {period_start(resolution, hour) for hour in hours}
+        windows[resolution] = sorted(s for s in starts if period_end(resolution, s) <= now)
+    return windows
+
+
+@db_task(priority=100, queue='summaries')
+def summarize_monitor_hours(monitor_id, hours):
+    """
+    Summarize one monitor's `hours` (hour starts, spanning at most 2 days) and
+    re-roll the finished periods holding them. Only for monitor types with
+    their own summarized types (CIMIS); monitor rows only, never region rows.
+    """
+    from camp.apps.summaries.repair import reroll
+
+    if not hours:
+        return
+    monitor = Monitor.objects.get(pk=monitor_id)
+    entry_models = monitor_summary_entry_models(monitor)
+    if not set(entry_models) & set(switch_entry_models()):
+        return
+
+    now = timezone.now()
+    start = min(hours)
+    end = max(hours) + timedelta(hours=1)
+    backfill_monitor_hours(monitor, start, end, entry_models)
+    reroll('monitor', [monitor.pk], start, end, now, windows=rollup_windows_for(hours, now))
 
 
 # ---- Rollup helpers ----
@@ -374,7 +421,7 @@ def yearly_region_summaries(year_start=None):
 def backfill_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id):
     """Compute one monitor's hourly summaries for a backfill chunk, then report completion."""
     monitor = Monitor.objects.get(pk=monitor_id)
-    entry_models = get_summarizable_entry_models()
+    entry_models = monitor_summary_entry_models(monitor)
     backfill_monitor_hours(monitor, chunk_start, chunk_end, entry_models)
 
     SummaryBackfillJob.objects.filter(
@@ -446,8 +493,11 @@ def backfill_summaries_tick():
 
 def _backfill_dispatch_monitors(job):
     chunk_start = chunk_start_for(job.cursor, job.range_start, job.chunk_days)
-    entry_models = get_summarizable_entry_models()
-    monitor_ids = monitors_with_data_in(chunk_start, job.cursor, entry_models)
+    # Switch types (CIMIS weather) are checked only on the monitor types that switch them on.
+    monitor_ids = monitors_with_data_in(
+        chunk_start, job.cursor, region_summary_entry_models(),
+        scoped_entry_models={m: monitor_types_summarizing(m) for m in switch_entry_models()},
+    )
 
     job.chunk_start = chunk_start
     job.batch_id += 1
@@ -572,17 +622,19 @@ def check_summary_integrity(now=None):
     today = period_start('day', now)
     yesterday = period_start('day', today - timedelta(hours=1))
 
-    def hour_timestamps(model):
+    def hour_timestamps(queryset):
         return set(
-            model.objects.filter(
+            queryset.filter(
                 resolution=BaseSummary.Resolution.HOURLY,
                 timestamp__gte=yesterday,
                 timestamp__lt=today,
             ).values_list('timestamp', flat=True).distinct().order_by()
         )
 
-    monitor_hours = hour_timestamps(MonitorSummary)
-    region_hours = hour_timestamps(RegionSummary)
+    # Only the region types: weather types have monitor rows and never region rows.
+    region_types = [m.entry_type for m in region_summary_entry_models()]
+    monitor_hours = hour_timestamps(MonitorSummary.objects.filter(entry_type__in=region_types))
+    region_hours = hour_timestamps(RegionSummary.objects.all())
     missing = [hour for hour in iter_hours(yesterday, today) if hour in monitor_hours and hour not in region_hours]
 
     result = {'misaligned': misaligned, 'missing_region_hours': len(missing)}

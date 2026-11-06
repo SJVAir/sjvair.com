@@ -23,6 +23,7 @@ ROLLUP_NOW = timezone.make_aware(datetime(2026, 4, 1, 8, 30, 0))
 
 from camp.apps.entries.models import CO, NO2, O3, PM25, SO2
 from camp.apps.monitors.bam.models import BAM1022
+from camp.apps.monitors.cimis import tasks as cimis_tasks
 from camp.apps.monitors.models import Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.qaqc.models import HealthCheck
@@ -44,10 +45,12 @@ from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummar
 from camp.apps.summaries.periods import iter_hours
 from camp.apps.summaries.panels import TrendPanel
 from camp.apps.summaries import tasks as summary_tasks
+from camp.apps.summaries.selection import region_summary_entry_models
 from camp.apps.summaries.schedule import (
     ROLLUP_LOCAL_TIME,
     HOURLY_FIRE_MINUTE,
     LATE_RUN_WARNING,
+    LATE_SETTLE_MARGIN,
     SETTLE_MARGIN,
     hour_for_run,
     is_pacific_hour,
@@ -58,7 +61,6 @@ from camp.apps.summaries.schedule import (
 from camp.utils.datetime import localtime
 from camp.apps.summaries.tasks import (
     daily_monitor_summaries,
-    get_summarizable_entry_models,
     hourly_monitor_summaries,
     hourly_region_summaries,
     monthly_monitor_summaries,
@@ -785,14 +787,14 @@ class RollupRegionSummariesTests(TestCase):
         assert daily.first().region == self.region
 
 
-class GetSummarizableEntryModelsTests(TestCase):
+class RegionSummaryEntryModelsTests(TestCase):
     def test_returns_expected_models(self):
-        models = get_summarizable_entry_models()
+        models = region_summary_entry_models()
         assert {m.__name__ for m in models} == {'PM25', 'O3', 'CO', 'NO2', 'SO2'}
 
     def test_excluded_types_not_present(self):
         from camp.apps.entries.models import CO2, Humidity, Pressure, Temperature
-        models = get_summarizable_entry_models()
+        models = region_summary_entry_models()
         excluded = {Temperature, Humidity, Pressure, CO2}
         for m in models:
             assert m not in excluded
@@ -874,6 +876,46 @@ class RebuildSummariesCommandTests(TestCase):
     def test_invalid_date_raises_error(self):
         with pytest.raises((CommandError, SystemExit)):
             self._run('not-a-date')
+
+    def test_rolls_only_finished_periods(self):
+        # Now is mid-August: today, August, Q3, summer and 2026 haven't ended.
+        LA = settings.DEFAULT_TIMEZONE
+        pacific = lambda *args: timezone.make_aware(datetime(*args), LA)
+        now = pacific(2026, 8, 15, 12, 30)
+        start = pacific(2025, 11, 30)
+        PM25.objects.bulk_create([
+            PM25(monitor=self.monitor, timestamp=ts, stage=PM25.Stage.RAW, processor='',
+                 value=10.0, location=self.monitor.location)
+            for ts in iter_hours(start, pacific(2026, 8, 15, 11))
+            if timezone.localtime(ts, LA).hour % 6 == 0 or ts >= pacific(2026, 8, 14)
+        ])
+
+        with patch('django.utils.timezone.now', return_value=now):
+            self._run('2025-11-30', f'--monitor={self.monitor.pk}', '--monitors-only')
+
+        R = BaseSummary.Resolution
+
+        def stamps(resolution):
+            return {
+                timezone.localtime(ts, LA).date().isoformat()
+                for ts in MonitorSummary.objects
+                .filter(monitor=self.monitor, resolution=resolution)
+                .values_list('timestamp', flat=True)
+            }
+
+        # Today's hours are written; today's day row isn't.
+        assert pacific(2026, 8, 15, 10) in set(
+            MonitorSummary.objects.filter(resolution=R.HOURLY).values_list('timestamp', flat=True)
+        )
+        assert '2026-08-14' in stamps(R.DAILY)
+        assert '2026-08-15' not in stamps(R.DAILY)
+        assert '2025-11-30' in stamps(R.DAILY)
+        assert stamps(R.MONTHLY) == {f'{m}-01' for m in [
+            '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07',
+        ]}
+        assert stamps(R.QUARTERLY) == {'2025-10-01', '2026-01-01', '2026-04-01'}
+        assert stamps(R.SEASONAL) == {'2025-09-01', '2025-12-01', '2026-03-01'}
+        assert stamps(R.YEARLY) == {'2025-01-01'}
 
 
 # ---- Periodic task tests ----
@@ -1435,6 +1477,43 @@ class SettleTimeTests(TestCase):
                 assert len(monitor_runs) == 1 and monitor_runs[0] < fire, label
                 # And everything is done, plus an hour of slack, inside the settle margin.
                 assert fire + timedelta(hours=1) <= end_utc + SETTLE_MARGIN[resolution], label
+
+    def test_late_margin_settles_later(self):
+        assert set(LATE_SETTLE_MARGIN) == set(SETTLE_MARGIN)
+        end = pacific(2026, 11, 2)
+        assert is_settled('day', end, now=pacific(2026, 11, 2, 3))
+        assert not is_settled('day', end, now=pacific(2026, 11, 2, 3), late=True)
+        assert not is_settled('day', end, now=pacific(2026, 11, 2, 6, 59), late=True)
+        assert is_settled('day', end, now=pacific(2026, 11, 2, 7), late=True)
+        assert not is_settled('day', None, late=True)
+
+    def test_late_margin_covers_finalize(self):
+        # A late type's last change is the finalize_cimis_data run that re-pulls and re-rolls
+        # the period, so the margin covers that run plus an hour of slack. For day and longer
+        # that is the first run after the period ends. For hours it is the first run on the day
+        # after the hour's Pacific date (finalize covers yesterday only), so the worst case is
+        # the first hour of a day.
+        cases = [
+            ('hour', [pacific(2026, 1, 1, 1), pacific(2026, 7, 1, 1)]),
+            ('day', [pacific(2026, 1, 2), pacific(2026, 7, 2)]),
+            ('month', [pacific(2026, 2, 1), pacific(2026, 8, 1)]),
+            ('quarter', [pacific(2027, 1, 1), pacific(2026, 7, 1)]),
+            ('season', [pacific(2026, 12, 1), pacific(2026, 6, 1)]),
+            ('year', [pacific(2027, 1, 1)]),
+        ]
+        assert {r for r, _ in cases} == set(LATE_SETTLE_MARGIN)
+        for resolution, ends in cases:
+            for end in ends:
+                label = f'{resolution} {end.isoformat()}'
+                end_utc = end.astimezone(dt_timezone.utc)
+                runs = self.effective_runs(cimis_tasks.finalize_cimis_data, end_utc, 72 * 60)
+                if resolution == 'hour':
+                    # finalize re-summarizes (Pacific date of the run) - 1 day, so the run that
+                    # covers an hour is the first one on the day after the hour's own Pacific date.
+                    hour_date = localtime(end - timedelta(microseconds=1)).date()
+                    runs = [r for r in runs if localtime(r).date() - timedelta(days=1) >= hour_date]
+                assert runs, label
+                assert runs[0] + timedelta(hours=1) <= end_utc + LATE_SETTLE_MARGIN[resolution], label
 
 
 class HourlyParentScheduleTests(TestCase):

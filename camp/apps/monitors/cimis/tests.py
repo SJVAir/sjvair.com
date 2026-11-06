@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from django.conf import settings
 from django.contrib.gis.geos import Point
 from django.test import TestCase
 
@@ -10,7 +11,29 @@ from camp.apps.entries import models as entry_models
 from camp.apps.monitors.cimis.api import CIMISAPI
 from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.monitors.cimis.tasks import parse_hms_coordinate, process_cimis_station
-from camp.utils.datetime import localtime
+from camp.utils.datetime import localtime, make_aware
+
+
+LA = settings.DEFAULT_TIMEZONE
+
+
+def pacific(*args):
+    return make_aware(datetime(*args), LA)
+
+
+def cimis_record(date_str, hour_label, station='2', **fields):
+    record = {'Date': date_str, 'Hour': hour_label, 'Station': station}
+    record.update(fields or {'HlyAirTmp': {'Value': '50.0', 'Qc': ' ', 'Unit': '(F)'}})
+    return record
+
+
+def make_station(number='2'):
+    return CIMIS.objects.create(
+        name=f'Station {number}',
+        station_number=number,
+        position=Point(-119.7871, 36.7378, srid=4326),
+        location=CIMIS.LOCATION.outside,
+    )
 
 
 class CIMISModelTests(TestCase):
@@ -189,7 +212,8 @@ class ProcessCimisStationTests(TestCase):
         assert result is False
 
 
-from datetime import datetime
+def utc(*args):
+    return datetime(*args, tzinfo=dt_timezone.utc)
 
 
 class CimisParseTimestampTests(TestCase):
@@ -201,15 +225,29 @@ class CimisParseTimestampTests(TestCase):
             location=CIMIS.LOCATION.outside,
         )
 
-    def test_parses_normal_hour(self):
-        timestamp = self.monitor.parse_timestamp({'Date': '2026-07-01', 'Hour': '0100'})
-        local = timestamp.astimezone(timestamp.tzinfo)
-        assert (local.year, local.month, local.day, local.hour, local.minute) == (2026, 7, 1, 1, 0)
+    def test_summer_label_is_the_start_of_the_hour_in_pst(self):
+        # 0100 = 00:00-01:00 PST
+        assert self.monitor.parse_timestamp({'Date': '2026-07-01', 'Hour': '0100'}) == utc(2026, 7, 1, 8)
 
-    def test_parses_midnight_boundary_hour_2400(self):
-        timestamp = self.monitor.parse_timestamp({'Date': '2026-07-01', 'Hour': '2400'})
-        local = timestamp.astimezone(timestamp.tzinfo)
-        assert (local.year, local.month, local.day, local.hour, local.minute) == (2026, 7, 2, 0, 0)
+    def test_winter_label_is_the_start_of_the_hour_in_pst(self):
+        assert self.monitor.parse_timestamp({'Date': '2026-01-15', 'Hour': '1300'}) == utc(2026, 1, 15, 20)
+
+    def test_2400_is_the_last_hour_of_the_same_date(self):
+        assert self.monitor.parse_timestamp({'Date': '2026-07-01', 'Hour': '2400'}) == utc(2026, 7, 2, 7)
+
+    def test_fall_back_day_has_24_distinct_hours(self):
+        stamps = {self.monitor.parse_timestamp({'Date': '2026-11-01', 'Hour': f'{h:02d}00'}) for h in range(1, 25)}
+        assert len(stamps) == 24
+        assert min(stamps) == utc(2026, 11, 1, 8) and max(stamps) == utc(2026, 11, 2, 7)
+
+    def test_spring_forward_day_has_24_distinct_hours(self):
+        stamps = {self.monitor.parse_timestamp({'Date': '2026-03-08', 'Hour': f'{h:02d}00'}) for h in range(1, 25)}
+        assert len(stamps) == 24
+
+    def test_legacy_timestamp_matches_the_old_parsing(self):
+        # end of hour, Pacific wall clock
+        assert self.monitor.legacy_timestamp({'Date': '2026-07-01', 'Hour': '1300'}) == utc(2026, 7, 1, 20)
+        assert self.monitor.legacy_timestamp({'Date': '2026-01-15', 'Hour': '2400'}) == utc(2026, 1, 16, 8)
 
 
 class CimisHandlePayloadTests(TestCase):
@@ -241,6 +279,8 @@ class CimisHandlePayloadTests(TestCase):
         from camp.apps.entries import models as entry_models
         assert entry_models.Temperature in entry_types
         assert entry_models.Humidity in entry_types
+        # 1300 on 2026-07-01 is the hour starting 12:00 PST (20:00 UTC)
+        assert {e.timestamp for e in entries} == {utc(2026, 7, 1, 20)}
 
     def test_ingests_estimated_qc_flagged_values(self):
         entries = self.monitor.handle_payload(self.make_record())
@@ -311,6 +351,7 @@ class ProcessCimisDataTests(TestCase):
 
         assert entries is not False
         assert len(entries) == 1
+        assert entries[0].timestamp == utc(2026, 7, 1, 20)
 
     def test_returns_false_for_unknown_station(self):
         from camp.apps.monitors.cimis.tasks import process_cimis_data
@@ -456,6 +497,101 @@ class ImportCimisDataTests(TestCase):
         assert called_kwargs['start_date'] == date(2026, 10, 24)
         assert called_kwargs['end_date'] == date(2026, 10, 24)
 
+    @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
+    def test_import_summarizes_the_hours_it_wrote(self, MockAPI):
+        from camp.apps.monitors.cimis.tasks import import_cimis_data
+        from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
+
+        monitor = make_station()
+        fields = {
+            'HlyAirTmp': {'Value': '50.0', 'Qc': ' ', 'Unit': '(F)'},
+            'HlyPrecip': {'Value': '0.01', 'Qc': ' ', 'Unit': '(in)'},
+            'HlyWindDir': {'Value': '270', 'Qc': ' ', 'Unit': '(deg)'},
+        }
+        MockAPI.return_value.get_hourly_data.return_value = [{'Records': [
+            cimis_record('2026-01-14', '1300', **fields),
+            cimis_record('2026-01-14', '1400', **fields),
+        ]}]
+
+        with patch('django.utils.timezone.now', return_value=pacific(2026, 1, 14, 15, 45)):
+            import_cimis_data()
+
+        hourly = MonitorSummary.objects.filter(monitor=monitor, resolution=BaseSummary.Resolution.HOURLY)
+        hours = {pacific(2026, 1, 14, 12), pacific(2026, 1, 14, 13)}
+        for EntryModel in (entry_models.Temperature, entry_models.Precipitation):
+            assert set(hourly.filter(entry_type=EntryModel.entry_type).values_list('timestamp', flat=True)) == hours
+        assert not hourly.filter(entry_type=entry_models.WindDirection.entry_type).exists()
+        # Today isn't over: nothing rolled yet, and never a region row.
+        assert not MonitorSummary.objects.exclude(resolution=BaseSummary.Resolution.HOURLY).exists()
+        assert not RegionSummary.objects.exists()
+
+    @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
+    def test_unchanged_reimport_enqueues_nothing(self, MockAPI):
+        from camp.apps.monitors.cimis.tasks import import_cimis_data
+
+        monitor = make_station()
+        MockAPI.return_value.get_hourly_data.return_value = [{'Records': [
+            cimis_record('2026-01-14', '1300'),
+            cimis_record('2026-01-14', '1400'),
+        ]}]
+
+        with patch('django.utils.timezone.now', return_value=pacific(2026, 1, 14, 15, 45)), \
+                patch('camp.apps.monitors.cimis.tasks.summarize_monitor_hours') as summarize:
+            import_cimis_data()
+            summarize.assert_called_once_with(
+                str(monitor.pk), [pacific(2026, 1, 14, 12), pacific(2026, 1, 14, 13)],
+            )
+            summarize.reset_mock()
+
+            import_cimis_data()
+            summarize.assert_not_called()
+
+    @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
+    def test_a_record_with_only_wind_direction_enqueues_nothing(self, MockAPI):
+        from camp.apps.monitors.cimis.tasks import import_cimis_data
+
+        make_station()
+        MockAPI.return_value.get_hourly_data.return_value = [{'Records': [
+            cimis_record('2026-01-14', '1300', HlyWindDir={'Value': '270', 'Qc': ' ', 'Unit': '(deg)'}),
+        ]}]
+
+        with patch('django.utils.timezone.now', return_value=pacific(2026, 1, 14, 15, 45)), \
+                patch('camp.apps.monitors.cimis.tasks.summarize_monitor_hours') as summarize:
+            import_cimis_data()
+
+        assert entry_models.WindDirection.objects.exists()
+        summarize.assert_not_called()
+
+    @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
+    def test_late_reading_updates_an_already_rolled_day(self, MockAPI):
+        from camp.apps.monitors.cimis.tasks import import_cimis_data
+        from camp.apps.summaries.models import BaseSummary, MonitorSummary
+
+        monitor = make_station()
+        labels = [f'{h:02d}00' for h in range(1, 25)]
+        missing = labels.pop(5)
+        MockAPI.return_value.get_hourly_data.return_value = [{'Records': [
+            cimis_record('2026-01-14', label) for label in labels
+        ]}]
+        with patch('django.utils.timezone.now', return_value=pacific(2026, 1, 15, 2, 45)):
+            import_cimis_data()
+
+        def daily():
+            return MonitorSummary.objects.get(
+                monitor=monitor, entry_type=entry_models.Temperature.entry_type,
+                resolution=BaseSummary.Resolution.DAILY, timestamp=pacific(2026, 1, 14),
+            )
+
+        assert daily().count == 23
+
+        MockAPI.return_value.get_hourly_data.return_value = [{'Records': [
+            cimis_record('2026-01-14', missing),
+        ]}]
+        with patch('django.utils.timezone.now', return_value=pacific(2026, 1, 15, 3, 45)):
+            import_cimis_data()
+
+        assert daily().count == 24
+
 
 class FinalizeCimisDataTests(TestCase):
     def test_no_op_when_no_monitors_exist(self):
@@ -528,6 +664,9 @@ class FinalizeCimisDataTests(TestCase):
         from camp.apps.entries import models as entry_models
         entries = entry_models.Temperature.objects.filter(monitor=monitor)
         assert entries.count() == 1
+        # 2400 is the hour starting 23:00 PST on the record's date
+        pst_day = datetime.strptime(record['Date'], '%Y-%m-%d')
+        assert entries.get().timestamp == utc(pst_day.year, pst_day.month, pst_day.day, 7) + timedelta(days=1)
 
     @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
     def test_rerun_applies_a_qc_revised_value(self, MockAPI):
@@ -566,6 +705,59 @@ class FinalizeCimisDataTests(TestCase):
         entries = entry_models.Temperature.objects.filter(monitor=monitor)
         assert entries.count() == 1
         assert entries.get().value != original_value
+
+    @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
+    def test_finalize_resummarizes_all_of_yesterday_for_every_station(self, MockAPI):
+        from camp.apps.monitors.cimis.tasks import finalize_cimis_data
+        from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
+        from camp.apps.summaries.periods import iter_hours
+
+        stations = [make_station('2'), make_station('5')]
+        # Readings already stored (an earlier import wrote them), never summarized.
+        for monitor in stations:
+            for hour in (0, 11, 23):
+                entry_models.Temperature.objects.create(
+                    monitor=monitor, timestamp=pacific(2026, 1, 14, hour),
+                    stage=entry_models.Temperature.Stage.RAW, processor='',
+                    value=50, location=monitor.location,
+                )
+        MockAPI.return_value.get_hourly_data.return_value = []
+
+        # Its 12:00 UTC run: 4 AM PST on Jan 15.
+        now = pacific(2026, 1, 15, 4)
+        with patch('django.utils.timezone.now', return_value=now), \
+                patch('camp.apps.monitors.cimis.tasks.summarize_monitor_hours') as summarize:
+            finalize_cimis_data()
+        yesterday = list(iter_hours(pacific(2026, 1, 14), pacific(2026, 1, 15)))
+        assert summarize.call_count == 2
+        assert {c.args[0]: c.args[1] for c in summarize.call_args_list} == {
+            str(monitor.pk): yesterday for monitor in stations
+        }
+
+        with patch('django.utils.timezone.now', return_value=now):
+            finalize_cimis_data()
+        for monitor in stations:
+            rows = MonitorSummary.objects.filter(monitor=monitor, entry_type=entry_models.Temperature.entry_type)
+            assert rows.filter(resolution=BaseSummary.Resolution.HOURLY).count() == 3
+            assert rows.get(resolution=BaseSummary.Resolution.DAILY, timestamp=pacific(2026, 1, 14)).count == 3
+        assert not RegionSummary.objects.exists()
+
+    @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
+    def test_finalize_also_summarizes_changed_hours_past_the_pacific_day(self, MockAPI):
+        from camp.apps.monitors.cimis.tasks import finalize_cimis_data
+        from camp.apps.summaries.periods import iter_hours
+
+        monitor = make_station()
+        # In summer, 2400 PST on Jul 14 is 00:00 PDT on Jul 15.
+        MockAPI.return_value.get_hourly_data.return_value = [{'Records': [
+            cimis_record('2026-07-14', '2400'),
+        ]}]
+        with patch('django.utils.timezone.now', return_value=pacific(2026, 7, 15, 5)), \
+                patch('camp.apps.monitors.cimis.tasks.summarize_monitor_hours') as summarize:
+            finalize_cimis_data()
+
+        yesterday = list(iter_hours(pacific(2026, 7, 14), pacific(2026, 7, 15)))
+        summarize.assert_called_once_with(str(monitor.pk), yesterday + [pacific(2026, 7, 15, 0)])
 
 
 class ImportCimisHistoryTests(TestCase):

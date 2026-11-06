@@ -65,16 +65,31 @@ SETTLE_MARGIN = {
     'year': timedelta(hours=5),
 }
 
+# Summaries fed by late-arriving data (CIMIS weather) can change until the
+# next day's finalize_cimis_data (12:00 UTC, 04:00-05:00 Pacific) re-pulls and
+# re-rolls. An hour's last change lands up to ~29h after it ends (the first
+# hour of a day, in PDT); day and longer, ~5h after the period ends.
+LATE_SETTLE_MARGIN = {
+    'hour': timedelta(hours=30),
+    'day': timedelta(hours=7),
+    'month': timedelta(hours=7),
+    'quarter': timedelta(hours=7),
+    'season': timedelta(hours=7),
+    'year': timedelta(hours=7),
+}
 
-def is_settled(resolution, range_end, now=None):
+
+def is_settled(resolution, range_end, now=None, late=False):
     """
     True when every period in a range ending at `range_end` (exclusive) has
     had time to finish its rollups. An open range (None) is never settled.
+    `late` uses the longer margins of types whose data arrives late.
     """
     if range_end is None:
         return False
     last_period_end = period_end(resolution, range_end - timedelta(microseconds=1))
-    return (now or timezone.now()) >= last_period_end + SETTLE_MARGIN[resolution]
+    margins = LATE_SETTLE_MARGIN if late else SETTLE_MARGIN
+    return (now or timezone.now()) >= last_period_end + margins[resolution]
 
 
 # The minute of each hour the hourly parent tasks are scheduled for

@@ -247,7 +247,13 @@
      "kind": "meteorological",
      "label": "Dew Point",
      "resolutions": [
-      "raw"
+      "raw",
+      "hour",
+      "day",
+      "month",
+      "quarter",
+      "season",
+      "year"
      ],
      "retired": null,
      "units": "°F"
@@ -262,7 +268,13 @@
      "kind": "meteorological",
      "label": "Reference Evapotranspiration",
      "resolutions": [
-      "raw"
+      "raw",
+      "hour",
+      "day",
+      "month",
+      "quarter",
+      "season",
+      "year"
      ],
      "retired": null,
      "units": "in"
@@ -277,7 +289,13 @@
      "kind": "meteorological",
      "label": "Alfalfa Reference Evapotranspiration",
      "resolutions": [
-      "raw"
+      "raw",
+      "hour",
+      "day",
+      "month",
+      "quarter",
+      "season",
+      "year"
      ],
      "retired": null,
      "units": "in"
@@ -292,7 +310,13 @@
      "kind": "meteorological",
      "label": "Humidity",
      "resolutions": [
-      "raw"
+      "raw",
+      "hour",
+      "day",
+      "month",
+      "quarter",
+      "season",
+      "year"
      ],
      "retired": null,
      "units": "%"
@@ -307,7 +331,13 @@
      "kind": "meteorological",
      "label": "Net Radiation",
      "resolutions": [
-      "raw"
+      "raw",
+      "hour",
+      "day",
+      "month",
+      "quarter",
+      "season",
+      "year"
      ],
      "retired": null,
      "units": "W/m²"
@@ -322,7 +352,13 @@
      "kind": "meteorological",
      "label": "Precipitation",
      "resolutions": [
-      "raw"
+      "raw",
+      "hour",
+      "day",
+      "month",
+      "quarter",
+      "season",
+      "year"
      ],
      "retired": null,
      "units": "in"
@@ -337,7 +373,13 @@
      "kind": "meteorological",
      "label": "Soil Temperature",
      "resolutions": [
-      "raw"
+      "raw",
+      "hour",
+      "day",
+      "month",
+      "quarter",
+      "season",
+      "year"
      ],
      "retired": null,
      "units": "°F"
@@ -352,7 +394,13 @@
      "kind": "meteorological",
      "label": "Solar Radiation",
      "resolutions": [
-      "raw"
+      "raw",
+      "hour",
+      "day",
+      "month",
+      "quarter",
+      "season",
+      "year"
      ],
      "retired": null,
      "units": "W/m²"
@@ -367,7 +415,13 @@
      "kind": "meteorological",
      "label": "Temperature",
      "resolutions": [
-      "raw"
+      "raw",
+      "hour",
+      "day",
+      "month",
+      "quarter",
+      "season",
+      "year"
      ],
      "retired": null,
      "units": "°F"
@@ -382,7 +436,13 @@
      "kind": "meteorological",
      "label": "Vapor Pressure",
      "resolutions": [
-      "raw"
+      "raw",
+      "hour",
+      "day",
+      "month",
+      "quarter",
+      "season",
+      "year"
      ],
      "retired": null,
      "units": "kPa"
@@ -412,7 +472,13 @@
      "kind": "meteorological",
      "label": "Wind Speed",
      "resolutions": [
-      "raw"
+      "raw",
+      "hour",
+      "day",
+      "month",
+      "quarter",
+      "season",
+      "year"
      ],
      "retired": null,
      "units": "mph"

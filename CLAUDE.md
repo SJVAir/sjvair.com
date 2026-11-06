@@ -149,6 +149,49 @@ docker compose run --rm web python manage.py mirror_bam_entries --monitor-id Gge
 
 Idempotent and safe to re-run.
 
+## CIMIS Weather Summaries
+
+CIMIS stations get monitor summaries (hour up to year) for 11 types: `temperature`,
+`humidity`, `dewpoint`, `soiltemperature`, `windspeed`, `precipitation`, `solarradiation`,
+`netradiation`, `vaporpressure`, `eto`, `etr`. `winddirection` stays raw. There are never region
+rows for weather: region paths use the entry models' `summarize` flag only.
+
+- **The switch** is per monitor type: `'summarize': True` on an entry type in `ENTRY_CONFIG`.
+  `camp/apps/summaries/selection.py` is the one place that picks entry types (`is_summarized`,
+  `monitor_summary_entry_models`, `region_summary_entry_models`, `switch_entry_types`,
+  `switch_entry_models`, `monitor_types_summarizing`). Air quality is unchanged: the model flag
+  still drives it, and the `:45` / `:50` hourly parents skip the switch types.
+- **On arrival**: the CIMIS ingest calls `summarize_monitor_hours` for the hours it wrote
+  (import and finalize both). `finalize_cimis_data` also re-summarizes all of yesterday
+  (Pacific) for every station and re-rolls the finished periods, changed or not.
+- **Settle margins**: switch types use `LATE_SETTLE_MARGIN` (`schedule.py`: hour 30h,
+  day and longer 7h) because CIMIS data lands late; the summaries cache rule uses it for them.
+- **Timestamps**: readings are stamped at the START of the hour the record covers, in fixed
+  UTC-8 (`CIMIS_TZ`, `CIMIS.parse_timestamp`; hour 2400 is 23:00 of the record's date). Rows
+  ingested before this were stamped the old way (`legacy_timestamp`: end of the hour, Pacific
+  wall clock) and must be re-stamped.
+
+Order for an environment: deploy, `restamp_cimis` per station, then rebuild per station.
+
+```bash
+# 1. Re-stamp (always from the station's first stored date through today, Pacific)
+docker compose run --rm web python manage.py restamp_cimis --monitor <id> --dry-run
+docker compose run --rm web python manage.py restamp_cimis --monitor <id> [--monitor <id> ...]
+
+# 2. Build the summaries (per station, from the first CIMIS date)
+docker compose run --rm web python manage.py rebuild_summaries <first CIMIS date> <today> \
+  --monitor <id> --monitors-only
+```
+
+`restamp_cimis` (`camp/apps/monitors/cimis/restamp.py`) fetches every date first, skips and
+counts malformed records, and aborts a station when a date with stored rows comes back empty.
+One transaction per station; it rebuilds `LatestEntry`. A collision with live ingest aborts
+that station, and a re-run is safe. Dry-run the largest station first. Run it away from
+:40-:50 (the live import runs at :45); a collision may still log one `IntegrityError` in the
+live import, which its next run self-heals. There is no `--end`: the delete window ends at 00:00
+of the day after the last date, which in PST is that next day's new-style 0100 row, so a past
+end would delete an hour it never re-fetches.
+
 ## Region and Location Codes
 
 Regions are referenced publicly by `(type, external_id)` and locations by
@@ -292,6 +335,7 @@ zones are missing there; see SJVAPCD Forecast Setup).
   A period is settled once its end plus `SETTLE_MARGIN` has passed (`camp/apps/summaries/schedule.py`).
   `ROLLUP_LOCAL_TIME` there holds when each rollup runs after the period ends; a test checks
   the margins against the real crontabs, so moving a rollup past its settle time fails it.
+  Monitor summary rows (and the bulk rows) carry `sum`; region rows don't.
 - **Rollup timing**: Huey crontabs are UTC (its `utc=True` default; `DJANGO_HUEY` doesn't
   change it), so each daily-and-longer rollup is scheduled with `pacific_crontab()`
   (`camp/apps/summaries/schedule.py`): it matches both UTC hours that can hold its Pacific hour
