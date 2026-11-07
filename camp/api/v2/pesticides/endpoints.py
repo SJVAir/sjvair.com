@@ -368,9 +368,43 @@ class EntitySearch(CachedEndpointMixin, EntitySearchBase):
     cache_timeout = 60 * 5
 
 
+class SqidChoiceField(forms.CharField):
+    """
+    One of `model`'s rows by its sqid (the `id` its list endpoint returns), cleaned to the
+    instance. Not a CDPR code: sqids can be all digits, so a code can't be told from an id.
+    A value that isn't one of our ids is `invalid`; a well-formed id with no row (deleted
+    or merged) is `not_found`, so a client can show a saved filter as retired.
+    """
+
+    MAX_PK = 2**63 - 1  # BigAutoField
+
+    def __init__(self, model, **kwargs):
+        self.model = model
+        kwargs.setdefault('required', False)
+        super().__init__(**kwargs)
+
+    def clean(self, value):
+        value = super().clean(value)
+        if not value:
+            return None
+        codec = self.model._meta.get_field('sqid').sqids_instance
+        decoded = codec.decode(value)
+        # sqids decodes some other spellings to the same number; only the canonical one is an id.
+        # Past the pk column's range it can't be a row, and the lookup itself would fail.
+        if len(decoded) != 1 or decoded[0] > self.MAX_PK or codec.encode(decoded) != value:
+            raise forms.ValidationError(
+                f'Not a {self.model._meta.model_name} id.', code='invalid')
+        try:
+            return self.model.objects.get(pk=decoded[0])
+        except self.model.DoesNotExist:
+            raise forms.ValidationError(
+                f'No {self.model._meta.model_name} has this id.', code='not_found')
+
+
 class PesticidePlaceForm(forms.Form):
-    chemical = forms.IntegerField(required=False, min_value=1, max_value=2_147_483_647)
-    commodity = forms.CharField(required=False)
+    chemical = SqidChoiceField(Chemical)
+    commodity = SqidChoiceField(Commodity)
+    product = SqidChoiceField(Product)
     category = forms.ChoiceField(required=False, choices=Chemical.Category.choices)
     iarc_group = forms.ChoiceField(required=False, choices=Chemical.IARCGroup.choices)
     aerial_ground = forms.ChoiceField(required=False, choices=PesticideUse.AerialGround.choices)
@@ -380,7 +414,8 @@ class PesticidePlaceForm(forms.Form):
 
 class PesticidePlace(generics.Endpoint):
     """Monthly and yearly pesticide use for a place (?region_type= & ?region=,
-    or ?monitor=; filterable by ?chemical=, ?commodity=, ?category=,
+    or ?monitor=; filterable by ?chemical=, ?commodity=, ?product= (our ids, as the list
+    endpoints return them), ?category=,
     ?iarc_group=, ?aerial_ground=, ?year__gte=, ?year__lte=)."""
 
     @staticmethod
@@ -408,9 +443,11 @@ class PesticidePlace(generics.Endpoint):
         def build():
             rows = rollup_rows_for(place)
             if 'chemical' in filters:
-                rows = rows.filter(chemical__chem_code=filters['chemical'])
+                rows = rows.filter(chemical_id=filters['chemical'].pk)
             if 'commodity' in filters:
-                rows = rows.filter(commodity__site_code=filters['commodity'])
+                rows = rows.filter(commodity_id=filters['commodity'].pk)
+            if 'product' in filters:
+                rows = rows.filter(product_id=filters['product'].pk)
             if 'category' in filters:
                 rows = rows.filter(chemical__categories__contains=[filters['category']])
             if 'iarc_group' in filters:
@@ -425,7 +462,9 @@ class PesticidePlace(generics.Endpoint):
             multi_chemical = not chemical_scoped and ('category' in filters or 'iarc_group' in filters)
             return monthly_use(rows, chemical_scoped, multi_chemical)
 
-        key = stats.all_years_key('place', _place_key('pesticides', place), hashlib.md5(json.dumps(sorted(filters.items())).encode()).hexdigest())
+        # Instances hash by their pk, so the key doesn't depend on how an id was spelled.
+        keyed = {k: (v.pk if hasattr(v, 'pk') else v) for k, v in filters.items()}
+        key = stats.all_years_key('place', _place_key('pesticides', place), hashlib.md5(json.dumps(sorted(keyed.items())).encode()).hexdigest())
         data = stats.cached(key, build, ttl=CACHE_TIMEOUT)
 
         response = http.Http200({'data': {'place': place_json(place), **data}})

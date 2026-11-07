@@ -11,6 +11,7 @@ from django.utils import timezone
 from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.pesticides import stats
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product
+from camp.apps.pesticides.places import monthly_use, rollup_rows_for
 from camp.apps.regions.models import Boundary, Region
 
 
@@ -1872,8 +1873,20 @@ class PesticidePlaceTests(RollupTestMixin, TestCase):
         assert data['place'] == {'region': {'type': 'county', 'external_id': '06019', 'name': 'Fresno County'}}
         assert {'year': 2023, 'month': 8, 'pounds': 500.0, 'acres': 50.0, 'applications': 1} in data['months']
 
+    @staticmethod
+    def sqid(model, **lookup):
+        return model.objects.get(**lookup).sqid
+
+    @staticmethod
+    def codec(model):
+        return model._meta.get_field('sqid').sqids_instance
+
+    def assert_error(self, r, field, code):
+        assert r.status_code == 400 and r['Cache-Control'] == 'no-cache', r.content[:200]
+        assert r.json()['errors'][field][0]['code'] == code, r.json()
+
     def test_filters(self):
-        d = self.get(chemical=253, year__gte=2023).json()['data']
+        d = self.get(chemical=self.sqid(Chemical, chem_code=253), year__gte=2023).json()['data']
         assert [y['year'] for y in d['years']] == [2023] and d['years'][0]['pounds'] == 20.0
         d = self.client.get(self.url, {'region_type': 'county', 'region': '06029', 'aerial_ground': 'A', 'year__lte': 2022}).json()['data']
         assert d['years'] == [{'year': 2022, 'pounds': 60.0, 'acres': 6.0, 'applications': 1,
@@ -1888,28 +1901,49 @@ class PesticidePlaceTests(RollupTestMixin, TestCase):
 
     def test_bad_filter_values_are_400(self):
         for bad in ({'year__gte': 'abc'}, {'category': 'nope'}, {'aerial_ground': 'X'}, {'iarc_group': '9'}, {'chemical': 'x'},
-                    {'chemical': 0}, {'chemical': 2**31}, {'year__gte': 1899}, {'year__lte': 2101}, {'year__gte': 10**12}):
+                    {'year__gte': 1899}, {'year__lte': 2101}, {'year__gte': 10**12}):
             r = self.get(**bad)
             assert r.status_code == 400 and r['Cache-Control'] == 'no-cache'
             assert 'errors' in r.json()
 
-    def test_odd_commodity_values_answer_200_with_safe_keys(self):
+    def test_odd_id_values_are_invalid(self):
         for value in ('a b', 'x' * 300, 'tab\there'):
-            keys = []
-            real = stats.cached
+            self.assert_error(self.get(commodity=value), 'commodity', 'invalid')
 
-            def spy(key, build, ttl=None, _real=real, _keys=keys):
-                _keys.append(key)
-                return _real(key, build, ttl=ttl) if ttl is not None else _real(key, build)
+    def test_codes_are_refused(self):
+        # CDPR codes are not our ids: a digit string may decode to some id, but never
+        # silently answers as the code's chemical or product.
+        for field, model, code in (('chemical', Chemical, 253), ('product', Product, Product.objects.first().prodno)):
+            r = self.get(**{field: code})
+            assert r.status_code == 400, (field, r.content[:200])
+            assert r.json()['errors'][field][0]['code'] in ('invalid', 'not_found')
 
-            with patch('camp.api.v2.pesticides.endpoints.stats.cached', spy):
-                r = self.get(commodity=value)
-            assert r.status_code == 200, value
-            data = r.json()['data']
-            assert data['months'] == [] and data['years'] == []
-            assert len(keys) == 1, value
-            assert list(memcache_key_warnings(keys[0])) == [], value
-            assert len(keys[0]) < 250, value
+    def test_unknown_id_is_not_found(self):
+        for field, model in (('chemical', Chemical), ('commodity', Commodity), ('product', Product)):
+            gone = self.codec(model).encode([model.objects.order_by('-pk')[0].pk + 1000])
+            self.assert_error(self.get(**{field: gone}), field, 'not_found')
+
+    def test_id_spellings(self):
+        sqid = self.sqid(Chemical, chem_code=253)
+        assert self.get(chemical=f' {sqid} ').json()['data'] == self.get(chemical=sqid).json()['data']
+        codec = self.codec(Chemical)
+        for char in Chemical._meta.get_field('sqid').alphabet:
+            odd = sqid + char
+            decoded = codec.decode(odd)
+            if decoded and codec.encode(decoded) != odd:
+                self.assert_error(self.get(chemical=odd), 'chemical', 'invalid')
+                break
+        else:
+            pytest.skip('no non-canonical spelling of this id decodes')
+
+    def test_commodity_and_product_filter(self):
+        place = Region.all_objects.get(type='county', external_id='06019')
+        rows = rollup_rows_for(place)
+        for field, model in (('commodity', Commodity), ('product', Product)):
+            for obj in model.objects.all():
+                expected = monthly_use(rows.filter(**{field: obj}), False, False)
+                data = self.get(**{field: obj.sqid}).json()['data']
+                assert data['years'] == expected['years'] and data['months'] == expected['months'], (field, obj.pk)
 
     def test_blank_filters_ignored(self):
         plain = self.get().json()['data']
