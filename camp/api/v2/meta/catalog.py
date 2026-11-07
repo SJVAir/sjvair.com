@@ -49,6 +49,10 @@ DISPLAY_OVERRIDES = {
     'fire-frp': (1, 'bar', 0),
     'ces-score': (1, 'bar', 0),
     'methane-emission-rate': (1, 'line', 0),
+    # Weather totals in inches: bars from zero, to the hundredth.
+    'precipitation': (2, 'bar', 0),
+    'eto': (2, 'bar', 0),
+    'etr': (2, 'bar', 0),
     'smoke-density': (None, None, None),
     'burn-status': (None, None, None),
 }

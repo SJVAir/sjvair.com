@@ -119,6 +119,10 @@ class DatasetCatalogTests(TestCase):
         assert self.entry('air-quality', 'pm25')['display'] == {'precision': 1, 'chart': 'line', 'y_min': 0}
         assert self.entry('air-quality', 'particulates')['display'] == {'precision': 0, 'chart': 'line', 'y_min': 0}
         assert self.entry('weather', 'temperature')['display'] == {'precision': 1, 'chart': 'line', 'y_min': None}
+        # Totals in inches: bars from zero, hundredths.
+        for entry_id in ('precipitation', 'eto', 'etr'):
+            assert self.entry('weather', entry_id)['display'] == {'precision': 2, 'chart': 'bar', 'y_min': 0}, entry_id
+        assert self.entry('weather', 'humidity')['display'] == {'precision': 1, 'chart': 'line', 'y_min': None}
         assert self.entry('calheatscore', 'heat-score')['display'] == {'precision': 0, 'chart': 'bar', 'y_min': 0}
         assert self.entry('hms-fire', 'fire-frp')['display'] == {'precision': 1, 'chart': 'bar', 'y_min': 0}
         assert self.entry('emissions', 'facility-nox')['display'] == {'precision': 1, 'chart': 'bar', 'y_min': 0}

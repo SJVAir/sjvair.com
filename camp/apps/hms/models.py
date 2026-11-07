@@ -25,6 +25,7 @@ class Smoke(models.Model):
 
     class Meta:
         ordering = ('-date',)
+        indexes = [models.Index(fields=['date'])]
 
 
 class Fire(models.Model):
