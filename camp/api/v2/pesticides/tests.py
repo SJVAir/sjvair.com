@@ -11,7 +11,9 @@ from django.utils import timezone
 from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.pesticides import stats
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product
+from camp.apps.pesticides.models import PesticideUseRollup
 from camp.apps.pesticides.places import monthly_use, rollup_rows_for
+from camp.api.v2.pesticides.endpoints import counting_mode
 from camp.apps.regions.models import Boundary, Region
 
 
@@ -1944,6 +1946,76 @@ class PesticidePlaceTests(RollupTestMixin, TestCase):
                 expected = monthly_use(rows.filter(**{field: obj}), False, False)
                 data = self.get(**{field: obj.sqid}).json()['data']
                 assert data['years'] == expected['years'] and data['months'] == expected['months'], (field, obj.pk)
+
+    def county_rows(self):
+        return rollup_rows_for(Region.all_objects.get(type='county', external_id='06019'))
+
+    def test_counting_mode(self):
+        chem, prod = object(), object()
+        for filters, expected in (
+            ({'chemical': chem}, (True, False)),
+            ({'chemical': chem, 'narrow': 'concern'}, (True, False)),
+            ({'chemical': chem, 'category': ['carcinogen']}, (True, False)),
+            ({'category': ['carcinogen']}, (False, True)),
+            ({'iarc_group': '2A'}, (False, True)),
+            ({'product': prod, 'category': ['carcinogen']}, (False, True)),
+            ({'product': prod}, (False, False)),
+            ({'narrow': 'concern'}, (False, False)),
+            ({'narrow': 'restricted'}, (False, False)),
+            ({'narrow': 'fumigant'}, (False, False)),
+            ({'narrow': 'aerial'}, (False, False)),
+            ({'commodity': object()}, (False, False)),
+            ({'aerial_ground': 'G'}, (False, False)),
+            ({}, (False, False)),
+        ):
+            assert counting_mode(filters) == expected, filters
+
+    def test_narrow_matches_stats(self):
+        for narrow in sorted(stats.NARROW_VALUES):
+            expected = monthly_use(stats.narrow_rows(self.county_rows(), narrow), False, False)
+            data = self.get(narrow=narrow).json()['data']
+            assert data['years'] == expected['years'] and data['months'] == expected['months'], narrow
+
+    def test_unknown_narrow_is_400(self):
+        self.assert_error(self.get(narrow='nope'), 'narrow', 'invalid')
+
+    def test_several_categories_overlap(self):
+        cats = ['carcinogen', 'toxic_air_contaminant']
+        expected = monthly_use(self.county_rows().filter(chemical__categories__overlap=cats), False, True)
+        data = self.client.get(self.url, {**self.params, 'category': cats}).json()['data']
+        assert data['years'] == expected['years'] and data['months'] == expected['months']
+        assert data['years'] != self.get(category='carcinogen').json()['data']['years']
+        one = monthly_use(self.county_rows().filter(chemical__categories__contains=['carcinogen']), False, True)
+        assert self.get(category='carcinogen').json()['data']['years'] == one['years']
+
+    def test_category_forms_share_cache_key(self):
+        keys = []
+        real = stats.cached
+
+        def spy(key, build, ttl=None):
+            keys.append(key)
+            return real(key, build, ttl=ttl)
+
+        with patch('camp.api.v2.pesticides.endpoints.stats.cached', spy):
+            for query in ('category=carcinogen,toxic_air_contaminant',
+                          'category=toxic_air_contaminant&category=carcinogen',
+                          'category=carcinogen,,toxic_air_contaminant'):
+                assert self.client.get(f'{self.url}?region_type=county&region=06019&{query}').status_code == 200
+        assert len(keys) == 3 and len(set(keys)) == 1
+        r = self.get(category='carcinogen,nope')
+        self.assert_error(r, 'category', 'invalid')
+        assert 'nope' in r.json()['errors']['category'][0]['message']
+
+    def test_aerial_ground_none(self):
+        row = self.county_rows().first()
+        PesticideUseRollup.objects.create(
+            year=2023, month=9, county=row.county, mtrs=row.mtrs, chemical=row.chemical,
+            product=row.product, commodity=row.commodity, method='', lbs_chemical=7,
+            acres_treated=2, applications=1, records=1, acres_once=2)
+        expected = monthly_use(self.county_rows().filter(method=''), False, False)
+        data = self.get(aerial_ground='none').json()['data']
+        assert data['years'] == expected['years'] and data['years']
+        assert self.get(aerial_ground='G').json()['data']['years'] != data['years']
 
     def test_blank_filters_ignored(self):
         plain = self.get().json()['data']
