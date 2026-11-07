@@ -242,7 +242,12 @@ zones are missing there; see SJVAPCD Forecast Setup).
   scale level's color and label, computed from `aqi_value`; the stored `aqi_category` is only
   for the admin.
 - **Catalog** (`meta/datasets/`): each entry type has `display` hints (`precision`, `chart`,
-  `y_min`); `burn-status` is an entry type of the forecasts dataset.
+  `y_min`) and a top-level `aggregate`: how its values roll up over time, `sum` (weather
+  precipitation/eto/etr, pesticide use, spray notices), `mean` (other monitor types, TEMPO), or
+  `null` (never: wind direction, scores, categories, forecasts, fire, emissions). Clients read it,
+  not `chart`, to pick the summary statistic. Monitor types are `mean` unless listed in
+  `MONITOR_AGGREGATE_OVERRIDES`; static entry types state theirs. `burn-status` is an entry type
+  of the forecasts dataset.
   Each dataset has a `places_url` (`''` when none). `settings.MONITOR_OPT_IN_TYPES`
   (`{'cimis': 'weather'}`) holds types left out of `MONITOR_ENABLED_TYPES` that
   `monitors/?dataset=<id>` still lists (non-hidden, then `MonitorFilter`); `air-quality` is
