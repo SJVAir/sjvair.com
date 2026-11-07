@@ -229,7 +229,11 @@ zones are missing there; see SJVAPCD Forecast Setup).
   `source`); `guidance` is SJVAir's own and is `""` for AQ Good and heat Low.
 - **Domain meta endpoints** (each a catalog `meta_url`): `calheatscore/meta/`, `hms/meta/` and
   `forecasts/meta/` return scales keyed by catalog entry-type id (forecasts also lists the
-  zones with their regions). `monitors/meta/` adds a `scale` per entry type plus `stages` and
+  zones with their regions). `pesticides/meta/` lists `categories` (with `in_use`),
+  `iarc_groups`, `methods` (the use records' G/A/F/O/none, not SprayDays' notice methods),
+  `narrows` and `placeholder_chemicals`; it's both pesticide datasets' `meta_url`. The
+  pesticide entity search (`pesticides/search/`) returns one page plus `more`, and a
+  `placeholder` flag on chemical results. `monitors/meta/` adds a `scale` per entry type plus `stages` and
   `processors` labels. It no longer serves the legacy `levels` dict; `scale` is the only level
   format. Each entry type has `school_guidelines` (null except `pm25`), defined in
   `camp/apps/entries/guidelines.py`: activity keys are permanent, the text is verbatim from the
@@ -277,10 +281,21 @@ zones are missing there; see SJVAPCD Forecast Setup).
   `county=`, other regions by the MTRS sections they touch, monitors by their ZIP. Month 0
   (undated records) appears only in `years[].undated` and is included in the year totals.
   Acres and applications count each record once: per-ingredient columns with `chemical`,
-  MAX per record key (product, commodity, method, section, month) with `category`/`iarc_group`, `records`/`acres_once` otherwise. Optional
-  filters `chemical` (CDPR chem code), `commodity` (site code), `category`, `iarc_group`,
-  `aerial_ground`, `year__gte`, `year__lte` (1900-2100); bounds are enforced and an invalid
-  value is a 400 (`no-cache`, as are place errors). 200s are `public, max-age=3600`. Answers
+  MAX per record key (product, commodity, method, section, month) with `category`/`iarc_group`,
+  `records`/`acres_once` otherwise (product, commodity, method, any `narrow`; `counting_mode`
+  in the endpoint). Placeholder chemicals (UNKNOWN, AI IS CONFIDENTIAL) carry no pounds; their
+  records count in applications and acres. Optional filters:
+  - `chemical`, `commodity`, `product`: our sqids (the list endpoints' `id`), never CDPR
+    codes. Sqids can be all digits, so a code can't be told from an id. A value that isn't
+    an id is a 400 with code `invalid`; a well-formed id with no row is `not_found`.
+  - `category`: repeated or comma-separated, any of them (OR). `narrow`: one of `concern`,
+    `restricted`, `fumigant`, `aerial` (`stats.narrow_rows`; restricted and fumigant are
+    product properties, unlike the same-named categories).
+  - `iarc_group`, `aerial_ground` (`none` = not reported), `year__gte`, `year__lte`
+    (1900-2100).
+
+  Bounds are enforced, and an invalid value is a 400 whose field errors carry `invalid`
+  (`no-cache`, as are place errors). 200s are `public, max-age=3600`. Answers
   are also cached server-side for 24h under the pesticides data version (an import retires
   them), with the filters hashed into the key. A monitor outside every ZIP gets empty lists.
 - **Regions**: `regions/?within=...&within_mode=overlaps` (also the geojson variant) keeps
