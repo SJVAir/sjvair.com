@@ -134,6 +134,39 @@ class DatasetCatalogTests(TestCase):
         assert applications['display'] == {'precision': 0, 'chart': 'bar', 'y_min': 0}
         assert applications['units'] == 'applications' and applications['label'] == 'Applications'
 
+    def test_every_entry_type_has_aggregate(self):
+        for dataset in self.get()['datasets']:
+            for entry in dataset['entry_types']:
+                assert 'aggregate' in entry, entry['id']
+                assert entry['aggregate'] in ('sum', 'mean', None), entry['id']
+
+    def test_aggregate_values(self):
+        sums = {
+            'weather': ['precipitation', 'eto', 'etr'],
+            'pesticide-use': ['pounds-applied', 'acres-treated', 'applications'],
+            'pesticide-notices': ['spray-notice'],
+        }
+        nulls = {
+            'weather': ['winddirection'],
+            'hms-smoke': ['smoke-density'],
+            'hms-fire': ['fire-frp'],
+            'forecasts': ['aqi-forecast', 'burn-status'],
+            'calheatscore': ['heat-score'],
+            'calenviroscreen': ['ces-score'],
+            'emissions': catalog.dataset_entry_types('emissions'),
+        }
+        for dataset in self.get()['datasets']:
+            for entry in dataset['entry_types']:
+                if entry['id'] in sums.get(dataset['id'], []):
+                    expected = 'sum'
+                elif entry['id'] in nulls.get(dataset['id'], []):
+                    expected = None
+                else:
+                    # Air quality, the rest of weather, and TEMPO.
+                    assert dataset['id'] in ('air-quality', 'weather', 'tempo'), (dataset['id'], entry['id'])
+                    expected = 'mean'
+                assert entry['aggregate'] == expected, (dataset['id'], entry['id'])
+
     def test_meta_urls(self):
         by_id = {d['id']: d for d in self.get()['datasets']}
         assert by_id['hms-smoke']['meta_url'] == reverse('api:v2:hms:hms-meta')

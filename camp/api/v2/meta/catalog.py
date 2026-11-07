@@ -59,6 +59,19 @@ DISPLAY_OVERRIDES = {
 }
 
 
+# How an entry's values roll up over time: 'sum' (totals add up), 'mean'
+# (they average), or None (they never roll up: scores, categories, forecasts,
+# single detections). Monitor entry types are 'mean' unless listed here;
+# every static entry type states its own.
+MONITOR_AGGREGATE_OVERRIDES = {
+    'precipitation': 'sum',
+    'eto': 'sum',
+    'etr': 'sum',
+    # A plain average of compass degrees is wrong (350 and 10 give 180).
+    'winddirection': None,
+}
+
+
 # TEMPO ids (no2, ...) share names with monitor entry types, so they carry their own.
 TEMPO_DISPLAY = {'precision': None, 'chart': 'line', 'y_min': None}
 
@@ -73,26 +86,27 @@ def display_for(entry_id, kind):
     return {'precision': precision, 'chart': chart, 'y_min': y_min}
 
 
-def _entry(id, label, kind, units, resolutions, display=None, **extra):
+def _entry(id, label, kind, units, resolutions, aggregate, display=None, **extra):
     return {
         'id': id,
         'label': str(label),
         'kind': kind,
         'units': units,
         'resolutions': resolutions,
+        'aggregate': aggregate,
         'display': display or display_for(id, kind),
         'retired': None,
         **extra,
     }
 
 
-def _other(id, label, units, resolutions):
-    return _entry(id, label, 'other', units, resolutions)
+def _other(id, label, units, resolutions, aggregate):
+    return _entry(id, label, 'other', units, resolutions, aggregate)
 
 
-def _from_scale(scale, resolutions):
+def _from_scale(scale, resolutions, aggregate):
     """An entry type whose label and units come from its domain scale."""
-    return _other(scale.id, scale.label, scale.units, resolutions)
+    return _other(scale.id, scale.label, scale.units, resolutions, aggregate)
 
 
 def _dataset(id, label, description, source, license, geographies, entry_types, meta_url=None, places_url=''):
@@ -119,14 +133,14 @@ STATIC_DATASETS = {
         'hms-smoke', 'Wildfire Smoke',
         'Daily smoke plume outlines and density from satellite imagery.',
         'NOAA Hazard Mapping System', 'Public domain', ['polygon'],
-        [_from_scale(get_smoke_scale(), ['day'])],
+        [_from_scale(get_smoke_scale(), ['day'], None)],
         meta_url=lambda: reverse('api:v2:hms:hms-meta'),
     ),
     'hms-fire': lambda: _dataset(
         'hms-fire', 'Fire Detections',
         'Satellite-detected active fire points with fire radiative power.',
         'NOAA Hazard Mapping System', 'Public domain', ['point'],
-        [_from_scale(get_fire_scale(), ['raw'])],
+        [_from_scale(get_fire_scale(), ['raw'], None)],
         meta_url=lambda: reverse('api:v2:hms:hms-meta'),
     ),
     'pesticide-use': lambda: _dataset(
@@ -134,9 +148,9 @@ STATIC_DATASETS = {
         'Reported agricultural pesticide applications, summed by region.',
         'California DPR Pesticide Use Reporting (PUR)', '', ['region'],
         [
-            _other('pounds-applied', 'Pounds Applied', 'lbs', ['month', 'year']),
-            _other('acres-treated', 'Acres Treated', 'acres', ['month', 'year']),
-            _other('applications', 'Applications', 'applications', ['month', 'year']),
+            _other('pounds-applied', 'Pounds Applied', 'lbs', ['month', 'year'], 'sum'),
+            _other('acres-treated', 'Acres Treated', 'acres', ['month', 'year'], 'sum'),
+            _other('applications', 'Applications', 'applications', ['month', 'year'], 'sum'),
         ],
         meta_url=lambda: reverse('api:v2:pesticides:pesticides-meta'),
     ),
@@ -144,7 +158,7 @@ STATIC_DATASETS = {
         'pesticide-notices', 'Pesticide Spray Notices',
         'Advance notices of planned restricted-use pesticide applications.',
         'SprayDays (California DPR)', '', ['point'],
-        [_other('spray-notice', 'Spray Notices', '', ['day'])],
+        [_other('spray-notice', 'Spray Notices', '', ['day'], 'sum')],
         meta_url=lambda: reverse('api:v2:pesticides:pesticides-meta'),
     ),
     'forecasts': lambda: _dataset(
@@ -152,8 +166,8 @@ STATIC_DATASETS = {
         'Daily air quality index forecasts for each forecast zone.',
         'San Joaquin Valley Air Pollution Control District', '', ['zone'],
         [
-            _from_scale(get_aqi_forecast_scale(), ['day']),
-            _from_scale(get_burn_status_scale(), ['day']),
+            _from_scale(get_aqi_forecast_scale(), ['day'], None),
+            _from_scale(get_burn_status_scale(), ['day'], None),
         ],
         meta_url=lambda: reverse('api:v2:forecasts:forecast-meta'),
     ),
@@ -161,23 +175,23 @@ STATIC_DATASETS = {
         'calheatscore', 'CalHeatScore',
         'Daily heat health risk score by ZIP code.',
         'OEHHA CalHeatScore', '', ['zip'],
-        [_from_scale(get_heat_scale(), ['day'])],
+        [_from_scale(get_heat_scale(), ['day'], None)],
         meta_url=lambda: reverse('api:v2:calheatscore:calheatscore-meta'),
     ),
     'calenviroscreen': lambda: _dataset(
         'calenviroscreen', 'CalEnviroScreen',
         'Cumulative pollution burden and vulnerability percentile by census tract.',
         'OEHHA CalEnviroScreen', '', ['tract'],
-        [_other('ces-score', 'CalEnviroScreen Score', 'percentile', [])],
+        [_other('ces-score', 'CalEnviroScreen Score', 'percentile', [], None)],
     ),
     'emissions': lambda: _dataset(
         'emissions', 'Emissions',
         'Annual facility emissions of criteria pollutants and ammonia, and satellite-detected methane source rates.',
         'CARB CEIDARS facility inventory, Carbon Mapper', '', ['point', 'region'],
         [
-            *(_other(f'facility-{p.key}', f'{p.label} (facilities)', p.unit_label, ['year'])
+            *(_other(f'facility-{p.key}', f'{p.label} (facilities)', p.unit_label, ['year'], None)
               for p in FACILITY_POLLUTANTS),
-            _other('methane-emission-rate', 'Methane Emission Rate', 'kg/h', ['raw']),
+            _other('methane-emission-rate', 'Methane Emission Rate', 'kg/h', ['raw'], None),
         ],
     ),
     'tempo': lambda: _dataset(
@@ -185,7 +199,7 @@ STATIC_DATASETS = {
         'Hourly satellite column measurements over the San Joaquin Valley.',
         'NASA TEMPO', 'Public domain', ['point', 'region'],
         [
-            _entry(product.value, product.label, kind, TEMPO_UNITS[product], ['hour'], display=TEMPO_DISPLAY)
+            _entry(product.value, product.label, kind, TEMPO_UNITS[product], ['hour'], 'mean', display=TEMPO_DISPLAY)
             for product, kind in TEMPO_KINDS.items()
         ],
     ),
@@ -245,6 +259,7 @@ def _monitor_entry_types(weather):
             kind,
             entry_model.units or '',
             SUMMARIZED if any(is_summarized(m, entry_model) for m in producers[entry_model.entry_type]) else RAW_ONLY,
+            MONITOR_AGGREGATE_OVERRIDES.get(entry_model.entry_type, 'mean'),
             **extra,
         ))
     return entry_types

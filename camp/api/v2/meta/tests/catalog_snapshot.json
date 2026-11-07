@@ -4,6 +4,7 @@
    "description": "Air quality measurements from SJVAir sensors and partner monitoring networks.",
    "entry_types": [
     {
+     "aggregate": "mean",
      "available": false,
      "display": {
       "chart": "line",
@@ -26,6 +27,7 @@
      "units": "ppm"
     },
     {
+     "aggregate": "mean",
      "available": false,
      "display": {
       "chart": "line",
@@ -42,6 +44,7 @@
      "units": "ppm"
     },
     {
+     "aggregate": "mean",
      "display": {
       "chart": "line",
       "precision": 1,
@@ -57,6 +60,7 @@
      "units": "%"
     },
     {
+     "aggregate": "mean",
      "available": false,
      "display": {
       "chart": "line",
@@ -79,6 +83,7 @@
      "units": "ppb"
     },
     {
+     "aggregate": "mean",
      "available": true,
      "display": {
       "chart": "line",
@@ -101,6 +106,7 @@
      "units": "ppb"
     },
     {
+     "aggregate": "mean",
      "display": {
       "chart": "line",
       "precision": 0,
@@ -116,6 +122,7 @@
      "units": ""
     },
     {
+     "aggregate": "mean",
      "available": false,
      "display": {
       "chart": "line",
@@ -132,6 +139,7 @@
      "units": "µg/m³"
     },
     {
+     "aggregate": "mean",
      "available": false,
      "display": {
       "chart": "line",
@@ -148,6 +156,7 @@
      "units": "µg/m³"
     },
     {
+     "aggregate": "mean",
      "available": true,
      "display": {
       "chart": "line",
@@ -170,6 +179,7 @@
      "units": "µg/m³"
     },
     {
+     "aggregate": "mean",
      "display": {
       "chart": "line",
       "precision": 1,
@@ -185,6 +195,7 @@
      "units": "mmHg"
     },
     {
+     "aggregate": "mean",
      "available": false,
      "display": {
       "chart": "line",
@@ -207,6 +218,7 @@
      "units": "ppb"
     },
     {
+     "aggregate": "mean",
      "display": {
       "chart": "line",
       "precision": 1,
@@ -238,6 +250,7 @@
    "description": "Hourly weather observations from agricultural weather stations.",
    "entry_types": [
     {
+     "aggregate": "mean",
      "display": {
       "chart": "line",
       "precision": 1,
@@ -259,6 +272,7 @@
      "units": "°F"
     },
     {
+     "aggregate": "sum",
      "display": {
       "chart": "bar",
       "precision": 2,
@@ -280,6 +294,7 @@
      "units": "in"
     },
     {
+     "aggregate": "sum",
      "display": {
       "chart": "bar",
       "precision": 2,
@@ -301,6 +316,7 @@
      "units": "in"
     },
     {
+     "aggregate": "mean",
      "display": {
       "chart": "line",
       "precision": 1,
@@ -322,6 +338,7 @@
      "units": "%"
     },
     {
+     "aggregate": "mean",
      "display": {
       "chart": "line",
       "precision": 1,
@@ -343,6 +360,7 @@
      "units": "W/m²"
     },
     {
+     "aggregate": "sum",
      "display": {
       "chart": "bar",
       "precision": 2,
@@ -364,6 +382,7 @@
      "units": "in"
     },
     {
+     "aggregate": "mean",
      "display": {
       "chart": "line",
       "precision": 1,
@@ -385,6 +404,7 @@
      "units": "°F"
     },
     {
+     "aggregate": "mean",
      "display": {
       "chart": "line",
       "precision": 1,
@@ -406,6 +426,7 @@
      "units": "W/m²"
     },
     {
+     "aggregate": "mean",
      "display": {
       "chart": "line",
       "precision": 1,
@@ -427,6 +448,7 @@
      "units": "°F"
     },
     {
+     "aggregate": "mean",
      "display": {
       "chart": "line",
       "precision": 1,
@@ -448,6 +470,7 @@
      "units": "kPa"
     },
     {
+     "aggregate": null,
      "display": {
       "chart": "line",
       "precision": 1,
@@ -463,6 +486,7 @@
      "units": "°"
     },
     {
+     "aggregate": "mean",
      "display": {
       "chart": "line",
       "precision": 1,
@@ -499,6 +523,7 @@
    "description": "Daily smoke plume outlines and density from satellite imagery.",
    "entry_types": [
     {
+     "aggregate": null,
      "display": {
       "chart": null,
       "precision": null,
@@ -529,6 +554,7 @@
    "description": "Satellite-detected active fire points with fire radiative power.",
    "entry_types": [
     {
+     "aggregate": null,
      "display": {
       "chart": "bar",
       "precision": 1,
@@ -559,6 +585,7 @@
    "description": "Reported agricultural pesticide applications, summed by region.",
    "entry_types": [
     {
+     "aggregate": "sum",
      "display": {
       "chart": "bar",
       "precision": 0,
@@ -575,6 +602,7 @@
      "units": "lbs"
     },
     {
+     "aggregate": "sum",
      "display": {
       "chart": "bar",
       "precision": 0,
@@ -591,6 +619,7 @@
      "units": "acres"
     },
     {
+     "aggregate": "sum",
      "display": {
       "chart": "bar",
       "precision": 0,
@@ -622,6 +651,7 @@
    "description": "Advance notices of planned restricted-use pesticide applications.",
    "entry_types": [
     {
+     "aggregate": "sum",
      "display": {
       "chart": "bar",
       "precision": 0,
@@ -652,6 +682,7 @@
    "description": "Daily air quality index forecasts for each forecast zone.",
    "entry_types": [
     {
+     "aggregate": null,
      "display": {
       "chart": "bar",
       "precision": 0,
@@ -667,6 +698,7 @@
      "units": "AQI"
     },
     {
+     "aggregate": null,
      "display": {
       "chart": null,
       "precision": null,
@@ -697,6 +729,7 @@
    "description": "Daily heat health risk score by ZIP code.",
    "entry_types": [
     {
+     "aggregate": null,
      "display": {
       "chart": "bar",
       "precision": 0,
@@ -727,6 +760,7 @@
    "description": "Cumulative pollution burden and vulnerability percentile by census tract.",
    "entry_types": [
     {
+     "aggregate": null,
      "display": {
       "chart": "bar",
       "precision": 1,
@@ -755,6 +789,7 @@
    "description": "Annual facility emissions of criteria pollutants and ammonia, and satellite-detected methane source rates.",
    "entry_types": [
     {
+     "aggregate": null,
      "display": {
       "chart": "bar",
       "precision": 1,
@@ -770,6 +805,7 @@
      "units": "tons/yr"
     },
     {
+     "aggregate": null,
      "display": {
       "chart": "bar",
       "precision": 1,
@@ -785,6 +821,7 @@
      "units": "tons/yr"
     },
     {
+     "aggregate": null,
      "display": {
       "chart": "bar",
       "precision": 1,
@@ -800,6 +837,7 @@
      "units": "tons/yr"
     },
     {
+     "aggregate": null,
      "display": {
       "chart": "bar",
       "precision": 1,
@@ -815,6 +853,7 @@
      "units": "tons/yr"
     },
     {
+     "aggregate": null,
      "display": {
       "chart": "bar",
       "precision": 1,
@@ -830,6 +869,7 @@
      "units": "tons/yr"
     },
     {
+     "aggregate": null,
      "display": {
       "chart": "bar",
       "precision": 1,
@@ -845,6 +885,7 @@
      "units": "tons/yr"
     },
     {
+     "aggregate": null,
      "display": {
       "chart": "bar",
       "precision": 1,
@@ -860,6 +901,7 @@
      "units": "tons/yr"
     },
     {
+     "aggregate": null,
      "display": {
       "chart": "bar",
       "precision": 1,
@@ -875,6 +917,7 @@
      "units": "tons/yr"
     },
     {
+     "aggregate": null,
      "display": {
       "chart": "line",
       "precision": 1,
@@ -906,6 +949,7 @@
    "description": "Hourly satellite column measurements over the San Joaquin Valley.",
    "entry_types": [
     {
+     "aggregate": "mean",
      "display": {
       "chart": "line",
       "precision": null,
@@ -921,6 +965,7 @@
      "units": "molecules/cm²"
     },
     {
+     "aggregate": "mean",
      "display": {
       "chart": "line",
       "precision": null,
@@ -936,6 +981,7 @@
      "units": "molecules/cm²"
     },
     {
+     "aggregate": "mean",
      "display": {
       "chart": "line",
       "precision": null,
@@ -951,6 +997,7 @@
      "units": "molecules/cm²"
     },
     {
+     "aggregate": "mean",
      "display": {
       "chart": "line",
       "precision": null,
