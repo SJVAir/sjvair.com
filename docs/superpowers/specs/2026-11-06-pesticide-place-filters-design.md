@@ -171,7 +171,7 @@ All filters combine with AND.
 - **They carry no pounds.** The `PLACEHOLDER_CODES` comment says so; locally they have 0 lbs,
   but 389,065 records and 17.6 M acres. So the decision is about **applications and acres**.
 - Their records **stay** in `place/`'s applications and acres: they're real applications whose
-  active ingredient CDPR doesn't name. [USER DECISION PENDING: confirm]
+  active ingredient CDPR doesn't name. The user confirmed this on 2026-11-06.
 - `ChemicalSerializer` gains `placeholder` (`chemical.is_placeholder`). It's additive.
   Everything that nests the serializer (lists, details, region summaries) gets it. No explorer
   reads it.
