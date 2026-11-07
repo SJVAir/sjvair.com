@@ -45,6 +45,7 @@ DISPLAY_OVERRIDES = {
     'aqi-forecast': (0, 'bar', 0),
     'pounds-applied': (0, 'bar', 0),
     'acres-treated': (0, 'bar', 0),
+    'applications': (0, 'bar', 0),
     'spray-notice': (0, 'bar', 0),
     'fire-frp': (1, 'bar', 0),
     'ces-score': (1, 'bar', 0),
@@ -135,13 +136,16 @@ STATIC_DATASETS = {
         [
             _other('pounds-applied', 'Pounds Applied', 'lbs', ['month', 'year']),
             _other('acres-treated', 'Acres Treated', 'acres', ['month', 'year']),
+            _other('applications', 'Applications', 'applications', ['month', 'year']),
         ],
+        meta_url=lambda: reverse('api:v2:pesticides:pesticides-meta'),
     ),
     'pesticide-notices': lambda: _dataset(
         'pesticide-notices', 'Pesticide Spray Notices',
         'Advance notices of planned restricted-use pesticide applications.',
         'SprayDays (California DPR)', '', ['point'],
         [_other('spray-notice', 'Spray Notices', '', ['day'])],
+        meta_url=lambda: reverse('api:v2:pesticides:pesticides-meta'),
     ),
     'forecasts': lambda: _dataset(
         'forecasts', 'Air Quality Forecasts',

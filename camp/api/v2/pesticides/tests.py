@@ -2107,3 +2107,46 @@ class PesticidePlaceTests(RollupTestMixin, TestCase):
         second = self.get().json()['data']
         assert next(y for y in first['years'] if y['year'] == 2023)['pounds'] == 670.0
         assert next(y for y in second['years'] if y['year'] == 2023)['pounds'] == 170.0
+
+
+class PesticidesMetaTests(TestCase):
+    def setUp(self):
+        self.url = reverse('api:v2:pesticides:pesticides-meta')
+
+    def get(self):
+        r = self.client.get(self.url)
+        assert r.status_code == 200 and r['Cache-Control'] == 'public, max-age=86400'
+        return r.json()['data']
+
+    def test_shape(self):
+        from camp.apps.pesticides import notes
+        data = self.get()
+        assert set(data) == {'categories', 'iarc_groups', 'methods', 'narrows', 'placeholder_chemicals'}
+        categories = data['categories']
+        assert [c['key'] for c in categories] == list(Chemical.Category.values)
+        assert {c['key'] for c in categories if not c['in_use']} == {
+            'biopesticide', 'cholinesterase_inhibitor', 'groundwater_contaminant', 'oil'}
+        by_key = {c['key']: c for c in categories}
+        assert by_key['carcinogen']['label'] == 'Carcinogen'
+        assert by_key['carcinogen']['description'] == notes.note('prop65')['summary']
+        assert by_key['toxic_air_contaminant']['description'] == notes.note('carb_tac')['summary']
+        assert by_key['fumigant']['description'] == notes.note('fumigant')['summary']
+        assert all(c['description'] for c in categories)
+        iarc = {g['key']: g for g in data['iarc_groups']}
+        assert list(iarc) == ['1', '2A', '2B', '3']
+        assert iarc['2A'] == {'key': '2A', 'label': 'Group 2A', 'description': 'Probably carcinogenic to humans'}
+        assert [(m['key'], m['label']) for m in data['methods']] == [
+            ('G', 'Ground'), ('A', 'Air'), ('F', 'Field fumigation'), ('O', 'Other'), ('none', 'Not reported')]
+        narrows = {n['key']: n for n in data['narrows']}
+        assert list(narrows) == ['concern', 'restricted', 'fumigant', 'aerial']
+        assert narrows['concern']['label'] == 'Flagged chemicals'
+        assert narrows['aerial']['description'] == stats.NARROW_HELP['aerial']
+        assert all(n['description'] for n in narrows.values())
+        assert data['placeholder_chemicals'] == []
+
+    def test_placeholder_chemicals(self):
+        unknown = Chemical.objects.create(chem_code=-1, name='UNKNOWN')
+        confidential = Chemical.objects.create(chem_code=-2, name='AI IS CONFIDENTIAL')
+        Chemical.objects.create(chem_code=5, name='OTHER')
+        assert self.get()['placeholder_chemicals'] == [
+            {'id': confidential.sqid, 'name': 'AI IS CONFIDENTIAL'}, {'id': unknown.sqid, 'name': 'UNKNOWN'}]

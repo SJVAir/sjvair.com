@@ -589,6 +589,22 @@
      ],
      "retired": null,
      "units": "acres"
+    },
+    {
+     "display": {
+      "chart": "bar",
+      "precision": 0,
+      "y_min": 0
+     },
+     "id": "applications",
+     "kind": "other",
+     "label": "Applications",
+     "resolutions": [
+      "month",
+      "year"
+     ],
+     "retired": null,
+     "units": "applications"
     }
    ],
    "geographies": [
@@ -597,7 +613,7 @@
    "id": "pesticide-use",
    "label": "Pesticide Use",
    "license": "",
-   "meta_url": "",
+   "meta_url": "/api/2.0/pesticides/meta/",
    "places_url": "",
    "retired": null,
    "source": "California DPR Pesticide Use Reporting (PUR)"
@@ -627,7 +643,7 @@
    "id": "pesticide-notices",
    "label": "Pesticide Spray Notices",
    "license": "",
-   "meta_url": "",
+   "meta_url": "/api/2.0/pesticides/meta/",
    "places_url": "",
    "retired": null,
    "source": "SprayDays (California DPR)"
