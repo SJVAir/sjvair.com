@@ -1247,6 +1247,23 @@ class EntitySearchTests(RollupTestMixin, TestCase):
         assert response.status_code == 200
         return response.json()['results']
 
+    def test_more_flag(self):
+        # "os" matches Glyphosate and Chlorpyrifos, both with use in the fixture.
+        both = self.client.get(self.url, {'type': 'chemical', 'q': 'os'}).json()
+        assert len(both['results']) == 2 and both['more'] is False
+        one = self.client.get(self.url, {'type': 'chemical', 'q': 'os', 'limit': 1}).json()
+        assert one['results'] == both['results'][:1] and one['more'] is True
+        assert self.client.get(self.url, {'type': 'chemical', 'q': 'o'}).json() == {'results': [], 'more': False}
+
+    def test_chemical_results_flag_placeholder(self):
+        # Sulfur stands in for a placeholder here: it has use in the fixture totals.
+        Chemical.objects.filter(name='SULFUR').update(chem_code=-1)
+        flags = {r['name']: r['placeholder']
+                 for q in ('sulf', 'chlor') for r in self.results(type='chemical', q=q)}
+        assert flags['Sulfur'] is True and flags['Chlorpyrifos'] is False
+        assert all('placeholder' not in r for r in self.results(type='product', q='roundup'))
+        assert all('placeholder' not in r for r in self.results(type='commodity', q='grape'))
+
     def test_chemical_search_matches_and_shows_the_preferred_name(self):
         Chemical.objects.filter(pk=3).update(name='1080', preferred_name='Sodium fluoroacetate')
         by_name = self.results(type='chemical', q='fluoro')

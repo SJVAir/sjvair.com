@@ -284,7 +284,7 @@ class EntitySearchBase(generics.Endpoint):
 
         query = (params.get('q') or '').strip()
         if len(query) < SEARCH_MIN_LENGTH:
-            return {'results': []}
+            return {'results': [], 'more': False}
 
         # Only names that actually appear in the use data -- in the year and
         # county the page is showing, when it says (`year=2020`, `year=all`,
@@ -349,9 +349,15 @@ class EntitySearchBase(generics.Endpoint):
             alias = getattr(obj, 'cdpr_alias', '')
             if alias:
                 detail = f'{alias} · {detail}' if detail else alias
-            return {'id': obj.sqid, 'name': obj.display_name, 'detail': detail}
+            result = {'id': obj.sqid, 'name': obj.display_name, 'detail': detail}
+            if kind == 'chemical':
+                # CDPR's stand-ins for an unnamed ingredient, so a picker can leave them out.
+                result['placeholder'] = obj.is_placeholder
+            return result
 
-        return {'results': [entry(obj) for obj in queryset[:limit]]}
+        # One past the limit says whether matches were left out, without counting them all.
+        found = list(queryset[:limit + 1])
+        return {'results': [entry(obj) for obj in found[:limit]], 'more': len(found) > limit}
 
 
 class EntitySearch(CachedEndpointMixin, EntitySearchBase):
@@ -363,7 +369,9 @@ class EntitySearch(CachedEndpointMixin, EntitySearchBase):
     `county` (slug) to offer only names with reported use there, `narrow=concern|restricted|fumigant|aerial`
     (or the legacy `concern=1`) to offer only what that narrowing keeps, and
     `limit` (default 10, capped at 25). Each result carries the entity's `id` (sqid), `name`, and a
-    `detail` string -- the CDPR chem code, registration number, or site code, labeled.
+    `detail` string -- the CDPR chem code, registration number, or site code, labeled --
+    and, for chemicals, `placeholder` (CDPR's UNKNOWN / AI IS CONFIDENTIAL stand-ins).
+    `more` is true when matches past `limit` were left out.
     """
     cache_timeout = 60 * 5
 
