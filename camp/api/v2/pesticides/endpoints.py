@@ -284,7 +284,7 @@ class EntitySearchBase(generics.Endpoint):
 
         query = (params.get('q') or '').strip()
         if len(query) < SEARCH_MIN_LENGTH:
-            return {'results': []}
+            return {'results': [], 'more': False}
 
         # Only names that actually appear in the use data -- in the year and
         # county the page is showing, when it says (`year=2020`, `year=all`,
@@ -349,9 +349,15 @@ class EntitySearchBase(generics.Endpoint):
             alias = getattr(obj, 'cdpr_alias', '')
             if alias:
                 detail = f'{alias} · {detail}' if detail else alias
-            return {'id': obj.sqid, 'name': obj.display_name, 'detail': detail}
+            result = {'id': obj.sqid, 'name': obj.display_name, 'detail': detail}
+            if kind == 'chemical':
+                # CDPR's stand-ins for an unnamed ingredient, so a picker can leave them out.
+                result['placeholder'] = obj.is_placeholder
+            return result
 
-        return {'results': [entry(obj) for obj in queryset[:limit]]}
+        # One past the limit says whether matches were left out, without counting them all.
+        found = list(queryset[:limit + 1])
+        return {'results': [entry(obj) for obj in found[:limit]], 'more': len(found) > limit}
 
 
 class EntitySearch(CachedEndpointMixin, EntitySearchBase):
@@ -363,25 +369,122 @@ class EntitySearch(CachedEndpointMixin, EntitySearchBase):
     `county` (slug) to offer only names with reported use there, `narrow=concern|restricted|fumigant|aerial`
     (or the legacy `concern=1`) to offer only what that narrowing keeps, and
     `limit` (default 10, capped at 25). Each result carries the entity's `id` (sqid), `name`, and a
-    `detail` string -- the CDPR chem code, registration number, or site code, labeled.
+    `detail` string -- the CDPR chem code, registration number, or site code, labeled --
+    and, for chemicals, `placeholder` (CDPR's UNKNOWN / AI IS CONFIDENTIAL stand-ins).
+    `more` is true when matches past `limit` were left out.
     """
     cache_timeout = 60 * 5
 
 
+class SqidChoiceField(forms.CharField):
+    """
+    One of `model`'s rows by its sqid (the `id` its list endpoint returns), cleaned to the
+    instance. Not a CDPR code: sqids can be all digits, so a code can't be told from an id.
+    A value that isn't one of our ids is `invalid`; a well-formed id with no row (deleted
+    or merged) is `not_found`, so a client can show a saved filter as retired.
+    """
+
+    MAX_PK = 2**63 - 1  # BigAutoField
+    # Decoding is quadratic in length, and a real id is well under this; refuse longer ones
+    # before decoding, so a long value can't cost CPU on every uncached error answer.
+    MAX_LENGTH = 32
+
+    def __init__(self, model, **kwargs):
+        self.model = model
+        kwargs.setdefault('required', False)
+        super().__init__(**kwargs)
+
+    def clean(self, value):
+        value = super().clean(value)
+        if not value:
+            return None
+        if len(value) > self.MAX_LENGTH:
+            raise forms.ValidationError(
+                f'Not a {self.model._meta.model_name} id.', code='invalid')
+        codec = self.model._meta.get_field('sqid').sqids_instance
+        decoded = codec.decode(value)
+        # sqids decodes some other spellings to the same number; only the canonical one is an id.
+        # Past the pk column's range it can't be a row, and the lookup itself would fail.
+        if len(decoded) != 1 or decoded[0] > self.MAX_PK or codec.encode(decoded) != value:
+            raise forms.ValidationError(
+                f'Not a {self.model._meta.model_name} id.', code='invalid')
+        try:
+            return self.model.objects.get(pk=decoded[0])
+        except self.model.DoesNotExist:
+            raise forms.ValidationError(
+                f'No {self.model._meta.model_name} has this id.', code='not_found')
+
+
+class CategoryListField(forms.Field):
+    """
+    Chemical categories, repeated (`category=a&category=b`) or comma-separated, kept as a
+    sorted, deduplicated list (so every spelling shares a cache key); blanks are dropped.
+    """
+    widget = forms.MultipleHiddenInput  # reads every value of the parameter
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault('required', False)
+        super().__init__(**kwargs)
+
+    def clean(self, value):
+        values = {part.strip() for raw in (value or []) for part in str(raw).split(',')} - {''}
+        unknown = sorted(values - set(Chemical.Category.values))
+        if unknown:
+            raise forms.ValidationError(f'Unknown category: {", ".join(unknown)}.', code='invalid')
+        return sorted(values) or None
+
+
+class PlaceChoiceField(forms.ChoiceField):
+    """A ChoiceField whose unknown value is `invalid`, like the place endpoint's other fields."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault('required', False)
+        super().__init__(**kwargs)
+
+    def validate(self, value):
+        try:
+            super().validate(value)
+        except forms.ValidationError as err:
+            raise forms.ValidationError(err.messages[0], code='invalid')
+
+
+# The blank (not reported) application method, as the explorer's forms name it.
+NO_METHOD = 'none'
+
+
 class PesticidePlaceForm(forms.Form):
-    chemical = forms.IntegerField(required=False, min_value=1, max_value=2_147_483_647)
-    commodity = forms.CharField(required=False)
-    category = forms.ChoiceField(required=False, choices=Chemical.Category.choices)
-    iarc_group = forms.ChoiceField(required=False, choices=Chemical.IARCGroup.choices)
-    aerial_ground = forms.ChoiceField(required=False, choices=PesticideUse.AerialGround.choices)
+    chemical = SqidChoiceField(Chemical)
+    commodity = SqidChoiceField(Commodity)
+    product = SqidChoiceField(Product)
+    category = CategoryListField()
+    narrow = PlaceChoiceField(choices=stats.NARROW_CHOICES)
+    iarc_group = PlaceChoiceField(choices=Chemical.IARCGroup.choices)
+    aerial_ground = PlaceChoiceField(choices=[*PesticideUse.AerialGround.choices, (NO_METHOD, 'Not reported')])
     year__gte = forms.IntegerField(required=False, min_value=1900, max_value=2100)
     year__lte = forms.IntegerField(required=False, min_value=1900, max_value=2100)
 
 
+def counting_mode(filters):
+    """
+    `(chemical_scoped, multi_chemical)` for `places.monthly_use`, from the place filters.
+    One chemical counts its own ingredient rows. A category or IARC filter can keep several
+    ingredient rows of one record, so those take the MAX per record. Everything else (product,
+    commodity, method, any narrowing, nothing) keeps whole records, or for `narrow=concern`
+    always the record's designated row (the rollup designates a restricted, then a concern,
+    ingredient first), so the once-per-record columns are right.
+    """
+    if 'chemical' in filters:
+        return True, False
+    if 'category' in filters or 'iarc_group' in filters:
+        return False, True
+    return False, False
+
+
 class PesticidePlace(generics.Endpoint):
     """Monthly and yearly pesticide use for a place (?region_type= & ?region=,
-    or ?monitor=; filterable by ?chemical=, ?commodity=, ?category=,
-    ?iarc_group=, ?aerial_ground=, ?year__gte=, ?year__lte=)."""
+    or ?monitor=; filterable by ?chemical=, ?commodity=, ?product= (our ids, as the list
+    endpoints return them), ?category= (repeated or
+    comma-separated, any of them), ?narrow=, ?iarc_group=, ?aerial_ground= (`none`: not reported), ?year__gte=, ?year__lte=)."""
 
     @staticmethod
     def error(response_class, err):
@@ -408,24 +511,31 @@ class PesticidePlace(generics.Endpoint):
         def build():
             rows = rollup_rows_for(place)
             if 'chemical' in filters:
-                rows = rows.filter(chemical__chem_code=filters['chemical'])
+                rows = rows.filter(chemical_id=filters['chemical'].pk)
             if 'commodity' in filters:
-                rows = rows.filter(commodity__site_code=filters['commodity'])
+                rows = rows.filter(commodity_id=filters['commodity'].pk)
+            if 'product' in filters:
+                rows = rows.filter(product_id=filters['product'].pk)
             if 'category' in filters:
-                rows = rows.filter(chemical__categories__contains=[filters['category']])
+                rows = rows.filter(chemical__categories__overlap=filters['category'])
+            if 'narrow' in filters:
+                rows = stats.narrow_rows(rows, filters['narrow'])
             if 'iarc_group' in filters:
                 rows = rows.filter(chemical__iarc_group=filters['iarc_group'])
             if 'aerial_ground' in filters:
-                rows = rows.filter(method=filters['aerial_ground'])
+                method = filters['aerial_ground']
+                rows = rows.filter(method='' if method == NO_METHOD else method)
             if 'year__gte' in filters:
                 rows = rows.filter(year__gte=filters['year__gte'])
             if 'year__lte' in filters:
                 rows = rows.filter(year__lte=filters['year__lte'])
-            chemical_scoped = 'chemical' in filters
-            multi_chemical = not chemical_scoped and ('category' in filters or 'iarc_group' in filters)
-            return monthly_use(rows, chemical_scoped, multi_chemical)
+            return monthly_use(rows, *counting_mode(filters))
 
-        key = stats.all_years_key('place', _place_key('pesticides', place), hashlib.md5(json.dumps(sorted(filters.items())).encode()).hexdigest())
+        # Instances hash by their pk, so the key doesn't depend on how an id was spelled.
+        # 'ids' marks the key format: before ids, a bare int here was a CDPR code, and an old
+        # entry must never answer for the row whose pk equals that code.
+        keyed = {'ids': 1, **{k: (v.pk if hasattr(v, 'pk') else v) for k, v in filters.items()}}
+        key = stats.all_years_key('place', _place_key('pesticides', place), hashlib.md5(json.dumps(sorted(keyed.items())).encode()).hexdigest())
         data = stats.cached(key, build, ttl=CACHE_TIMEOUT)
 
         response = http.Http200({'data': {'place': place_json(place), **data}})

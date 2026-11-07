@@ -1,10 +1,11 @@
 from django.urls import path
 
-from . import endpoints, locations, sections
+from . import meta, endpoints, locations, sections
 
 app_name = 'pesticides'
 
 urlpatterns = [
+    path('meta/', meta.PesticidesMeta.as_view(), name='pesticides-meta'),
     path('townships/', sections.TownshipList.as_view(), name='township-list'),
     path('locations/', locations.LocationList.as_view(), name='location-list'),
     path('sections/', sections.SectionList.as_view(), name='section-list'),

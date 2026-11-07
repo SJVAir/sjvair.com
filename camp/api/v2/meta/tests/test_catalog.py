@@ -96,7 +96,7 @@ class DatasetCatalogTests(TestCase):
         assert 'pm25' not in catalog.dataset_entry_types('weather')
 
     def test_dataset_entry_types(self):
-        assert catalog.dataset_entry_types('pesticide-use') == ['pounds-applied', 'acres-treated']
+        assert catalog.dataset_entry_types('pesticide-use') == ['pounds-applied', 'acres-treated', 'applications']
         assert catalog.dataset_entry_types('nope') == []
 
     def test_dataset_entry_types_match_catalog_without_queries(self):
@@ -130,11 +130,16 @@ class DatasetCatalogTests(TestCase):
         assert self.entry('hms-smoke', 'smoke-density')['display'] == {'precision': None, 'chart': None, 'y_min': None}
         assert self.entry('forecasts', 'burn-status')['display'] == {'precision': None, 'chart': None, 'y_min': None}
         assert self.entry('tempo', 'no2')['display'] == {'precision': None, 'chart': 'line', 'y_min': None}
+        applications = self.entry('pesticide-use', 'applications')
+        assert applications['display'] == {'precision': 0, 'chart': 'bar', 'y_min': 0}
+        assert applications['units'] == 'applications' and applications['label'] == 'Applications'
 
     def test_meta_urls(self):
         by_id = {d['id']: d for d in self.get()['datasets']}
         assert by_id['hms-smoke']['meta_url'] == reverse('api:v2:hms:hms-meta')
         assert by_id['hms-fire']['meta_url'] == reverse('api:v2:hms:hms-meta')
+        assert by_id['pesticide-use']['meta_url'] == reverse('api:v2:pesticides:pesticides-meta')
+        assert by_id['pesticide-notices']['meta_url'] == reverse('api:v2:pesticides:pesticides-meta')
         assert by_id['forecasts']['meta_url'] == reverse('api:v2:forecasts:forecast-meta')
         assert by_id['calheatscore']['meta_url'] == reverse('api:v2:calheatscore:calheatscore-meta')
 
@@ -169,7 +174,7 @@ LAUNCH_ENTRY_TYPES = {
     },
     'hms-smoke': {'smoke-density'},
     'hms-fire': {'fire-frp'},
-    'pesticide-use': {'pounds-applied', 'acres-treated'},
+    'pesticide-use': {'pounds-applied', 'acres-treated', 'applications'},
     'pesticide-notices': {'spray-notice'},
     'forecasts': {'aqi-forecast', 'burn-status'},
     'calheatscore': {'heat-score'},

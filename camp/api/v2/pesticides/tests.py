@@ -11,6 +11,9 @@ from django.utils import timezone
 from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.pesticides import stats
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product
+from camp.apps.pesticides.models import PesticideUseRollup
+from camp.apps.pesticides.places import monthly_use, rollup_rows_for
+from camp.api.v2.pesticides.endpoints import counting_mode
 from camp.apps.regions.models import Boundary, Region
 
 
@@ -92,8 +95,16 @@ class ChemicalListTests(TestCase):
         item = data['data'][0]
         assert set(item.keys()) == {
             'id', 'chem_code', 'name', 'preferred_name', 'display_name', 'cas_number', 'dtxsid', 'iarc_group', 'categories',
+            'placeholder',
         }
         assert item['display_name'] == item['name'].capitalize()
+
+    def test_placeholder_flag(self):
+        confidential = make_chemical(chem_code=-2, name='AI IS CONFIDENTIAL')
+        rows = {c['chem_code']: c for c in self.client.get(self.url).json()['data']}
+        assert rows[100]['placeholder'] is False and rows[-2]['placeholder'] is True
+        detail = self.client.get(reverse('api:v2:pesticides:chemical-detail', kwargs={'chemical_id': confidential.sqid}))
+        assert detail.json()['data']['placeholder'] is True
 
     def test_display_name_prefers_the_comptox_name(self):
         make_chemical(chem_code=633, name='1080', preferred_name='Sodium fluoroacetate')
@@ -140,7 +151,7 @@ class ChemicalDetailTests(TestCase):
         item = self.client.get(self.url).json()['data']
         assert set(item.keys()) == {
             'id', 'chem_code', 'name', 'preferred_name', 'display_name', 'cas_number', 'dtxsid', 'iarc_group', 'categories',
-            'products', 'commodities',
+            'placeholder', 'products', 'commodities',
         }
 
     def test_detail_includes_products(self):
@@ -1236,6 +1247,23 @@ class EntitySearchTests(RollupTestMixin, TestCase):
         assert response.status_code == 200
         return response.json()['results']
 
+    def test_more_flag(self):
+        # "os" matches Glyphosate and Chlorpyrifos, both with use in the fixture.
+        both = self.client.get(self.url, {'type': 'chemical', 'q': 'os'}).json()
+        assert len(both['results']) == 2 and both['more'] is False
+        one = self.client.get(self.url, {'type': 'chemical', 'q': 'os', 'limit': 1}).json()
+        assert one['results'] == both['results'][:1] and one['more'] is True
+        assert self.client.get(self.url, {'type': 'chemical', 'q': 'o'}).json() == {'results': [], 'more': False}
+
+    def test_chemical_results_flag_placeholder(self):
+        # Sulfur stands in for a placeholder here: it has use in the fixture totals.
+        Chemical.objects.filter(name='SULFUR').update(chem_code=-1)
+        flags = {r['name']: r['placeholder']
+                 for q in ('sulf', 'chlor') for r in self.results(type='chemical', q=q)}
+        assert flags['Sulfur'] is True and flags['Chlorpyrifos'] is False
+        assert all('placeholder' not in r for r in self.results(type='product', q='roundup'))
+        assert all('placeholder' not in r for r in self.results(type='commodity', q='grape'))
+
     def test_chemical_search_matches_and_shows_the_preferred_name(self):
         Chemical.objects.filter(pk=3).update(name='1080', preferred_name='Sodium fluoroacetate')
         by_name = self.results(type='chemical', q='fluoro')
@@ -1872,8 +1900,20 @@ class PesticidePlaceTests(RollupTestMixin, TestCase):
         assert data['place'] == {'region': {'type': 'county', 'external_id': '06019', 'name': 'Fresno County'}}
         assert {'year': 2023, 'month': 8, 'pounds': 500.0, 'acres': 50.0, 'applications': 1} in data['months']
 
+    @staticmethod
+    def sqid(model, **lookup):
+        return model.objects.get(**lookup).sqid
+
+    @staticmethod
+    def codec(model):
+        return model._meta.get_field('sqid').sqids_instance
+
+    def assert_error(self, r, field, code):
+        assert r.status_code == 400 and r['Cache-Control'] == 'no-cache', r.content[:200]
+        assert r.json()['errors'][field][0]['code'] == code, r.json()
+
     def test_filters(self):
-        d = self.get(chemical=253, year__gte=2023).json()['data']
+        d = self.get(chemical=self.sqid(Chemical, chem_code=253), year__gte=2023).json()['data']
         assert [y['year'] for y in d['years']] == [2023] and d['years'][0]['pounds'] == 20.0
         d = self.client.get(self.url, {'region_type': 'county', 'region': '06029', 'aerial_ground': 'A', 'year__lte': 2022}).json()['data']
         assert d['years'] == [{'year': 2022, 'pounds': 60.0, 'acres': 6.0, 'applications': 1,
@@ -1888,28 +1928,168 @@ class PesticidePlaceTests(RollupTestMixin, TestCase):
 
     def test_bad_filter_values_are_400(self):
         for bad in ({'year__gte': 'abc'}, {'category': 'nope'}, {'aerial_ground': 'X'}, {'iarc_group': '9'}, {'chemical': 'x'},
-                    {'chemical': 0}, {'chemical': 2**31}, {'year__gte': 1899}, {'year__lte': 2101}, {'year__gte': 10**12}):
+                    {'year__gte': 1899}, {'year__lte': 2101}, {'year__gte': 10**12}):
             r = self.get(**bad)
             assert r.status_code == 400 and r['Cache-Control'] == 'no-cache'
             assert 'errors' in r.json()
 
-    def test_odd_commodity_values_answer_200_with_safe_keys(self):
+    def test_odd_id_values_are_invalid(self):
         for value in ('a b', 'x' * 300, 'tab\there'):
-            keys = []
-            real = stats.cached
+            self.assert_error(self.get(commodity=value), 'commodity', 'invalid')
 
-            def spy(key, build, ttl=None, _real=real, _keys=keys):
-                _keys.append(key)
-                return _real(key, build, ttl=ttl) if ttl is not None else _real(key, build)
+    def test_codes_are_refused(self):
+        # CDPR codes are not our ids: a digit string may decode to some id, but never
+        # silently answers as the code's chemical or product.
+        for field, model, code in (('chemical', Chemical, 253), ('product', Product, Product.objects.first().prodno)):
+            r = self.get(**{field: code})
+            assert r.status_code == 400, (field, r.content[:200])
+            assert r.json()['errors'][field][0]['code'] in ('invalid', 'not_found')
 
-            with patch('camp.api.v2.pesticides.endpoints.stats.cached', spy):
-                r = self.get(commodity=value)
-            assert r.status_code == 200, value
-            data = r.json()['data']
-            assert data['months'] == [] and data['years'] == []
-            assert len(keys) == 1, value
-            assert list(memcache_key_warnings(keys[0])) == [], value
-            assert len(keys[0]) < 250, value
+    def test_unknown_id_is_not_found(self):
+        for field, model in (('chemical', Chemical), ('commodity', Commodity), ('product', Product)):
+            gone = self.codec(model).encode([model.objects.order_by('-pk')[0].pk + 1000])
+            self.assert_error(self.get(**{field: gone}), field, 'not_found')
+
+    def test_id_spellings(self):
+        sqid = self.sqid(Chemical, chem_code=253)
+        assert self.get(chemical=f' {sqid} ').json()['data'] == self.get(chemical=sqid).json()['data']
+        codec = self.codec(Chemical)
+        for char in Chemical._meta.get_field('sqid').alphabet:
+            odd = sqid + char
+            decoded = codec.decode(odd)
+            if decoded and codec.encode(decoded) != odd:
+                self.assert_error(self.get(chemical=odd), 'chemical', 'invalid')
+                break
+        else:
+            pytest.skip('no non-canonical spelling of this id decodes')
+
+    def test_commodity_and_product_filter(self):
+        place = Region.all_objects.get(type='county', external_id='06019')
+        rows = rollup_rows_for(place)
+        for field, model in (('commodity', Commodity), ('product', Product)):
+            for obj in model.objects.all():
+                expected = monthly_use(rows.filter(**{field: obj}), False, False)
+                data = self.get(**{field: obj.sqid}).json()['data']
+                assert data['years'] == expected['years'] and data['months'] == expected['months'], (field, obj.pk)
+
+    def county_rows(self):
+        return rollup_rows_for(Region.all_objects.get(type='county', external_id='06019'))
+
+    def test_counting_mode(self):
+        chem, prod = object(), object()
+        for filters, expected in (
+            ({'chemical': chem}, (True, False)),
+            ({'chemical': chem, 'narrow': 'concern'}, (True, False)),
+            ({'chemical': chem, 'category': ['carcinogen']}, (True, False)),
+            ({'category': ['carcinogen']}, (False, True)),
+            ({'iarc_group': '2A'}, (False, True)),
+            ({'product': prod, 'category': ['carcinogen']}, (False, True)),
+            ({'product': prod}, (False, False)),
+            ({'narrow': 'concern'}, (False, False)),
+            ({'narrow': 'restricted'}, (False, False)),
+            ({'narrow': 'fumigant'}, (False, False)),
+            ({'narrow': 'aerial'}, (False, False)),
+            ({'commodity': object()}, (False, False)),
+            ({'aerial_ground': 'G'}, (False, False)),
+            ({}, (False, False)),
+        ):
+            assert counting_mode(filters) == expected, filters
+
+    def test_narrow_matches_stats(self):
+        for narrow in sorted(stats.NARROW_VALUES):
+            expected = monthly_use(stats.narrow_rows(self.county_rows(), narrow), False, False)
+            data = self.get(narrow=narrow).json()['data']
+            assert data['years'] == expected['years'] and data['months'] == expected['months'], narrow
+
+    def test_unknown_narrow_is_400(self):
+        self.assert_error(self.get(narrow='nope'), 'narrow', 'invalid')
+
+    def test_several_categories_overlap(self):
+        cats = ['carcinogen', 'toxic_air_contaminant']
+        expected = monthly_use(self.county_rows().filter(chemical__categories__overlap=cats), False, True)
+        data = self.client.get(self.url, {**self.params, 'category': cats}).json()['data']
+        assert data['years'] == expected['years'] and data['months'] == expected['months']
+        assert data['years'] != self.get(category='carcinogen').json()['data']['years']
+        one = monthly_use(self.county_rows().filter(chemical__categories__contains=['carcinogen']), False, True)
+        assert self.get(category='carcinogen').json()['data']['years'] == one['years']
+
+    def test_category_forms_share_cache_key(self):
+        keys = []
+        real = stats.cached
+
+        def spy(key, build, ttl=None):
+            keys.append(key)
+            return real(key, build, ttl=ttl)
+
+        with patch('camp.api.v2.pesticides.endpoints.stats.cached', spy):
+            for query in ('category=carcinogen,toxic_air_contaminant',
+                          'category=toxic_air_contaminant&category=carcinogen',
+                          'category=carcinogen,,toxic_air_contaminant'):
+                assert self.client.get(f'{self.url}?region_type=county&region=06019&{query}').status_code == 200
+        assert len(keys) == 3 and len(set(keys)) == 1
+        r = self.get(category='carcinogen,nope')
+        self.assert_error(r, 'category', 'invalid')
+        assert 'nope' in r.json()['errors']['category'][0]['message']
+
+    def test_aerial_ground_none(self):
+        row = self.county_rows().first()
+        PesticideUseRollup.objects.create(
+            year=2023, month=9, county=row.county, mtrs=row.mtrs, chemical=row.chemical,
+            product=row.product, commodity=row.commodity, method='', lbs_chemical=7,
+            acres_treated=2, applications=1, records=1, acres_once=2)
+        expected = monthly_use(self.county_rows().filter(method=''), False, False)
+        data = self.get(aerial_ground='none').json()['data']
+        assert data['years'] == expected['years'] and data['years']
+        assert self.get(aerial_ground='G').json()['data']['years'] != data['years']
+
+    def add_placeholder_row(self):
+        confidential = Chemical.objects.create(chem_code=-2, name='AI IS CONFIDENTIAL')
+        row = self.county_rows().filter(year=2023).first()
+        PesticideUseRollup.objects.create(
+            year=2023, month=10, county=row.county, mtrs=row.mtrs, chemical=confidential,
+            product=row.product, commodity=row.commodity, method='G', lbs_chemical=0,
+            acres_treated=5, applications=1, records=1, acres_once=5)
+        return confidential
+
+    def test_placeholder_records_count(self):
+        before = next(y for y in self.get().json()['data']['years'] if y['year'] == 2023)
+        self.add_placeholder_row()
+        after = next(y for y in self.get(year__gte=2023).json()['data']['years'] if y['year'] == 2023)
+        assert after['applications'] == before['applications'] + 1
+        assert after['acres'] == before['acres'] + 5 and after['pounds'] == before['pounds']
+
+    def test_placeholder_chemical_scope(self):
+        confidential = self.add_placeholder_row()
+        r = self.get(chemical=confidential.sqid)
+        assert r.status_code == 200
+        assert r.json()['data']['years'] == [{'year': 2023, 'pounds': 0.0, 'acres': 5.0, 'applications': 1,
+                                              'undated': {'pounds': 0.0, 'acres': 0.0, 'applications': 0}}]
+
+    def test_cache_key_cannot_meet_old_code_keys(self):
+        # Before ids, the key hashed [["chemical", <chem_code>]]. A pk equal to some old code
+        # must not read that entry back.
+        import hashlib, json
+        from camp.apps.regions.resolve import _place_key, resolve_place
+        chemical = Chemical.objects.get(chem_code=253)
+        keys = []
+        real = stats.cached
+
+        def spy(key, build, ttl=None):
+            keys.append(key)
+            return real(key, build, ttl=ttl)
+
+        with patch('camp.api.v2.pesticides.endpoints.stats.cached', spy):
+            self.get(chemical=chemical.sqid)
+        place = resolve_place({'region_type': 'county', 'region': '06019'})
+        old = stats.all_years_key('place', _place_key('pesticides', place),
+                                  hashlib.md5(json.dumps([['chemical', chemical.pk]]).encode()).hexdigest())
+        assert keys and keys[0] != old
+
+    def test_long_ids_are_refused_before_decoding(self):
+        codec = Chemical._meta.get_field('sqid').sqids_instance
+        with patch.object(codec, 'decode', wraps=codec.decode) as decode:
+            self.assert_error(self.get(chemical='A' * 500), 'chemical', 'invalid')
+        assert decode.call_count == 0
 
     def test_blank_filters_ignored(self):
         plain = self.get().json()['data']
@@ -1953,3 +2133,46 @@ class PesticidePlaceTests(RollupTestMixin, TestCase):
         second = self.get().json()['data']
         assert next(y for y in first['years'] if y['year'] == 2023)['pounds'] == 670.0
         assert next(y for y in second['years'] if y['year'] == 2023)['pounds'] == 170.0
+
+
+class PesticidesMetaTests(TestCase):
+    def setUp(self):
+        self.url = reverse('api:v2:pesticides:pesticides-meta')
+
+    def get(self):
+        r = self.client.get(self.url)
+        assert r.status_code == 200 and r['Cache-Control'] == 'public, max-age=86400'
+        return r.json()['data']
+
+    def test_shape(self):
+        from camp.apps.pesticides import notes
+        data = self.get()
+        assert set(data) == {'categories', 'iarc_groups', 'methods', 'narrows', 'placeholder_chemicals'}
+        categories = data['categories']
+        assert [c['key'] for c in categories] == list(Chemical.Category.values)
+        assert {c['key'] for c in categories if not c['in_use']} == {
+            'biopesticide', 'cholinesterase_inhibitor', 'groundwater_contaminant', 'oil'}
+        by_key = {c['key']: c for c in categories}
+        assert by_key['carcinogen']['label'] == 'Carcinogen'
+        assert by_key['carcinogen']['description'] == notes.note('prop65')['summary']
+        assert by_key['toxic_air_contaminant']['description'] == notes.note('carb_tac')['summary']
+        assert by_key['fumigant']['description'] == notes.note('fumigant')['summary']
+        assert all(c['description'] for c in categories)
+        iarc = {g['key']: g for g in data['iarc_groups']}
+        assert list(iarc) == ['1', '2A', '2B', '3']
+        assert iarc['2A'] == {'key': '2A', 'label': 'Group 2A', 'description': 'Probably carcinogenic to humans'}
+        assert [(m['key'], m['label']) for m in data['methods']] == [
+            ('G', 'Ground'), ('A', 'Air'), ('F', 'Field fumigation'), ('O', 'Other'), ('none', 'Not reported')]
+        narrows = {n['key']: n for n in data['narrows']}
+        assert list(narrows) == ['concern', 'restricted', 'fumigant', 'aerial']
+        assert narrows['concern']['label'] == 'Flagged chemicals'
+        assert narrows['aerial']['description'] == stats.NARROW_HELP['aerial']
+        assert all(n['description'] for n in narrows.values())
+        assert data['placeholder_chemicals'] == []
+
+    def test_placeholder_chemicals(self):
+        unknown = Chemical.objects.create(chem_code=-1, name='UNKNOWN')
+        confidential = Chemical.objects.create(chem_code=-2, name='AI IS CONFIDENTIAL')
+        Chemical.objects.create(chem_code=5, name='OTHER')
+        assert self.get()['placeholder_chemicals'] == [
+            {'id': confidential.sqid, 'name': 'AI IS CONFIDENTIAL'}, {'id': unknown.sqid, 'name': 'UNKNOWN'}]
