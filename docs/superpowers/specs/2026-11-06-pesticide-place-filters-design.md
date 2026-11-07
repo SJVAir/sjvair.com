@@ -2,7 +2,9 @@
 
 Date: 2026-11-06. The server side of data-dashboard spec 3b's pesticide layer. The scope is
 items 1–5 of the explorer comparison, approved by the user on 2026-11-06 and relayed by the
-coordinator. The research behind it is in the findings file sent to the coordinator.
+coordinator. The research behind it is in the findings file sent to the coordinator. Spec 3b
+then asked for three more things (items 6–8 below); item 6, the picker search, is **added
+scope**.
 
 ## Why
 
@@ -30,10 +32,14 @@ Today `place/` falls short in four ways:
   `site_code`). It never calls `place/`, `filters.py`, the list endpoints or the catalog.
 
 So this change may touch only:
-- `PesticidePlaceForm` / `PesticidePlace` (`camp/api/v2/pesticides/endpoints.py`);
-- a new `pesticides/meta/` endpoint;
-- the chemicals serializer, as an **additive** field;
-- `camp/api/v2/meta/catalog.py`.
+- `camp/api/v2/pesticides/endpoints.py`: `PesticidePlaceForm` / `PesticidePlace`, the new
+  counting-rule function, and **additive** keys on `EntitySearchBase`'s response (item 6);
+- `camp/api/v2/pesticides/urls.py`: the new route;
+- a new meta module for `pesticides/meta/` (e.g. `camp/api/v2/pesticides/meta.py`);
+- `camp/api/v2/pesticides/serializers.py`: an additive field;
+- `camp/api/v2/meta/catalog.py`, its tests and its snapshot;
+- `camp/api/v2/pesticides/tests.py` (or new test modules);
+- `CLAUDE.md`.
 
 It may *read* explorer helpers (`stats.narrow_rows`, `stats.concern_rows`,
 `stats.METHOD_LABELS`, `notes`) but not change them. It must not touch `sections.py`,
@@ -48,9 +54,17 @@ It may *read* explorer helpers (`stats.narrow_rows`, `stats.concern_rows`,
   product sqids are digit-only, and 57 of those product sqids equal some product's `prodno`. A
   digit-only value can't be read as one or the other safely.
 - `place/` is on `develop` only, not production, so nothing outside depends on the code form.
-- **A value that names nothing** (undecodable, or no such row) is a 400 naming the field, the
-  same as other invalid values on `place/` (`no-cache`). This replaces today's silent empty
-  answer for commodities. *(My call.)*
+- **A value that names nothing is a 400** naming the field, the same as other invalid values
+  on `place/` (`no-cache`). This replaces today's silent empty answer for commodities.
+- **Two error codes** (spec 3b: widgets save these ids, and the dashboard needs to tell a
+  retired id from a typo). The 400 body is the form's usual
+  `{"errors": {"<field>": [{"message", "code"}]}}`.
+  - `code: "invalid"` for a value that isn't one of our ids: it doesn't decode, or doesn't
+    re-encode to itself (sqids has non-canonical spellings).
+  - `code: "not_found"` for a well-formed id with no row (deleted or merged).
+- **Names for a saved id:** the detail endpoints (`chemicals/<id>/`, `commodities/<id>/`,
+  `products/<id>/`) already return `name` (chemicals also `display_name`) by sqid, and a 404
+  for a gone id. No change is needed there.
 - **Builder's call:** resolve with one indexed lookup per given id (`Model.objects.filter(sqid=…)`
   or django_sqids' decode), then filter the rollup on the FK id. Don't join through the code
   columns.
@@ -101,6 +115,11 @@ labels may change.
   properties, unlike the `category` filter's same-named chemical categories.
 - **Placeholder chemicals:** the `Chemical.PLACEHOLDER_CODES` rows that exist, by sqid and
   name.
+- **`methods` are PUR's (use records).** Spray notices name their methods in SprayDays' own
+  free text (`'Aircraft'`, …), and this meta doesn't describe them. Say so in the endpoint's
+  docstring and in CLAUDE.md. A notice-methods section is deferred until a notices layer is
+  scoped. *(My call. Both datasets still point here, as approved, because the categories,
+  IARC groups and narrows apply to notices too.)*
 - **Catalog:** `meta_url` for `pesticide-use` and `pesticide-notices` points at
   `pesticides/meta/`. The catalog snapshot is regenerated, and its diff must be only these
   changes and the item 3 entry.
@@ -108,7 +127,9 @@ labels may change.
 ## 3. Catalog: applications
 
 Add an `applications` entry type to `pesticide-use`:
-`_other('applications', 'Applications', '', ['month', 'year'])`, after `acres-treated`. It's
+`_other('applications', 'Applications', 'applications', ['month', 'year'])`, after
+`acres-treated`. Give it `DISPLAY_OVERRIDES['applications'] = (0, 'bar', 0)`, the same as
+`pounds-applied` (spec 3b). Without it, it falls through to a 1-decimal line. It's
 the `applications` value `place/` already returns. Update the catalog tests that list the
 dataset's entry types (`test_catalog.py:99`, `:172`) and the snapshot. Entry-type ids are
 permanent.
@@ -130,23 +151,52 @@ All filters combine with AND.
 - **Counting rule** (`places.monthly_use`, unchanged): pick `chemical_scoped` /
   `multi_chemical` from what's filtered.
   - A `chemical` makes it chemical-scoped.
-  - Otherwise any chemical-level filter makes it multi-chemical: `category`, `iarc_group`, or
-    `narrow=concern`.
-  - Otherwise (product, commodity, method, `narrow=restricted|fumigant|aerial`, or none) the
-    once-per-record columns are right. A product- or record-level filter keeps every row of a
-    record, so the record's designated row is kept too.
-  - Write this choice as a small function with its own tests.
+  - Otherwise `category` or `iarc_group` makes it multi-chemical, as today.
+  - Otherwise the once-per-record columns are right. This covers product, commodity, method,
+    any `narrow`, or nothing.
+    - A product- or record-level filter keeps every row of a record, so its designated row
+      (one per `(year, county, use_no)` in the rollup's rebuild) is kept too.
+    - `narrow=concern` also counts once, as the explorer does. The rebuild designates a
+      restricted ingredient first, then any concern ingredient, and the concern set includes
+      `california_restricted`. So every record with a concern ingredient has its designated row
+      inside the set. (The MAX route would give the same numbers, minus the 27 rows with no
+      product, at the cost of raw SQL.)
+  - Write this choice as a small function in `endpoints.py` (not `places.py`), with its own
+    tests.
 - **Server cache key:** the filters are already hashed into it. Normalize `category` (sorted,
   deduplicated) before hashing, so `a,b` and `b,a` share a cache entry.
 
 ## 5. Placeholder chemicals
 
-- Their pounds **stay** in `place/` totals: it's real use with an undisclosed chemical. The
-  coordinator recommended this and the user may still change it.
+- **They carry no pounds.** The `PLACEHOLDER_CODES` comment says so; locally they have 0 lbs,
+  but 389,065 records and 17.6 M acres. So the decision is about **applications and acres**.
+- Their records **stay** in `place/`'s applications and acres: they're real applications whose
+  active ingredient CDPR doesn't name. [USER DECISION PENDING: confirm]
 - `ChemicalSerializer` gains `placeholder` (`chemical.is_placeholder`). It's additive.
   Everything that nests the serializer (lists, details, region summaries) gets it. No explorer
   reads it.
 - `pesticides/meta/` lists them too (item 2).
+
+## 6. Picker search (added scope, spec 3b)
+
+The dashboard's chemical, commodity and product pickers need one page of matches. The list
+getters fetch every page; `products/?name=a` is 57,434 rows. `pesticides/search/`
+(`EntitySearch`) already does this for the explorer's entity picker:
+- one page (`limit`, default 10, max 25);
+- ranked exact → prefix → rest, then closer match and shorter name;
+- only entities with reported use (optionally by `year`, `county`, `narrow`);
+- `id` is the sqid.
+
+It changes only by **adding** response keys. The explorer's `entity-picker.js` reads `results`
+only, and nothing about which results come back or in what order changes:
+- `more`: `true` when matches beyond `limit` were left out. Compute it by fetching `limit + 1`.
+- For `type=chemical`, each result gains `placeholder` (bool), so the dashboard can leave
+  placeholders out of its picker. They stay in the results, because the explorer's picker
+  behavior is unchanged.
+
+The cached-endpoint cache key is unaffected: the parameters are the same. Tests: `more`
+true/false at the boundary; `placeholder` on chemical results; the existing `EntitySearchTests`
+unchanged.
 
 ## Tests
 
@@ -160,22 +210,26 @@ All filters combine with AND.
   - several categories (overlap; repeated and comma forms; order-insensitive cache key) plus an
     unknown category giving a 400;
   - `aerial_ground=none`;
+  - the error codes: `invalid` (undecodable, non-canonical) and `not_found` (deleted row);
   - the counting-rule function for each filter combination;
-  - placeholder pounds included.
+  - placeholder records counted in applications and acres (fixture rows with
+    `records`/`acres_once` on a placeholder chemical).
+- `search/`: `more` and `placeholder`, as in item 6.
 - `pesticides/meta/`: its shape; all ten categories with `in_use`; the method labels and order;
   placeholder chemicals; cache header.
 - Catalog: the `meta_url`s, the `applications` entry type, and a snapshot diff of exactly
   those.
 - Chemicals serializer: `placeholder` true/false.
 - **Explorer guard:** the full suite stays green, including the explorer's view and map-API
-  tests. Also diff `git diff --stat` against the allowed files above.
+  tests and `EntitySearchTests`. `git diff --stat` touches only the allowed files above.
 
 ## Docs
 
 Update `CLAUDE.md` in the same PR:
 - **"Pesticide place" bullet:** the filters now take sqids (`chemical`, `commodity`,
-  `product`); add `narrow`, repeatable/comma `category`, `aerial_ground=none`, the
-  counting-rule additions, and that placeholder pounds stay in the totals.
+  `product`) with `invalid`/`not_found` codes; add `narrow`, repeatable/comma `category`,
+  `aerial_ground=none`, the counting-rule additions, and that placeholder records count in
+  applications and acres.
 - **"Domain meta endpoints" bullet:** add `pesticides/meta/` and its shape.
 
 ## SDK follow-up (separate sdk-js spec and PR into `release/5.0.0`)
@@ -188,7 +242,12 @@ Signature changes, for spec 3b and beta.6:
     list style; settled in that spec);
   - `narrow?: 'concern' | 'restricted' | 'fumigant' | 'aerial'`;
   - `aerial_ground` gains `'none'`.
-- A `getPesticidesMeta()` getter and its types.
+- A `getPesticidesMeta()` getter and its types (`methods` documented as PUR's).
+- A one-page search getter over `pesticides/search/`, e.g.
+  `searchPesticides(type, q, {limit, year, county, narrow})` → `{results: [{id, name, detail,
+  placeholder?}], more}`. The name is settled in the sdk-js spec.
+- The 400 error codes (`invalid` / `not_found`) on the place filters, surfaced the way sdk-js
+  already surfaces field errors.
 - `Chemical` gains `placeholder: boolean`.
 - The catalog's types are unchanged (it's data).
 
