@@ -385,6 +385,9 @@ class SqidChoiceField(forms.CharField):
     """
 
     MAX_PK = 2**63 - 1  # BigAutoField
+    # Decoding is quadratic in length, and a real id is well under this; refuse longer ones
+    # before decoding, so a long value can't cost CPU on every uncached error answer.
+    MAX_LENGTH = 32
 
     def __init__(self, model, **kwargs):
         self.model = model
@@ -395,6 +398,9 @@ class SqidChoiceField(forms.CharField):
         value = super().clean(value)
         if not value:
             return None
+        if len(value) > self.MAX_LENGTH:
+            raise forms.ValidationError(
+                f'Not a {self.model._meta.model_name} id.', code='invalid')
         codec = self.model._meta.get_field('sqid').sqids_instance
         decoded = codec.decode(value)
         # sqids decodes some other spellings to the same number; only the canonical one is an id.
@@ -526,7 +532,9 @@ class PesticidePlace(generics.Endpoint):
             return monthly_use(rows, *counting_mode(filters))
 
         # Instances hash by their pk, so the key doesn't depend on how an id was spelled.
-        keyed = {k: (v.pk if hasattr(v, 'pk') else v) for k, v in filters.items()}
+        # 'ids' marks the key format: before ids, a bare int here was a CDPR code, and an old
+        # entry must never answer for the row whose pk equals that code.
+        keyed = {'ids': 1, **{k: (v.pk if hasattr(v, 'pk') else v) for k, v in filters.items()}}
         key = stats.all_years_key('place', _place_key('pesticides', place), hashlib.md5(json.dumps(sorted(keyed.items())).encode()).hexdigest())
         data = stats.cached(key, build, ttl=CACHE_TIMEOUT)
 

@@ -2065,6 +2065,32 @@ class PesticidePlaceTests(RollupTestMixin, TestCase):
         assert r.json()['data']['years'] == [{'year': 2023, 'pounds': 0.0, 'acres': 5.0, 'applications': 1,
                                               'undated': {'pounds': 0.0, 'acres': 0.0, 'applications': 0}}]
 
+    def test_cache_key_cannot_meet_old_code_keys(self):
+        # Before ids, the key hashed [["chemical", <chem_code>]]. A pk equal to some old code
+        # must not read that entry back.
+        import hashlib, json
+        from camp.apps.regions.resolve import _place_key, resolve_place
+        chemical = Chemical.objects.get(chem_code=253)
+        keys = []
+        real = stats.cached
+
+        def spy(key, build, ttl=None):
+            keys.append(key)
+            return real(key, build, ttl=ttl)
+
+        with patch('camp.api.v2.pesticides.endpoints.stats.cached', spy):
+            self.get(chemical=chemical.sqid)
+        place = resolve_place({'region_type': 'county', 'region': '06019'})
+        old = stats.all_years_key('place', _place_key('pesticides', place),
+                                  hashlib.md5(json.dumps([['chemical', chemical.pk]]).encode()).hexdigest())
+        assert keys and keys[0] != old
+
+    def test_long_ids_are_refused_before_decoding(self):
+        codec = Chemical._meta.get_field('sqid').sqids_instance
+        with patch.object(codec, 'decode', wraps=codec.decode) as decode:
+            self.assert_error(self.get(chemical='A' * 500), 'chemical', 'invalid')
+        assert decode.call_count == 0
+
     def test_blank_filters_ignored(self):
         plain = self.get().json()['data']
         blank = self.get(chemical='', commodity='', category='', iarc_group='', aerial_ground='',

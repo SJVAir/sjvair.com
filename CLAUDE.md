@@ -294,8 +294,9 @@ zones are missing there; see SJVAPCD Forecast Setup).
   - `iarc_group`, `aerial_ground` (`none` = not reported), `year__gte`, `year__lte`
     (1900-2100).
 
-  Bounds are enforced, and an invalid value is a 400 whose field errors carry `invalid`
-  (`no-cache`, as are place errors). 200s are `public, max-age=3600`. Answers
+  Bounds are enforced, and an invalid value is a 400 (`no-cache`, as are place errors). The id,
+  `category`, `narrow`, `iarc_group` and `aerial_ground` field errors carry `invalid` (or
+  `not_found`); the year bounds carry Django's `min_value`/`max_value`. 200s are `public, max-age=3600`. Answers
   are also cached server-side for 24h under the pesticides data version (an import retires
   them), with the filters hashed into the key. A monitor outside every ZIP gets empty lists.
 - **Regions**: `regions/?within=...&within_mode=overlaps` (also the geojson variant) keeps
