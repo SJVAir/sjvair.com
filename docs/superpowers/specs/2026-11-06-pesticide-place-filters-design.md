@@ -261,8 +261,11 @@ Publishing 5.0.0-beta.6 needs the user's own yes.
 - **A per-place breakdown endpoint:** top chemicals, products and commodities, by method,
   biggest movers. **Revisit when** the dashboard designs a "what's used here" view.
 - **Schools' 3×3 section block:** `place/` can't address a location today, and the shared
-  place resolver would need a location form. **Revisit when** the dashboard adds school-level
-  pesticide answers.
+  place resolver would need a location form.
+  - **Until then** (the user, 2026-11-06), a school or "my location" uses its ZIP, then its
+    city, then its county for pesticide totals (the dashboard's `placeRegion`), and the legend
+    names that area.
+  - **Revisit when** the dashboard or its users need "within about a mile" totals.
 
 ## Non-goals
 
