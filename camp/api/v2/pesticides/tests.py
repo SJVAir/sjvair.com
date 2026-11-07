@@ -163,6 +163,8 @@ class ChemicalDetailTests(TestCase):
         item = self.client.get(self.url).json()['data']
         assert len(item['commodities']) == 1
         assert item['commodities'][0]['name'] == 'ALMOND'
+        assert item['commodities'][0]['display_name'] == 'Almond'
+        assert item['products'][0]['display_name'] == 'SULFUR DUST'
 
     def test_no_n_plus_1_queries(self):
         # Add more PesticideUse records linking the same chemical to the same commodity —
@@ -189,7 +191,13 @@ class CommodityListTests(TestCase):
         data = self.client.get(self.url).json()
         assert 'count' in data
         item = data['data'][0]
-        assert set(item.keys()) == {'id', 'site_code', 'name'}
+        assert set(item.keys()) == {'id', 'site_code', 'name', 'display_name'}
+
+    def test_display_name_is_humanized(self):
+        make_commodity(site_code='02', name='WHEAT (FORAGE - FODDER)')
+        data = self.client.get(self.url, {'site_code': '02'}).json()
+        assert data['data'][0]['name'] == 'WHEAT (FORAGE - FODDER)'
+        assert data['data'][0]['display_name'] == 'Wheat (forage - fodder)'
 
     def test_filter_by_name(self):
         make_commodity(site_code='02', name='GRAPE')
@@ -216,7 +224,7 @@ class CommodityDetailTests(TestCase):
 
     def test_detail_fields(self):
         item = self.client.get(self.url).json()['data']
-        assert set(item.keys()) == {'id', 'site_code', 'name', 'chemicals', 'products'}
+        assert set(item.keys()) == {'id', 'site_code', 'name', 'display_name', 'chemicals', 'products'}
 
     def test_detail_includes_chemicals(self):
         item = self.client.get(self.url).json()['data']
@@ -254,7 +262,13 @@ class ProductListTests(TestCase):
     def test_list_fields(self):
         data = self.client.get(self.url).json()
         item = data['data'][0]
-        assert set(item.keys()) == {'id', 'prodno', 'reg_number', 'name', 'fumigant', 'cdpr_fumigant', 'california_restricted'}
+        assert set(item.keys()) == {
+            'id', 'prodno', 'reg_number', 'name', 'display_name', 'fumigant', 'cdpr_fumigant', 'california_restricted',
+        }
+
+    def test_display_name_is_the_name(self):
+        item = self.client.get(self.url).json()['data'][0]
+        assert item['display_name'] == item['name'] == 'SULFUR DUST'
 
     def test_filter_by_name(self):
         make_product(prodno=2, reg_number='100-2', name='COPPER SPRAY')
@@ -318,7 +332,7 @@ class ProductDetailTests(TestCase):
     def test_detail_fields(self):
         item = self.client.get(self.url).json()['data']
         assert set(item.keys()) == {
-            'id', 'prodno', 'reg_number', 'name', 'fumigant', 'cdpr_fumigant', 'california_restricted',
+            'id', 'prodno', 'reg_number', 'name', 'display_name', 'fumigant', 'cdpr_fumigant', 'california_restricted',
             'chemicals', 'commodities',
         }
 

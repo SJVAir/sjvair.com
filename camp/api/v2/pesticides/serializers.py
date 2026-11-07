@@ -29,6 +29,7 @@ class CommoditySerializer(serializers.Serializer):
         ('id', lambda c: c.sqid),
         'site_code',
         'name',
+        'display_name',
     )
 
 
@@ -38,6 +39,7 @@ class ProductSerializer(serializers.Serializer):
         'prodno',
         'reg_number',
         'name',
+        'display_name',
         # The classified flag (fumigants.classify_fumigants), which corrects
         # CDPR's misses; the raw CDPR flag is kept beside it.
         ('fumigant', lambda p: p.is_fumigant),
