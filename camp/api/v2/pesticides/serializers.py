@@ -18,6 +18,9 @@ class ChemicalSerializer(serializers.Serializer):
         'dtxsid',
         'iarc_group',
         'categories',
+        # CDPR's stand-ins for an unnamed ingredient (UNKNOWN, AI IS CONFIDENTIAL): real
+        # applications with no pounds, which a chemical picker can leave out.
+        ('placeholder', lambda c: c.is_placeholder),
     )
 
 

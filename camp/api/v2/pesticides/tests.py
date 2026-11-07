@@ -95,8 +95,16 @@ class ChemicalListTests(TestCase):
         item = data['data'][0]
         assert set(item.keys()) == {
             'id', 'chem_code', 'name', 'preferred_name', 'display_name', 'cas_number', 'dtxsid', 'iarc_group', 'categories',
+            'placeholder',
         }
         assert item['display_name'] == item['name'].capitalize()
+
+    def test_placeholder_flag(self):
+        confidential = make_chemical(chem_code=-2, name='AI IS CONFIDENTIAL')
+        rows = {c['chem_code']: c for c in self.client.get(self.url).json()['data']}
+        assert rows[100]['placeholder'] is False and rows[-2]['placeholder'] is True
+        detail = self.client.get(reverse('api:v2:pesticides:chemical-detail', kwargs={'chemical_id': confidential.sqid}))
+        assert detail.json()['data']['placeholder'] is True
 
     def test_display_name_prefers_the_comptox_name(self):
         make_chemical(chem_code=633, name='1080', preferred_name='Sodium fluoroacetate')
@@ -143,7 +151,7 @@ class ChemicalDetailTests(TestCase):
         item = self.client.get(self.url).json()['data']
         assert set(item.keys()) == {
             'id', 'chem_code', 'name', 'preferred_name', 'display_name', 'cas_number', 'dtxsid', 'iarc_group', 'categories',
-            'products', 'commodities',
+            'placeholder', 'products', 'commodities',
         }
 
     def test_detail_includes_products(self):
@@ -2016,6 +2024,29 @@ class PesticidePlaceTests(RollupTestMixin, TestCase):
         data = self.get(aerial_ground='none').json()['data']
         assert data['years'] == expected['years'] and data['years']
         assert self.get(aerial_ground='G').json()['data']['years'] != data['years']
+
+    def add_placeholder_row(self):
+        confidential = Chemical.objects.create(chem_code=-2, name='AI IS CONFIDENTIAL')
+        row = self.county_rows().filter(year=2023).first()
+        PesticideUseRollup.objects.create(
+            year=2023, month=10, county=row.county, mtrs=row.mtrs, chemical=confidential,
+            product=row.product, commodity=row.commodity, method='G', lbs_chemical=0,
+            acres_treated=5, applications=1, records=1, acres_once=5)
+        return confidential
+
+    def test_placeholder_records_count(self):
+        before = next(y for y in self.get().json()['data']['years'] if y['year'] == 2023)
+        self.add_placeholder_row()
+        after = next(y for y in self.get(year__gte=2023).json()['data']['years'] if y['year'] == 2023)
+        assert after['applications'] == before['applications'] + 1
+        assert after['acres'] == before['acres'] + 5 and after['pounds'] == before['pounds']
+
+    def test_placeholder_chemical_scope(self):
+        confidential = self.add_placeholder_row()
+        r = self.get(chemical=confidential.sqid)
+        assert r.status_code == 200
+        assert r.json()['data']['years'] == [{'year': 2023, 'pounds': 0.0, 'acres': 5.0, 'applications': 1,
+                                              'undated': {'pounds': 0.0, 'acres': 0.0, 'applications': 0}}]
 
     def test_blank_filters_ignored(self):
         plain = self.get().json()['data']
