@@ -397,6 +397,17 @@ zones are missing there; see SJVAPCD Forecast Setup).
 - **Burn status** (`camp/apps/forecasts/scales.py`): the feed's `status` string is stored as
   received; unknown values are stored and logged by the ingest task. When a new value
   appears, add a level there. The "No Burning For All" string is still unconfirmed.
+- **Alerts current** `monitors/<id>/alerts/current/` serves the stored result of the 10-minute
+  `periodic_alerts` run (`camp/apps/alerts/current.py`: one cache key per monitor, 30-minute
+  expiry); nothing is evaluated on request. `data` is keyed by entry type; a pair the run never
+  evaluates is absent. Statuses: `ok`, `insufficient`, `no_data`, and `pending`: on a cache miss
+  an active monitor is `pending` (e.g. up to 10 minutes after a cache restart), an inactive one
+  `no_data`. `value`/`level` are null unless `ok`; `level` is the scale key; `previous` is the
+  same evaluation an hour earlier. Hourly feeds use the latest reading (window = 2x interval).
+  Hidden monitors are served (they alert, so the tile matches the texts; whether they should
+  alert is deferred). Timestamps carry the Pacific offset. 200s are `public, max-age=60`, errors
+  `no-cache`. `monitors/meta/` entry types carry `alerts` (`window`, `min_coverage`, `stage`,
+  `processor`, `expected_interval`), `null` when the pair isn't evaluated.
 
 Timestamps: zone-less `timestamp__*` filter and `at/` values are read as Pacific,
 explicitly, via `PacificDateTimeField`. `settings.TIME_ZONE` is UTC and
