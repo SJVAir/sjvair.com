@@ -17,6 +17,7 @@ from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
 from django.views.decorators.csrf import csrf_exempt
 
+from camp.apps.alerts.evaluator import AlertEvaluator
 from camp.apps.entries.guidelines import school_guidelines_json
 from camp.apps.entries.models import BaseEntry, PM25
 from camp.apps.entries.stages import STAGE_DESCRIPTIONS, Stage
@@ -165,9 +166,26 @@ class MonitorMetaEndpoint(Endpoint):
                         stage: sorted([proc.name for proc in processors])
                         for stage, processors
                         in config.get('processors', {}).items()
-                    }
+                    },
+                    'alerts': self.get_alerts(monitor_model, entry_model),
                 }
         return payload
+
+    def get_alerts(self, monitor_model, entry_model):
+        """The series the SMS alert run evaluates for this pair, or None."""
+        config = monitor_model.alertable_entry_types.get(entry_model)
+        if config is None:
+            return None
+        lookup, expected_interval = AlertEvaluator.split_config(config)
+        processor = lookup.get('processor')
+        stage = lookup.get('stage')
+        return {
+            'window': f'{int(AlertEvaluator.WINDOW.total_seconds() // 60)} min',
+            'min_coverage': AlertEvaluator.MIN_COVERAGE,
+            'stage': getattr(stage, 'value', stage),
+            'processor': processor.name if processor else None,
+            'expected_interval': expected_interval,
+        }
 
     def get_scale(self, entry_model):
         if entry_model.Levels is None:
