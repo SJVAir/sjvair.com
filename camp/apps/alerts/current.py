@@ -14,12 +14,17 @@ def cache_key(monitor_id):
     return f'alerts:current:{monitor_id}'
 
 
+def _number(value):
+    # Values are Decimals; the JSON encoder would send those as strings.
+    return None if value is None else float(value)
+
+
 def _brief(result):
     if result is None:
         return {'status': None, 'value': None, 'level': None}
     return {
         'status': result.status,
-        'value': result.value,
+        'value': _number(result.value),
         'level': result.level.key if result.level else None,
     }
 

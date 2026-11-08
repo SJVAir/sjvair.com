@@ -84,9 +84,9 @@ def periodic_alerts():
         for monitor in get_alert_monitors():
             try:
                 evaluator = AlertEvaluator(monitor)
-                results = evaluator.get_results()
+                now = timezone.now()
+                results = evaluator.get_results(now=now)
                 levels = evaluator.evaluate(results)
-                now = next((r.window_end for r in results.values()), None) or timezone.now()
                 current.store(monitor, results, now)
                 if monitor.pk in subscribed_ids:
                     notifications.notify_subscribers(monitor, levels)

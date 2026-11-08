@@ -7,6 +7,7 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from smalluuid import SmallUUID
 
 from . import endpoints
 
@@ -232,6 +233,22 @@ class CurrentAlertValuesTests(TestCase):
         assert content['data']['pm25']['level'] == 'unhealthy_sensitive'
         assert re.search(r'[+-]\d\d:\d\d$', content['data']['pm25']['window']['end'])
         assert response['Cache-Control'] == 'public, max-age=60'
+        assert isinstance(content['data']['pm25']['value'], float)
+        previous = content['data']['pm25']['previous']
+        assert previous['value'] is None or isinstance(previous['value'], float)
+
+    def test_previous_value_is_a_number(self):
+        now = timezone.now()
+        for i in range(60):
+            PM25.objects.create(
+                monitor=self.monitor, value=40,
+                timestamp=now - timedelta(minutes=i * 2), **self.lookup
+            )
+        current.store(monitor=self.monitor, results=AlertEvaluator(self.monitor).get_results(now=now), evaluated_at=now)
+        data = self.client.get(f'/api/2.0/monitors/{self.monitor.pk}/alerts/current/').json()['data']['pm25']
+        assert isinstance(data['value'], float)
+        if data['previous']['status'] == 'ok':
+            assert isinstance(data['previous']['value'], float)
 
     def test_miss_active_is_pending(self):
         self.mark_active(self.monitor)
@@ -262,13 +279,19 @@ class CurrentAlertValuesTests(TestCase):
         self.store_results(self.monitor)
         self.monitor.is_hidden = True
         self.monitor.save()
-        response, content = self.get(self.monitor)
+        response = self.client.get(f'/api/2.0/monitors/{self.monitor.pk}/alerts/current/')
 
         assert response.status_code == 200
-        assert content['data']['pm25']['status'] == 'ok'
+        assert response.json()['data']['pm25']['status'] == 'ok'
 
     def test_unknown_id_404s(self):
         response = self.client.get('/api/2.0/monitors/doesnotexist/alerts/current/')
+        assert response.status_code == 404
+        assert response['Cache-Control'] == 'no-cache'
+
+    def test_well_formed_unknown_id_404s(self):
+        unknown = SmallUUID()
+        response = self.client.get(f'/api/2.0/monitors/{unknown}/alerts/current/')
         assert response.status_code == 404
         assert response['Cache-Control'] == 'no-cache'
 
