@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from resticus import generics, http
+from resticus import exceptions, generics, http
 
 from camp.api.v1.endpoints import FormEndpoint
 from camp.apps.alerts import current
@@ -70,6 +70,11 @@ class Unsubscribe(FormEndpoint):
         return {'success': True}
 
 
+def _error(response):
+    response['Cache-Control'] = 'no-cache'
+    return response
+
+
 def _pacific(value):
     # The JSON encoder writes UTC datetimes as "Z"; clients want the Pacific offset.
     if isinstance(value, datetime):
@@ -87,8 +92,12 @@ class CurrentAlertValues(generics.Endpoint):
 
     def get(self, request, *args, **kwargs):
         monitor = request.monitor
-        # The wrapped monitor can be a lazy proxy; _meta.model is the concrete class.
-        model = monitor._meta.model
+        try:
+            # The monitor is a lazy proxy; this first touch looks it up and raises NotFound.
+            # _meta.model is the concrete class.
+            model = monitor._meta.model
+        except exceptions.NotFound as err:
+            return _error(err.response)
         entry_types = {entry_model.entry_type for entry_model in model.alertable_entry_types}
 
         stored = current.load(monitor.pk)
@@ -98,9 +107,8 @@ class CurrentAlertValues(generics.Endpoint):
             # Not monitor.is_active: it can be stale on the middleware's cached monitor.
             active = model.objects.filter(pk=monitor.pk).get_active().exists()
             status = 'pending' if active else 'no_data'
-            fields = ('value', 'level', 'window', 'latest_timestamp', 'readings', 'required', 'previous', 'evaluated_at')
             data = {
-                entry_type: {'status': status, **dict.fromkeys(fields)}
+                entry_type: {'status': status, **dict.fromkeys(current.RESULT_FIELDS)}
                 for entry_type in sorted(entry_types)
             }
 

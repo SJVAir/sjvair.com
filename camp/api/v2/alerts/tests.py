@@ -1,7 +1,6 @@
-from unittest.mock import patch
-
 import re
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.auth.models import AnonymousUser
 from django.core.cache import cache
@@ -229,6 +228,7 @@ class CurrentAlertValuesTests(TestCase):
 
         assert response.status_code == 200
         assert content['data']['pm25']['status'] == 'ok'
+        assert set(content['data']['pm25']) == {'status', *current.RESULT_FIELDS}
         assert content['data']['pm25']['level'] == 'unhealthy_sensitive'
         assert re.search(r'[+-]\d\d:\d\d$', content['data']['pm25']['window']['end'])
         assert response['Cache-Control'] == 'public, max-age=60'
@@ -270,3 +270,12 @@ class CurrentAlertValuesTests(TestCase):
     def test_unknown_id_404s(self):
         response = self.client.get('/api/2.0/monitors/doesnotexist/alerts/current/')
         assert response.status_code == 404
+        assert response['Cache-Control'] == 'no-cache'
+
+    def test_client_get_existing_monitor(self):
+        self.store_results(self.monitor)
+        response = self.client.get(f'/api/2.0/monitors/{self.monitor.pk}/alerts/current/')
+
+        assert response.status_code == 200
+        assert response['Cache-Control'] == 'public, max-age=60'
+        assert response.json()['data']['pm25']['status'] == 'ok'

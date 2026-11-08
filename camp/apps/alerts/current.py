@@ -6,6 +6,9 @@ logger = logging.getLogger(__name__)
 
 CACHE_TIMEOUT = 30 * 60
 
+# Every key of a stored entry type's result besides `status`.
+RESULT_FIELDS = ('value', 'level', 'window', 'latest_timestamp', 'readings', 'required', 'previous', 'evaluated_at')
+
 
 def cache_key(monitor_id):
     return f'alerts:current:{monitor_id}'
