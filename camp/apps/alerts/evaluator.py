@@ -1,13 +1,29 @@
 import math
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional
 
 import pandas as pd
 
 from django.db import transaction
-from django.db.models import Avg, Count
+from django.db.models import Avg, Count, Max
 from django.utils import timezone
 
 from camp.apps.alerts.models import Alert
-from camp.apps.entries.levels import AQLevel
+from camp.apps.entries.levels import AQLevel, Level
+
+
+@dataclass
+class AlertResult:
+    status: str  # 'ok' | 'insufficient' | 'no_data'
+    window_start: datetime
+    window_end: datetime
+    value: Optional[float] = None
+    level: Optional[Level] = None
+    latest_timestamp: Optional[datetime] = None
+    readings: int = 0
+    required: int = 0
+    previous: Optional['AlertResult'] = None  # always None on a previous result
 
 
 class AlertEvaluator:
@@ -32,23 +48,34 @@ class AlertEvaluator:
         lookup = {key: value for key, value in config.items() if key != 'expected_interval'}
         return lookup, config.get('expected_interval')
 
+    def get_results(self, now=None):
+        '''
+        Return {entry_model: AlertResult} for every alertable entry type,
+        all measured at one `now`, without touching alert records.
+        '''
+        now = now or timezone.now()
+        return {
+            entry_model: self.get_result(entry_model, *self.split_config(config), now=now)
+            for entry_model, config in self.entry_types.items()
+        }
+
     def get_levels(self):
         '''
         Return {entry_model: Level or None} for every alertable entry type,
         without touching alert records.
         '''
-        return {
-            entry_model: self.get_level(entry_model, *self.split_config(config))
-            for entry_model, config in self.entry_types.items()
-        }
+        return {entry_model: result.level for entry_model, result in self.get_results().items()}
 
-    def evaluate(self):
+    def evaluate(self, results=None):
         '''
         Bring this monitor's alert records in line with its trailing-hour
-        levels, and return those levels (see get_levels). Alert records are
-        bookkeeping only; subscriber texts are decided in notifications.py.
+        levels, and return those levels. Pass `results` (from get_results) to
+        reuse them. Alert records are bookkeeping only; subscriber texts are
+        decided in notifications.py.
         '''
-        levels = self.get_levels()
+        if results is None:
+            results = self.get_results()
+        levels = {entry_model: result.level for entry_model, result in results.items()}
         for entry_model, level in levels.items():
             with transaction.atomic():
                 active_alert = (Alert.objects
@@ -68,48 +95,81 @@ class AlertEvaluator:
         return levels
 
     def get_level(self, entry_model, lookup, interval=None):
+        return self.compute(entry_model, lookup, interval, timezone.now()).level
+
+    def get_result(self, entry_model, lookup, interval=None, now=None):
+        now = now or timezone.now()
+        result = self.compute(entry_model, lookup, interval, now)
+        result.previous = self.compute(entry_model, lookup, interval, now - self.WINDOW)
+        return result
+
+    def compute(self, entry_model, lookup, interval, now):
         interval = pd.to_timedelta(interval or self.monitor.EXPECTED_INTERVAL)
         if interval >= self.WINDOW:
             # An hourly feed can't be averaged over an hour: use its latest reading.
-            return self.get_current_level(entry_model, lookup, interval)
-        return self.get_average_level(entry_model, lookup, interval)
+            return self.latest_reading(entry_model, lookup, interval, now)
+        return self.average(entry_model, lookup, interval, now)
 
-    def get_average_level(self, entry_model, lookup, interval):
-        now = timezone.now()
-        result = (entry_model.objects
+    def average(self, entry_model, lookup, interval, now):
+        start = now - self.WINDOW
+        stats = (entry_model.objects
             .filter(
                 monitor_id=self.monitor.pk,
-                timestamp__gte=now - self.WINDOW,
+                timestamp__gte=start,
                 timestamp__lte=now,
                 **lookup
             )
-            .aggregate(avg=Avg('value'), count=Count('value'))
+            .aggregate(avg=Avg('value'), count=Count('value'), latest=Max('timestamp'))
         )
 
         required = max(1, math.ceil((self.WINDOW / interval) * self.MIN_COVERAGE))
-        if result['count'] < required:
-            return None
-        return entry_model.Levels.get_level(result['avg'])
+        result = AlertResult(
+            status='ok',
+            window_start=start,
+            window_end=now,
+            latest_timestamp=stats['latest'],
+            readings=stats['count'],
+            required=required,
+        )
+        if stats['count'] == 0:
+            result.status = 'no_data'
+        elif stats['count'] < required:
+            result.status = 'insufficient'
+        else:
+            result.value = stats['avg']
+            result.level = entry_model.Levels.get_level(stats['avg'])
+        return result
 
-    def get_current_level(self, entry_model, lookup, interval):
+    def latest_reading(self, entry_model, lookup, interval, now):
         '''
-        Level of the most recent reading, or None if it is older than twice
-        the expected interval.
+        The most recent reading, if it is no older than twice the expected
+        interval.
         '''
-        now = timezone.now()
+        start = now - interval * 2
         entry = (entry_model.objects
             .filter(
                 monitor_id=self.monitor.pk,
-                timestamp__gte=now - interval * 2,
+                timestamp__gte=start,
                 timestamp__lte=now,
                 **lookup
             )
             .order_by('-timestamp')
             .first()
         )
-        if not entry or now - entry.timestamp > interval * 2:
-            return None
-        return entry_model.Levels.get_level(entry.value)
+        result = AlertResult(
+            status='insufficient',
+            window_start=start,
+            window_end=now,
+            readings=0,
+            required=1,
+        )
+        if entry:
+            result.status = 'ok'
+            result.value = entry.value
+            result.level = entry_model.Levels.get_level(entry.value)
+            result.latest_timestamp = entry.timestamp
+            result.readings = 1
+        return result
 
     def creation_check(self, entry_model, level):
         if level is None or level < AQLevel.scale.MODERATE:
