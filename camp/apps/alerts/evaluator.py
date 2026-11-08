@@ -48,14 +48,15 @@ class AlertEvaluator:
         lookup = {key: value for key, value in config.items() if key != 'expected_interval'}
         return lookup, config.get('expected_interval')
 
-    def get_results(self, now=None):
+    def get_results(self, now=None, previous=True):
         '''
         Return {entry_model: AlertResult} for every alertable entry type,
-        all measured at one `now`, without touching alert records.
+        all measured at one `now`, without touching alert records. Pass
+        previous=False to skip the hour-before result (one query fewer per type).
         '''
         now = now or timezone.now()
         return {
-            entry_model: self.get_result(entry_model, *self.split_config(config), now=now)
+            entry_model: self.get_result(entry_model, *self.split_config(config), now=now, previous=previous)
             for entry_model, config in self.entry_types.items()
         }
 
@@ -64,7 +65,7 @@ class AlertEvaluator:
         Return {entry_model: Level or None} for every alertable entry type,
         without touching alert records.
         '''
-        return {entry_model: result.level for entry_model, result in self.get_results().items()}
+        return {entry_model: result.level for entry_model, result in self.get_results(previous=False).items()}
 
     def evaluate(self, results=None):
         '''
@@ -74,7 +75,7 @@ class AlertEvaluator:
         decided in notifications.py.
         '''
         if results is None:
-            results = self.get_results()
+            results = self.get_results(previous=False)
         levels = {entry_model: result.level for entry_model, result in results.items()}
         for entry_model, level in levels.items():
             with transaction.atomic():
@@ -97,13 +98,19 @@ class AlertEvaluator:
     def get_level(self, entry_model, lookup, interval=None):
         return self.compute(entry_model, lookup, interval, timezone.now()).level
 
-    def get_result(self, entry_model, lookup, interval=None, now=None):
+    def get_result(self, entry_model, lookup, interval=None, now=None, previous=True):
+        '''
+        Full AlertResult for one entry type at `now`. With previous=True, also
+        carries the result for the hour before its window.
+        '''
         now = now or timezone.now()
         result = self.compute(entry_model, lookup, interval, now)
-        result.previous = self.compute(entry_model, lookup, interval, now - self.WINDOW)
+        if previous:
+            result.previous = self.compute(entry_model, lookup, interval, now - self.WINDOW)
         return result
 
     def compute(self, entry_model, lookup, interval, now):
+        '''One result (no previous) for the window ending at `now`.'''
         interval = pd.to_timedelta(interval or self.monitor.EXPECTED_INTERVAL)
         if interval >= self.WINDOW:
             # An hourly feed can't be averaged over an hour: use its latest reading.

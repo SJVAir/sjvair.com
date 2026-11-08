@@ -313,6 +313,21 @@ class AlertResultTests(TestCase):
         assert result.previous.status == 'no_data'
         assert result.previous.value is None
 
+    def test_levels_and_evaluate_skip_previous(self):
+        self.fill(40)
+        evaluator = AlertEvaluator(self.monitor)
+        with patch.object(AlertEvaluator, 'compute', autospec=True, side_effect=AlertEvaluator.compute) as compute:
+            evaluator.get_levels()
+            assert compute.call_count == len(evaluator.entry_types)
+            compute.reset_mock()
+            evaluator.evaluate()
+            assert compute.call_count == len(evaluator.entry_types)
+            compute.reset_mock()
+            results = evaluator.get_results()
+            assert compute.call_count == 2 * len(evaluator.entry_types)
+        assert evaluator.get_results(previous=False)[PM25].previous is None
+        assert results[PM25].previous is not None
+
     def test_evaluate_accepts_results(self):
         self.fill(40)
         evaluator = AlertEvaluator(self.monitor)
