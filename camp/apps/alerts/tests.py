@@ -20,7 +20,7 @@ from waffle import get_waffle_flag_model
 from waffle.testutils import override_flag
 
 from camp.apps.accounts.models import User
-from camp.apps.alerts import notifications, tasks
+from camp.apps.alerts import current, notifications, tasks
 from camp.apps.alerts.models import Alert, AlertUpdate, Notification, Subscription
 from camp.apps.alerts.evaluator import AlertEvaluator, AlertResult
 from camp.apps.alerts.tasks import daily_reminders, get_alert_monitors, periodic_alerts
@@ -652,6 +652,70 @@ class PeriodicAlertsTests(TestCase):
         assert [call.args[0].pk for call in mock_notify.call_args_list] == [self.monitor.pk]
 
 
+class StoredResultTests(TestCase):
+    fixtures = ['users.yaml', 'purple-air.yaml']
+
+    def setUp(self):
+        cache.clear()
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        self.lookup = AlertEvaluator.split_config(self.monitor.alertable_entry_types[PM25])[0]
+
+    def activate(self, values=40):
+        entry = PM25.objects.create(monitor=self.monitor, value=5, timestamp=timezone.now(), **self.lookup)
+        LatestEntry.objects.create(
+            monitor=self.monitor,
+            entry_type=PM25.entry_type,
+            stage=entry.stage,
+            processor='',
+            entry_id=entry.pk,
+            timestamp=entry.timestamp,
+        )
+        for i in range(30):
+            PM25.objects.create(
+                monitor=self.monitor,
+                value=values,
+                timestamp=timezone.now() - timedelta(minutes=i * 2),
+                **self.lookup
+            )
+
+    def test_periodic_alerts_stores_results(self):
+        self.activate()
+        periodic_alerts.call_local()
+        stored = current.load(self.monitor.pk)['pm25']
+        assert stored['status'] == 'ok'
+        assert stored['level'] == 'unhealthy_sensitive'
+        assert isinstance(stored['evaluated_at'], datetime)
+
+    def test_serialize_shape(self):
+        self.activate()
+        evaluator = AlertEvaluator(self.monitor)
+        results = evaluator.get_results()
+        data = current.serialize(results, timezone.now())['pm25']
+        assert set(data) == {
+            'status', 'value', 'level', 'window', 'latest_timestamp',
+            'readings', 'required', 'previous', 'evaluated_at',
+        }
+        assert set(data['previous']) == {'status', 'value', 'level'}
+
+    @patch('camp.apps.alerts.tasks.notifications.notify_subscribers')
+    def test_cache_error_does_not_block_notifications(self, mock_notify):
+        Subscription.objects.create(
+            user=User.objects.get(email='user@sjvair.com'),
+            monitor=self.monitor,
+            level='unhealthy_sensitive',
+        )
+        self.activate()
+        with patch('camp.apps.alerts.current.cache.set', side_effect=RuntimeError('down')):
+            periodic_alerts.call_local()
+        assert mock_notify.call_count == 1
+
+    def test_stored_with_timeout(self):
+        self.activate()
+        with patch('camp.apps.alerts.current.cache.set') as mock_set:
+            periodic_alerts.call_local()
+        assert mock_set.call_args.kwargs['timeout'] == current.CACHE_TIMEOUT == 1800
+
+
 class TaskLockTests(TestCase):
     fixtures = ['users.yaml', 'purple-air.yaml']
 
@@ -759,7 +823,7 @@ class TaskIsolationTests(TestCase):
     def test_periodic_alerts_continues_after_a_monitor_fails(self):
         evaluated = []
 
-        def fake_evaluate(evaluator):
+        def fake_evaluate(evaluator, results=None):
             evaluated.append(evaluator.monitor.pk)
             if len(evaluated) == 1:
                 raise RuntimeError('boom')
