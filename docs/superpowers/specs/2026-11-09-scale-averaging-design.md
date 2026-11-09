@@ -185,9 +185,15 @@ Rounding: none at storage. The values are floats like `mean`.
   default) to both summary tables. In Postgres, adding a nullable column with no default only
   updates the catalog and doesn't rewrite the table. The builder must confirm the generated SQL
   is a plain `ADD COLUMN ... NULL` with no `DEFAULT` (`sqlmigrate`).
-- It still takes a brief `ACCESS EXCLUSIVE` lock on each table, which waits behind long-running
-  transactions against those tables. The deploy note must say to run it away from :40–:50 (the
-  hourly summaries).
+- It still takes a brief `ACCESS EXCLUSIVE` lock on each table, which waits behind open
+  transactions on those tables (the hourly summaries at :40–:50, or a `SummaryBackfillJob` tick,
+  whose chunk completion runs inside `transaction.atomic()`), and every read and write then
+  queues behind it. So the migration's first operation is `SET LOCAL lock_timeout = '10s'`
+  (the migration is atomic, so it holds for the `ALTER TABLE`s): a blocked deploy fails its
+  release phase instead of stalling the tables, and can be retried.
+- There's no separate migrate step: the Procfile's `release: invoke release` runs
+  `migrate --no-input` on every deploy. The deploy itself must be timed away from :40–:50 with
+  no `SummaryBackfillJob` running.
 
 ### 6. Backfill command
 
@@ -250,12 +256,15 @@ Rounding: none at storage. The values are floats like `mean`.
 
 ## Deploy (through the coordinator, into DEFERRED.md's deploy entry)
 
-1. Deploy, then migrate (away from :40–:50).
+1. Deploy (the release phase migrates) away from :40–:50 and with no `SummaryBackfillJob`
+   running (section 5).
 2. Per AQLite monitor: `rebuild_summaries <first AQLite date> <today> --monitor <id>
    --monitors-only` (section 7). This also fills AQLite's peaks. Region rows that include AQLite monitors don't change from this step. Their peaks come from step 3.
 3. `fill_daily_peaks <first gas date> <today> --monitor-type airnow --dry-run`, then without
    `--dry-run`. The same for `--monitor-type vozbox` and each region
    type that has gas rows. `<today>` as the exclusive end fills through yesterday.
+4. Run the backfill before announcing the feature: settled daily responses are cached 24 h, so
+   nulls served before the backfill stick for a day.
 
 Locally: the migration and any `fill_daily_peaks` run need the coordinator's approval first,
 sent with the branch, the migration name and the exact scoped commands.

@@ -368,8 +368,11 @@ zones are missing there; see SJVAPCD Forecast Setup).
   complete when the hour's CLEANED readings reach 80% of `expected_hourly_entries`. Backfill
   existing rows with `fill_daily_peaks` (Pacific dates, end exclusive, always scoped like
   `repair_summaries`, one Pacific month at a time, idempotent, `--entry-type`, `--dry-run`).
-  Deploy order: migrate (away from :40-:50); `rebuild_summaries ... --monitor <id>
-  --monitors-only` per AQLite monitor; then `fill_daily_peaks`, `--dry-run` first.
+  Deploy order: deploy (the release phase migrates; migration 0007 sets a 10 s `lock_timeout`)
+  away from :40-:50 and with no `SummaryBackfillJob` running; then `rebuild_summaries ...
+  --monitor <id> --monitors-only` per AQLite monitor; then scoped `fill_daily_peaks`,
+  `--dry-run` first. Backfill before announcing the feature: settled daily responses are
+  cached 24 h, so nulls served before the backfill stick for a day.
 
   ```bash
   docker compose run --rm web python manage.py fill_daily_peaks 2026-01-01 2026-11-10 \

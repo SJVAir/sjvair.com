@@ -9,7 +9,12 @@ class Migration(migrations.Migration):
         ('summaries', '0006_summarybackfilljob_chunk_days'),
     ]
 
+    # Atomic (the Postgres default), so SET LOCAL holds for the ALTER TABLEs below.
+    # Each needs a brief ACCESS EXCLUSIVE lock; without a timeout it would wait behind
+    # an open summaries transaction and stall every read and write queued behind it.
+    # A timeout fails the release instead, and the deploy can be retried.
     operations = [
+        migrations.RunSQL("SET LOCAL lock_timeout = '10s'", migrations.RunSQL.noop),
         migrations.AddField(
             model_name='monitorsummary',
             name='max_1h',
