@@ -4,7 +4,8 @@ from functools import reduce
 import operator
 
 from django.conf import settings
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Count, Exists, OuterRef, Q
+from django.db.models.functions import TruncHour
 
 from camp.utils.datetime import localtime, make_aware
 from camp.apps.summaries.periods import is_period_start, iter_hours, iter_period_starts, period_end
@@ -12,7 +13,7 @@ from camp.apps.summaries.models import BaseSummary
 from camp.apps.entries.stages import Stage
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
-from camp.apps.summaries.aggregators import compute_stats, compute_region_summary
+from camp.apps.summaries.aggregators import compute_stats, compute_region_summary, hourly_output_processor
 from camp.apps.summaries.models import MonitorSummary, RegionSummary
 from camp.apps.summaries.selection import region_summary_entry_models
 
@@ -143,8 +144,33 @@ def backfill_monitor_hours(monitor, chunk_start, chunk_end, entry_models):
                 hour = ts.replace(minute=0, second=0, microsecond=0)
                 groups[(hour, processor)].append(float(value))
 
+        # Hourly-output series: one grouped query counts each hour's source readings.
+        source_counts = {}
+        classes = {p: hourly_output_processor(p) for p in {p for _, p in groups}}
+        classes = {p: c for p, c in classes.items() if c is not None}
+        for stage in {c.source_stage for c in classes.values()}:
+            source_counts[stage] = dict(
+                EntryModel.objects
+                .filter(
+                    monitor_id=monitor.pk,
+                    timestamp__gte=chunk_start,
+                    timestamp__lt=chunk_end,
+                    stage=stage,
+                )
+                .annotate(hour=TruncHour('timestamp'))
+                .values_list('hour')
+                .annotate(n=Count('pk'))
+                .order_by()
+            )
+
+        expected = monitor.expected_hourly_entries or 1
         for (hour, processor), values in groups.items():
-            stats = compute_stats(values, monitor.expected_hourly_entries or 1)
+            cls = classes.get(processor)
+            if cls is None:
+                stats = compute_stats(values, expected)
+            else:
+                n = source_counts[cls.source_stage].get(hour, 0)
+                stats = compute_stats(values, 1, is_complete=n >= 0.8 * expected)
             if stats is None:
                 continue
             to_upsert.append(MonitorSummary(
