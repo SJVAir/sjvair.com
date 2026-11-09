@@ -281,6 +281,15 @@ section wins.
 - `rebuild_summaries` and the automated `backfill_summaries` job need no reminder, because they
   go through the daily rollup, which fills the figures itself.
 
+### 11. `daily_statistic_label` (the user, via spec 5)
+
+- Each scale gains `daily_statistic_label` next to `daily_statistic`: the figure's display name,
+  translatable (`gettext_lazy`, like level labels). The values are `mean_24h` "24-hour average",
+  `max_1h` "Highest 1-hour average", `max_8h` "Highest 8-hour average", and `null` where
+  `daily_statistic` is `null`.
+- It's declared next to `DAILY_STATISTIC` in `levels.py`, and `Scale.to_json()` always includes
+  it, like the other two keys.
+
 ## Testing
 
 - `LevelSet` / `Scale`: declared periods, derived `daily_statistic`, the JSON keys on every

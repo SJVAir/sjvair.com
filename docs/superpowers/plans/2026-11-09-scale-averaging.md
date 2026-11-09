@@ -393,10 +393,11 @@ keep its `SET LOCAL lock_timeout` operation first.
 - [ ] **Step 4: Run** `camp/apps/summaries camp/api/v2/summaries`. Expected: PASS.
 - [ ] **Step 5: Commit** `Summaries: daily figures skip sentinel hours and report them`.
 
-### Task 9: `backfill_airnow` reminder, docs, full suite
+### Task 9: `backfill_airnow` reminder, `daily_statistic_label`, docs, full suite
 
 **Files:**
 - Modify: `camp/apps/monitors/airnow/management/commands/backfill_airnow.py` (`help`, and the closing output)
+- Modify: `camp/apps/entries/levels.py`, `camp/utils/scales.py` (`daily_statistic_label`)
 - Modify: CLAUDE.md (Daily peaks bullet: the sentinel rule; the deploy order with the PM types and `backfill_airnow` first)
 - Modify: `docs/superpowers/specs/2026-11-09-scale-averaging-design.md` Deploy section (the same order)
 - Test: `camp/apps/monitors/airnow/` command tests (find with `grep -rn "backfill_airnow" camp/apps/monitors/airnow/tests*`)
@@ -417,5 +418,10 @@ keep its `SET LOCAL lock_timeout` operation first.
     3. AQLite rebuilds.
     4. `fill_daily_peaks --dry-run`, then a real run, for monitor types airnow, aqlite, vozbox, purpleair, airgradient and every other type with PM2.5/PM10 daily rows (list them with `ENTRY_CONFIG`), then each region type with PM or gas rows.
     5. Backfill before announcing.
-- [ ] **Step 4: Run the full suite** (`-n 4 --dist loadscope`). Expected: all pass.
-- [ ] **Step 5: Commit** `AirNow backfill: name the summary follow-ups; docs`.
+- [ ] **Step 4: `daily_statistic_label` (spec §11).**
+  - In `levels.py`, add `DAILY_STATISTIC_LABELS = {'mean_24h': _('24-hour average'), 'max_1h': _('Highest 1-hour average'), 'max_8h': _('Highest 8-hour average')}` and the property `LevelSet.daily_statistic_label`.
+  - `Scale` gains `daily_statistic_label: str | None = None`, and `to_json()` always includes it (as `str(...)` or `None`). `to_scale` passes it through.
+  - Tests: PM25 gives "24-hour average", O3 "Highest 1-hour average", CO "Highest 8-hour average". AQI and an HMS category scale give `None`. `monitors/meta/` `entries.o3.scale.daily_statistic_label` is "Highest 1-hour average". Update `test_to_json_keys`.
+  - CLAUDE.md: the scale shape line gains the key.
+- [ ] **Step 5: Run the full suite** (`-n 4 --dist loadscope`). Expected: all pass.
+- [ ] **Step 6: Commit** `AirNow backfill: name the summary follow-ups; daily_statistic_label; docs`.
