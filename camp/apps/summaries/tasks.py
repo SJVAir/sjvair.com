@@ -359,14 +359,14 @@ def _rollup_regions(target, source, resolution, start):
 R = BaseSummary.Resolution
 
 
-def _refresh_previous_max_8h(kind, day):
+def _refresh_previous_max_8h(kind, start):
     """
     The 8-hour windows starting late in a day reach into the next morning, so
     that day's daily rollup stores a provisional `max_8h`. Run with the next
     day's rollup, this recomputes the previous day's, now that the hours exist.
+    `start` is the day just rolled up.
     """
     models = [model for model, field in peak_entry_models().items() if field == 'max_8h']
-    start = day or _previous_period_start('day')
     fill_daily_peaks(
         kind, None, _previous_period_start('day', start), start,
         entry_models=models, fields=('max_8h',),
@@ -376,6 +376,7 @@ def _refresh_previous_max_8h(kind, day):
 @db_periodic_task(pacific_crontab(1, '0'), priority=80, queue='summaries')
 def daily_monitor_summaries(day=None):
     """Roll up yesterday's hourly MonitorSummary records into daily ones."""
+    day = day or _previous_period_start('day')
     _rollup_monitors(R.DAILY, R.HOURLY, 'day', day)
     _refresh_previous_max_8h('monitor', day)
 
@@ -383,6 +384,7 @@ def daily_monitor_summaries(day=None):
 @db_periodic_task(pacific_crontab(1, '10'), priority=70, queue='summaries')
 def daily_region_summaries(day=None):
     """Roll up yesterday's hourly RegionSummary records into daily ones."""
+    day = day or _previous_period_start('day')
     _rollup_regions(R.DAILY, R.HOURLY, 'day', day)
     _refresh_previous_max_8h('region', day)
 

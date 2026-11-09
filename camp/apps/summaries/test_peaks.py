@@ -338,3 +338,28 @@ class NextNightRefreshTests(TestCase):
         daily_region_summaries(day=self.next_day)
         row.refresh_from_db()
         assert row.max_8h == 17.625
+
+    def test_default_day_refreshes_previous_and_rolls_yesterday(self):
+        # Scheduler path: no argument. At 01:00 Pacific on D+1 the task rolls D
+        # and refreshes D-1, resolving the day once.
+        d_prev, d, d_next = self.day, self.next_day, pacific_day(2026, 7, 3)
+        self.monitor_hours('co', [1.0] * 24)
+        self.region_hours('co', [1.0] * 24)
+        rollup_monitor_summaries(R.DAILY, R.HOURLY, d_prev, d)
+        rollup_region_summaries(R.DAILY, R.HOURLY, d_prev, d)
+        for i, hour in enumerate(day_hours(d)):
+            if i < 8:
+                MonitorSummary.objects.create(
+                    monitor=self.monitor, timestamp=hour, resolution=R.HOURLY, entry_type='co',
+                    processor='', is_complete=True, **_stats(20.0))
+                RegionSummary.objects.create(
+                    region=self.region, timestamp=hour, resolution=R.HOURLY, entry_type='co',
+                    station_count=1, weight=1.0, **_stats(20.0))
+        now = d_next + timedelta(hours=1, minutes=5)
+        with patch('django.utils.timezone.now', return_value=now):
+            daily_monitor_summaries()
+            daily_region_summaries()
+        for model, owner in ((MonitorSummary, {'monitor': self.monitor}), (RegionSummary, {'region': self.region})):
+            prev = model.objects.get(resolution=R.DAILY, entry_type='co', timestamp=d_prev, **owner)
+            assert prev.max_8h == 17.625
+            assert model.objects.filter(resolution=R.DAILY, entry_type='co', timestamp=d, **owner).exists()
