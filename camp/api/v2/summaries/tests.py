@@ -3,6 +3,7 @@ from unittest import mock
 from unittest.mock import patch
 
 import pytest
+from tdigest import TDigest
 from django.contrib.gis.geos import Point
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
@@ -11,9 +12,12 @@ from django.utils import timezone
 from camp.api.v2.summaries.endpoints import (
     BulkMonitorSummaryList,
     BulkRegionSummaryList,
+    MonitorOpenDays,
     MonitorSummaryList,
+    RegionOpenDays,
     RegionSummaryList,
 )
+from camp.apps.summaries.aggregators import tdigest_to_dict
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.monitors.purpleair.models import PurpleAir
@@ -924,3 +928,102 @@ class IsFinalFieldTests(TestCase):
         )
         rows = [r for g in get_response_data(response)['data'] for r in g['summaries']]
         assert rows and all(r['is_final'] is True for r in rows)
+
+
+class OpenDaysEndpointTests(TestCase):
+    fixtures = ['purple-air.yaml', 'regions.yaml', 'default-calibrations.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        self.region = Region.objects.get(name='Fresno County')
+        self.now = timezone.make_aware(datetime(2026, 10, 5, 0, 30))
+        self.today = timezone.make_aware(datetime(2026, 10, 5))
+        self.yesterday = timezone.make_aware(datetime(2026, 10, 4))
+
+    def _hours(self, make, owner, start, n, **kwargs):
+        for i in range(n):
+            row = make(owner, start + timedelta(hours=i), **kwargs)
+            # The shared STATS carry an empty digest, which can't be rolled up.
+            digest = TDigest()
+            digest.update(10.0)
+            row.tdigest = tdigest_to_dict(digest)
+            row.save(update_fields=['tdigest'])
+
+    def _seed_monitor(self, processor=''):
+        self._hours(make_monitor_summary, self.monitor, self.yesterday + timedelta(hours=22), 3,
+                    processor=processor)
+
+    def _get(self, path, **kwargs):
+        with patch('django.utils.timezone.now', return_value=self.now):
+            return self.client.get(f'/api/2.0/monitors/{self.monitor.pk}/summaries/{path}', **kwargs)
+
+    def test_today_and_yesterday(self):
+        self._seed_monitor()
+        response = self._get('pm25/daily/open/')
+        assert response.status_code == 200
+        rows = get_response_data(response)['data']
+        assert len(rows) == 2
+        assert [r['is_final'] for r in rows] == [False, False]
+        assert rows[0]['timestamp'] < rows[1]['timestamp']
+
+    def test_stored_yesterday_only_today(self):
+        self._seed_monitor()
+        make_monitor_summary(self.monitor, self.yesterday, resolution='day')
+        rows = get_response_data(self._get('pm25/daily/open/'))['data']
+        assert len(rows) == 1
+        assert rows[0]['timestamp'].startswith('2026-10-05')
+
+    def test_processor_param(self):
+        self._seed_monitor(processor='AQLiteHourlyAggregator')
+        assert get_response_data(self._get('pm25/daily/open/'))['data'] == []
+        rows = get_response_data(
+            self._get('pm25/daily/open/', data={'processor': 'AQLiteHourlyAggregator'}))['data']
+        assert len(rows) == 2
+        assert {r['processor'] for r in rows} == {'AQLiteHourlyAggregator'}
+
+    def test_unknown_entry_type_404(self):
+        response = self._get('nope/daily/open/')
+        assert response.status_code == 404
+        assert 'no-cache' in response['Cache-Control']
+
+    def test_unknown_monitor_404(self):
+        with patch('django.utils.timezone.now', return_value=self.now):
+            response = self.client.get('/api/2.0/monitors/doesnotexist/summaries/pm25/daily/open/')
+        assert response.status_code == 404
+
+    def test_headers_and_304(self):
+        self._seed_monitor()
+        response = self._get('pm25/daily/open/')
+        cc = response['Cache-Control']
+        assert 'private' in cc and 'max-age=60' in cc
+        assert response.has_header('ETag')
+        again = self._get('pm25/daily/open/', HTTP_IF_NONE_MATCH=response['ETag'])
+        assert again.status_code == 304
+
+    def test_no_data(self):
+        response = self._get('pm25/daily/open/')
+        assert response.status_code == 200
+        assert get_response_data(response) == {'data': []}
+
+    def test_region(self):
+        self._hours(make_region_summary, self.region, self.yesterday + timedelta(hours=22), 3)
+        with patch('django.utils.timezone.now', return_value=self.now):
+            response = self.client.get(f'/api/2.0/regions/{self.region.sqid}/summaries/pm25/daily/open/')
+        assert response.status_code == 200
+        assert 'max-age=60' in response['Cache-Control']
+        rows = get_response_data(response)['data']
+        assert len(rows) == 2
+        assert all('station_count' in r and r['is_final'] is False for r in rows)
+
+    def test_unknown_region_404(self):
+        response = self.client.get('/api/2.0/regions/nope/summaries/pm25/daily/open/')
+        assert response.status_code == 404
+
+    def test_url_resolution(self):
+        from django.urls import resolve
+        m = resolve(f'/api/2.0/monitors/{self.monitor.pk}/summaries/pm25/daily/open/')
+        assert m.func.view_class is MonitorOpenDays
+        r = resolve(f'/api/2.0/regions/{self.region.sqid}/summaries/pm25/daily/open/')
+        assert r.func.view_class is RegionOpenDays
+        assert resolve(f'/api/2.0/monitors/{self.monitor.pk}/summaries/pm25/daily/2026/').func.view_class is MonitorSummaryList
+        assert resolve(f'/api/2.0/regions/{self.region.sqid}/summaries/pm25/daily/2026/').func.view_class is RegionSummaryList

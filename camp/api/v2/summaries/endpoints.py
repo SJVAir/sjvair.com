@@ -7,6 +7,7 @@ from django.conf import settings
 from django.db.models import Q
 from django.http import Http404
 from django.utils.cache import get_conditional_response, patch_cache_control, set_response_etag
+from django.utils import timezone
 from django.utils.functional import cached_property
 
 from camp.api.v2.monitors.filters import MonitorFilter
@@ -14,6 +15,7 @@ from camp.apps.calibrations.models import DefaultCalibration
 from camp.apps.entries.utils import get_entry_model_by_name
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
+from camp.apps.summaries.open_days import build_open_rows
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.periods import period_end
 from camp.apps.summaries.schedule import is_settled, settle_flags
@@ -122,6 +124,46 @@ class MonitorSummaryList(SummaryMixin, generics.ListEndpoint):
         # SummaryMixin applies resolution/entry_type/date filters
         # We add monitor/processor on top
         return super().get_queryset().filter(monitor=monitor, processor=processor)
+
+
+def _get_region(region_id):
+    try:
+        return Region.all_objects.get(sqid=region_id)
+    except (Region.DoesNotExist, ValueError):
+        raise Http404('Region not found')
+
+
+class MonitorOpenDays(SummaryMixin, generics.GenericEndpoint):
+    """Today's (and, until its rollup settles, yesterday's) daily rows for one monitor,
+    built on request from the hourly rows and never stored. Not paginated; `?processor=`
+    picks the series (default raw)."""
+
+    model = MonitorSummary
+    serializer_class = MonitorSummarySerializer
+    paginate = False
+
+    def get(self, request, *args, **kwargs):
+        monitor = getattr(request, 'monitor', None)
+        if monitor is None:
+            raise Http404('Monitor not found')
+        rows = build_open_rows(
+            'monitor', [monitor.pk], self.entry_model, timezone.now(),
+            processor_q=Q(processor=request.GET.get('processor', '')),
+        ).get(monitor.pk, [])
+        return {'data': self.serialize(rows)}
+
+
+class RegionOpenDays(SummaryMixin, generics.GenericEndpoint):
+    """Today's (and, until its rollup settles, yesterday's) daily rows for one region."""
+
+    model = RegionSummary
+    serializer_class = RegionSummarySerializer
+    paginate = False
+
+    def get(self, request, *args, **kwargs):
+        region = _get_region(kwargs.get('region_id'))
+        rows = build_open_rows('region', [region.pk], self.entry_model, timezone.now()).get(region.pk, [])
+        return {'data': self.serialize(rows)}
 
 
 class BulkMonitorSummaryList(SummaryMixin, generics.ListEndpoint):
@@ -244,11 +286,7 @@ class RegionSummaryList(SummaryMixin, generics.ListEndpoint):
     serializer_class = RegionSummarySerializer
 
     def get_queryset(self):
-        region_id = self.kwargs.get('region_id')
-        try:
-            region = Region.all_objects.get(sqid=region_id)
-        except (Region.DoesNotExist, ValueError):
-            raise Http404('Region not found')
+        region = _get_region(self.kwargs.get('region_id'))
         # super() → SummaryMixin.get_queryset() → ListEndpoint → RegionSummary.objects.all()
         return super().get_queryset().filter(region=region)
 
