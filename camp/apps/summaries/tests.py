@@ -1801,6 +1801,25 @@ class HourlyOutputCompletenessTests(TestCase):
             assert row.expected_count == expected['expected_count'] == 1
             assert row.is_complete is expected['is_complete'] is complete
 
+    def test_backfill_fall_back_hours_stay_apart(self):
+        # 2026-11-01 01:00 PDT (08:00 UTC) and 01:00 PST (09:00 UTC), 10 readings each, so
+        # each hour is complete. Truncated in Pacific, the two merge into one ambiguous
+        # 01:00 key that equals neither UTC hour, and both would count 0 readings.
+        from camp.apps.summaries.backfill import backfill_monitor_hours
+        first = timezone.make_aware(datetime(2026, 11, 1, 8), dt_timezone.utc)
+        second = first + timedelta(hours=1)
+        for hour in (first, second):
+            self._readings(hour, 10)
+            self._aggregate(hour)
+
+        with timezone.override(settings.DEFAULT_TIMEZONE):
+            backfill_monitor_hours(self.monitor, first, second + timedelta(hours=1), [O3])
+
+        rows = MonitorSummary.objects.filter(
+            monitor=self.monitor, entry_type='o3', processor='AQLiteHourlyAggregator',
+            resolution=MonitorSummary.Resolution.HOURLY).order_by('timestamp')
+        assert [(r.timestamp, r.is_complete) for r in rows] == [(first, True), (second, True)]
+
     def test_daily_rollup_complete(self):
         from camp.apps.summaries.tasks import rollup_monitor_summaries
         from camp.utils.datetime import make_aware

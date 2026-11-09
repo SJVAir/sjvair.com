@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from functools import reduce
 import operator
 
@@ -157,7 +157,8 @@ def backfill_monitor_hours(monitor, chunk_start, chunk_end, entry_models):
                     timestamp__lt=chunk_end,
                     stage=stage,
                 )
-                .annotate(hour=TruncHour('timestamp'))
+                # UTC, so the two 01:00 hours of fall-back day stay apart.
+                .annotate(hour=TruncHour('timestamp', tzinfo=dt_timezone.utc))
                 .values_list('hour')
                 .annotate(n=Count('pk'))
                 .order_by()
