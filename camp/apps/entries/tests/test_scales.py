@@ -76,4 +76,20 @@ class ScaleTests(TestCase):
             'guidance', 'min', 'max', 'value',
         }
         assert data['source'] == levels.EPA_SOURCE
-        assert {'averaging_hours', 'daily_statistic'} <= set(data)
+        assert {'averaging_hours', 'daily_statistic', 'daily_statistic_label'} <= set(data)
+
+
+class DailyStatisticLabelTests(TestCase):
+    def test_labels(self):
+        assert levels.PM25.daily_statistic_label == '24-hour average'
+        assert levels.O3.daily_statistic_label == 'Highest 1-hour average'
+        assert levels.CO.daily_statistic_label == 'Highest 8-hour average'
+
+    def test_none_without_averaging(self):
+        assert levels.AQI.daily_statistic_label is None
+        assert levels.AQI.to_scale('aqi', 'AQI', 'AQI').to_json()['daily_statistic_label'] is None
+
+    def test_to_json_is_a_plain_string(self):
+        data = levels.O3.to_scale('o3', 'Ozone', 'ppb').to_json()
+        assert data['daily_statistic_label'] == 'Highest 1-hour average'
+        assert type(data['daily_statistic_label']) is str

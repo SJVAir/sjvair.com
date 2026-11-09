@@ -314,12 +314,18 @@ section wins.
 
 1. Deploy (the release phase migrates) away from :40–:50 and with no `SummaryBackfillJob`
    running (section 5).
-2. Per AQLite monitor: `rebuild_summaries <first AQLite date> <today> --monitor <id>
-   --monitors-only` (section 7). This also fills AQLite's peaks. Region rows that include AQLite monitors don't change from this step. Their peaks come from step 3.
-3. `fill_daily_peaks <first gas date> <today> --monitor-type airnow --dry-run`, then without
-   `--dry-run`. The same for `--monitor-type vozbox` and each region
-   type that has gas rows. `<today>` as the exclusive end fills through yesterday.
-4. Run the backfill before announcing the feature: settled daily responses are cached 24 h, so
+2. `backfill_airnow` over the -999 range, then `rebuild_summaries <start> <end> --monitor <id>
+   --monitors-only` for those AirNow monitors (the command's closing output prints both, with
+   Pacific dates).
+3. Per AQLite monitor: `rebuild_summaries <first AQLite date> <today> --monitor <id>
+   --monitors-only` (section 7). This also fills AQLite's peaks. Region rows that include AQLite
+   monitors don't change from this step. Their peaks come from step 4.
+4. `fill_daily_peaks <first date> <today> --monitor-type <type> --dry-run`, then without
+   `--dry-run`, for `airnow`, `aqlite`, `vozbox`, `purpleair`, `airgradient`, `aqview` and
+   `bam1022` (every enabled type with PM2.5/PM10 daily rows), then each region type with PM or
+   gas rows. `<today>` as the exclusive end fills through yesterday. Hourly means <= -900 are
+   skipped and counted.
+5. Run the backfill before announcing the feature: settled daily responses are cached 24 h, so
    nulls served before the backfill stick for a day.
 
 Locally: the migration and any `fill_daily_peaks` run need the coordinator's approval first,

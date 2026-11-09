@@ -160,6 +160,12 @@ class AQLevel(metaclass=AQLevelMeta):
 # How a day is colored from hourly values, keyed by the scale's averaging hours.
 DAILY_STATISTIC = {24: 'mean_24h', 1: 'max_1h', 8: 'max_8h'}
 
+DAILY_STATISTIC_LABELS = {
+    'mean_24h': _('24-hour average'),
+    'max_1h': _('Highest 1-hour average'),
+    'max_8h': _('Highest 8-hour average'),
+}
+
 
 class LevelSet:
     def __init__(self, *args: Level, averaging_hours: Optional[int] = None, **kwargs: Level):
@@ -187,6 +193,10 @@ class LevelSet:
     @property
     def daily_statistic(self) -> Optional[str]:
         return DAILY_STATISTIC.get(self.averaging_hours)
+
+    @property
+    def daily_statistic_label(self) -> Optional[str]:
+        return DAILY_STATISTIC_LABELS.get(self.daily_statistic)
 
     def __getattr__(self, attr: str) -> Level:
         try:
@@ -236,6 +246,7 @@ class LevelSet:
             source=EPA_SOURCE,
             averaging_hours=self.averaging_hours,
             daily_statistic=self.daily_statistic,
+            daily_statistic_label=self.daily_statistic_label,
             levels=tuple(
                 ScaleLevel(
                     key=level.key,

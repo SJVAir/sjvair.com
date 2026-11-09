@@ -25,6 +25,7 @@ class MonitorMetaScaleTests(TestCase):
         assert entries['o3']['scale']['averaging_hours'] == 1
         assert entries['co']['scale']['daily_statistic'] == 'max_8h'
         assert entries['pm25']['scale']['daily_statistic'] == 'mean_24h'
+        assert entries['o3']['scale']['daily_statistic_label'] == 'Highest 1-hour average'
 
     def test_levels_key_removed(self):
         entries = self._fetch_entries()

@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone as dt_timezone
 
 from django.contrib.gis.geos import GEOSGeometry, Point
 from django.db import connection
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -546,3 +546,28 @@ class BackfillTests(TestCase):
         raw = self.get_entry(PM25, PM25.Stage.RAW)
         assert self.get_entry(PM25, PM25.Stage.CLEANED).origin_id == raw.pk
         assert self.get_entry(PM25, PM25.Stage.CALIBRATED).origin_id == raw.pk
+
+
+@override_settings(AIRNOW_API_KEY='test-key')
+class BackfillCommandTests(TestCase):
+    TOTALS = {'entries': 5, 'monitors': 2, 'missing': 1, 'skipped': 0}
+
+    def run_command(self, start, end):
+        from io import StringIO
+        from django.core.management import call_command
+        out = StringIO()
+        with patch('camp.apps.monitors.airnow.management.commands.backfill_airnow.backfill_airnow',
+                   return_value=self.TOTALS):
+            call_command('backfill_airnow', '--start', start, '--end', end, stdout=out)
+        return out.getvalue()
+
+    def test_names_summary_follow_ups(self):
+        out = self.run_command('2026-09-01T12:00+00:00', '2026-09-03T12:00+00:00')
+        assert 'Summaries are not rebuilt' in out
+        assert 'rebuild_summaries 2026-09-01 2026-09-04 --monitor <id> --monitors-only' in out
+        assert 'fill_daily_peaks 2026-09-01 2026-09-04 --monitor-type airnow' in out
+
+    def test_end_on_pacific_midnight_is_not_rounded_up(self):
+        # 2026-09-03 07:00 UTC is Pacific midnight (PDT).
+        out = self.run_command('2026-09-01T12:00+00:00', '2026-09-03T07:00+00:00')
+        assert 'fill_daily_peaks 2026-09-01 2026-09-03 --monitor-type airnow' in out
