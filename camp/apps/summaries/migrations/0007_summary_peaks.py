@@ -26,6 +26,11 @@ class Migration(migrations.Migration):
             field=models.FloatField(blank=True, null=True, verbose_name='highest 8-hour average'),
         ),
         migrations.AddField(
+            model_name='monitorsummary',
+            name='mean_24h',
+            field=models.FloatField(blank=True, null=True, verbose_name='24-hour average'),
+        ),
+        migrations.AddField(
             model_name='regionsummary',
             name='max_1h',
             field=models.FloatField(blank=True, null=True, verbose_name='highest 1-hour average'),
@@ -34,5 +39,10 @@ class Migration(migrations.Migration):
             model_name='regionsummary',
             name='max_8h',
             field=models.FloatField(blank=True, null=True, verbose_name='highest 8-hour average'),
+        ),
+        migrations.AddField(
+            model_name='regionsummary',
+            name='mean_24h',
+            field=models.FloatField(blank=True, null=True, verbose_name='24-hour average'),
         ),
     ]

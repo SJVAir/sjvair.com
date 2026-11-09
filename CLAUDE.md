@@ -228,7 +228,7 @@ zones are missing there; see SJVAPCD Forecast Setup).
   `tier` is 0-4 or `null` (no severity). `description` is the official wording (credited via
   `source`); `guidance` is SJVAir's own and is `""` for AQ Good and heat Low.
   `averaging_hours` is the standard's window (PM2.5/PM10 24, O3/NO2/SO2 1, CO 8; `null` for AQI
-  and categories) and `daily_statistic` is how a day is judged against it: 24 `mean`, 1
+  and categories) and `daily_statistic` is how a day is judged against it: 24 `mean_24h`, 1
   `max_1h`, 8 `max_8h`, `null` otherwise.
 - **Domain meta endpoints** (each a catalog `meta_url`): `calheatscore/meta/`, `hms/meta/` and
   `forecasts/meta/` return scales keyed by catalog entry-type id (forecasts also lists the
@@ -354,7 +354,10 @@ zones are missing there; see SJVAPCD Forecast Setup).
   errors `no-cache`; no server-side cache. Labels for the types come from `regions/meta/`
   `location_types`.
 - **Daily peaks**: DAILY summary rows (monitor and region) of O3, NO2, SO2 carry `max_1h`, CO
-  carries `max_8h` (`camp/apps/summaries/peaks.py`); every other row and type keeps both `null`.
+  carries `max_8h`, PM2.5 and PM10 carry `mean_24h` (`camp/apps/summaries/peaks.py`); every other
+  row and type keeps all three `null`. `mean_24h` is the mean of the hourly means (not count-weighted)
+  and needs `ceil(0.75 * n)` hours; it has no standard exception, so a short day is `null`
+  (its `mean` and `is_complete` are unchanged).
   A monitor hour counts when its hourly row is `is_complete`; a region hour when its row exists;
   the value is the hourly `mean` (zero and negative count). Standard = the Unhealthy for
   Sensitive Groups lower bound (O3 125, NO2 101, SO2 76, CO 9.5). EPA 75% rule: with n the

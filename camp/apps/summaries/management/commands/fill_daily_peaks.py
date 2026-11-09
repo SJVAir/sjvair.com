@@ -9,7 +9,7 @@ from camp.apps.summaries.periods import iter_period_starts, period_end
 
 class Command(ScopeMixin, BaseCommand):
     help = (
-        'Fill max_1h / max_8h on existing daily summary rows (O3, NO2, SO2: max_1h; CO: max_8h) '
+        'Fill max_1h / max_8h / mean_24h on existing daily summary rows (O3, NO2, SO2: max_1h; CO: max_8h; PM: mean_24h) '
         'in a date range, one Pacific month at a time. Always scoped by monitor and/or region.'
     )
 

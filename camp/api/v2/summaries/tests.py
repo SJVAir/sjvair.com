@@ -139,6 +139,15 @@ class MonitorSummaryListTests(TestCase):
         record = get_response_data(response)['data'][0]
         assert record['max_1h'] == pytest.approx(130.0)
         assert record['max_8h'] is None
+        assert record['mean_24h'] is None
+
+    def test_daily_rows_include_mean_24h(self):
+        day = timezone.make_aware(datetime(2026, 3, 16, 0, 0, 0))
+        row = make_monitor_summary(self.monitor, day, resolution='day', entry_type='pm25')
+        MonitorSummary.objects.filter(pk=row.pk).update(mean_24h=12.5)
+        response = self._get('monitor-summary-daily-year', 'pm25', 'day', year=2026)
+        record = get_response_data(response)['data'][0]
+        assert record['mean_24h'] == pytest.approx(12.5)
 
     def test_hourly_rows_have_null_peaks(self):
         response = self._get('monitor-summary-hourly-year', 'pm25', 'hour', year=2026)
@@ -252,6 +261,14 @@ class BulkMonitorSummaryListTests(TestCase):
         assert rows[str(self.bam.pk)]['max_8h'] == pytest.approx(4.5)
         assert rows[str(self.bam.pk)]['max_1h'] is None
         assert rows[str(self.purpleair.pk)]['max_8h'] is None
+
+    def test_rows_include_mean_24h(self):
+        MonitorSummary.objects.filter(monitor=self.purpleair).update(mean_24h=9.5)
+        response = self._get(query=self.march)
+        data = get_response_data(response)
+        rows = {g['id']: g['summaries'][0] for g in data['data']}
+        assert rows[str(self.purpleair.pk)]['mean_24h'] == pytest.approx(9.5)
+        assert rows[str(self.bam.pk)]['mean_24h'] is None
 
     def test_returns_200(self):
         response = self._get(query=self.march)
@@ -509,6 +526,15 @@ class RegionSummaryListTests(TestCase):
         record = get_response_data(response)['data'][0]
         assert record['max_1h'] == pytest.approx(130.0)
         assert record['max_8h'] is None
+        assert record['mean_24h'] is None
+
+    def test_daily_rows_include_mean_24h(self):
+        day = timezone.make_aware(datetime(2026, 3, 16, 0, 0, 0))
+        row = make_region_summary(self.region, day, resolution='day', entry_type='pm25')
+        RegionSummary.objects.filter(pk=row.pk).update(mean_24h=12.5)
+        response = self._get('region-summary-daily-year', 'pm25', 'day', year=2026)
+        record = get_response_data(response)['data'][0]
+        assert record['mean_24h'] == pytest.approx(12.5)
 
     def test_hourly_rows_have_null_peaks(self):
         response = self._get('region-summary-hourly-year', 'pm25', 'hour', year=2026)

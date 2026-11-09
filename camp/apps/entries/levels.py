@@ -158,7 +158,7 @@ class AQLevel(metaclass=AQLevelMeta):
 
 
 # How a day is colored from hourly values, keyed by the scale's averaging hours.
-DAILY_STATISTIC = {24: 'mean', 1: 'max_1h', 8: 'max_8h'}
+DAILY_STATISTIC = {24: 'mean_24h', 1: 'max_1h', 8: 'max_8h'}
 
 
 class LevelSet:

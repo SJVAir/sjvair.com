@@ -19,7 +19,8 @@ from camp.apps.regions.models import Region
 from camp.apps.summaries.aggregators import tdigest_to_dict
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.peaks import (
-    day_hours, fill_daily_peaks, max_1h, max_8h, peak_entry_models, standard_for,
+    day_hours, fill_daily_peaks, max_1h, max_8h, mean_24h, peak_entry_models,
+    standard_for,
 )
 from camp.apps.summaries.tasks import (
     daily_monitor_summaries, daily_region_summaries,
@@ -110,14 +111,35 @@ class PeakMathTests(TestCase):
         hourly = series(hours, [1.0] * 15 + [9.0] * 5, start=4)
         assert max_8h(hours, hourly, 9.5) is None
 
+    def test_mean_24h_threshold(self):
+        hours = day(2026, 7, 1)
+        assert mean_24h(hours, series(hours, [10.0] * 17 + [28.0])) == 11.0
+        assert mean_24h(hours, series(hours, [10.0] * 17)) is None
+        spring = day(2026, 3, 8)
+        assert mean_24h(spring, series(spring, [5.0] * 18)) == 5.0
+        assert mean_24h(spring, series(spring, [5.0] * 17)) is None
+        fall = day(2026, 11, 1)
+        assert mean_24h(fall, series(fall, [5.0] * 19)) == 5.0
+        assert mean_24h(fall, series(fall, [5.0] * 18)) is None
+
+    def test_mean_24h_no_standard_exception(self):
+        hours = day(2026, 7, 1)
+        assert mean_24h(hours, series(hours, [500.0] * 5)) is None
+
+    def test_mean_24h_is_mean_of_hourly_means(self):
+        hours = day(2026, 7, 1)
+        hourly = series(hours, [10.0, 30.0] * 9)
+        assert mean_24h(hours, hourly) == 20.0
+
     def test_peak_entry_models(self):
         assert peak_entry_models() == {
             entries.O3: 'max_1h',
             entries.NO2: 'max_1h',
             entries.SO2: 'max_1h',
             entries.CO: 'max_8h',
+            entries.PM25: 'mean_24h',
+            entries.PM100: 'mean_24h',
         }
-        assert entries.PM25 not in peak_entry_models()
 
     def test_standard_for(self):
         assert standard_for(entries.CO) == 9.5
@@ -213,13 +235,37 @@ class FillDailyPeaksTests(TestCase):
         assert row.max_8h == 2.0
         assert row.max_1h is None
 
-    def test_pm25_untouched(self):
-        self.monitor_hours('pm25', [300.0] * 24)
+    def test_fills_pm25_mean_24h(self):
+        self.monitor_hours('pm25', [10.0] * 23 + [34.0])
         row = self.monitor_daily('pm25')
-        assert self.fill() == {}
+        assert self.fill() == {'pm25': 1}
         row.refresh_from_db()
+        assert row.mean_24h == 11.0
         assert row.max_1h is None
         assert row.max_8h is None
+
+    def test_o3_keeps_mean_24h_null(self):
+        self.monitor_hours('o3', [10.0] * 24)
+        row = self.monitor_daily('o3')
+        self.fill()
+        row.refresh_from_db()
+        assert row.mean_24h is None
+
+    def test_region_mean_24h(self):
+        self.region_hours('pm25', [10.0] * 23 + [34.0])
+        row = self.region_daily('pm25')
+        assert self.fill('region') == {'pm25': 1}
+        row.refresh_from_db()
+        assert row.mean_24h == 11.0
+
+    def test_nine_hour_day_has_no_mean_24h(self):
+        self.monitor_hours('pm25', [5.0] * 9)
+        row = self.monitor_daily('pm25')
+        self.fill()
+        row.refresh_from_db()
+        assert row.mean_24h is None
+        assert row.mean == 1.0
+        assert row.is_complete
 
     def test_peaks_per_processor(self):
         self.monitor_hours('o3', [10.0] * 23 + [200.0], processor='')
@@ -528,7 +574,7 @@ class FillDailyPeaksCommandTests(TestCase):
     def test_rejects_non_peak_entry_type(self):
         with self.assertRaises(CommandError) as ctx:
             self.run_command('2026-07-01', '2026-07-02', '--monitor', str(self.monitor.pk),
-                             '--entry-type', 'pm25')
+                             '--entry-type', 'temperature')
         message = str(ctx.exception)
         assert 'o3' in message and 'co' in message
 

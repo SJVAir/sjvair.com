@@ -50,7 +50,7 @@ class ScaleTests(TestCase):
         assert levels.AQI.averaging_hours is None
 
     def test_daily_statistic(self):
-        assert levels.PM25.daily_statistic == 'mean'
+        assert levels.PM25.daily_statistic == 'mean_24h'
         assert levels.O3.daily_statistic == 'max_1h'
         assert levels.CO.daily_statistic == 'max_8h'
         assert levels.AQI.daily_statistic is None

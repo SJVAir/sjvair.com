@@ -10,7 +10,7 @@ from camp.apps.summaries.periods import iter_hours, period_end
 
 WINDOW_HOURS = 8
 MIN_WINDOW_HOURS = 6
-PEAK_STATISTICS = ('max_1h', 'max_8h')
+DAILY_FIGURES = ('max_1h', 'max_8h', 'mean_24h')
 
 
 def day_hours(day_start: datetime) -> list[datetime]:
@@ -52,12 +52,20 @@ def max_8h(day_hours, hourly, standard):
     return _gate(max(averages), len(averages), len(day_hours), standard)
 
 
+def mean_24h(day_hours, hourly, standard=None):
+    """Mean of the hourly means; needs 75% of the day's hours. No standard exception."""
+    values = [hourly[h] for h in day_hours if h in hourly]
+    if len(values) < _threshold(len(day_hours)):
+        return None
+    return float(sum(values) / len(values))
+
+
 def peak_entry_models() -> dict[type, str]:
     result = {}
     for model in BaseEntry.get_subclasses():
         levels = getattr(model, 'Levels', None)
         statistic = getattr(levels, 'daily_statistic', None)
-        if statistic in PEAK_STATISTICS:
+        if statistic in DAILY_FIGURES:
             result[model] = statistic
     return result
 
@@ -69,7 +77,7 @@ def standard_for(entry_model) -> float:
 # How far past a day's end its last 8-hour window reaches.
 NEXT_DAY_HOURS = WINDOW_HOURS - 1
 
-PEAK_FUNCTIONS = {'max_1h': max_1h, 'max_8h': max_8h}
+PEAK_FUNCTIONS = {'max_1h': max_1h, 'max_8h': max_8h, 'mean_24h': mean_24h}
 
 # Owners read together: one daily-rows query and one hourly query per group.
 OWNER_GROUP_SIZE = 200
@@ -79,14 +87,14 @@ OWNER_HOURS_PER_GROUP = 50_000
 
 def fill_daily_peaks(
     kind: str, ids: list | None, start: datetime, end: datetime, *,
-    entry_models: list | None = None, fields: tuple[str, ...] = PEAK_STATISTICS,
+    entry_models: list | None = None, fields: tuple[str, ...] = DAILY_FIGURES,
     dry_run: bool = False, batch_size: int = 1000, progress=None,
 ) -> dict[str, int]:
     """
-    Write `max_1h` / `max_8h` on DAILY rows with `start <= timestamp < end` of the
+    Write `max_1h` / `max_8h` / `mean_24h` on DAILY rows with `start <= timestamp < end` of the
     peak entry types (or the given subset of them). `kind` is 'monitor' or
     'region'; `ids=None` means all. Each row gets its own statistic; the other
-    field is set to null. Only `fields` are written, and only rows whose values
+    fields are set to null. Only `fields` are written, and only rows whose values
     change. Returns the rows updated (or that would be) per entry type.
     """
     if kind == 'monitor':
