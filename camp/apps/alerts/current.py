@@ -27,6 +27,14 @@ def _brief(result):
     }
 
 
+def _previous(result):
+    # latest_timestamp lets a client tell a lagging hourly feed (the same
+    # reading both times) from a value that didn't change.
+    if result is None:
+        return None
+    return {**_brief(result), 'latest_timestamp': result.latest_timestamp}
+
+
 def serialize(results, evaluated_at):
     '''
     Turn an evaluator's {entry_model: AlertResult} into plain data keyed by
@@ -39,7 +47,7 @@ def serialize(results, evaluated_at):
             'latest_timestamp': result.latest_timestamp,
             'readings': result.readings,
             'required': result.required,
-            'previous': _brief(result.previous) if result.previous else None,
+            'previous': _previous(result.previous),
             'evaluated_at': evaluated_at,
         }
         for entry_model, result in results.items()

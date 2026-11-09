@@ -403,7 +403,9 @@ zones are missing there; see SJVAPCD Forecast Setup).
   evaluates is absent. Statuses: `ok`, `insufficient`, `no_data`, and `pending`: on a cache miss
   an active monitor is `pending` (e.g. up to 10 minutes after a cache restart), an inactive one
   `no_data`. `value`/`level` are null unless `ok`; `level` is the scale key; `previous` is the
-  same evaluation an hour earlier. Hourly feeds use the latest reading (window = 2x interval).
+  same evaluation an hour earlier (`status`, `value`, `level`, `latest_timestamp`). Hourly feeds
+  use the latest reading (window = 2x interval), so a lagging feed's `previous` can be the same
+  reading: equal `latest_timestamp`s mean no trend.
   Hidden monitors are served (they alert, so the tile matches the texts; whether they should
   alert is deferred). Timestamps carry the Pacific offset. 200s are `public, max-age=60`, errors
   `no-cache`. `monitors/meta/` entry types carry `alerts` (`window`, `min_coverage`, `stage`,

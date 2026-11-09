@@ -381,6 +381,22 @@ class HourlyResultTests(TestCase):
         results = AlertEvaluator(self.monitor).get_results()
         assert results[PM25].window_end == results[O3].window_end
 
+    def test_lagging_feed_previous_is_same_reading(self):
+        # 90 minutes old: inside both the current 2h window and the one an hour earlier.
+        self.add_o3(minutes=90)
+        now = timezone.now()
+        data = current.serialize(AlertEvaluator(self.monitor).get_results(now=now), now)['o3']
+        assert data['status'] == data['previous']['status'] == 'ok'
+        assert data['previous']['latest_timestamp'] == data['latest_timestamp']
+
+    def test_new_reading_previous_is_older_reading(self):
+        self.add_o3(minutes=10)
+        self.add_o3(minutes=70)
+        now = timezone.now()
+        data = current.serialize(AlertEvaluator(self.monitor).get_results(now=now), now)['o3']
+        assert data['previous']['status'] == 'ok'
+        assert data['previous']['latest_timestamp'] < data['latest_timestamp']
+
 
 class NotificationModelTests(TestCase):
     fixtures = ['users.yaml', 'purple-air.yaml']
@@ -695,7 +711,7 @@ class StoredResultTests(TestCase):
             'status', 'value', 'level', 'window', 'latest_timestamp',
             'readings', 'required', 'previous', 'evaluated_at',
         }
-        assert set(data['previous']) == {'status', 'value', 'level'}
+        assert set(data['previous']) == {'status', 'value', 'level', 'latest_timestamp'}
 
     def test_serialize_without_previous(self):
         self.activate()

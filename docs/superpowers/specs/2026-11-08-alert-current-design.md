@@ -107,9 +107,15 @@ Status:
   - `no_data` doesn't arise for these feeds
 
 `previous` is the same rule evaluated as of `now - WINDOW`: the hour before the window, or, for
-hourly feeds, the latest reading as of an hour earlier. It carries `status`, `value` and
-`level`. **My call:** it reuses the same code with a shifted `now`, so the trend follows exactly
+hourly feeds, the latest reading as of an hour earlier. It carries `status`, `value`, `level`
+and `latest_timestamp`. **My call:** it reuses the same code with a shifted `now`, so the trend follows exactly
 the rules of the current value.
+
+**`previous.latest_timestamp`** (the user's decision, 2026-11-08) follows the same rule as the
+current `latest_timestamp`: the newest reading in its window, `null` when the window has none.
+A lagging hourly feed's `previous` can be the very reading the current value uses; equal
+timestamps tell the dashboard to show no trend, while equal values with different timestamps
+are a real "unchanged".
 
 Each monitor's evaluation uses one `now` for all its entry types. Today each entry type reads
 the clock separately. **My call:** one shared `now` makes `window_end` the same across a
@@ -156,7 +162,8 @@ being evaluated, this endpoint follows on its own.
     "latest_timestamp": "2026-11-08T15:58:00-08:00",
     "readings": 29,
     "required": 15,
-    "previous": {"status": "ok", "value": 31.0, "level": "moderate"},
+    "previous": {"status": "ok", "value": 31.0, "level": "moderate",
+      "latest_timestamp": "2026-11-08T14:58:00-08:00"},
     "evaluated_at": "2026-11-08T16:00:04-08:00"
   }
 }}
