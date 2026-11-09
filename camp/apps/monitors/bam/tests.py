@@ -119,10 +119,20 @@ class MirrorBamDataTests(TestCase):
         assert {c[1] for c in FakeClient.entry_calls} == {'pm25', 'temperature', 'humidity', 'pressure'}
 
     def test_imports_raw_entries_and_runs_pipeline(self):
+        # The cleaner holds off the first two hours of a BAM's data, so seed
+        # the two hours before the mirrored range as already-ingested RAW rows.
+        monitor = BAM1022.objects.create(id=MONITOR_ID, name='Old name', location='outside')
+        for hour in (6, 7):
+            entry_models.PM25.objects.create(
+                monitor=monitor,
+                timestamp=datetime(2026, 9, 14, hour, tzinfo=dt_timezone(timedelta(hours=-7))),
+                value='5.00',
+                stage='raw',
+            )
         mirror_bam_data(START, END)
         monitor = BAM1022.objects.get(pk=MONITOR_ID)
 
-        raw = entry_models.PM25.objects.filter(monitor=monitor, stage='raw').order_by('timestamp')
+        raw = entry_models.PM25.objects.filter(monitor=monitor, stage='raw', timestamp__gte=START).order_by('timestamp')
         assert [str(e.value) for e in raw] == ['-2.00', '6.70']
 
         cleaned = entry_models.PM25.objects.filter(monitor=monitor, stage='cleaned').order_by('timestamp')
@@ -146,7 +156,8 @@ class MirrorBamDataTests(TestCase):
 
         assert results[0][1] is False
         assert results[0][2] == 0
-        assert entry_models.PM25.objects.filter(monitor_id=MONITOR_ID).count() == 4
+        # 2 RAW rows; the cleaner holds both back (no earlier history to vouch for them).
+        assert entry_models.PM25.objects.filter(monitor_id=MONITOR_ID).count() == 2
 
     def test_updates_existing_monitor(self):
         BAM1022.objects.create(id=MONITOR_ID, name='Old name', location='outside')
