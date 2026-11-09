@@ -463,3 +463,32 @@ class FillDailyPeaksCommandTests(TestCase):
         assert june.max_1h == 130.0
         assert july.max_1h == 130.0
         assert 'o3: 2 rows changed' in out
+
+    def test_end_on_month_boundary_leaves_next_month(self):
+        june = self.o3_day(day=pacific_day(2026, 6, 30))
+        july = self.o3_day(day=pacific_day(2026, 7, 1))
+        self.run_command('2026-06-01', '2026-07-01', '--monitor', str(self.monitor.pk))
+        june.refresh_from_db()
+        july.refresh_from_db()
+        assert june.max_1h == 130.0
+        assert july.max_1h is None
+
+    def test_start_mid_month_leaves_earlier_rows(self):
+        early = self.o3_day(day=pacific_day(2026, 7, 1))
+        late = self.o3_day(day=pacific_day(2026, 7, 2))
+        self.run_command('2026-07-02', '2026-07-03', '--monitor', str(self.monitor.pk))
+        early.refresh_from_db()
+        late.refresh_from_db()
+        assert early.max_1h is None
+        assert late.max_1h == 130.0
+
+    def test_chunk_bounds(self):
+        with patch('camp.apps.summaries.management.commands.fill_daily_peaks.fill_daily_peaks',
+                   return_value={}) as fill:
+            self.run_command('2026-01-15', '2026-03-10', '--monitor', str(self.monitor.pk))
+        bounds = [(c.args[2], c.args[3]) for c in fill.call_args_list]
+        assert bounds == [
+            (pacific_day(2026, 1, 15), pacific_day(2026, 2, 1)),
+            (pacific_day(2026, 2, 1), pacific_day(2026, 3, 1)),
+            (pacific_day(2026, 3, 1), pacific_day(2026, 3, 10)),
+        ]

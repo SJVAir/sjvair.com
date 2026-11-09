@@ -360,7 +360,7 @@ zones are missing there; see SJVAPCD Forecast Setup).
   Sensitive Groups lower bound (O3 125, NO2 101, SO2 76, CO 9.5). EPA 75% rule: with n the
   day's hours (23/24/25), the peak needs `ceil(0.75 * n)` valid hours (`max_1h`) or valid
   8-hour windows (`max_8h`, each window needing >= 6 of its 8 hours); a short day reports the
-  peak only if it exceeds the standard, else `null`. CO windows start in the day and may run
+  peak only if it is at least the standard, else `null`. CO windows start in the day and may run
   into the next one, so the rollup refreshes `max_8h` the next night; the 28 h
   `PEAK_8H_SETTLE_MARGIN` (`schedule.py`) covers the 25-hour fall-back day. The rollup fills
   peaks through `fill_daily_peaks` after its upsert, and a re-roll never wipes them. AQLite
