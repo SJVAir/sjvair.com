@@ -51,6 +51,7 @@ from camp.apps.summaries.schedule import (
     HOURLY_FIRE_MINUTE,
     LATE_RUN_WARNING,
     LATE_SETTLE_MARGIN,
+    PEAK_8H_SETTLE_MARGIN,
     SETTLE_MARGIN,
     hour_for_run,
     is_pacific_hour,
@@ -1486,6 +1487,25 @@ class SettleTimeTests(TestCase):
         assert not is_settled('day', end, now=pacific(2026, 11, 2, 6, 59), late=True)
         assert is_settled('day', end, now=pacific(2026, 11, 2, 7), late=True)
         assert not is_settled('day', None, late=True)
+
+    def test_peak_8h_margin(self):
+        end = pacific(2026, 11, 2)
+        assert not is_settled('day', end, now=pacific(2026, 11, 3, 3), peak_8h=True)
+        assert is_settled('day', end, now=pacific(2026, 11, 3, 3))
+        assert is_settled('day', end, now=pacific(2026, 11, 3, 4), peak_8h=True)
+        # Only the day resolution is affected.
+        month_end = pacific(2026, 11, 1)
+        now = pacific(2026, 11, 1, 4)
+        assert is_settled('month', month_end, now=now, peak_8h=True) == is_settled('month', month_end, now=now)
+
+    def test_peak_8h_margin_covers_refresh_crontab(self):
+        # The refresh is the next day's rollup. On fall-back day the following day
+        # has 25 hours, so it can land 26h10m after the day ends.
+        for end in [pacific(2026, 1, 2), pacific(2026, 7, 2), pacific(2026, 11, 1)]:
+            end_utc = end.astimezone(dt_timezone.utc)
+            runs = self.effective_runs(summary_tasks.daily_region_summaries, end_utc, 48 * 60)
+            assert len(runs) == 2, end
+            assert runs[1] + timedelta(hours=1) <= end_utc + PEAK_8H_SETTLE_MARGIN, end
 
     def test_late_margin_covers_finalize(self):
         # A late type's last change is the finalize_cimis_data run that re-pulls and re-rolls

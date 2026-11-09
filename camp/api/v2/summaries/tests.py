@@ -791,6 +791,30 @@ class SummaryCacheHeaderTests(TestCase):
         self._assert_cache(later, self.LONG)
 
 
+class PeakCacheHeaderTests(TestCase):
+    fixtures = SummaryCacheHeaderTests.fixtures
+    LONG = SummaryCacheHeaderTests.LONG
+    SHORT = SummaryCacheHeaderTests.SHORT
+    _at = SummaryCacheHeaderTests._at
+    _monitor_url = SummaryCacheHeaderTests._monitor_url
+    _assert_cache = SummaryCacheHeaderTests._assert_cache
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        for entry_type in ('pm25', 'co'):
+            for i in range(30):
+                ts = timezone.make_aware(datetime(2026, 9, 1)) + timedelta(days=i)
+                make_monitor_summary(self.monitor, ts, resolution='day', entry_type=entry_type)
+
+    def test_co_daily_is_short_until_28_hours_after_the_day_ends(self):
+        # Sept 30 ends Oct 1 00:00: settled under the 3h margin at 04:00, not the 28h one.
+        url = self._monitor_url('co/daily/2026/9/')
+        self._assert_cache(self._at(url, now=datetime(2026, 10, 1, 4)), self.SHORT)
+        self._assert_cache(self._at(url, now=datetime(2026, 10, 2, 4)), self.LONG)
+        pm = self._monitor_url('pm25/daily/2026/9/')
+        self._assert_cache(self._at(pm, now=datetime(2026, 10, 1, 4)), self.LONG)
+
+
 class MonitorSummaryFallBackDayTests(TestCase):
     fixtures = ['purple-air.yaml']
 

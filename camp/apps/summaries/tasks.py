@@ -29,7 +29,7 @@ from camp.apps.summaries.backfill import (
     regions_with_monitors,
 )
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary, SummaryBackfillJob
-from camp.apps.summaries.peaks import fill_daily_peaks
+from camp.apps.summaries.peaks import fill_daily_peaks, peak_entry_models
 from camp.apps.summaries.selection import (
     monitor_summary_entry_models,
     monitor_types_summarizing,
@@ -359,16 +359,32 @@ def _rollup_regions(target, source, resolution, start):
 R = BaseSummary.Resolution
 
 
+def _refresh_previous_max_8h(kind, day):
+    """
+    The 8-hour windows starting late in a day reach into the next morning, so
+    that day's daily rollup stores a provisional `max_8h`. Run with the next
+    day's rollup, this recomputes the previous day's, now that the hours exist.
+    """
+    models = [model for model, field in peak_entry_models().items() if field == 'max_8h']
+    start = day or _previous_period_start('day')
+    fill_daily_peaks(
+        kind, None, _previous_period_start('day', start), start,
+        entry_models=models, fields=('max_8h',),
+    )
+
+
 @db_periodic_task(pacific_crontab(1, '0'), priority=80, queue='summaries')
 def daily_monitor_summaries(day=None):
     """Roll up yesterday's hourly MonitorSummary records into daily ones."""
     _rollup_monitors(R.DAILY, R.HOURLY, 'day', day)
+    _refresh_previous_max_8h('monitor', day)
 
 
 @db_periodic_task(pacific_crontab(1, '10'), priority=70, queue='summaries')
 def daily_region_summaries(day=None):
     """Roll up yesterday's hourly RegionSummary records into daily ones."""
     _rollup_regions(R.DAILY, R.HOURLY, 'day', day)
+    _refresh_previous_max_8h('region', day)
 
 
 @db_periodic_task(pacific_crontab(1, '15', day='1'), priority=60, queue='summaries')

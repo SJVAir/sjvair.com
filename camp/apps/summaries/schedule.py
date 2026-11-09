@@ -79,17 +79,32 @@ LATE_SETTLE_MARGIN = {
 }
 
 
-def is_settled(resolution, range_end, now=None, late=False):
+# A daily max_8h (CO) uses 8-hour windows that start during the day and reach
+# into the next morning, so the next night's daily tasks recompute it. This is
+# documentation of that delay; the refresh runs inside the next day's rollup.
+PEAK_8H_REFRESH_DELAY = timedelta(days=1)
+
+# The refresh lands at most 26h10m after the day ends (fall-back day: the
+# following day has 25 hours), plus an hour of slack. Applies to `day` only.
+PEAK_8H_SETTLE_MARGIN = timedelta(hours=28)
+
+
+def is_settled(resolution, range_end, now=None, late=False, peak_8h=False):
     """
     True when every period in a range ending at `range_end` (exclusive) has
     had time to finish its rollups. An open range (None) is never settled.
     `late` uses the longer margins of types whose data arrives late.
+    `peak_8h` (a daily max_8h type) widens the `day` margin to
+    PEAK_8H_SETTLE_MARGIN.
     """
     if range_end is None:
         return False
     last_period_end = period_end(resolution, range_end - timedelta(microseconds=1))
     margins = LATE_SETTLE_MARGIN if late else SETTLE_MARGIN
-    return (now or timezone.now()) >= last_period_end + margins[resolution]
+    margin = margins[resolution]
+    if peak_8h and resolution == 'day':
+        margin = max(margin, PEAK_8H_SETTLE_MARGIN)
+    return (now or timezone.now()) >= last_period_end + margin
 
 
 # The minute of each hour the hourly parent tasks are scheduled for

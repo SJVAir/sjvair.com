@@ -13,7 +13,10 @@ from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummar
 from camp.apps.summaries.peaks import (
     day_hours, fill_daily_peaks, max_1h, max_8h, peak_entry_models, standard_for,
 )
-from camp.apps.summaries.tasks import rollup_monitor_summaries, rollup_region_summaries
+from camp.apps.summaries.tasks import (
+    daily_monitor_summaries, daily_region_summaries,
+    rollup_monitor_summaries, rollup_region_summaries,
+)
 from camp.utils.datetime import make_aware
 
 
@@ -294,3 +297,44 @@ class FillDailyPeaksTests(TestCase):
             rollup_region_summaries(R.DAILY, R.HOURLY, self.day, self.next_day)
         region_daily = RegionSummary.objects.get(resolution=R.DAILY, entry_type='o3')
         assert region_daily.max_1h == 130.0
+
+
+class NextNightRefreshTests(TestCase):
+    """The next day's daily task recomputes the previous day's max_8h."""
+    fixtures = FillDailyPeaksTests.fixtures
+    setUp = FillDailyPeaksTests.setUp
+    monitor_hours = FillDailyPeaksTests.monitor_hours
+    region_hours = FillDailyPeaksTests.region_hours
+
+    def _provisional_then_morning(self, make_hours, daily_model, **owner):
+        make_hours('co', [1.0] * 24)
+        # Day D-1 rolled before D's morning hours existed.
+        rollup = rollup_monitor_summaries if daily_model is MonitorSummary else rollup_region_summaries
+        rollup(R.DAILY, R.HOURLY, self.day, self.next_day)
+        row = daily_model.objects.get(resolution=R.DAILY, entry_type='co', timestamp=self.day, **owner)
+        provisional = row.max_8h
+        # D's morning arrives: the windows that start late on D-1 now see 20s.
+        nxt = day_hours(self.next_day)
+        model = MonitorSummary if daily_model is MonitorSummary else RegionSummary
+        for i in range(8):
+            extra = dict(monitor=self.monitor, processor='', is_complete=True) if model is MonitorSummary \
+                else dict(region=self.region, station_count=1, weight=1.0)
+            model.objects.create(
+                timestamp=nxt[i], resolution=R.HOURLY, entry_type='co', **extra, **_stats(20.0))
+        return row, provisional
+
+    def test_daily_task_refreshes_previous_max_8h_monitor(self):
+        row, provisional = self._provisional_then_morning(
+            self.monitor_hours, MonitorSummary, monitor=self.monitor)
+        assert provisional == 1.0
+        daily_monitor_summaries(day=self.next_day)
+        row.refresh_from_db()
+        assert row.max_8h == 17.625  # window from 23:00: one 1.0 hour and seven 20.0 hours
+
+    def test_daily_task_refreshes_previous_max_8h_region(self):
+        row, provisional = self._provisional_then_morning(
+            self.region_hours, RegionSummary, region=self.region)
+        assert provisional == 1.0
+        daily_region_summaries(day=self.next_day)
+        row.refresh_from_db()
+        assert row.max_8h == 17.625
