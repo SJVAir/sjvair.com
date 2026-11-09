@@ -157,7 +157,7 @@ def open_rows_cache_key(kind, owner_ids, entry_model, now, processor_q=None) -> 
     owners = ','.join(sorted(str(pk) for pk in owner_ids))
     series = '' if processor_q is None else str(processor_q)
     digest = hashlib.sha256(f'{series}|{owners}|{days}'.encode()).hexdigest()
-    return f'open_days:{kind}:{entry_model.entry_type}:{digest}'
+    return f'open_days:v2:{kind}:{entry_model.entry_type}:{digest}'
 
 
 def cached_open_rows(
@@ -166,13 +166,16 @@ def cached_open_rows(
     """
     build_open_rows, shared through the cache for OPEN_ROWS_CACHE_SECONDS so
     every client polling the same owners in the same minute shares one build.
-    The rows are cached as the unsaved instances (they pickle cleanly).
+    The rows are cached as the unsaved instances (they pickle cleanly), keyed
+    by str(pk): the debug toolbar JSON-encodes cached values, and monitor pks
+    (SmallUUIDs) can't be JSON keys. The result is keyed by the caller's pks.
     `processor_q` is keyed by its str(), so callers must build it the same way
     each time for equal filters to share an entry.
     """
     key = open_rows_cache_key(kind, owner_ids, entry_model, now, processor_q)
-    result = cache.get(key)
-    if result is None:
+    cached = cache.get(key)
+    if cached is None:
         result = build_open_rows(kind, owner_ids, entry_model, now, processor_q=processor_q)
-        cache.set(key, result, OPEN_ROWS_CACHE_SECONDS)
-    return result
+        cache.set(key, {str(pk): rows for pk, rows in result.items()}, OPEN_ROWS_CACHE_SECONDS)
+        return result
+    return {pk: cached[str(pk)] for pk in owner_ids if str(pk) in cached}
