@@ -15,7 +15,7 @@ from twilio.base.exceptions import TwilioRestException
 
 from camp.apps.accounts import sms_keywords
 from camp.apps.accounts.tasks import handle_opted_out_number
-from camp.apps.alerts import notifications
+from camp.apps.alerts import current, notifications
 from camp.apps.alerts.evaluator import AlertEvaluator
 from camp.apps.alerts.models import Alert, Notification, Subscription
 from camp.apps.monitors.models import Monitor
@@ -83,7 +83,11 @@ def periodic_alerts():
         subscribed_ids = set(Subscription.objects.values_list('monitor_id', flat=True))
         for monitor in get_alert_monitors():
             try:
-                levels = AlertEvaluator(monitor).evaluate()
+                evaluator = AlertEvaluator(monitor)
+                now = timezone.now()
+                results = evaluator.get_results(now=now)
+                levels = evaluator.evaluate(results)
+                current.store(monitor, results, now)
                 if monitor.pk in subscribed_ids:
                     notifications.notify_subscribers(monitor, levels)
             except Exception:

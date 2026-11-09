@@ -32,6 +32,9 @@ class OpenAPISchemaTests(TestCase):
     def test_monitor_detail_is_documented(self):
         assert any('{monitor_id}' in p and p.endswith('{monitor_id}/') for p in self.paths)
 
+    def test_current_alerts_is_documented(self):
+        assert any(p.endswith('{monitor_id}/alerts/current/') for p in self.paths)
+
     def test_entry_list_is_documented(self):
         assert any('{entry_type}' in p and 'entries' in p for p in self.paths)
 

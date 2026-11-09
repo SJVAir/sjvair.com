@@ -20,9 +20,9 @@ from waffle import get_waffle_flag_model
 from waffle.testutils import override_flag
 
 from camp.apps.accounts.models import User
-from camp.apps.alerts import notifications, tasks
+from camp.apps.alerts import current, notifications, tasks
 from camp.apps.alerts.models import Alert, AlertUpdate, Notification, Subscription
-from camp.apps.alerts.evaluator import AlertEvaluator
+from camp.apps.alerts.evaluator import AlertEvaluator, AlertResult
 from camp.apps.alerts.tasks import daily_reminders, get_alert_monitors, periodic_alerts
 from camp.apps.entries.models import O3, PM25
 from camp.apps.entries.levels import AQLevel, LevelSet
@@ -244,6 +244,158 @@ class HourlyAndMultiPollutantTests(TestCase):
         assert pm25_alert.pk != o3_alert.pk
         assert pm25_alert.updates.count() == 1
         assert o3_alert.updates.count() == 1
+
+
+class AlertResultTests(TestCase):
+    fixtures = ['users.yaml', 'purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        self.monitor.is_active = True
+        self.lookup = AlertEvaluator.split_config(self.monitor.alertable_entry_types[PM25])[0]
+
+    def create_pm25_entry(self, value, minutes_ago=0):
+        return PM25.objects.create(
+            monitor=self.monitor,
+            value=value,
+            timestamp=timezone.now() - timedelta(minutes=minutes_ago),
+            **self.lookup
+        )
+
+    def fill(self, value, count=30, start=0):
+        for i in range(count):
+            self.create_pm25_entry(value, minutes_ago=start + i * 2)
+
+    def result(self):
+        return AlertEvaluator(self.monitor).get_results()[PM25]
+
+    def test_average_ok(self):
+        self.fill(40)
+        newest = PM25.objects.filter(monitor=self.monitor).order_by('-timestamp').first()
+        result = self.result()
+        assert isinstance(result, AlertResult)
+        assert result.status == 'ok'
+        assert result.value == 40
+        assert result.level == AQLevel.scale.UNHEALTHY_SENSITIVE
+        assert result.readings == 30
+        assert result.required == 15
+        assert result.latest_timestamp == newest.timestamp
+        assert result.window_end - result.window_start == timedelta(minutes=60)
+
+    def test_average_insufficient(self):
+        self.fill(40, count=5)
+        result = self.result()
+        assert result.status == 'insufficient'
+        assert result.value is None
+        assert result.level is None
+        assert result.readings == 5
+        assert result.latest_timestamp is not None
+
+    def test_average_no_data(self):
+        result = self.result()
+        assert result.status == 'no_data'
+        assert result.readings == 0
+        assert result.latest_timestamp is None
+
+    def test_previous_is_hour_before_window(self):
+        self.fill(40)
+        self.fill(8, start=61)
+        result = self.result()
+        assert result.previous.status == 'ok'
+        assert result.previous.value == 8
+        assert result.previous.level == AQLevel.scale.GOOD
+        assert result.previous.window_end == result.window_start
+        assert result.previous.previous is None
+
+    def test_previous_empty_after_gap(self):
+        self.fill(40)
+        result = self.result()
+        assert result.previous.status == 'no_data'
+        assert result.previous.value is None
+
+    def test_levels_and_evaluate_skip_previous(self):
+        self.fill(40)
+        evaluator = AlertEvaluator(self.monitor)
+        with patch.object(AlertEvaluator, 'compute', autospec=True, side_effect=AlertEvaluator.compute) as compute:
+            evaluator.get_levels()
+            assert compute.call_count == len(evaluator.entry_types)
+            compute.reset_mock()
+            evaluator.evaluate()
+            assert compute.call_count == len(evaluator.entry_types)
+            compute.reset_mock()
+            results = evaluator.get_results()
+            assert compute.call_count == 2 * len(evaluator.entry_types)
+        assert evaluator.get_results(previous=False)[PM25].previous is None
+        assert results[PM25].previous is not None
+
+    def test_evaluate_accepts_results(self):
+        self.fill(40)
+        evaluator = AlertEvaluator(self.monitor)
+        results = evaluator.get_results()
+        levels = evaluator.evaluate(results)
+        assert levels == {m: r.level for m, r in results.items()}
+        assert Alert.objects.filter(monitor=self.monitor).count() == 1
+        Alert.objects.all().delete()
+        assert AlertEvaluator(self.monitor).evaluate() == levels
+        assert Alert.objects.filter(monitor=self.monitor).count() == 1
+
+
+class HourlyResultTests(TestCase):
+    fixtures = ['users.yaml']
+
+    def setUp(self):
+        self.monitor = AirNow.objects.create(
+            name='Test AirNow Station',
+            position=Point(-119.8, 36.7),
+            county='Fresno',
+            location='outside',
+        )
+        self.monitor.is_active = True
+        self.o3_lookup = AlertEvaluator.split_config(self.monitor.alertable_entry_types[O3])[0]
+
+    def add_o3(self, **delta):
+        O3.objects.create(
+            monitor=self.monitor,
+            value=125,
+            timestamp=timezone.now() - timedelta(**delta),
+            **self.o3_lookup
+        )
+
+    def test_latest_reading_ok(self):
+        self.add_o3(minutes=50)
+        result = AlertEvaluator(self.monitor).get_results()[O3]
+        assert result.status == 'ok'
+        assert result.value == 125
+        assert result.readings == 1
+        assert result.required == 1
+        assert result.window_end - result.window_start == timedelta(hours=2)
+
+    def test_latest_reading_insufficient_when_stale(self):
+        self.add_o3(hours=5)
+        result = AlertEvaluator(self.monitor).get_results()[O3]
+        assert result.status == 'insufficient'
+        assert result.value is None
+        assert result.readings == 0
+
+    def test_one_now_per_monitor(self):
+        results = AlertEvaluator(self.monitor).get_results()
+        assert results[PM25].window_end == results[O3].window_end
+
+    def test_lagging_feed_previous_is_same_reading(self):
+        # 90 minutes old: inside both the current 2h window and the one an hour earlier.
+        self.add_o3(minutes=90)
+        now = timezone.now()
+        data = current.serialize(AlertEvaluator(self.monitor).get_results(now=now), now)['o3']
+        assert data['status'] == data['previous']['status'] == 'ok'
+        assert data['previous']['latest_timestamp'] == data['latest_timestamp']
+
+    def test_new_reading_previous_is_older_reading(self):
+        self.add_o3(minutes=10)
+        self.add_o3(minutes=70)
+        now = timezone.now()
+        data = current.serialize(AlertEvaluator(self.monitor).get_results(now=now), now)['o3']
+        assert data['previous']['status'] == 'ok'
+        assert data['previous']['latest_timestamp'] < data['latest_timestamp']
 
 
 class NotificationModelTests(TestCase):
@@ -516,6 +668,77 @@ class PeriodicAlertsTests(TestCase):
         assert [call.args[0].pk for call in mock_notify.call_args_list] == [self.monitor.pk]
 
 
+class StoredResultTests(TestCase):
+    fixtures = ['users.yaml', 'purple-air.yaml']
+
+    def setUp(self):
+        cache.clear()
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        self.lookup = AlertEvaluator.split_config(self.monitor.alertable_entry_types[PM25])[0]
+
+    def activate(self, values=40):
+        entry = PM25.objects.create(monitor=self.monitor, value=5, timestamp=timezone.now(), **self.lookup)
+        LatestEntry.objects.create(
+            monitor=self.monitor,
+            entry_type=PM25.entry_type,
+            stage=entry.stage,
+            processor='',
+            entry_id=entry.pk,
+            timestamp=entry.timestamp,
+        )
+        for i in range(30):
+            PM25.objects.create(
+                monitor=self.monitor,
+                value=values,
+                timestamp=timezone.now() - timedelta(minutes=i * 2),
+                **self.lookup
+            )
+
+    def test_periodic_alerts_stores_results(self):
+        self.activate()
+        periodic_alerts.call_local()
+        stored = current.load(self.monitor.pk)['pm25']
+        assert stored['status'] == 'ok'
+        assert stored['level'] == 'unhealthy_sensitive'
+        assert isinstance(stored['evaluated_at'], datetime)
+
+    def test_serialize_shape(self):
+        self.activate()
+        evaluator = AlertEvaluator(self.monitor)
+        results = evaluator.get_results()
+        data = current.serialize(results, timezone.now())['pm25']
+        assert set(data) == {
+            'status', 'value', 'level', 'window', 'latest_timestamp',
+            'readings', 'required', 'previous', 'evaluated_at',
+        }
+        assert set(data['previous']) == {'status', 'value', 'level', 'latest_timestamp'}
+
+    def test_serialize_without_previous(self):
+        self.activate()
+        results = AlertEvaluator(self.monitor).get_results(previous=False)
+        data = current.serialize(results, timezone.now())['pm25']
+        assert data['status'] == 'ok'
+        assert data['previous'] is None
+
+    @patch('camp.apps.alerts.tasks.notifications.notify_subscribers')
+    def test_cache_error_does_not_block_notifications(self, mock_notify):
+        Subscription.objects.create(
+            user=User.objects.get(email='user@sjvair.com'),
+            monitor=self.monitor,
+            level='unhealthy_sensitive',
+        )
+        self.activate()
+        with patch('camp.apps.alerts.current.cache.set', side_effect=RuntimeError('down')):
+            periodic_alerts.call_local()
+        assert mock_notify.call_count == 1
+
+    def test_stored_with_timeout(self):
+        self.activate()
+        with patch('camp.apps.alerts.current.cache.set') as mock_set:
+            periodic_alerts.call_local()
+        assert mock_set.call_args.kwargs['timeout'] == current.CACHE_TIMEOUT == 1800
+
+
 class TaskLockTests(TestCase):
     fixtures = ['users.yaml', 'purple-air.yaml']
 
@@ -623,7 +846,7 @@ class TaskIsolationTests(TestCase):
     def test_periodic_alerts_continues_after_a_monitor_fails(self):
         evaluated = []
 
-        def fake_evaluate(evaluator):
+        def fake_evaluate(evaluator, results=None):
             evaluated.append(evaluator.monitor.pk)
             if len(evaluated) == 1:
                 raise RuntimeError('boom')
