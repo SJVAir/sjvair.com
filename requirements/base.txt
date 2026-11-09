@@ -8,6 +8,7 @@ django-constance==4.3.5
 django-cors-headers==4.9.0
 django-debug-toolbar==6.3.0
 django-debug-toolbar-force==0.2
+django-enum[properties]==2.5.0
 django-extensions==4.1
 django-filter==25.2
 django-health-check==4.4.2

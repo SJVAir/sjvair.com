@@ -8,7 +8,8 @@ from django.utils import timezone
 from camp.apps.calibrations import processors
 from camp.apps.calibrations.utils import calibration_model_upload_to
 from camp.apps.entries import models as entry_models
-from camp.apps.monitors.bam.models import BAM1022
+from camp.apps.monitors.airnow.models import AirNow
+from camp.apps.monitors.bam.models import BAM1022, BAMStatus
 from camp.apps.monitors.purpleair.models import PurpleAir
 
 
@@ -344,6 +345,31 @@ class ProcessorTests(TestCase):
         assert calibrated.processor == correction.name
         assert calibrated.monitor == self.monitor
 
+    def seed_raw_history(self, monitor, timestamp, hours=2):
+        '''Previous hourly RAW PM2.5 rows, so the BAM gap fallback doesn't apply.'''
+        for h in range(1, hours + 1):
+            entry_models.PM25.objects.create(
+                monitor=monitor,
+                timestamp=timestamp - timedelta(hours=h),
+                value=Decimal('10'),
+                stage=entry_models.PM25.Stage.RAW,
+            )
+
+    def make_bam(self):
+        return BAM1022.objects.create(name='Test BAM', position='POINT(0 0)', county='Fresno')
+
+    def raw_pm25(self, monitor, timestamp, value='12.5'):
+        entry, _created = entry_models.PM25.objects.update_or_create(
+            monitor=monitor,
+            timestamp=timestamp,
+            stage=entry_models.PM25.Stage.RAW,
+            defaults={'value': Decimal(value)},
+        )
+        return entry
+
+    def clean(self, monitor, timestamp, value='12.5'):
+        return processors.PM25_FEM_Cleaner(self.raw_pm25(monitor, timestamp, value)).run()
+
     def test_fem_cleaner_discards_invalid(self):
         monitor = BAM1022.objects.create(name='Test BAM', position='POINT(0 0)', county='Fresno')
         now = timezone.now()
@@ -360,6 +386,7 @@ class ProcessorTests(TestCase):
     def test_fem_cleaner_clamps_to_zero(self):
         monitor = BAM1022.objects.create(name='Test BAM', position='POINT(0 0)', county='Fresno')
         now = timezone.now()
+        self.seed_raw_history(monitor, now)
 
         # Should be clamped to 0
         entry = entry_models.PM25.objects.create(
@@ -376,6 +403,7 @@ class ProcessorTests(TestCase):
     def test_fem_cleaner_passes_valid(self):
         monitor = BAM1022.objects.create(name='Test BAM', position='POINT(0 0)', county='Fresno')
         now = timezone.now()
+        self.seed_raw_history(monitor, now)
 
         # Should pass through
         entry = entry_models.PM25.objects.create(monitor=monitor, timestamp=now, value=Decimal('12.5'), stage=entry_models.PM25.Stage.RAW)
@@ -383,3 +411,78 @@ class ProcessorTests(TestCase):
         assert cleaned is not None
         assert cleaned.value == entry.value
         assert cleaned.stage == entry_models.PM25.Stage.CLEANED
+
+    def test_fem_cleaner_max_valid_boundaries(self):
+        monitor = self.make_bam()
+        now = timezone.now().replace(minute=0, second=0, microsecond=0)
+        self.seed_raw_history(monitor, now)
+        assert self.clean(monitor, now, '10000').value == Decimal('10000')
+        assert self.clean(monitor, now + timedelta(hours=1), '10000.01') is None
+        assert self.clean(monitor, now + timedelta(hours=2), '99999') is None
+        assert self.clean(monitor, now + timedelta(hours=3), '-10').value == 0
+
+    def test_fem_cleaner_bam_drops_same_hour_alarm(self):
+        monitor = self.make_bam()
+        now = timezone.now().replace(minute=0, second=0, microsecond=0)
+        self.seed_raw_history(monitor, now)
+        BAMStatus.objects.create(monitor=monitor, timestamp=now, code=BAM1022.StatusCode.SENSOR_RANGE)
+        assert self.clean(monitor, now) is None
+
+    def test_fem_cleaner_bam_holdoff_after_power_failure(self):
+        monitor = self.make_bam()
+        base = timezone.now().replace(minute=0, second=0, microsecond=0)
+        BAMStatus.objects.create(monitor=monitor, timestamp=base, code=BAM1022.StatusCode.POWER_FAILURE)
+        self.seed_raw_history(monitor, base + timedelta(hours=4), hours=6)
+        assert self.clean(monitor, base + timedelta(hours=1)) is None
+        assert self.clean(monitor, base + timedelta(hours=2)) is None
+        assert self.clean(monitor, base + timedelta(hours=3)) is not None
+
+    def test_fem_cleaner_bam_holdoff_with_combined_code(self):
+        monitor = self.make_bam()
+        base = timezone.now().replace(minute=0, second=0, microsecond=0)
+        code = BAM1022.StatusCode.TAPE_ADVANCE | BAM1022.StatusCode.MAINTENANCE
+        BAMStatus.objects.create(monitor=monitor, timestamp=base, code=code)
+        self.seed_raw_history(monitor, base + timedelta(hours=4), hours=6)
+        assert self.clean(monitor, base + timedelta(hours=2)) is None
+        assert self.clean(monitor, base + timedelta(hours=3)) is not None
+
+    def test_fem_cleaner_bam_no_holdoff_after_non_holdoff_code(self):
+        monitor = self.make_bam()
+        base = timezone.now().replace(minute=0, second=0, microsecond=0)
+        BAMStatus.objects.create(monitor=monitor, timestamp=base, code=BAM1022.StatusCode.TAPE_ADVANCE)
+        self.seed_raw_history(monitor, base + timedelta(hours=4), hours=6)
+        assert self.clean(monitor, base) is None
+        assert self.clean(monitor, base + timedelta(hours=1)) is not None
+        assert self.clean(monitor, base + timedelta(hours=2)) is not None
+
+    def test_fem_cleaner_bam_gap_fallback(self):
+        monitor = self.make_bam()
+        now = timezone.now().replace(minute=0, second=0, microsecond=0)
+        # Only the hour before; the one before that is missing.
+        self.raw_pm25(monitor, now - timedelta(hours=1))
+        assert self.clean(monitor, now) is None
+        # Only two hours back; the previous hour is missing.
+        other = BAM1022.objects.create(name='Other BAM', position='POINT(0 0)', county='Fresno')
+        self.raw_pm25(other, now - timedelta(hours=2))
+        assert self.clean(other, now) is None
+
+    def test_fem_cleaner_bam_first_ever_data_is_dropped(self):
+        # A monitor's first two hours have no history, so they are held off.
+        monitor = self.make_bam()
+        now = timezone.now().replace(minute=0, second=0, microsecond=0)
+        assert self.clean(monitor, now) is None
+        assert self.clean(monitor, now + timedelta(hours=1)) is None
+        assert self.clean(monitor, now + timedelta(hours=2)) is not None
+
+    def test_fem_cleaner_bam_without_statuses_keeps_history(self):
+        monitor = self.make_bam()
+        now = timezone.now().replace(minute=0, second=0, microsecond=0)
+        self.seed_raw_history(monitor, now)
+        assert self.clean(monitor, now) is not None
+
+    def test_fem_cleaner_non_bam_monitor_unaffected(self):
+        # No status/history hook: a lone entry with no prior rows is still kept.
+        monitor = AirNow.objects.create(name='Test AirNow', position='POINT(0 0)', county='Fresno', location='outside')
+        now = timezone.now()
+        assert self.clean(monitor, now).value == Decimal('12.5')
+        assert self.clean(monitor, now + timedelta(hours=1), '10000.01') is None

@@ -476,8 +476,20 @@ class EndpointTests(TestCase):
             Test that we can create an entry.
         '''
         monitor = self.get_bam1022()
+        now = timezone.now().replace(minute=0, second=0, microsecond=0)
+
+        # The BAM cleaner holds off a record unless the two previous hourly
+        # RAW records exist, so seed them.
+        for hours in (1, 2):
+            entry_models.PM25.objects.create(
+                monitor=monitor,
+                timestamp=now - timedelta(hours=hours),
+                value=Decimal('10'),
+                stage=entry_models.PM25.Stage.RAW,
+            )
+
         payload = {
-            'Time': timezone.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'Time': timezone.localtime(now).strftime('%Y-%m-%d %H:%M:%S'),
             'AT(C)': Decimal('30.6'),
             'RH(%)': Decimal('25.0'),
             'BP(mmHg)': Decimal('764.5'),
@@ -534,6 +546,39 @@ class EndpointTests(TestCase):
                 lookup['value'] = Decimal(entry['pressure_mmhg'])
 
             assert EntryModel.objects.get(**lookup) is not None
+
+    def test_create_entry_with_maintenance_status_is_not_cleaned(self):
+        monitor = self.get_bam1022()
+        now = timezone.now().replace(minute=0, second=0, microsecond=0)
+        for hours in (1, 2):
+            entry_models.PM25.objects.create(
+                monitor=monitor,
+                timestamp=now - timedelta(hours=hours),
+                value=Decimal('10'),
+                stage=entry_models.PM25.Stage.RAW,
+            )
+
+        payload = {
+            'Time': timezone.localtime(now).strftime('%Y-%m-%d %H:%M:%S'),
+            'AT(C)': Decimal('30.6'),
+            'RH(%)': Decimal('25.0'),
+            'BP(mmHg)': Decimal('764.5'),
+            'ConcHR(ug/m3)': Decimal('14'),
+            'Status': '00512',
+        }
+        url = reverse('api:v2:monitors:entry-create', kwargs={'monitor_id': monitor.pk})
+        request = self.factory.post(url, payload, HTTP_ACCESS_KEY=str(monitor.access_key))
+        request.monitor = monitor
+        response = create_entry(request, monitor_id=monitor.pk)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        pm25_stages = [e['stage'] for e in content['data'] if e['entry_type'] == 'pm25']
+        assert pm25_stages == [entry_models.PM25.Stage.RAW]
+
+        monitor.refresh_from_db()
+        assert monitor.status.timestamp == now
+        assert monitor.status.labels == ['Maintenance']
 
     def test_create_entry_rejected(self):
         monitor = self.get_purple_air()
