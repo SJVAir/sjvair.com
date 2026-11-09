@@ -1,5 +1,6 @@
 import math
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from django.db import transaction
@@ -11,6 +12,16 @@ from camp.apps.summaries.periods import iter_hours, period_end
 WINDOW_HOURS = 8
 MIN_WINDOW_HOURS = 6
 DAILY_FIGURES = ('max_1h', 'max_8h', 'mean_24h')
+
+# An hourly mean at or below this is a "missing" marker (AirNow stored -999 before
+# its importer was fixed), not a reading.
+SENTINEL_MAX = -900.0
+
+
+@dataclass
+class FillResult:
+    updated: dict[str, int]  # rows updated (or that would be), per entry type
+    skipped: int  # hourly rows read and dropped as sentinels
 
 
 def day_hours(day_start: datetime) -> list[datetime]:
@@ -89,13 +100,16 @@ def fill_daily_peaks(
     kind: str, ids: list | None, start: datetime, end: datetime, *,
     entry_models: list | None = None, fields: tuple[str, ...] = DAILY_FIGURES,
     dry_run: bool = False, batch_size: int = 1000, progress=None,
-) -> dict[str, int]:
+) -> FillResult:
     """
     Write `max_1h` / `max_8h` / `mean_24h` on DAILY rows with `start <= timestamp < end` of the
     peak entry types (or the given subset of them). `kind` is 'monitor' or
     'region'; `ids=None` means all. Each row gets its own statistic; the other
     fields are set to null. Only `fields` are written, and only rows whose values
-    change. Returns the rows updated (or that would be) per entry type.
+    change. Hourly means at or below `SENTINEL_MAX` count as no data. Returns a
+    `FillResult`: the rows updated (or that would be) per entry type, and how many
+    hourly rows were skipped as sentinels among those read (a next-day tail hour
+    read for a max_8h window counts too, and an hour read for several rows once).
     """
     if kind == 'monitor':
         model, owner = MonitorSummary, 'monitor_id'
@@ -110,7 +124,7 @@ def fill_daily_peaks(
         peaks = {m: stat for m, stat in peaks.items() if m in entry_models}
     by_type = {m.entry_type: (m, stat) for m, stat in peaks.items()}
     if not by_type or not fields:
-        return {}
+        return FillResult({}, 0)
 
     daily = model.objects.filter(
         resolution=BaseSummary.Resolution.DAILY,
@@ -128,6 +142,7 @@ def fill_daily_peaks(
         columns.append('processor')
 
     counts = Counter()
+    skipped = 0
     pending = []
 
     def flush():
@@ -143,7 +158,8 @@ def fill_daily_peaks(
     for i in range(0, len(owner_ids), group_size):
         group = owner_ids[i:i + group_size]
         rows = list(daily.filter(**{f'{owner}__in': group}).only(*columns))
-        hourly = _hourly_series(model, owner, group, rows, kind)
+        hourly, group_skipped = _hourly_series(model, owner, group, rows, kind)
+        skipped += group_skipped
 
         for row in rows:
             entry_model, statistic = by_type[row.entry_type]
@@ -164,7 +180,7 @@ def fill_daily_peaks(
                     flush()
 
     flush()
-    return dict(counts)
+    return FillResult(dict(counts), skipped)
 
 
 def _owner_group_size(start, end):
@@ -182,9 +198,10 @@ def _series_key(kind, owner_id, entry_type, processor):
 
 def _hourly_series(model, owner, owner_ids, rows, kind):
     """One read of a group of owners' hourly means covering their daily rows' days
-    (plus the next day's first hours for 8-hour windows), keyed by series then hour."""
+    (plus the next day's first hours for 8-hour windows), keyed by series then hour,
+    and the number of sentinel hours dropped."""
     if not rows:
-        return {}
+        return {}, 0
     first = min(r.timestamp for r in rows)
     last = max(r.timestamp for r in rows)
     qs = model.objects.filter(
@@ -195,11 +212,15 @@ def _hourly_series(model, owner, owner_ids, rows, kind):
         timestamp__lt=period_end('day', last) + timedelta(hours=NEXT_DAY_HOURS),
     )
     series = defaultdict(dict)
+    skipped = 0
     if kind == 'monitor':
         qs = qs.filter(is_complete=True)
-        for oid, et, processor, ts, mean in qs.values_list(owner, 'entry_type', 'processor', 'timestamp', 'mean'):
-            series[(oid, et, processor)][ts] = mean
+        rows = qs.values_list(owner, 'entry_type', 'processor', 'timestamp', 'mean')
     else:
-        for oid, et, ts, mean in qs.values_list(owner, 'entry_type', 'timestamp', 'mean'):
-            series[(oid, et)][ts] = mean
-    return series
+        rows = qs.values_list(owner, 'entry_type', 'timestamp', 'mean')
+    for *key, ts, mean in rows:
+        if mean <= SENTINEL_MAX:
+            skipped += 1
+            continue
+        series[tuple(key)][ts] = mean
+    return series, skipped

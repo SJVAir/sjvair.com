@@ -69,6 +69,7 @@ class Command(ScopeMixin, BaseCommand):
         verb = 'would change' if dry_run else 'changed'
         for kind, ids in scopes:
             total = Counter()
+            skipped = 0
             if ids:
                 # One Pacific month at a time keeps the writer's per-owner read bounded.
                 for month in iter_period_starts('month', start, end):
@@ -76,16 +77,20 @@ class Command(ScopeMixin, BaseCommand):
                     chunk_end = min(period_end('month', month), end)
                     if progress:
                         progress(f'{kind} peaks: {self._fmt(chunk_start)} -> {self._fmt(chunk_end)}')
-                    total.update(fill_daily_peaks(
+                    result = fill_daily_peaks(
                         kind, ids, chunk_start, chunk_end, entry_models=entry_models,
                         dry_run=dry_run, batch_size=options['batch_size'], progress=progress,
-                    ))
+                    )
+                    total.update(result.updated)
+                    skipped += result.skipped
             self.stdout.write(f'{kind}s: {len(ids):,}')
             if not total:
                 self.stdout.write(f'{kind} peaks: nothing to do')
             for entry_type in sorted(total):
                 n = total[entry_type]
                 self.stdout.write(f'{kind} {entry_type}: {n:,} {"row" if n == 1 else "rows"} {verb}')
+            if skipped:
+                self.stdout.write(f'{kind} peaks: skipped {skipped:,} hourly value(s) at or below -900')
 
         self.stdout.write(self.style.SUCCESS('Dry run done.' if dry_run else 'Done.'))
 

@@ -19,7 +19,7 @@ from camp.apps.regions.models import Region
 from camp.apps.summaries.aggregators import tdigest_to_dict
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.peaks import (
-    day_hours, fill_daily_peaks, max_1h, max_8h, mean_24h, peak_entry_models,
+    FillResult, day_hours, fill_daily_peaks, max_1h, max_8h, mean_24h, peak_entry_models,
     standard_for,
 )
 from camp.apps.summaries.tasks import (
@@ -203,10 +203,47 @@ class FillDailyPeaksTests(TestCase):
         ids = [self.monitor.pk] if kind == 'monitor' else [self.region.pk]
         return fill_daily_peaks(kind, ids, self.day, self.next_day, **kwargs)
 
+    def test_sentinel_hour_not_data(self):
+        self.monitor_hours('o3', [50.0] * 8 + [-999.0] + [50.0] * 9)
+        row = self.monitor_daily('o3')
+        result = self.fill()
+        row.refresh_from_db()
+        assert row.max_1h is None  # 17 valid hours, 18 needed
+        assert result.skipped == 1
+
+    def test_sentinel_not_in_8h_average(self):
+        self.monitor_hours('co', [4.0] * 24)
+        MonitorSummary.objects.filter(
+            resolution=R.HOURLY, entry_type='co', timestamp=self.hours[3]).update(mean=-999.0)
+        row = self.monitor_daily('co')
+        result = self.fill()
+        row.refresh_from_db()
+        assert row.max_8h == 4.0
+        assert result.skipped == 1
+
+    def test_sentinel_boundary(self):
+        self.monitor_hours('o3', [-900.0] + [-899.9] + [20.0] * 22)
+        row = self.monitor_daily('o3')
+        result = self.fill()
+        row.refresh_from_db()
+        assert result.skipped == 1
+        assert row.max_1h == 20.0
+
+    def test_rollup_logs_skips(self):
+        self.monitor_hours('o3', [50.0] * 23 + [-999.0])
+        with self.assertLogs('camp.apps.summaries', 'WARNING') as logs:
+            rollup_monitor_summaries(R.DAILY, R.HOURLY, self.day, self.next_day)
+        assert any('1' in m and 'sentinel' in m for m in logs.output)
+
+    def test_rollup_no_warning_without_skips(self):
+        self.monitor_hours('o3', [50.0] * 24)
+        with self.assertNoLogs('camp.apps.summaries', 'WARNING'):
+            rollup_monitor_summaries(R.DAILY, R.HOURLY, self.day, self.next_day)
+
     def test_fills_monitor_o3(self):
         self.monitor_hours('o3', [10.0] * 23 + [130.0])
         row = self.monitor_daily('o3')
-        assert self.fill() == {'o3': 1}
+        assert self.fill().updated == {'o3': 1}
         row.refresh_from_db()
         assert row.max_1h == 130.0
         assert row.max_8h is None
@@ -222,7 +259,7 @@ class FillDailyPeaksTests(TestCase):
     def test_region_rows(self):
         self.region_hours('o3', [10.0] * 23 + [130.0])
         row = self.region_daily('o3')
-        assert self.fill('region') == {'o3': 1}
+        assert self.fill('region').updated == {'o3': 1}
         row.refresh_from_db()
         assert row.max_1h == 130.0
         assert row.max_8h is None
@@ -238,7 +275,7 @@ class FillDailyPeaksTests(TestCase):
     def test_fills_pm25_mean_24h(self):
         self.monitor_hours('pm25', [10.0] * 23 + [34.0])
         row = self.monitor_daily('pm25')
-        assert self.fill() == {'pm25': 1}
+        assert self.fill().updated == {'pm25': 1}
         row.refresh_from_db()
         assert row.mean_24h == 11.0
         assert row.max_1h is None
@@ -254,7 +291,7 @@ class FillDailyPeaksTests(TestCase):
     def test_region_mean_24h(self):
         self.region_hours('pm25', [10.0] * 23 + [34.0])
         row = self.region_daily('pm25')
-        assert self.fill('region') == {'pm25': 1}
+        assert self.fill('region').updated == {'pm25': 1}
         row.refresh_from_db()
         assert row.mean_24h == 11.0
 
@@ -272,7 +309,7 @@ class FillDailyPeaksTests(TestCase):
         self.monitor_hours('o3', [10.0] * 23 + [90.0], processor='AQLiteHourlyAggregator')
         raw = self.monitor_daily('o3', processor='')
         cal = self.monitor_daily('o3', processor='AQLiteHourlyAggregator')
-        assert self.fill() == {'o3': 2}
+        assert self.fill().updated == {'o3': 2}
         raw.refresh_from_db()
         cal.refresh_from_db()
         assert raw.max_1h == 200.0
@@ -290,7 +327,7 @@ class FillDailyPeaksTests(TestCase):
     def test_dry_run_writes_nothing(self):
         self.monitor_hours('o3', [10.0] * 23 + [130.0])
         row = self.monitor_daily('o3')
-        assert self.fill(dry_run=True) == {'o3': 1}
+        assert self.fill(dry_run=True).updated == {'o3': 1}
         row.refresh_from_db()
         assert row.max_1h is None
 
@@ -301,7 +338,7 @@ class FillDailyPeaksTests(TestCase):
         co = self.monitor_daily('co')
         messages = []
         result = self.fill(entry_models=[entries.CO], progress=messages.append)
-        assert result == {'co': 1}
+        assert result.updated == {'co': 1}
         o3.refresh_from_db()
         co.refresh_from_db()
         assert o3.max_1h is None
@@ -318,7 +355,7 @@ class FillDailyPeaksTests(TestCase):
         MonitorSummary.objects.filter(
             resolution=R.HOURLY, entry_type='o3', timestamp__in=self.hours[:7],
         ).update(is_complete=False)
-        assert self.fill() == {'o3': 1}
+        assert self.fill().updated == {'o3': 1}
         row.refresh_from_db()
         assert row.max_1h is None
 
@@ -326,7 +363,7 @@ class FillDailyPeaksTests(TestCase):
         self.monitor_hours('co', [2.0] * 24)
         row = self.monitor_daily('co')
         MonitorSummary.objects.filter(pk=row.pk).update(max_1h=5.0)
-        assert self.fill() == {'co': 1}
+        assert self.fill().updated == {'co': 1}
         row.refresh_from_db()
         assert row.max_1h is None
         assert row.max_8h == 2.0
@@ -334,8 +371,8 @@ class FillDailyPeaksTests(TestCase):
     def test_unchanged_rows_not_counted(self):
         self.monitor_hours('o3', [10.0] * 24)
         self.monitor_daily('o3')
-        assert self.fill() == {'o3': 1}
-        assert self.fill() == {}
+        assert self.fill().updated == {'o3': 1}
+        assert self.fill().updated == {}
 
     def test_rollup_fills_peaks(self):
         self.monitor_hours('o3', [10.0] * 23 + [130.0])
@@ -363,7 +400,7 @@ class FillDailyPeaksTests(TestCase):
         assert daily.max_1h == 130.0
 
         # The upsert alone (fill skipped) leaves the peak in place.
-        with patch('camp.apps.summaries.tasks.fill_daily_peaks') as fill:
+        with patch('camp.apps.summaries.tasks.fill_daily_peaks', return_value=FillResult({}, 0)) as fill:
             rollup_monitor_summaries(R.DAILY, R.HOURLY, self.day, self.next_day)
         assert fill.called
         daily.refresh_from_db()
@@ -379,7 +416,7 @@ class FillDailyPeaksTests(TestCase):
         # The same for regions.
         self.region_hours('o3', [10.0] * 23 + [130.0])
         rollup_region_summaries(R.DAILY, R.HOURLY, self.day, self.next_day)
-        with patch('camp.apps.summaries.tasks.fill_daily_peaks'):
+        with patch('camp.apps.summaries.tasks.fill_daily_peaks', return_value=FillResult({}, 0)):
             rollup_region_summaries(R.DAILY, R.HOURLY, self.day, self.next_day)
         region_daily = RegionSummary.objects.get(resolution=R.DAILY, entry_type='o3')
         assert region_daily.max_1h == 130.0
@@ -415,7 +452,7 @@ class FillDailyPeaksQueryTests(TestCase):
     def queries(self, ids):
         with CaptureQueriesContext(connection) as ctx:
             result = fill_daily_peaks('monitor', ids, self.day, self.next_day, dry_run=True)
-        return len(ctx.captured_queries), result
+        return len(ctx.captured_queries), result.updated
 
     def test_query_count_bounded(self):
         monitors = self.make_monitors(6)
@@ -634,6 +671,12 @@ class FillDailyPeaksCommandTests(TestCase):
         assert june.max_1h == 130.0
         assert july.max_1h is None
 
+    def test_command_prints_skips(self):
+        self.hourly(self.monitor, 'o3', [-999.0] + [10.0] * 23, self.hours)
+        self.daily(self.monitor, 'o3', self.day)
+        out = self.run_command('2026-07-01', '2026-07-02', '--monitor', str(self.monitor.pk))
+        assert 'skipped 1 hourly value(s) at or below -900' in out
+
     def test_start_mid_month_leaves_earlier_rows(self):
         early = self.o3_day(day=pacific_day(2026, 7, 1))
         late = self.o3_day(day=pacific_day(2026, 7, 2))
@@ -645,7 +688,7 @@ class FillDailyPeaksCommandTests(TestCase):
 
     def test_chunk_bounds(self):
         with patch('camp.apps.summaries.management.commands.fill_daily_peaks.fill_daily_peaks',
-                   return_value={}) as fill:
+                   return_value=FillResult({}, 0)) as fill:
             self.run_command('2026-01-15', '2026-03-10', '--monitor', str(self.monitor.pk))
         bounds = [(c.args[2], c.args[3]) for c in fill.call_args_list]
         assert bounds == [

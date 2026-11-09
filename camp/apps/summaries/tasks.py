@@ -229,6 +229,11 @@ def summarize_monitor_hours(monitor_id, hours):
 
 # ---- Rollup helpers ----
 
+def _log_skipped(result):
+    if result.skipped > 0:
+        logger.warning('Daily peaks skipped %d sentinel hourly value(s)', result.skipped)
+
+
 def rollup_monitor_summaries(target_resolution, source_resolution, window_start, window_end, monitor_ids=None):
     """
     Roll up MonitorSummary records from source_resolution into target_resolution
@@ -286,7 +291,7 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
         )
         # The peaks aren't in update_fields, so the upsert keeps them; the fill rewrites them.
         if target_resolution == BaseSummary.Resolution.DAILY:
-            fill_daily_peaks('monitor', monitor_ids, window_start, window_end)
+            _log_skipped(fill_daily_peaks('monitor', monitor_ids, window_start, window_end))
 
 
 def rollup_region_summaries(target_resolution, source_resolution, window_start, window_end, region_ids=None):
@@ -335,7 +340,7 @@ def rollup_region_summaries(target_resolution, source_resolution, window_start, 
         )
         # The peaks aren't in update_fields, so the upsert keeps them; the fill rewrites them.
         if target_resolution == BaseSummary.Resolution.DAILY:
-            fill_daily_peaks('region', region_ids, window_start, window_end)
+            _log_skipped(fill_daily_peaks('region', region_ids, window_start, window_end))
 
 
 # ---- Rollup periodic tasks ----
@@ -367,10 +372,11 @@ def _refresh_previous_max_8h(kind, start):
     `start` is the day just rolled up.
     """
     models = [model for model, field in peak_entry_models().items() if field == 'max_8h']
-    fill_daily_peaks(
+    result = fill_daily_peaks(
         kind, None, _previous_period_start('day', start), start,
         entry_models=models, fields=('max_8h',),
     )
+    _log_skipped(result)
 
 
 @db_periodic_task(pacific_crontab(1, '0'), priority=80, queue='summaries')
