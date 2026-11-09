@@ -43,10 +43,12 @@ class PM25_LCS_Correction(BaseProcessor):
         return True
 
     def out_of_bounds(self, value):
+        # Plantower sensors aren't reliable above ~1000 µg/m³; a broken
+        # channel often pegs at 2500-3300 instead.
         return (
             value is None
             or value < -15
-            or value > 3000
+            or value > 1000
         )
 
     def is_repeated(self, entry, max_repeat=5) -> bool:
@@ -81,20 +83,38 @@ class PM25_LCS_Correction(BaseProcessor):
 
         return repeat_count > max_repeat
 
-    def is_healthy(self, entry) -> bool:
+    def is_flatlined(self, entry, other) -> bool:
+        '''
+        A repeating channel is flatlined, except for a run of near-zero
+        readings, which is normal in clean air. That only counts as a
+        dead channel when the other channel credibly shows there's PM
+        to read.
+        '''
+        if not self.is_repeated(entry):
+            return False
+        if entry.value >= 1:
+            return True
+        return (
+            other is not None
+            and not self.out_of_bounds(other.value)
+            and not self.is_repeated(other)
+            and other.value > 2
+        )
+
+    def is_healthy(self, entry, other) -> bool:
         '''
         A channel is healthy if it has a reading, that reading is in
-        bounds, and it isn't flatlined/repeating.
+        bounds, and it isn't flatlined.
         '''
         return (
             entry is not None
             and not self.out_of_bounds(entry.value)
-            and not self.is_repeated(entry)
+            and not self.is_flatlined(entry, other)
         )
 
     def process(self):
-        entry_ok = self.is_healthy(self.entry)
-        sibling_ok = self.is_healthy(self.sibling)
+        entry_ok = self.is_healthy(self.entry, self.sibling)
+        sibling_ok = self.is_healthy(self.sibling, self.entry)
 
         if entry_ok and sibling_ok:
             # Both channels look good, blend them.
