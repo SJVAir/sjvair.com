@@ -94,12 +94,21 @@ class PeakMathTests(TestCase):
             hourly[h] = 20.0
         raised = max_8h(hours, hourly, 9.5)
         assert base == 1.0
-        assert raised > base
+        # Only the window starting 23:00 holds the seven 20.0 hours, plus one 1.0.
+        assert raised == 17.625
 
     def test_max_8h_missing_next_day(self):
         hours = day(2026, 7, 1)
-        hourly = series(hours, [2.0] * 24)
-        assert max_8h(hours, hourly, 9.5) == 2.0
+        # A full day and no next-day hours: windows 0..18 have >= 6 hours (19 valid).
+        assert max_8h(hours, series(hours, [2.0] * 24), 9.5) == 2.0
+        # Hours 3..23: windows 1..18 are valid (18, the threshold). Windows 19..23 have
+        # under 6 hours, so their 9.0 averages don't count; window 18 holds one 1.0 and
+        # five 9.0.
+        hourly = series(hours, [1.0] * 16 + [9.0] * 5, start=3)
+        assert max_8h(hours, hourly, 9.5) == pytest.approx(46 / 6)
+        # Hours 4..23: 17 valid windows, under the 75% rule.
+        hourly = series(hours, [1.0] * 15 + [9.0] * 5, start=4)
+        assert max_8h(hours, hourly, 9.5) is None
 
     def test_peak_entry_models(self):
         assert peak_entry_models() == {
@@ -252,6 +261,29 @@ class FillDailyPeaksTests(TestCase):
         assert o3.max_1h is None
         assert co.max_8h == 2.0
         assert len(messages) == 1
+
+    def test_refill_clears_when_coverage_drops(self):
+        self.monitor_hours('o3', [10.0] * 23 + [100.0])
+        row = self.monitor_daily('o3')
+        self.fill()
+        row.refresh_from_db()
+        assert row.max_1h == 100.0
+        # 7 hours turn incomplete: 17 of 24 left, and 100 is under the standard.
+        MonitorSummary.objects.filter(
+            resolution=R.HOURLY, entry_type='o3', timestamp__in=self.hours[:7],
+        ).update(is_complete=False)
+        assert self.fill() == {'o3': 1}
+        row.refresh_from_db()
+        assert row.max_1h is None
+
+    def test_stale_max_1h_on_co_cleared(self):
+        self.monitor_hours('co', [2.0] * 24)
+        row = self.monitor_daily('co')
+        MonitorSummary.objects.filter(pk=row.pk).update(max_1h=5.0)
+        assert self.fill() == {'co': 1}
+        row.refresh_from_db()
+        assert row.max_1h is None
+        assert row.max_8h == 2.0
 
     def test_unchanged_rows_not_counted(self):
         self.monitor_hours('o3', [10.0] * 24)
