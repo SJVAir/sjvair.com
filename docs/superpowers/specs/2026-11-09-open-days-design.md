@@ -50,6 +50,10 @@ compute rollup or settle timing itself.
 - Computed at serialization from the request time. Responses are already cached by the
   settled rule, so a settled response never carries a stale `false`. An unsettled response
   (max-age 60) is at most a minute out of date.
+- One instant per request (final review): `SummaryMixin.dispatch` reads the time once, and the
+  cache rule, every row's `is_final` (bound through a context variable in the serializers
+  module) and the open endpoints' open days all use it, so a request that straddles a settle
+  time can't send `is_final: false` under a one-day max-age.
 
 ### 2. The open-day row
 
@@ -101,7 +105,21 @@ most 2 rows per series. **The bulk open endpoints are paginated by owner, 100 ow
 monitor's rows, with t-digest merges for `p25`/`p75`, in one response every 60 s. Paging keeps
 each request bounded and the rows complete, like the bulk lists.
 
+**The bulk open endpoints list only owners with an hourly row of the series since the first
+open day** (final review). An EXISTS on the summary table (served by its unique index, or the
+`(resolution, timestamp)` index) runs in the owner query, so an unscoped request pages through
+active owners, not every idle one, and pages stay full. For monitors the series is the one in
+use: `?processor=`, or the published series per monitor type. An owner whose only such hours
+are yesterday's, with yesterday stored, is still listed with `summaries: []`.
+
 Caching: `private, max-age=60` with an ETag, like an unsettled daily list. Errors `no-cache`.
+**Server side**, the built rows are cached for 60 s (`cached_open_rows`, Django cache) under a
+key of the kind, entry type, series filter, the sorted owner ids (hashed) and the open-day set,
+so every client polling the same page in the same minute shares one build. The cached value is
+the unsaved row instances (they pickle). A new owner set or the next open-day set (midnight,
+yesterday's settle) misses. Open rows skip building the merged t-digest
+(`rollup_summaries(..., with_tdigest=False)`; `p25`/`p75` are kept); the nightly rollup's
+output is unchanged.
 
 Performance: a new grouped read, not the writer's. The writer's read is driven by existing
 daily rows and selects only `mean`, while open days have no daily row and the rollup needs
@@ -121,8 +139,9 @@ A new module `camp/apps/summaries/open_days.py`:
   for every entry type (*my call*): the cap is about whether the nightly rollup should have
   written the row. The 28 h CO margin is about the figure changing, and that's `is_final`'s
   job, so it doesn't widen the cap. So there are at most 2 open days.
-- `build_open_rows(kind, owner_ids, entry_model, processor_filter, now) -> list[dict]`: rows in
-  the serializers' field shape.
+- `build_open_rows(kind, owner_ids, entry_model, now, processor_q=None) -> {owner: [rows]}`:
+  unsaved `MonitorSummary`/`RegionSummary` rows. `cached_open_rows` (same arguments) wraps it
+  in the 60 s cache; the endpoints call that.
 
 It reuses `peaks.py` (`day_hours`, the figure functions with a "so far" switch, the sentinel
 filter), `aggregators.py` (`rollup_summaries`, `rollup_region_stats`), `periods.py` and
@@ -155,6 +174,12 @@ Every entry type the daily list serves is served here too. Types with no `daily_
   with null figures.
 - Region open rows carry `station_count` (the max across hours) and no `is_complete`.
 - Bulk query count stays bounded across many owners.
+- Bulk lists only owners with open-window hourly rows of the series in use (an owner whose only
+  rows are another series, or older, is absent).
+- The server-side cache: a second identical call does no query; a different owner set, series
+  filter, entry type or open-day set misses.
+- One instant per request: a request straddling a settle time keeps `is_final` and the cache
+  rule consistent.
 
 ## Docs
 

@@ -394,22 +394,27 @@ zones are missing there; see SJVAPCD Forecast Setup).
   docker compose run --rm web python manage.py fill_daily_peaks 2026-01-01 2026-11-10 \
     --monitor-type airnow --dry-run
   ```
-- **Open days**: the nightly daily rollup runs at 01:00 Pacific, so the latest daily rows are
-  missing until then. `monitors/<id>/summaries/<entry_type>/daily/open/` (`?processor=`, default
+- **Open days**: the nightly daily rollups run at 01:00 Pacific (monitors) and 01:10 (regions),
+  so the latest daily rows are missing until then. `monitors/<id>/summaries/<entry_type>/daily/open/` (`?processor=`, default
   the raw `''` series) and `regions/<id>/summaries/<entry_type>/daily/open/` return unsaved DAILY
   rows for today (Pacific) and, until the plain day settle (~03:00), yesterday if the series has no
   stored row for it (`camp/apps/summaries/open_days.py`; at most 2 rows). Bulk
   `monitors/<entry_type>/summaries/daily/open/` (scoped like the bulk list: `region`, `bbox`,
   `MonitorFilter`, the published series or `?processor=`) and `regions/<entry_type>/summaries/daily/open/`
-  (`region` required) page by owner, 100 per page; owners without rows are listed with
-  `summaries: []`. Stats roll up every hourly row of the day. The figure (only the field the
+  (`region` required) page by owner, 100 per page, and list only owners with an HOURLY row of
+  the series in use (published or `?processor=`) since the first open day (an EXISTS in the owner
+  query); a listed owner whose only hours are a stored yesterday's has `summaries: []`. The built
+  rows are cached server-side for 60 s (`cached_open_rows`: kind, entry type, series filter,
+  hashed owner set, open-day set), shared by everyone polling the same page; open rows skip the
+  merged t-digest (`with_tdigest=False`). Stats roll up every hourly row of the day. The figure (only the field the
   entry type's `daily_statistic` names; others `null`) uses complete monitor hours / any region
   hour, skipping sentinels. Today uses "so far" rules: `mean_24h` is the mean of the hourly means
   so far, `max_1h` the highest hour so far, `max_8h` the highest window starting today with >= 6
   of its 8 hours; no 75% rule or standard exception. An earlier open day uses the strict
   `peaks.py` rules. On a monitor's open row `is_complete` is relative to the hours so far for
   today. `is_final` is `false` on every open row. Read it as: false on today = so far; false on an
-  earlier day = not final yet; missing = no data. The cap is yesterday only until the day settles,
+  earlier day = not final yet; missing = no data. Today itself reads as missing until its first
+  hour is summarized (~00:45 monitors / ~00:50 regions, 01:45 / 01:50 at worst). The cap is yesterday only until the day settles,
   so a missed nightly rollup shows as no data afterwards and needs `repair_summaries`. All four
   always send `private, max-age=60` with an ETag (304 on `If-None-Match`); errors `no-cache`.
 - **Summary cache rule** (`camp/api/v2/summaries/endpoints.py`): a 200 for a settled period is
@@ -420,7 +425,9 @@ zones are missing there; see SJVAPCD Forecast Setup).
   the margins against the real crontabs, so moving a rollup past its settle time fails it.
   Monitor summary rows (and the bulk rows) carry `sum`; region rows don't.
   Every row carries `is_final`: the settled rule per row and resolution (CO's `max_8h` uses its
-  28 h margin); open-day rows are always `false`.
+  28 h margin, CIMIS switch types `LATE_SETTLE_MARGIN`); open-day rows are always `false`. One
+  instant per request: `SummaryMixin.dispatch` reads the time once and the cache rule, every
+  row's `is_final` (`serializing_at` in the serializers) and the open days use it.
 - **Rollup timing**: Huey crontabs are UTC (its `utc=True` default; `DJANGO_HUEY` doesn't
   change it), so each daily-and-longer rollup is scheduled with `pacific_crontab()`
   (`camp/apps/summaries/schedule.py`): it matches both UTC hours that can hold its Pacific hour
