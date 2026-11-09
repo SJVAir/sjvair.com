@@ -6,7 +6,10 @@ from django.conf import settings
 from django.contrib.gis.geos import Point
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
+import pytest
 from tdigest import TDigest
 
 from camp.apps.entries import models as entries
@@ -302,6 +305,57 @@ class FillDailyPeaksTests(TestCase):
             rollup_region_summaries(R.DAILY, R.HOURLY, self.day, self.next_day)
         region_daily = RegionSummary.objects.get(resolution=R.DAILY, entry_type='o3')
         assert region_daily.max_1h == 130.0
+
+
+class FillDailyPeaksQueryTests(TestCase):
+    """Owners are read in groups, so the query count doesn't grow per owner."""
+
+    def setUp(self):
+        self.day = pacific_day(2026, 7, 1)
+        self.next_day = pacific_day(2026, 7, 2)
+        self.hours = day_hours(self.day)
+
+    def make_monitors(self, n):
+        monitors = []
+        for i in range(n):
+            monitor = AirNow.objects.create(
+                name=f'AN {i}', position=Point(-119.5, 36.5, srid=4326), location='outside')
+            for hour in self.hours:
+                MonitorSummary.objects.create(
+                    monitor=monitor, timestamp=hour, resolution=R.HOURLY, entry_type='o3',
+                    processor='', is_complete=True, **_stats(10.0))
+            # Each monitor gets its own peak, so a mixed-up series shows.
+            MonitorSummary.objects.filter(
+                monitor=monitor, resolution=R.HOURLY, timestamp=self.hours[12],
+            ).update(mean=50.0 + i)
+            MonitorSummary.objects.create(
+                monitor=monitor, timestamp=self.day, resolution=R.DAILY, entry_type='o3',
+                processor='', is_complete=True, **_stats(1.0))
+            monitors.append(monitor)
+        return monitors
+
+    def queries(self, ids):
+        with CaptureQueriesContext(connection) as ctx:
+            result = fill_daily_peaks('monitor', ids, self.day, self.next_day, dry_run=True)
+        return len(ctx.captured_queries), result
+
+    def test_query_count_bounded(self):
+        monitors = self.make_monitors(6)
+        # Owner list, then one daily-rows and one hourly query for the one group.
+        assert self.queries(None) == (3, {'o3': 6})
+        assert self.queries([m.pk for m in monitors[:2]]) == (3, {'o3': 2})
+        assert self.queries([m.pk for m in monitors]) == (3, {'o3': 6})
+
+    def test_groups_keep_series_apart(self):
+        monitors = self.make_monitors(5)
+        with patch('camp.apps.summaries.peaks.OWNER_GROUP_SIZE', 2):
+            n, result = self.queries(None)
+            assert n == 1 + 3 * 2
+            assert result == {'o3': 5}
+            fill_daily_peaks('monitor', None, self.day, self.next_day)
+        for i, monitor in enumerate(monitors):
+            row = MonitorSummary.objects.get(monitor=monitor, resolution=R.DAILY)
+            assert row.max_1h == 50.0 + i
 
 
 class NextNightRefreshTests(TestCase):

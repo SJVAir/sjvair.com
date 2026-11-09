@@ -71,6 +71,11 @@ NEXT_DAY_HOURS = WINDOW_HOURS - 1
 
 PEAK_FUNCTIONS = {'max_1h': max_1h, 'max_8h': max_8h}
 
+# Owners read together: one daily-rows query and one hourly query per group.
+OWNER_GROUP_SIZE = 200
+# Caps a group's hourly read for long spans (a month: ~66 owners per group).
+OWNER_HOURS_PER_GROUP = 50_000
+
 
 def fill_daily_peaks(
     kind: str, ids: list | None, start: datetime, end: datetime, *,
@@ -108,7 +113,11 @@ def fill_daily_peaks(
     if ids is not None:
         daily = daily.filter(**{f'{owner}__in': ids})
 
-    owner_ids = daily.order_by(owner).values_list(owner, flat=True).distinct()
+    owner_ids = list(daily.order_by(owner).values_list(owner, flat=True).distinct())
+    group_size = _owner_group_size(start, end)
+    columns = ['id', owner.removesuffix('_id'), 'entry_type', 'timestamp', *fields]
+    if kind == 'monitor':
+        columns.append('processor')
 
     counts = Counter()
     pending = []
@@ -123,17 +132,14 @@ def fill_daily_peaks(
             progress(f'{kind} peaks: {len(pending)} rows {"would be " if dry_run else ""}updated')
         pending.clear()
 
-    for owner_id in list(owner_ids):
-        columns = ['id', 'entry_type', 'timestamp', *fields]
-        if kind == 'monitor':
-            columns.append('processor')
-        rows = list(daily.filter(**{owner: owner_id}).only(*columns))
-
-        hourly = _hourly_series(model, owner, owner_id, rows, kind)
+    for i in range(0, len(owner_ids), group_size):
+        group = owner_ids[i:i + group_size]
+        rows = list(daily.filter(**{f'{owner}__in': group}).only(*columns))
+        hourly = _hourly_series(model, owner, group, rows, kind)
 
         for row in rows:
             entry_model, statistic = by_type[row.entry_type]
-            key = (row.entry_type, row.processor) if kind == 'monitor' else row.entry_type
+            key = _series_key(kind, getattr(row, owner), row.entry_type, getattr(row, 'processor', None))
             series = hourly.get(key, {})
             value = PEAK_FUNCTIONS[statistic](day_hours(row.timestamp), series, standard_for(entry_model))
 
@@ -153,15 +159,28 @@ def fill_daily_peaks(
     return dict(counts)
 
 
-def _hourly_series(model, owner, owner_id, rows, kind):
-    """One read of the owner's hourly means covering its daily rows' days (plus the
-    next day's first hours for 8-hour windows), keyed by series then hour."""
+def _owner_group_size(start, end):
+    """Owners per read: OWNER_GROUP_SIZE for a day, fewer for longer spans, so a
+    group's hourly read stays near OWNER_HOURS_PER_GROUP owner-hours."""
+    span_hours = (end - start) / timedelta(hours=1) + NEXT_DAY_HOURS
+    return max(1, min(OWNER_GROUP_SIZE, int(OWNER_HOURS_PER_GROUP // max(span_hours, 1))))
+
+
+def _series_key(kind, owner_id, entry_type, processor):
+    if kind == 'monitor':
+        return (owner_id, entry_type, processor)
+    return (owner_id, entry_type)
+
+
+def _hourly_series(model, owner, owner_ids, rows, kind):
+    """One read of a group of owners' hourly means covering their daily rows' days
+    (plus the next day's first hours for 8-hour windows), keyed by series then hour."""
     if not rows:
         return {}
     first = min(r.timestamp for r in rows)
     last = max(r.timestamp for r in rows)
     qs = model.objects.filter(
-        **{owner: owner_id},
+        **{f'{owner}__in': owner_ids},
         resolution=BaseSummary.Resolution.HOURLY,
         entry_type__in={r.entry_type for r in rows},
         timestamp__gte=first,
@@ -170,9 +189,9 @@ def _hourly_series(model, owner, owner_id, rows, kind):
     series = defaultdict(dict)
     if kind == 'monitor':
         qs = qs.filter(is_complete=True)
-        for et, processor, ts, mean in qs.values_list('entry_type', 'processor', 'timestamp', 'mean'):
-            series[(et, processor)][ts] = mean
+        for oid, et, processor, ts, mean in qs.values_list(owner, 'entry_type', 'processor', 'timestamp', 'mean'):
+            series[(oid, et, processor)][ts] = mean
     else:
-        for et, ts, mean in qs.values_list('entry_type', 'timestamp', 'mean'):
-            series[et][ts] = mean
+        for oid, et, ts, mean in qs.values_list(owner, 'entry_type', 'timestamp', 'mean'):
+            series[(oid, et)][ts] = mean
     return series
