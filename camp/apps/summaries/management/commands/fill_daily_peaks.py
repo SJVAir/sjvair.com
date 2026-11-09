@@ -36,6 +36,8 @@ class Command(ScopeMixin, BaseCommand):
         end = self._parse_date(options['end'])
         if start >= end:
             raise CommandError('start must be before end')
+        if options['batch_size'] < 1:
+            raise CommandError(f'--batch-size must be a positive integer, got {options["batch_size"]}')
 
         monitor_flags = options['monitor'] or options['monitor_type']
         region_flags = options['region'] or options['region_type']

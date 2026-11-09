@@ -51,7 +51,7 @@ class SummaryMixin:
         range_end = self.get_date_filter().get('timestamp__lt')
         late = self.entry_model.entry_type in switch_entry_types()
         levels = getattr(self.entry_model, 'Levels', None)
-        peak_8h = levels is not None and levels.averaging_hours == 8
+        peak_8h = getattr(levels, 'daily_statistic', None) == 'max_8h'
         settled = is_settled(self.resolution, range_end, late=late, peak_8h=peak_8h)
         patch_cache_control(
             response, private=True,

@@ -496,6 +496,35 @@ class FillDailyPeaksCommandTests(TestCase):
         with self.assertRaises(CommandError):
             self.run_command('2026-07-02', '2026-07-02', '--monitor', str(self.monitor.pk))
 
+    def test_rejects_non_positive_batch_size(self):
+        for value in ('0', '-5'):
+            with self.assertRaises(CommandError):
+                self.run_command('2026-07-01', '2026-07-02', '--monitor', str(self.monitor.pk),
+                                 '--batch-size', value)
+
+    def test_region_scopes(self):
+        region = Region.objects.filter(boundary__isnull=False).first()
+        for hour, v in zip(self.hours, [10.0] * 23 + [130.0]):
+            RegionSummary.objects.create(
+                region=region, timestamp=hour, resolution=R.HOURLY, entry_type='o3',
+                station_count=1, weight=1.0, **_stats(v))
+        row = RegionSummary.objects.create(
+            region=region, timestamp=self.day, resolution=R.DAILY, entry_type='o3',
+            station_count=1, weight=1.0, **_stats(1.0))
+
+        out = self.run_command('2026-07-01', '2026-07-02', '--region', str(region.pk), '--dry-run')
+        assert 'region o3: 1 row would change' in out
+        out = self.run_command('2026-07-01', '2026-07-02', '--region', str(region.pk))
+        assert 'region o3: 1 row changed' in out
+        row.refresh_from_db()
+        assert row.max_1h == 130.0
+
+        RegionSummary.objects.filter(pk=row.pk).update(max_1h=None)
+        out = self.run_command('2026-07-01', '2026-07-02', '--region-type', region.type)
+        assert 'region o3: 1 row changed' in out
+        row.refresh_from_db()
+        assert row.max_1h == 130.0
+
     def test_rejects_non_peak_entry_type(self):
         with self.assertRaises(CommandError) as ctx:
             self.run_command('2026-07-01', '2026-07-02', '--monitor', str(self.monitor.pk),
