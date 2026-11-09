@@ -697,6 +697,13 @@ class StoredResultTests(TestCase):
         }
         assert set(data['previous']) == {'status', 'value', 'level'}
 
+    def test_serialize_without_previous(self):
+        self.activate()
+        results = AlertEvaluator(self.monitor).get_results(previous=False)
+        data = current.serialize(results, timezone.now())['pm25']
+        assert data['status'] == 'ok'
+        assert data['previous'] is None
+
     @patch('camp.apps.alerts.tasks.notifications.notify_subscribers')
     def test_cache_error_does_not_block_notifications(self, mock_notify):
         Subscription.objects.create(

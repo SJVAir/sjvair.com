@@ -234,8 +234,8 @@ class CurrentAlertValuesTests(TestCase):
         assert re.search(r'[+-]\d\d:\d\d$', content['data']['pm25']['window']['end'])
         assert response['Cache-Control'] == 'public, max-age=60'
         assert isinstance(content['data']['pm25']['value'], float)
-        previous = content['data']['pm25']['previous']
-        assert previous['value'] is None or isinstance(previous['value'], float)
+        # The 30 readings span the last hour only, so the hour before is empty.
+        assert content['data']['pm25']['previous'] == {'status': 'no_data', 'value': None, 'level': None}
 
     def test_previous_value_is_a_number(self):
         now = timezone.now()
@@ -247,8 +247,8 @@ class CurrentAlertValuesTests(TestCase):
         current.store(monitor=self.monitor, results=AlertEvaluator(self.monitor).get_results(now=now), evaluated_at=now)
         data = self.client.get(f'/api/2.0/monitors/{self.monitor.pk}/alerts/current/').json()['data']['pm25']
         assert isinstance(data['value'], float)
-        if data['previous']['status'] == 'ok':
-            assert isinstance(data['previous']['value'], float)
+        assert data['previous']['status'] == 'ok'
+        assert isinstance(data['previous']['value'], float)
 
     def test_miss_active_is_pending(self):
         self.mark_active(self.monitor)

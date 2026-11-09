@@ -20,8 +20,6 @@ def _number(value):
 
 
 def _brief(result):
-    if result is None:
-        return {'status': None, 'value': None, 'level': None}
     return {
         'status': result.status,
         'value': _number(result.value),
@@ -41,7 +39,7 @@ def serialize(results, evaluated_at):
             'latest_timestamp': result.latest_timestamp,
             'readings': result.readings,
             'required': result.required,
-            'previous': _brief(result.previous),
+            'previous': _brief(result.previous) if result.previous else None,
             'evaluated_at': evaluated_at,
         }
         for entry_model, result in results.items()
