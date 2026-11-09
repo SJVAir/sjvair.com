@@ -1,14 +1,11 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
-from django.conf import settings
-from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
-from django.utils.dateparse import parse_date
 
 from camp.apps.summaries import repair
+from camp.apps.summaries.management.commands._scope import ScopeMixin
 from camp.apps.summaries.periods import period_end
-from camp.utils.datetime import make_aware
 
 
 def _count(n, noun):
@@ -16,7 +13,7 @@ def _count(n, noun):
     return f'{n:,} {noun}' if n == 1 else f'{n:,} {noun}s'
 
 
-class Command(BaseCommand):
+class Command(ScopeMixin, BaseCommand):
     help = (
         'Repair daily-and-longer summaries in a date range: optionally fill missing hourly '
         'region rows, then per resolution from days up delete the rows that do not start on '
@@ -164,60 +161,3 @@ class Command(BaseCommand):
     def _progress(self, message):
         self.stdout.write(f'  {message}')
         self.stdout.flush()
-
-    def _monitor_ids(self, pks, types):
-        from camp.apps.monitors.models import Monitor
-
-        ids = []
-        for pk in pks:
-            try:
-                found = Monitor.objects.filter(pk=pk).values_list('pk', flat=True).first()
-            except (ValueError, TypeError, ValidationError):
-                found = None
-            if found is None:
-                raise CommandError(f'Monitor not found: {pk}')
-            ids.append(found)
-
-        valid = sorted({sub.monitor_type for sub in Monitor.get_subclasses()})
-        for monitor_type in types:
-            if monitor_type not in valid:
-                raise CommandError(f'Unknown monitor type: {monitor_type} (valid: {", ".join(valid)})')
-            ids.extend(
-                Monitor.objects
-                .filter(**{f'{monitor_type}__isnull': False})
-                .values_list('pk', flat=True)
-            )
-        return list(dict.fromkeys(ids))
-
-    def _region_ids(self, pks, types):
-        from camp.apps.regions.models import Region
-
-        ids = []
-        for pk in pks:
-            try:
-                found = Region.all_objects.filter(pk=pk).values_list('pk', flat=True).first()
-            except (ValueError, TypeError, ValidationError):
-                found = None
-            if found is None:
-                raise CommandError(f'Region not found: {pk}')
-            ids.append(found)
-
-        valid = list(Region.Type.values)
-        for region_type in types:
-            if region_type not in valid:
-                raise CommandError(f'Unknown region type: {region_type} (valid: {", ".join(valid)})')
-            ids.extend(
-                Region.objects
-                .filter(type=region_type, boundary__isnull=False)
-                .values_list('pk', flat=True)
-            )
-        return list(dict.fromkeys(ids))
-
-    def _parse_date(self, value):
-        d = parse_date(value)
-        if d is None:
-            raise CommandError(f'Invalid date: {value!r}. Use YYYY-MM-DD.')
-        return make_aware(datetime(d.year, d.month, d.day), settings.DEFAULT_TIMEZONE)
-
-    def _fmt(self, ts):
-        return timezone.localtime(ts, settings.DEFAULT_TIMEZONE).isoformat()

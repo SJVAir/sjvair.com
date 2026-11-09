@@ -1,11 +1,16 @@
 from datetime import datetime, timedelta
+from io import StringIO
 from unittest.mock import patch
 
 from django.conf import settings
+from django.contrib.gis.geos import Point
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 from tdigest import TDigest
 
 from camp.apps.entries import models as entries
+from camp.apps.monitors.airnow.models import AirNow
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.regions.models import Region
 from camp.apps.summaries.aggregators import tdigest_to_dict
@@ -363,3 +368,98 @@ class NextNightRefreshTests(TestCase):
             prev = model.objects.get(resolution=R.DAILY, entry_type='co', timestamp=d_prev, **owner)
             assert prev.max_8h == 17.625
             assert model.objects.filter(resolution=R.DAILY, entry_type='co', timestamp=d, **owner).exists()
+
+
+class FillDailyPeaksCommandTests(TestCase):
+    fixtures = ['purple-air.yaml', 'regions.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        self.day = pacific_day(2026, 7, 1)
+        self.hours = day_hours(self.day)
+
+    def run_command(self, *args):
+        out = StringIO()
+        call_command('fill_daily_peaks', *args, stdout=out)
+        return out.getvalue()
+
+    def hourly(self, monitor, entry_type, values, hours):
+        for hour, v in zip(hours, values):
+            MonitorSummary.objects.create(
+                monitor=monitor, timestamp=hour, resolution=R.HOURLY,
+                entry_type=entry_type, processor='', is_complete=True, **_stats(v),
+            )
+
+    def daily(self, monitor, entry_type, day):
+        return MonitorSummary.objects.create(
+            monitor=monitor, timestamp=day, resolution=R.DAILY,
+            entry_type=entry_type, processor='', is_complete=True, **_stats(1.0),
+        )
+
+    def o3_day(self, monitor=None, day=None):
+        monitor = monitor or self.monitor
+        day = day or self.day
+        self.hourly(monitor, 'o3', [10.0] * 23 + [130.0], day_hours(day))
+        return self.daily(monitor, 'o3', day)
+
+    def test_requires_scope(self):
+        with self.assertRaises(CommandError):
+            self.run_command('2026-07-01', '2026-07-02')
+
+    def test_start_before_end(self):
+        with self.assertRaises(CommandError):
+            self.run_command('2026-07-02', '2026-07-02', '--monitor', str(self.monitor.pk))
+
+    def test_rejects_non_peak_entry_type(self):
+        with self.assertRaises(CommandError) as ctx:
+            self.run_command('2026-07-01', '2026-07-02', '--monitor', str(self.monitor.pk),
+                             '--entry-type', 'pm25')
+        message = str(ctx.exception)
+        assert 'o3' in message and 'co' in message
+
+    def test_dry_run_counts(self):
+        row = self.o3_day()
+        out = self.run_command('2026-07-01', '2026-07-02', '--monitor', str(self.monitor.pk), '--dry-run')
+        assert 'o3: 1 row would change' in out
+        row.refresh_from_db()
+        assert row.max_1h is None
+
+    def test_fills_and_is_idempotent(self):
+        row = self.o3_day()
+        args = ('2026-07-01', '2026-07-02', '--monitor', str(self.monitor.pk))
+        out = self.run_command(*args)
+        assert 'o3: 1 row changed' in out
+        row.refresh_from_db()
+        assert row.max_1h == 130.0
+        assert row.max_8h is None
+        before = MonitorSummary.objects.values().get(pk=row.pk)
+
+        out = self.run_command(*args)
+        assert 'nothing to do' in out
+        assert MonitorSummary.objects.values().get(pk=row.pk) == before
+
+        row.refresh_from_db()
+        assert row.mean == 1.0
+        assert row.maximum == 1.0
+        assert row.is_complete
+
+    def test_monitor_type_scope(self):
+        purple = self.o3_day()
+        airnow = AirNow.objects.create(
+            name='AN', position=Point(-119.5, 36.5, srid=4326), location='outside')
+        other = self.o3_day(airnow)
+        self.run_command('2026-07-01', '2026-07-02', '--monitor-type', 'airnow')
+        purple.refresh_from_db()
+        other.refresh_from_db()
+        assert other.max_1h == 130.0
+        assert purple.max_1h is None
+
+    def test_range_spanning_two_months(self):
+        june = self.o3_day(day=pacific_day(2026, 6, 30))
+        july = self.o3_day(day=pacific_day(2026, 7, 1))
+        out = self.run_command('2026-06-30', '2026-07-02', '--monitor', str(self.monitor.pk))
+        june.refresh_from_db()
+        july.refresh_from_db()
+        assert june.max_1h == 130.0
+        assert july.max_1h == 130.0
+        assert 'o3: 2 rows changed' in out

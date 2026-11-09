@@ -222,11 +222,14 @@ zones are missing there; see SJVAPCD Forecast Setup).
   computed on request, cached, and backed by the per-monitor unique index (no
   table-wide MIN/MAX on entry tables); there is no background task.
 - **Scale shape** (`camp/utils/scales.py`): `{id, label, units, kind: range|category, source,
-  levels[]}`; a level is `{key, label, color, tier, description, guidance, min, max, value,
-  opacity}`. Scale ids are catalog entry-type ids and level `key`s are permanent. Ranges are
+  averaging_hours, daily_statistic, levels[]}`; a level is `{key, label, color, tier, description,
+  guidance, min, max, value, opacity}`. Scale ids are catalog entry-type ids and level `key`s are permanent. Ranges are
   half-open (`min <= value < max`) and the top level's `max` is `null`; categories use `value`.
   `tier` is 0-4 or `null` (no severity). `description` is the official wording (credited via
   `source`); `guidance` is SJVAir's own and is `""` for AQ Good and heat Low.
+  `averaging_hours` is the standard's window (PM2.5/PM10 24, O3/NO2/SO2 1, CO 8; `null` for AQI
+  and categories) and `daily_statistic` is how a day is judged against it: 24 `mean`, 1
+  `max_1h`, 8 `max_8h`, `null` otherwise.
 - **Domain meta endpoints** (each a catalog `meta_url`): `calheatscore/meta/`, `hms/meta/` and
   `forecasts/meta/` return scales keyed by catalog entry-type id (forecasts also lists the
   zones with their regions). `pesticides/meta/` lists `categories` (with `in_use`),
@@ -350,6 +353,28 @@ zones are missing there; see SJVAPCD Forecast Setup).
   the 10th's name; `more` is true when any match was left out. 200s are `public, max-age=3600`,
   errors `no-cache`; no server-side cache. Labels for the types come from `regions/meta/`
   `location_types`.
+- **Daily peaks**: DAILY summary rows (monitor and region) of O3, NO2, SO2 carry `max_1h`, CO
+  carries `max_8h` (`camp/apps/summaries/peaks.py`); every other row and type keeps both `null`.
+  A monitor hour counts when its hourly row is `is_complete`; a region hour when its row exists;
+  the value is the hourly `mean` (zero and negative count). Standard = the Unhealthy for
+  Sensitive Groups lower bound (O3 125, NO2 101, SO2 76, CO 9.5). EPA 75% rule: with n the
+  day's hours (23/24/25), the peak needs `ceil(0.75 * n)` valid hours (`max_1h`) or valid
+  8-hour windows (`max_8h`, each window needing >= 6 of its 8 hours); a short day reports the
+  peak only if it exceeds the standard, else `null`. CO windows start in the day and may run
+  into the next one, so the rollup refreshes `max_8h` the next night; the 28 h
+  `PEAK_8H_SETTLE_MARGIN` (`schedule.py`) covers the 25-hour fall-back day. The rollup fills
+  peaks through `fill_daily_peaks` after its upsert, and a re-roll never wipes them. AQLite
+  hourly-output series (processor `output_interval='1h'`) have `expected_count = 1` and are
+  complete when the hour's CLEANED readings reach 80% of `expected_hourly_entries`. Backfill
+  existing rows with `fill_daily_peaks` (Pacific dates, end exclusive, always scoped like
+  `repair_summaries`, one Pacific month at a time, idempotent, `--entry-type`, `--dry-run`).
+  Deploy order: migrate (away from :40-:50); `rebuild_summaries ... --monitor <id>
+  --monitors-only` per AQLite monitor; then `fill_daily_peaks`, `--dry-run` first.
+
+  ```bash
+  docker compose run --rm web python manage.py fill_daily_peaks 2026-01-01 2026-11-10 \
+    --monitor-type airnow --dry-run
+  ```
 - **Summary cache rule** (`camp/api/v2/summaries/endpoints.py`): a 200 for a settled period is
   `private, max-age=86400`, any other 200 is `private, max-age=60`; both carry an `ETag` and
   answer `If-None-Match` with a 304 (which keeps the 200's headers). Errors are `no-cache`.
