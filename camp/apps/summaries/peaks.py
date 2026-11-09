@@ -48,7 +48,8 @@ def max_1h(day_hours, hourly, standard):
     return _gate(max(values), len(values), len(day_hours), standard)
 
 
-def max_8h(day_hours, hourly, standard):
+def _window_averages(day_hours, hourly):
+    """The averages of the valid 8-hour windows (>= 6 of 8 hours) starting in `day_hours`."""
     averages = []
     for h in day_hours:
         values = [
@@ -58,6 +59,11 @@ def max_8h(day_hours, hourly, standard):
         ]
         if len(values) >= MIN_WINDOW_HOURS:
             averages.append(sum(values) / len(values))
+    return averages
+
+
+def max_8h(day_hours, hourly, standard):
+    averages = _window_averages(day_hours, hourly)
     if not averages:
         return None
     return _gate(max(averages), len(averages), len(day_hours), standard)
@@ -89,6 +95,26 @@ def standard_for(entry_model) -> float:
 NEXT_DAY_HOURS = WINDOW_HOURS - 1
 
 PEAK_FUNCTIONS = {'max_1h': max_1h, 'max_8h': max_8h, 'mean_24h': mean_24h}
+
+
+# "So far" figures for a day still in progress (the open-day rows): no 75% rule and
+# no standard exception. Each takes (day_hours, hourly) and returns None with no data.
+def max_1h_so_far(day_hours, hourly):
+    values = [hourly[h] for h in day_hours if h in hourly]
+    return float(max(values)) if values else None
+
+
+def max_8h_so_far(day_hours, hourly):
+    averages = _window_averages(day_hours, hourly)
+    return float(max(averages)) if averages else None
+
+
+def mean_24h_so_far(day_hours, hourly):
+    values = [hourly[h] for h in day_hours if h in hourly]
+    return float(sum(values) / len(values)) if values else None
+
+
+SO_FAR_FUNCTIONS = {'max_1h': max_1h_so_far, 'max_8h': max_8h_so_far, 'mean_24h': mean_24h_so_far}
 
 # Owners read together: one daily-rows query and one hourly query per group.
 OWNER_GROUP_SIZE = 200

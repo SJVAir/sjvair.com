@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone as dt_timezone
+from functools import lru_cache
 
 from django.utils import timezone
 from huey import crontab
@@ -105,6 +106,39 @@ def is_settled(resolution, range_end, now=None, late=False, peak_8h=False):
     if peak_8h and resolution == 'day':
         margin = max(margin, PEAK_8H_SETTLE_MARGIN)
     return (now or timezone.now()) >= last_period_end + margin
+
+
+def settle_flags(entry_model):
+    """
+    The `is_settled` flags for an entry model: `late` (a switch type, whose
+    data arrives late) and `peak_8h` (a daily max_8h type).
+    """
+    from camp.apps.summaries.selection import switch_entry_types
+    levels = getattr(entry_model, 'Levels', None)
+    return {
+        'late': entry_model.entry_type in switch_entry_types(),
+        'peak_8h': getattr(levels, 'daily_statistic', None) == 'max_8h',
+    }
+
+
+@lru_cache(maxsize=None)
+def _flags_for_entry_type(entry_type):
+    from camp.apps.entries.utils import get_entry_model_by_name
+    model = get_entry_model_by_name(entry_type)
+    if model is None:
+        return {'late': False, 'peak_8h': False}
+    return settle_flags(model)
+
+
+def row_is_final(resolution, timestamp, entry_type, now=None):
+    """
+    Whether a summary row (saved or not) has settled. Computed from the row's
+    resolution, timestamp and entry type alone, with no database query.
+    """
+    return is_settled(
+        resolution, period_end(resolution, timestamp), now=now,
+        **_flags_for_entry_type(entry_type),
+    )
 
 
 # The minute of each hour the hourly parent tasks are scheduled for

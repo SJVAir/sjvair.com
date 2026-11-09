@@ -1,12 +1,13 @@
 from django.urls import path
 
-from .endpoints import BulkMonitorSummaryList
+from .endpoints import BulkMonitorOpenDays, BulkMonitorSummaryList
 
 view = BulkMonitorSummaryList.as_view()
 
 # Mounted at monitors/<entry_type>/summaries/, alongside closest/, current/, at/.
 urlpatterns = [
     path('hourly/', view, {'resolution': 'hour'}, name='monitor-summary-bulk-hourly'),
+    path('daily/open/', BulkMonitorOpenDays.as_view(), {'resolution': 'day'}, name='monitor-summary-bulk-daily-open'),
     path('daily/', view, {'resolution': 'day'}, name='monitor-summary-bulk-daily'),
     path('monthly/', view, {'resolution': 'month'}, name='monitor-summary-bulk-monthly'),
     path('quarterly/', view, {'resolution': 'quarter'}, name='monitor-summary-bulk-quarterly'),

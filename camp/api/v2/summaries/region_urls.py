@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .endpoints import RegionSummaryList
+from .endpoints import RegionOpenDays, RegionSummaryList
 
 view = RegionSummaryList.as_view()
 
@@ -11,6 +11,7 @@ urlpatterns = [
     path('<entry_type>/hourly/<int:year>/<int:month>/<int:day>/', view, {'resolution': 'hour'}, name='region-summary-hourly-day'),
 
     # daily
+    path('<entry_type>/daily/open/', RegionOpenDays.as_view(), {'resolution': 'day'}, name='region-summary-daily-open'),
     path('<entry_type>/daily/<int:year>/', view, {'resolution': 'day'}, name='region-summary-daily-year'),
     path('<entry_type>/daily/<int:year>/<int:month>/', view, {'resolution': 'day'}, name='region-summary-daily-month'),
 

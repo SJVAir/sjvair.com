@@ -282,9 +282,11 @@ class Monitor(models.Model):
         now = timezone.now()
         cutoff = now - timedelta(seconds=self.LAST_ACTIVE_LIMIT)
 
-        # If annotation is missing or None, fall back to query
-        timestamp = getattr(self, 'last_entry_timestamp', None)
-        if timestamp is None:
+        # Query only when the annotation is missing. An annotated None means the
+        # monitor has no LatestEntry, so the query would say the same.
+        if hasattr(self, 'last_entry_timestamp'):
+            timestamp = self.last_entry_timestamp
+        else:
             timestamp = (self.latest_entries
                 .order_by('-timestamp')
                 .values_list('timestamp', flat=True)

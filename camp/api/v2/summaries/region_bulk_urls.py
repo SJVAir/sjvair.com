@@ -1,11 +1,12 @@
 from django.urls import path
 
-from .endpoints import BulkRegionSummaryList
+from .endpoints import BulkRegionOpenDays, BulkRegionSummaryList
 
 view = BulkRegionSummaryList.as_view()
 
 urlpatterns = [
     path('hourly/', view, {'resolution': 'hour'}, name='region-summary-bulk-hourly'),
+    path('daily/open/', BulkRegionOpenDays.as_view(), {'resolution': 'day'}, name='region-summary-bulk-daily-open'),
     path('daily/', view, {'resolution': 'day'}, name='region-summary-bulk-daily'),
     path('monthly/', view, {'resolution': 'month'}, name='region-summary-bulk-monthly'),
     path('quarterly/', view, {'resolution': 'quarter'}, name='region-summary-bulk-quarterly'),

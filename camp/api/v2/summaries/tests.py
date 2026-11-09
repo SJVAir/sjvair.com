@@ -3,19 +3,27 @@ from unittest import mock
 from unittest.mock import patch
 
 import pytest
+from tdigest import TDigest
 from django.contrib.gis.geos import Point
+from django.core.cache import cache
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
 from django.utils import timezone
 
 from camp.api.v2.summaries.endpoints import (
+    BulkMonitorOpenDays,
     BulkMonitorSummaryList,
+    BulkRegionOpenDays,
     BulkRegionSummaryList,
+    MonitorOpenDays,
     MonitorSummaryList,
+    RegionOpenDays,
     RegionSummaryList,
 )
+from camp.apps.summaries.aggregators import tdigest_to_dict
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.cimis.models import CIMIS
+from camp.apps.monitors.models import Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.regions.models import Region
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
@@ -869,3 +877,396 @@ class MonitorSummaryFallBackDayTests(TestCase):
         make_monitor_summary(self.monitor, start + timedelta(hours=25))
         data = get_response_data(self._get('monitor-summary-hourly-day', 'hour', year=2026, month=11, day=1))
         assert len(data['data']) == 25
+
+
+class IsFinalFieldTests(TestCase):
+    fixtures = ['purple-air.yaml', 'regions.yaml', 'default-calibrations.yaml']
+
+    def test_monitor_row_old_is_final(self):
+        monitor = PurpleAir.objects.first()
+        make_monitor_summary(monitor, timezone.make_aware(datetime(2026, 1, 5)), resolution='day')
+        request = RequestFactory().get('/')
+        request.monitor = monitor
+        response = monitor_summary_list(
+            request, monitor_id=monitor.pk, entry_type='pm25', resolution='day', year=2026,
+        )
+        assert get_response_data(response)['data'][0]['is_final'] is True
+
+    def test_open_monitor_row_not_final(self):
+        monitor = PurpleAir.objects.first()
+        today = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+        make_monitor_summary(monitor, today, resolution='day')
+        request = RequestFactory().get('/')
+        request.monitor = monitor
+        response = monitor_summary_list(
+            request, monitor_id=monitor.pk, entry_type='pm25', resolution='day', year=today.year,
+        )
+        assert get_response_data(response)['data'][0]['is_final'] is False
+
+    def test_region_row_is_final(self):
+        region = Region.objects.get(name='Fresno County')
+        make_region_summary(region, timezone.make_aware(datetime(2026, 1, 5)), resolution='day')
+        response = region_summary_list(
+            RequestFactory().get('/'), region_id=region.sqid, entry_type='pm25',
+            resolution='day', year=2026,
+        )
+        assert get_response_data(response)['data'][0]['is_final'] is True
+
+    def test_bulk_rows_are_final(self):
+        region = Region.objects.get(name='Fresno County')
+        make_region_summary(region, timezone.make_aware(datetime(2026, 1, 5)), resolution='day')
+        response = bulk_region_summary_list(
+            RequestFactory().get('/', {'region': region.sqid, 'start': '2026-01-01', 'end': '2026-01-31'}),
+            entry_type='pm25', resolution='day',
+        )
+        assert get_response_data(response)['data'][0]['summaries'][0]['is_final'] is True
+
+        monitor = PurpleAir.objects.get(sensor_id=8892)
+        make_monitor_summary(
+            monitor, timezone.make_aware(datetime(2026, 1, 5)), resolution='day',
+            processor='PM25_EPA_Oct2021',
+        )
+        response = bulk_monitor_summary_list(
+            RequestFactory().get('/', {'start': '2026-01-01', 'end': '2026-01-31'}),
+            entry_type='pm25', resolution='day',
+        )
+        rows = [r for g in get_response_data(response)['data'] for r in g['summaries']]
+        assert rows and all(r['is_final'] is True for r in rows)
+
+
+class OpenDaysEndpointTests(TestCase):
+    fixtures = ['purple-air.yaml', 'regions.yaml', 'default-calibrations.yaml']
+
+    def setUp(self):
+        # Open rows are cached server-side for a minute; start each test cold.
+        cache.clear()
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        self.region = Region.objects.get(name='Fresno County')
+        self.now = timezone.make_aware(datetime(2026, 10, 5, 0, 30))
+        self.today = timezone.make_aware(datetime(2026, 10, 5))
+        self.yesterday = timezone.make_aware(datetime(2026, 10, 4))
+
+    def _hours(self, make, owner, start, n, **kwargs):
+        for i in range(n):
+            row = make(owner, start + timedelta(hours=i), **kwargs)
+            # The shared STATS carry an empty digest, which can't be rolled up.
+            digest = TDigest()
+            digest.update(10.0)
+            row.tdigest = tdigest_to_dict(digest)
+            row.save(update_fields=['tdigest'])
+
+    def _seed_monitor(self, processor=''):
+        self._hours(make_monitor_summary, self.monitor, self.yesterday + timedelta(hours=22), 3,
+                    processor=processor)
+
+    def _get(self, path, **kwargs):
+        with patch('django.utils.timezone.now', return_value=self.now):
+            return self.client.get(f'/api/2.0/monitors/{self.monitor.pk}/summaries/{path}', **kwargs)
+
+    def test_today_and_yesterday(self):
+        self._seed_monitor()
+        response = self._get('pm25/daily/open/')
+        assert response.status_code == 200
+        rows = get_response_data(response)['data']
+        assert len(rows) == 2
+        assert [r['is_final'] for r in rows] == [False, False]
+        assert rows[0]['timestamp'] < rows[1]['timestamp']
+
+    def test_stored_yesterday_only_today(self):
+        self._seed_monitor()
+        make_monitor_summary(self.monitor, self.yesterday, resolution='day')
+        rows = get_response_data(self._get('pm25/daily/open/'))['data']
+        assert len(rows) == 1
+        assert rows[0]['timestamp'].startswith('2026-10-05')
+
+    def test_processor_param(self):
+        self._seed_monitor(processor='AQLiteHourlyAggregator')
+        assert get_response_data(self._get('pm25/daily/open/'))['data'] == []
+        rows = get_response_data(
+            self._get('pm25/daily/open/', data={'processor': 'AQLiteHourlyAggregator'}))['data']
+        assert len(rows) == 2
+        assert {r['processor'] for r in rows} == {'AQLiteHourlyAggregator'}
+
+    def test_unknown_entry_type_404(self):
+        response = self._get('nope/daily/open/')
+        assert response.status_code == 404
+        assert 'no-cache' in response['Cache-Control']
+
+    def test_unknown_monitor_404(self):
+        with patch('django.utils.timezone.now', return_value=self.now):
+            response = self.client.get('/api/2.0/monitors/doesnotexist/summaries/pm25/daily/open/')
+        assert response.status_code == 404
+
+    def test_headers_and_304(self):
+        self._seed_monitor()
+        response = self._get('pm25/daily/open/')
+        cc = response['Cache-Control']
+        assert 'private' in cc and 'max-age=60' in cc
+        assert response.has_header('ETag')
+        again = self._get('pm25/daily/open/', HTTP_IF_NONE_MATCH=response['ETag'])
+        assert again.status_code == 304
+
+    def test_no_data(self):
+        response = self._get('pm25/daily/open/')
+        assert response.status_code == 200
+        assert get_response_data(response) == {'data': []}
+
+    def test_region(self):
+        self._hours(make_region_summary, self.region, self.yesterday + timedelta(hours=22), 3)
+        with patch('django.utils.timezone.now', return_value=self.now):
+            response = self.client.get(f'/api/2.0/regions/{self.region.sqid}/summaries/pm25/daily/open/')
+        assert response.status_code == 200
+        assert 'max-age=60' in response['Cache-Control']
+        rows = get_response_data(response)['data']
+        assert len(rows) == 2
+        assert all('station_count' in r and r['is_final'] is False for r in rows)
+
+    def test_unknown_region_404(self):
+        response = self.client.get('/api/2.0/regions/nope/summaries/pm25/daily/open/')
+        assert response.status_code == 404
+
+    def test_url_resolution(self):
+        from django.urls import resolve
+        m = resolve(f'/api/2.0/monitors/{self.monitor.pk}/summaries/pm25/daily/open/')
+        assert m.func.view_class is MonitorOpenDays
+        r = resolve(f'/api/2.0/regions/{self.region.sqid}/summaries/pm25/daily/open/')
+        assert r.func.view_class is RegionOpenDays
+        assert resolve(f'/api/2.0/monitors/{self.monitor.pk}/summaries/pm25/daily/2026/').func.view_class is MonitorSummaryList
+        assert resolve(f'/api/2.0/regions/{self.region.sqid}/summaries/pm25/daily/2026/').func.view_class is RegionSummaryList
+
+
+class BulkOpenDaysEndpointTests(TestCase):
+    fixtures = ['purple-air.yaml', 'bam1022.yaml', 'regions.yaml', 'default-calibrations.yaml']
+
+    def setUp(self):
+        cache.clear()
+        self.purpleair = PurpleAir.objects.get(sensor_id=8892)
+        self.bam = BAM1022.objects.get(pk='gO9_akFVTVW6mYBifOtoxg')
+        self.fresno = Region.objects.get(name='Fresno County')
+        self.kern = Region.objects.get(name='Kern County')
+        self.now = timezone.make_aware(datetime(2026, 10, 5, 0, 30))
+        self.yesterday = timezone.make_aware(datetime(2026, 10, 4))
+        # The fixture puts the BAM on top of the PurpleAir; move it so bbox scoping tells them apart.
+        self.bam.position = Point(self.bam.position.x + 10, self.bam.position.y + 10, srid=4326)
+        self.bam.save()
+
+    def _hours(self, make, owner, n=3, **kwargs):
+        start = self.yesterday + timedelta(hours=22)
+        for i in range(n):
+            row = make(owner, start + timedelta(hours=i), **kwargs)
+            digest = TDigest()
+            digest.update(10.0)
+            row.tdigest = tdigest_to_dict(digest)
+            row.save(update_fields=['tdigest'])
+
+    def _seed(self):
+        self._hours(make_monitor_summary, self.purpleair, processor='PM25_EPA_Oct2021')
+        self._hours(make_monitor_summary, self.purpleair, processor='')
+        self._hours(make_monitor_summary, self.bam, processor='')
+
+    def _monitors(self, data=None, **kwargs):
+        with patch('django.utils.timezone.now', return_value=self.now):
+            return self.client.get('/api/2.0/monitors/pm25/summaries/daily/open/', data or {}, **kwargs)
+
+    def _regions(self, data=None, **kwargs):
+        with patch('django.utils.timezone.now', return_value=self.now):
+            return self.client.get('/api/2.0/regions/pm25/summaries/daily/open/', data or [], **kwargs)
+
+    def _by_id(self, response):
+        assert response.status_code == 200
+        return {r['id']: r for r in get_response_data(response)['data']}
+
+    def test_shape_and_cache_headers(self):
+        self._seed()
+        response = self._monitors()
+        by_id = self._by_id(response)
+        row = by_id[str(self.purpleair.pk)]
+        assert row['name'] == self.purpleair.name and 'position' in row
+        assert len(row['summaries']) == 2
+        assert all(s['is_final'] is False and s['resolution'] == 'day' for s in row['summaries'])
+        cc = response['Cache-Control']
+        assert 'private' in cc and 'max-age=60' in cc
+        assert self._monitors(HTTP_IF_NONE_MATCH=response['ETag']).status_code == 304
+
+    def test_bbox_scopes_monitors(self):
+        self._seed()
+        lon, lat = self.purpleair.position.x, self.purpleair.position.y
+        by_id = self._by_id(self._monitors({'bbox': f'{lon - 0.01},{lat - 0.01},{lon + 0.01},{lat + 0.01}'}))
+        assert set(by_id) == {str(self.purpleair.pk)}
+
+    def test_invalid_bbox_is_400(self):
+        response = self._monitors({'bbox': 'nope'})
+        assert response.status_code == 400
+        assert 'no-cache' in response['Cache-Control']
+
+    def test_bad_region_id_404s(self):
+        assert self._monitors({'region': 'not-a-real-sqid'}).status_code == 404
+
+    def test_no_dates_needed(self):
+        assert self._monitors().status_code == 200
+
+    def test_default_series_is_published_and_processor_overrides(self):
+        self._seed()
+        by_id = self._by_id(self._monitors())
+        assert {s['processor'] for s in by_id[str(self.purpleair.pk)]['summaries']} == {'PM25_EPA_Oct2021'}
+        assert {s['processor'] for s in by_id[str(self.bam.pk)]['summaries']} == {''}
+
+        by_id = self._by_id(self._monitors({'processor': ''}))
+        assert {s['processor'] for s in by_id[str(self.purpleair.pk)]['summaries']} == {''}
+        # The BAM's only open-window rows are raw, so the processor filter leaves it out.
+        by_id = self._by_id(self._monitors({'processor': 'PM25_EPA_Oct2021'}))
+        assert set(by_id) == {str(self.purpleair.pk)}
+
+    def test_monitor_filter_narrows(self):
+        self._seed()
+        by_id = self._by_id(self._monitors({'device': 'BAM1022'}))
+        assert set(by_id) == {str(self.bam.pk)}
+
+    def test_owner_without_hourly_rows_absent(self):
+        self._hours(make_monitor_summary, self.bam, processor='')
+        response = self._monitors()
+        by_id = self._by_id(response)
+        assert set(by_id) == {str(self.bam.pk)}
+        assert len(by_id[str(self.bam.pk)]['summaries']) == 2
+        assert get_response_data(response)['count'] == 1
+
+    def test_owner_with_only_other_series_absent(self):
+        # PurpleAir publishes the EPA series; raw-only hours don't list it by default.
+        self._hours(make_monitor_summary, self.purpleair, processor='')
+        assert self._by_id(self._monitors()) == {}
+        assert set(self._by_id(self._monitors({'processor': ''}))) == {str(self.purpleair.pk)}
+
+    def test_owner_with_only_old_hourly_rows_absent(self):
+        # Hours before the first open day don't list an owner.
+        make_monitor_summary(self.bam, self.yesterday - timedelta(hours=1))
+        assert self._by_id(self._monitors()) == {}
+
+    def test_rows_cached_for_the_minute(self):
+        self._seed()
+        first = self._by_id(self._monitors())
+        # A new hour lands; within the same minute the cached rows are served.
+        make_monitor_summary(self.bam, self.yesterday + timedelta(hours=25))
+        again = self._by_id(self._monitors())
+        assert again == first
+        cache.clear()
+        fresh = self._by_id(self._monitors())
+        assert fresh[str(self.bam.pk)]['summaries'][-1]['count'] != first[str(self.bam.pk)]['summaries'][-1]['count']
+
+    def _make_monitors(self, n):
+        return [
+            PurpleAir.objects.create(
+                name=f'Open {i}', sensor_id=95000 + i,
+                position=Point(-119.7, 36.7, srid=4326), location=PurpleAir.LOCATION.outside,
+            )
+            for i in range(n)
+        ]
+
+    def test_paginated_by_owner(self):
+        # 148 new + the two fixture monitors, each with an open-window hour.
+        self._seed()
+        for monitor in self._make_monitors(148):
+            self._hours(make_monitor_summary, monitor, n=1, processor='PM25_EPA_Oct2021')
+        page1 = get_response_data(self._monitors())
+        page2 = get_response_data(self._monitors({'page': 2}))
+        assert len(page1['data']) == 100
+        assert len(page2['data']) == 50
+        assert page1['count'] == 150 and page1['pages'] == 2 and page1['has_next_page'] is True
+        assert page2['page'] == 2 and page2['has_next_page'] is False
+        ids = [r['id'] for r in page1['data'] + page2['data']]
+        assert len(set(ids)) == 150
+        # Owners come in pk order (the database's collation), so pages never overlap.
+        assert ids == [str(pk) for pk in Monitor.objects.order_by('pk').values_list('pk', flat=True)]
+
+    def test_bulk_open_query_count(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        def count():
+            with CaptureQueriesContext(connection) as ctx:
+                assert self._monitors().status_code == 200
+            return len(ctx.captured_queries)
+
+        self._seed()
+        few = count()
+        for monitor in self._make_monitors(120):
+            self._hours(make_monitor_summary, monitor, n=1, processor='PM25_EPA_Oct2021')
+        many = count()
+        assert many == few
+        assert many <= 15
+
+    def test_open_endpoints_never_cache_long(self):
+        # Even if a date filter ever made the range look settled, open days stay at 60 s.
+        settled = {'timestamp__lt': timezone.make_aware(datetime(2020, 1, 1))}
+        self._seed()
+        for view in (BulkMonitorOpenDays, BulkRegionOpenDays, MonitorOpenDays, RegionOpenDays):
+            with patch.object(view, 'get_date_filter', return_value=settled):
+                with patch('django.utils.timezone.now', return_value=self.now):
+                    response = {
+                        BulkMonitorOpenDays: lambda: self.client.get('/api/2.0/monitors/pm25/summaries/daily/open/'),
+                        BulkRegionOpenDays: lambda: self.client.get(
+                            '/api/2.0/regions/pm25/summaries/daily/open/', {'region': self.fresno.sqid}),
+                        MonitorOpenDays: lambda: self.client.get(
+                            f'/api/2.0/monitors/{self.purpleair.pk}/summaries/pm25/daily/open/'),
+                        RegionOpenDays: lambda: self.client.get(
+                            f'/api/2.0/regions/{self.fresno.sqid}/summaries/pm25/daily/open/'),
+                    }[view]()
+            assert response.status_code == 200, view
+            assert 'max-age=60' in response['Cache-Control'], view
+
+    def test_region_bulk(self):
+        self._hours(make_region_summary, self.fresno)
+        response = self._regions([('region', self.fresno.sqid), ('region', self.kern.sqid)])
+        by_id = self._by_id(response)
+        # Kern has no hourly rows in the open window, so it isn't listed.
+        assert set(by_id) == {self.fresno.sqid}
+        assert 'boundary' not in by_id[self.fresno.sqid]
+        assert len(by_id[self.fresno.sqid]['summaries']) == 2
+        assert all('station_count' in s and s['is_final'] is False for s in by_id[self.fresno.sqid]['summaries'])
+        assert 'max-age=60' in response['Cache-Control']
+        assert get_response_data(response)['count'] == 1
+
+    def test_region_bulk_requires_region(self):
+        response = self._regions()
+        assert response.status_code == 400
+        assert 'region' in get_response_data(response)['errors']
+        assert 'no-cache' in response['Cache-Control']
+
+    def test_region_bulk_unknown_region_400(self):
+        assert self._regions([('region', 'nope')]).status_code == 400
+
+    def test_url_resolution(self):
+        from django.urls import resolve
+        assert resolve('/api/2.0/monitors/pm25/summaries/daily/open/').func.view_class is BulkMonitorOpenDays
+        assert resolve('/api/2.0/regions/pm25/summaries/daily/open/').func.view_class is BulkRegionOpenDays
+        assert resolve('/api/2.0/monitors/pm25/summaries/daily/').func.view_class is BulkMonitorSummaryList
+        assert resolve('/api/2.0/regions/pm25/summaries/daily/').func.view_class is BulkRegionSummaryList
+        assert resolve(f'/api/2.0/monitors/{self.purpleair.pk}/summaries/pm25/daily/open/').func.view_class is MonitorOpenDays
+        assert resolve(f'/api/2.0/regions/{self.fresno.sqid}/summaries/pm25/daily/open/').func.view_class is RegionOpenDays
+
+
+class OneNowPerRequestTests(TestCase):
+    """The cache rule and every row's is_final read the same instant."""
+    fixtures = ['purple-air.yaml', 'regions.yaml', 'default-calibrations.yaml']
+
+    def test_settle_boundary_mid_request(self):
+        monitor = PurpleAir.objects.get(sensor_id=8892)
+        day = timezone.make_aware(datetime(2026, 10, 4))
+        make_monitor_summary(monitor, day, resolution='day')
+        settle = timezone.make_aware(datetime(2026, 10, 5, 3))
+        calls = []
+
+        def clock():
+            # The first read is just before the day settles; every later one just after.
+            calls.append(1)
+            return settle - timedelta(seconds=1) if len(calls) == 1 else settle + timedelta(seconds=1)
+
+        request = RequestFactory().get('/')
+        request.monitor = monitor
+        with patch('django.utils.timezone.now', side_effect=clock):
+            response = monitor_summary_list(
+                request, monitor_id=monitor.pk, entry_type='pm25', resolution='day',
+                year=2026, month=10, day=4,
+            )
+        [row] = get_response_data(response)['data']
+        assert row['is_final'] is False
+        assert 'max-age=60' in response['Cache-Control']
