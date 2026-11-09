@@ -1,3 +1,4 @@
+import pytest
 from django.test import TestCase
 
 from camp.apps.entries import levels
@@ -42,6 +43,31 @@ class ScaleTests(TestCase):
         assert by_key['good'].guidance == ''
         assert by_key['very_hazardous'].description == by_key['hazardous'].description
 
+    def test_averaging_hours_declared(self):
+        assert levels.PM25.averaging_hours == 24 and levels.PM100.averaging_hours == 24
+        assert levels.O3.averaging_hours == 1 and levels.NO2.averaging_hours == 1
+        assert levels.SO2.averaging_hours == 1 and levels.CO.averaging_hours == 8
+        assert levels.AQI.averaging_hours is None
+
+    def test_daily_statistic(self):
+        assert levels.PM25.daily_statistic == 'mean'
+        assert levels.O3.daily_statistic == 'max_1h'
+        assert levels.CO.daily_statistic == 'max_8h'
+        assert levels.AQI.daily_statistic is None
+
+    def test_averaging_hours_is_not_a_level(self):
+        assert 'averaging_hours' not in [lvl.key for lvl in levels.O3]
+
+    def test_invalid_averaging_hours(self):
+        with pytest.raises(ValueError):
+            levels.LevelSet(levels.AQLevel.GOOD(0), averaging_hours=3)
+
+    def test_to_json_carries_averaging(self):
+        data = levels.O3.to_scale('o3', 'Ozone', 'ppb').to_json()
+        assert data['averaging_hours'] == 1 and data['daily_statistic'] == 'max_1h'
+        aqi = levels.AQI.to_scale('aqi', 'AQI', 'AQI').to_json()
+        assert aqi['averaging_hours'] is None and aqi['daily_statistic'] is None
+
     def test_to_json_keys(self):
         s = levels.PM25.to_scale('pm25', 'PM2.5', 'µg/m³')
         data = s.to_json()
@@ -50,3 +76,4 @@ class ScaleTests(TestCase):
             'guidance', 'min', 'max', 'value',
         }
         assert data['source'] == levels.EPA_SOURCE
+        assert {'averaging_hours', 'daily_statistic'} <= set(data)

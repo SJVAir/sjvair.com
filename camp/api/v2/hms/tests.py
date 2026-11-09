@@ -251,6 +251,7 @@ class HMSMetaTests(TestCase):
     def test_hms_meta_smoke_opacity(self):
         smoke = self.get_scales()['smoke-density']
         assert smoke['label'] == 'Smoke Density'
+        assert smoke['averaging_hours'] is None
         heavy = smoke['levels'][2]
         assert heavy['key'] == 'heavy'
         assert heavy['opacity'] == 0.4

@@ -157,8 +157,15 @@ class AQLevel(metaclass=AQLevelMeta):
         return cls._scale
 
 
+# How a day is colored from hourly values, keyed by the scale's averaging hours.
+DAILY_STATISTIC = {24: 'mean', 1: 'max_1h', 8: 'max_8h'}
+
+
 class LevelSet:
-    def __init__(self, *args: Level, **kwargs: Level):
+    def __init__(self, *args: Level, averaging_hours: Optional[int] = None, **kwargs: Level):
+        if averaging_hours is not None and averaging_hours not in DAILY_STATISTIC:
+            raise ValueError(f'Invalid averaging_hours: {averaging_hours}')
+        self.averaging_hours = averaging_hours
         self._levels: List[Level] = []
         self._map: Dict[str, Level] = {}
 
@@ -176,6 +183,10 @@ class LevelSet:
             object.__setattr__(lvl, 'key', attr.lower())
             self._levels.append(lvl)
             self._map[attr] = lvl
+
+    @property
+    def daily_statistic(self) -> Optional[str]:
+        return DAILY_STATISTIC.get(self.averaging_hours)
 
     def __getattr__(self, attr: str) -> Level:
         try:
@@ -223,6 +234,8 @@ class LevelSet:
             units=units,
             kind='range',
             source=EPA_SOURCE,
+            averaging_hours=self.averaging_hours,
+            daily_statistic=self.daily_statistic,
             levels=tuple(
                 ScaleLevel(
                     key=level.key,
@@ -252,6 +265,7 @@ PM25 = LevelSet(
     AQLevel.UNHEALTHY(55.5),
     AQLevel.VERY_UNHEALTHY(125.5),
     AQLevel.HAZARDOUS(225.5),
+    averaging_hours=24,
 )
 
 PM100 = LevelSet(
@@ -262,6 +276,7 @@ PM100 = LevelSet(
     AQLevel.VERY_UNHEALTHY(355),
     AQLevel.HAZARDOUS(425),
     AQLevel.VERY_HAZARDOUS(605),
+    averaging_hours=24,
 )
 
 CO = LevelSet(
@@ -272,6 +287,7 @@ CO = LevelSet(
     AQLevel.VERY_UNHEALTHY(15.5),
     AQLevel.HAZARDOUS(30.5),
     AQLevel.VERY_HAZARDOUS(50.4),
+    averaging_hours=8,
 )
 
 NO2 = LevelSet(
@@ -282,6 +298,7 @@ NO2 = LevelSet(
     AQLevel.VERY_UNHEALTHY(650.0),
     AQLevel.HAZARDOUS(1250.0),
     AQLevel.VERY_HAZARDOUS(2050.0),
+    averaging_hours=1,
 )
 
 O3 = LevelSet(
@@ -291,6 +308,7 @@ O3 = LevelSet(
     AQLevel.VERY_UNHEALTHY(205),
     AQLevel.HAZARDOUS(405),
     AQLevel.VERY_HAZARDOUS(605),
+    averaging_hours=1,
 )
 
 SO2 = LevelSet(
@@ -299,6 +317,7 @@ SO2 = LevelSet(
     AQLevel.UNHEALTHY_SENSITIVE(76),
     AQLevel.UNHEALTHY(186),
     AQLevel.VERY_UNHEALTHY(305),
+    averaging_hours=1,
 )
 
 # The EPA Air Quality Index itself (0-500), as opposed to a pollutant's raw

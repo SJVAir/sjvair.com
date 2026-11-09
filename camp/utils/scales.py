@@ -24,6 +24,8 @@ class Scale:
     kind: Literal['range', 'category']
     levels: tuple[ScaleLevel, ...]
     source: dict | None = None
+    averaging_hours: int | None = None
+    daily_statistic: str | None = None
 
     def to_json(self) -> dict:
         return {
@@ -32,5 +34,7 @@ class Scale:
             'units': self.units,
             'kind': self.kind,
             'source': self.source,
+            'averaging_hours': self.averaging_hours,
+            'daily_statistic': self.daily_statistic,
             'levels': [asdict(level) for level in self.levels],
         }
