@@ -131,6 +131,21 @@ class MonitorSummaryListTests(TestCase):
         data = get_response_data(response)
         assert data['data'][0]['sum'] == pytest.approx(0.03)
 
+    def test_daily_rows_include_peaks(self):
+        day = timezone.make_aware(datetime(2026, 3, 16, 0, 0, 0))
+        row = make_monitor_summary(self.monitor, day, resolution='day', entry_type='o3')
+        MonitorSummary.objects.filter(pk=row.pk).update(max_1h=130.0)
+        response = self._get('monitor-summary-daily-year', 'o3', 'day', year=2026)
+        record = get_response_data(response)['data'][0]
+        assert record['max_1h'] == pytest.approx(130.0)
+        assert record['max_8h'] is None
+
+    def test_hourly_rows_have_null_peaks(self):
+        response = self._get('monitor-summary-hourly-year', 'pm25', 'hour', year=2026)
+        record = get_response_data(response)['data'][0]
+        assert record['max_1h'] is None
+        assert record['max_8h'] is None
+
     def test_missing_monitor_returns_404(self):
         url = reverse('api:v2:monitors:monitor-summary-hourly-year', kwargs={
             'monitor_id': self.monitor.pk,
@@ -228,6 +243,15 @@ class BulkMonitorSummaryListTests(TestCase):
         rows = [r for g in data['data'] for r in g['summaries']]
         assert rows
         assert all(r['sum'] == pytest.approx(300.0) for r in rows)
+
+    def test_rows_include_peaks(self):
+        MonitorSummary.objects.filter(monitor=self.bam).update(max_8h=4.5)
+        response = self._get(query=self.march)
+        data = get_response_data(response)
+        rows = {g['id']: g['summaries'][0] for g in data['data']}
+        assert rows[str(self.bam.pk)]['max_8h'] == pytest.approx(4.5)
+        assert rows[str(self.bam.pk)]['max_1h'] is None
+        assert rows[str(self.purpleair.pk)]['max_8h'] is None
 
     def test_returns_200(self):
         response = self._get(query=self.march)
@@ -477,6 +501,21 @@ class RegionSummaryListTests(TestCase):
         data = get_response_data(response)
         assert 'station_count' in data['data'][0]
 
+    def test_daily_rows_include_peaks(self):
+        day = timezone.make_aware(datetime(2026, 3, 16, 0, 0, 0))
+        row = make_region_summary(self.region, day, resolution='day', entry_type='o3')
+        RegionSummary.objects.filter(pk=row.pk).update(max_1h=130.0, max_8h=None)
+        response = self._get('region-summary-daily-year', 'o3', 'day', year=2026)
+        record = get_response_data(response)['data'][0]
+        assert record['max_1h'] == pytest.approx(130.0)
+        assert record['max_8h'] is None
+
+    def test_hourly_rows_have_null_peaks(self):
+        response = self._get('region-summary-hourly-year', 'pm25', 'hour', year=2026)
+        record = get_response_data(response)['data'][0]
+        assert record['max_1h'] is None
+        assert record['max_8h'] is None
+
     def test_response_has_no_processor(self):
         response = self._get('region-summary-hourly-year', 'pm25', 'hour', year=2026)
         data = get_response_data(response)
@@ -554,6 +593,14 @@ class BulkRegionSummaryListTests(TestCase):
         response = self._get(self.january)
         assert response.status_code == 400
         assert 'region' in get_response_data(response)['errors']
+
+    def test_rows_include_peaks(self):
+        RegionSummary.objects.filter(region=self.fresno).update(max_1h=88.0)
+        data = get_response_data(self._get(self._both_regions()))
+        rows = {g['id']: g['summaries'][0] for g in data['data']}
+        assert rows[self.fresno.sqid]['max_1h'] == pytest.approx(88.0)
+        assert rows[self.fresno.sqid]['max_8h'] is None
+        assert rows[self.kern.sqid]['max_1h'] is None
 
     def test_blank_region_is_not_enough(self):
         response = self._get({**self.january, 'region': ''})

@@ -29,6 +29,7 @@ from camp.apps.summaries.backfill import (
     regions_with_monitors,
 )
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary, SummaryBackfillJob
+from camp.apps.summaries.peaks import fill_daily_peaks
 from camp.apps.summaries.selection import (
     monitor_summary_entry_models,
     monitor_types_summarizing,
@@ -283,6 +284,9 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
                 'tdigest', 'is_complete',
             ],
         )
+        # The peaks aren't in update_fields, so the upsert keeps them; the fill rewrites them.
+        if target_resolution == BaseSummary.Resolution.DAILY:
+            fill_daily_peaks('monitor', monitor_ids, window_start, window_end)
 
 
 def rollup_region_summaries(target_resolution, source_resolution, window_start, window_end, region_ids=None):
@@ -329,6 +333,9 @@ def rollup_region_summaries(target_resolution, source_resolution, window_start, 
                 'tdigest', 'station_count',
             ],
         )
+        # The peaks aren't in update_fields, so the upsert keeps them; the fill rewrites them.
+        if target_resolution == BaseSummary.Resolution.DAILY:
+            fill_daily_peaks('region', region_ids, window_start, window_end)
 
 
 # ---- Rollup periodic tasks ----
