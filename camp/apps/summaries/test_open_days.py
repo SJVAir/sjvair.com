@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 from django.conf import settings
+from django.core.cache import cache
 from django.db import connection
 from django.db.models import Q
 from django.test import TestCase
@@ -10,9 +11,9 @@ from tdigest import TDigest
 from camp.apps.entries import models as entries
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.regions.models import Region
-from camp.apps.summaries.aggregators import tdigest_to_dict
+from camp.apps.summaries.aggregators import rollup_region_stats, rollup_summaries, tdigest_to_dict
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
-from camp.apps.summaries.open_days import build_open_rows, open_days
+from camp.apps.summaries.open_days import build_open_rows, cached_open_rows, open_days
 from camp.apps.summaries.peaks import SO_FAR_FUNCTIONS, day_hours
 from camp.utils.datetime import make_aware
 
@@ -139,6 +140,32 @@ class BuildOpenRowsTests(TestCase):
         [row] = self.rows(entries.CO)
         assert row.max_8h == 3.5
         assert row.max_1h is None and row.mean_24h is None
+
+    def test_open_rows_skip_tdigest(self):
+        # Open rows are never saved, so the merged digest isn't built; the percentiles are.
+        self.monitor_hours('o3', [40.0, 90.0, 60.0])
+        [row] = self.rows(entries.O3)
+        assert row.tdigest is None
+        assert row.p25 is not None and row.p75 is not None
+        self.region_hours('pm25', [10.0, 20.0])
+        [row] = self.rows(entries.PM25, kind='region')
+        assert row.tdigest is None
+        assert row.p25 is not None and row.p75 is not None
+
+    def test_rollups_keep_tdigest_by_default(self):
+        records = [dict(_stats(10.0), weight=1.0), dict(_stats(20.0), weight=1.0)]
+        assert rollup_summaries(records)['tdigest']['n'] == 2
+        assert rollup_region_stats(records)['tdigest']['n'] == 2
+        assert 'tdigest' not in rollup_summaries(records, with_tdigest=False)
+        assert 'tdigest' not in rollup_region_stats(records, with_tdigest=False)
+
+    def test_cap_at_settle(self):
+        # At 03:00 yesterday has settled: with no stored daily row it is still not open.
+        self.monitor_hours('o3', [50.0] * 24, day=self.yesterday)
+        self.monitor_hours('o3', [40.0, 45.0, 42.0])
+        rows = self.rows(entries.O3, now=pacific(2026, 7, 2, 3, 0))
+        assert [r.timestamp for r in rows] == [self.today]
+        assert rows[0].count == 3
 
     def test_today_incomplete_hours(self):
         self.monitor_hours('o3', [40.0, 90.0], is_complete=False)
@@ -283,3 +310,76 @@ class BuildOpenRowsTests(TestCase):
         with CaptureQueriesContext(connection) as ctx:
             build_open_rows('monitor', ids, entries.O3, self.midday)
         assert len(ctx.captured_queries) == 1
+
+
+class CachedOpenRowsTests(TestCase):
+    fixtures = ['purple-air.yaml', 'regions.yaml']
+
+    def setUp(self):
+        cache.clear()
+        self.monitors = [
+            PurpleAir.objects.first(),
+            PurpleAir.objects.create(name='Second', position='POINT(0 0)', sensor_id=91000),
+        ]
+        self.region = Region.objects.filter(boundary__isnull=False).first()
+        self.yesterday = pacific(2026, 7, 1)
+        self.today = pacific(2026, 7, 2)
+        for monitor in self.monitors:
+            for day in (self.yesterday, self.today):
+                for hour in day_hours(day)[:3]:
+                    MonitorSummary.objects.create(
+                        monitor=monitor, timestamp=hour, resolution=R.HOURLY, entry_type='o3',
+                        processor='', is_complete=True, **_stats(40.0),
+                    )
+        for hour in day_hours(self.today)[:3]:
+            RegionSummary.objects.create(
+                region=self.region, timestamp=hour, resolution=R.HOURLY, entry_type='o3',
+                weight=1.0, station_count=1, **_stats(30.0),
+            )
+        self.ids = [m.pk for m in self.monitors]
+
+    def call(self, ids=None, now=None, **kwargs):
+        return cached_open_rows('monitor', ids or self.ids, entries.O3, now or pacific(2026, 7, 2, 0, 30), **kwargs)
+
+    def flat(self, result):
+        return sorted(
+            (r.monitor_id, r.processor, r.timestamp, r.count, r.max_1h)
+            for rows in result.values() for r in rows
+        )
+
+    def test_second_call_is_cached(self):
+        first = self.call()
+        with CaptureQueriesContext(connection) as ctx:
+            again = self.call(now=pacific(2026, 7, 2, 0, 31))
+        assert len(ctx.captured_queries) == 0
+        # The cached rows come back (through the cache's pickling) as unsaved rows.
+        assert self.flat(again) == self.flat(first)
+        assert all(isinstance(r, MonitorSummary) and r._state.adding for rows in again.values() for r in rows)
+        assert len(self.flat(first)) == 4
+
+    def test_owner_order_doesnt_matter(self):
+        self.call()
+        with CaptureQueriesContext(connection) as ctx:
+            self.call(ids=list(reversed(self.ids)))
+        assert len(ctx.captured_queries) == 0
+
+    def test_misses(self):
+        self.call()
+        for kwargs in (
+            {'ids': self.ids[:1]},  # another owner set
+            {'now': pacific(2026, 7, 2, 3, 0)},  # the next open-day set
+            {'processor_q': Q(processor='Other')},  # another series filter
+        ):
+            with CaptureQueriesContext(connection) as ctx:
+                self.call(**kwargs)
+            assert len(ctx.captured_queries) >= 1, kwargs
+
+        with CaptureQueriesContext(connection) as ctx:
+            cached_open_rows('monitor', self.ids, entries.PM25, pacific(2026, 7, 2, 0, 30))
+        assert len(ctx.captured_queries) >= 1
+
+        # A region with the same pk as a monitor key never shares a monitor's entry.
+        with CaptureQueriesContext(connection) as ctx:
+            result = cached_open_rows('region', [self.region.pk], entries.O3, pacific(2026, 7, 2, 0, 30))
+        assert len(ctx.captured_queries) >= 1
+        assert isinstance(result[self.region.pk][0], RegionSummary)

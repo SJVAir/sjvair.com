@@ -3,9 +3,11 @@ Open-day rows: daily summaries for days the nightly rollup hasn't written yet
 (today so far, and yesterday until the rollup's settle time), built on request
 from the stored hourly rows and never saved.
 """
+import hashlib
 from collections import defaultdict
 from datetime import datetime, timedelta
 
+from django.core.cache import cache
 from django.db.models import Q
 
 from camp.apps.summaries.aggregators import rollup_region_stats, rollup_summaries
@@ -16,6 +18,10 @@ from camp.apps.summaries.peaks import (
 )
 from camp.apps.summaries.periods import period_end, period_start
 from camp.apps.summaries.schedule import is_settled
+
+# How long a built set of open rows is shared between requests. Matches the
+# open endpoints' max-age, so a client never sees rows older than two minutes.
+OPEN_ROWS_CACHE_SECONDS = 60
 
 STATS_COLUMNS = (
     'count', 'expected_count', 'sum_value', 'sum_of_squares', 'minimum', 'maximum',
@@ -112,10 +118,11 @@ def build_open_rows(
                 continue
             day_end = period_end('day', day)
             day_rows = [r for r in rows if day <= r['timestamp'] < day_end]
+            # Open rows are never saved, so the merged t-digest isn't built.
             if kind == 'monitor':
-                stats = rollup_summaries(day_rows)
+                stats = rollup_summaries(day_rows, with_tdigest=False)
             else:
-                stats = rollup_region_stats(day_rows)
+                stats = rollup_region_stats(day_rows, with_tdigest=False)
             if stats is None:
                 continue
 
@@ -138,3 +145,34 @@ def build_open_rows(
                 row = RegionSummary(region_id=key[0], station_count=station_count, **fields)
             result[key[0]].append(row)
     return dict(result)
+
+
+def open_rows_cache_key(kind, owner_ids, entry_model, now, processor_q=None) -> str:
+    """
+    The cache key for one build_open_rows call: the kind, entry type, series
+    filter, owner set (order doesn't matter) and open-day set. The open-day set
+    changes at midnight and when yesterday settles, so those start a new key.
+    """
+    days = ','.join(day.isoformat() for day in open_days(now))
+    owners = ','.join(sorted(str(pk) for pk in owner_ids))
+    series = '' if processor_q is None else str(processor_q)
+    digest = hashlib.sha256(f'{series}|{owners}|{days}'.encode()).hexdigest()
+    return f'open_days:{kind}:{entry_model.entry_type}:{digest}'
+
+
+def cached_open_rows(
+    kind: str, owner_ids: list, entry_model, now: datetime, processor_q: Q | None = None,
+) -> dict:
+    """
+    build_open_rows, shared through the cache for OPEN_ROWS_CACHE_SECONDS so
+    every client polling the same owners in the same minute shares one build.
+    The rows are cached as the unsaved instances (they pickle cleanly).
+    `processor_q` is keyed by its str(), so callers must build it the same way
+    each time for equal filters to share an entry.
+    """
+    key = open_rows_cache_key(kind, owner_ids, entry_model, now, processor_q)
+    result = cache.get(key)
+    if result is None:
+        result = build_open_rows(kind, owner_ids, entry_model, now, processor_q=processor_q)
+        cache.set(key, result, OPEN_ROWS_CACHE_SECONDS)
+    return result

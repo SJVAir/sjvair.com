@@ -128,13 +128,14 @@ def compute_monitor_summary(monitor, timestamp, EntryModel, processor):
     return compute_stats(values, monitor.expected_hourly_entries or 1)
 
 
-def rollup_summaries(records):
+def rollup_summaries(records, with_tdigest=True):
     """
     Aggregate a list of MonitorSummary value dicts into one stats dict.
     Used to roll up hourly → daily → monthly etc.
 
     Each dict must have: count, expected_count, sum_value, sum_of_squares,
-    minimum, maximum, tdigest.
+    minimum, maximum, tdigest. `with_tdigest=False` leaves the merged digest
+    out of the result (rows that are never saved, like open days, don't need it).
 
     Returns None if records is empty or total count is zero.
     """
@@ -168,12 +169,12 @@ def rollup_summaries(records):
         'stddev': stddev,
         'p25': merged.percentile(25),
         'p75': merged.percentile(75),
-        'tdigest': tdigest_to_dict(merged),
+        **({'tdigest': tdigest_to_dict(merged)} if with_tdigest else {}),
         'is_complete': count >= 0.8 * expected_count,
     }
 
 
-def rollup_region_stats(records):
+def rollup_region_stats(records, with_tdigest=True):
     """
     Aggregate a list of RegionSummary value dicts into one stats dict.
 
@@ -183,7 +184,8 @@ def rollup_region_stats(records):
     weights whose rounded sum diverges from the true total.
 
     Each dict must have: count, weight, expected_count, sum_value,
-    sum_of_squares, minimum, maximum, tdigest.
+    sum_of_squares, minimum, maximum, tdigest. `with_tdigest` as in
+    rollup_summaries.
 
     Returns None if records is empty or total weight is zero.
     """
@@ -219,7 +221,7 @@ def rollup_region_stats(records):
         'stddev': stddev,
         'p25': merged.percentile(25),
         'p75': merged.percentile(75),
-        'tdigest': tdigest_to_dict(merged),
+        **({'tdigest': tdigest_to_dict(merged)} if with_tdigest else {}),
     }
 
 
