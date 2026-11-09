@@ -1,7 +1,10 @@
+import json
 from datetime import datetime, timedelta
+from unittest import mock
 
 from django.conf import settings
 from django.core.cache import cache
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import connection
 from django.db.models import Q
 from django.test import TestCase
@@ -356,6 +359,24 @@ class CachedOpenRowsTests(TestCase):
         assert self.flat(again) == self.flat(first)
         assert all(isinstance(r, MonitorSummary) and r._state.adding for rows in again.values() for r in rows)
         assert len(self.flat(first)) == 4
+
+    def test_cached_value_is_json_safe(self):
+        # The debug toolbar's cache panel JSON-encodes every cache.set argument,
+        # falling back to str() for values but not for dict keys; monitor pks are
+        # SmallUUIDs, so the cached value's keys must be plain str.
+        class ToolbarLikeEncoder(DjangoJSONEncoder):
+            def default(self, o):
+                try:
+                    return super().default(o)
+                except (TypeError, ValueError):
+                    return str(o)
+
+        with mock.patch.object(cache, 'set', wraps=cache.set) as cache_set:
+            result = self.call()
+        assert cache_set.call_count == 1
+        json.dumps(cache_set.call_args.args, cls=ToolbarLikeEncoder)
+        # Callers still look rows up by the pk they passed in.
+        assert set(result) == set(self.ids)
 
     def test_owner_order_doesnt_matter(self):
         self.call()
