@@ -1,3 +1,6 @@
+from contextlib import contextmanager
+from contextvars import ContextVar
+
 from django.conf import settings
 
 from resticus import serializers
@@ -5,13 +8,27 @@ from resticus import serializers
 from camp.api.v2.monitors.serializers import MonitorSerializer
 from camp.apps.summaries.schedule import row_is_final
 
+# The instant `is_final` is judged at. The summary endpoints bind it once per
+# request (serializing_at), so every row and the cache rule agree; unbound,
+# rows use the current time.
+_serialize_now = ContextVar('summary_serialize_now', default=None)
+
+
+@contextmanager
+def serializing_at(now):
+    token = _serialize_now.set(now)
+    try:
+        yield
+    finally:
+        _serialize_now.reset(token)
+
 
 def _timestamp(s):
     return s.timestamp.astimezone(settings.DEFAULT_TIMEZONE).isoformat()
 
 
 def _is_final(s):
-    return row_is_final(s.resolution, s.timestamp, s.entry_type)
+    return row_is_final(s.resolution, s.timestamp, s.entry_type, now=_serialize_now.get())
 
 
 class MonitorSummarySerializer(serializers.Serializer):
