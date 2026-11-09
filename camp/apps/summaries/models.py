@@ -44,6 +44,11 @@ class BaseSummary(models.Model):
     p25 = models.FloatField(_('25th percentile'))
     p75 = models.FloatField(_('75th percentile'))
 
+    # Daily peaks (DAILY rows of peak entry types only; null everywhere else)
+    max_1h = models.FloatField(_('highest 1-hour average'), null=True, blank=True)
+    max_8h = models.FloatField(_('highest 8-hour average'), null=True, blank=True)
+    mean_24h = models.FloatField(_('24-hour average'), null=True, blank=True)
+
     class Meta:
         abstract = True
         indexes = [

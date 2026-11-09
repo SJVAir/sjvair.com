@@ -40,8 +40,24 @@ def _stage_for_processor(processor):
     return Stage.RAW if not processor else Stage.CALIBRATED
 
 
-def compute_stats(values, expected_count):
-    """Compute summary stats from a list of float values."""
+def hourly_output_processor(processor):
+    """
+    The registered processor class when it publishes one value per hour
+    (`output_interval == '1h'`), else None. Blank (RAW) is never one.
+    """
+    from camp.apps.calibrations import processors
+
+    if not processor or processor not in processors:
+        return None
+    cls = processors[processor]
+    return cls if getattr(cls, 'output_interval', None) == '1h' else None
+
+
+def compute_stats(values, expected_count, is_complete=None):
+    """
+    Compute summary stats from a list of float values. An explicit
+    `is_complete` overrides the 80% rule.
+    """
     if not values:
         return None
 
@@ -67,7 +83,7 @@ def compute_stats(values, expected_count):
         'p25': float(np.percentile(arr, 25)),
         'p75': float(np.percentile(arr, 75)),
         'tdigest': tdigest_to_dict(digest),
-        'is_complete': count >= 0.8 * expected_count,
+        'is_complete': count >= 0.8 * expected_count if is_complete is None else is_complete,
     }
 
 
@@ -94,6 +110,20 @@ def compute_monitor_summary(monitor, timestamp, EntryModel, processor):
         ).values_list('value', flat=True)
         if v is not None
     ]
+
+    cls = hourly_output_processor(processor)
+    if cls is not None:
+        # One value per hour: complete when enough source readings went into it.
+        source_count = EntryModel.objects.filter(
+            monitor=monitor,
+            timestamp__gte=timestamp,
+            timestamp__lt=hour_end,
+            stage=cls.source_stage,
+        ).count()
+        return compute_stats(
+            values, 1,
+            is_complete=source_count >= 0.8 * (monitor.expected_hourly_entries or 1),
+        )
 
     return compute_stats(values, monitor.expected_hourly_entries or 1)
 

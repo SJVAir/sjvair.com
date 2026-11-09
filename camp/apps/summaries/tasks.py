@@ -29,6 +29,7 @@ from camp.apps.summaries.backfill import (
     regions_with_monitors,
 )
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary, SummaryBackfillJob
+from camp.apps.summaries.peaks import fill_daily_peaks, peak_entry_models
 from camp.apps.summaries.selection import (
     monitor_summary_entry_models,
     monitor_types_summarizing,
@@ -228,6 +229,11 @@ def summarize_monitor_hours(monitor_id, hours):
 
 # ---- Rollup helpers ----
 
+def _log_skipped(result):
+    if result.skipped > 0:
+        logger.warning('Daily peaks skipped %d sentinel hourly value(s)', result.skipped)
+
+
 def rollup_monitor_summaries(target_resolution, source_resolution, window_start, window_end, monitor_ids=None):
     """
     Roll up MonitorSummary records from source_resolution into target_resolution
@@ -283,6 +289,9 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
                 'tdigest', 'is_complete',
             ],
         )
+        # The peaks aren't in update_fields, so the upsert keeps them; the fill rewrites them.
+        if target_resolution == BaseSummary.Resolution.DAILY:
+            _log_skipped(fill_daily_peaks('monitor', monitor_ids, window_start, window_end))
 
 
 def rollup_region_summaries(target_resolution, source_resolution, window_start, window_end, region_ids=None):
@@ -329,6 +338,9 @@ def rollup_region_summaries(target_resolution, source_resolution, window_start, 
                 'tdigest', 'station_count',
             ],
         )
+        # The peaks aren't in update_fields, so the upsert keeps them; the fill rewrites them.
+        if target_resolution == BaseSummary.Resolution.DAILY:
+            _log_skipped(fill_daily_peaks('region', region_ids, window_start, window_end))
 
 
 # ---- Rollup periodic tasks ----
@@ -352,16 +364,35 @@ def _rollup_regions(target, source, resolution, start):
 R = BaseSummary.Resolution
 
 
+def _refresh_previous_max_8h(kind, start):
+    """
+    The 8-hour windows starting late in a day reach into the next morning, so
+    that day's daily rollup stores a provisional `max_8h`. Run with the next
+    day's rollup, this recomputes the previous day's, now that the hours exist.
+    `start` is the day just rolled up.
+    """
+    models = [model for model, field in peak_entry_models().items() if field == 'max_8h']
+    result = fill_daily_peaks(
+        kind, None, _previous_period_start('day', start), start,
+        entry_models=models, fields=('max_8h',),
+    )
+    _log_skipped(result)
+
+
 @db_periodic_task(pacific_crontab(1, '0'), priority=80, queue='summaries')
 def daily_monitor_summaries(day=None):
     """Roll up yesterday's hourly MonitorSummary records into daily ones."""
+    day = day or _previous_period_start('day')
     _rollup_monitors(R.DAILY, R.HOURLY, 'day', day)
+    _refresh_previous_max_8h('monitor', day)
 
 
 @db_periodic_task(pacific_crontab(1, '10'), priority=70, queue='summaries')
 def daily_region_summaries(day=None):
     """Roll up yesterday's hourly RegionSummary records into daily ones."""
+    day = day or _previous_period_start('day')
     _rollup_regions(R.DAILY, R.HOURLY, 'day', day)
+    _refresh_previous_max_8h('region', day)
 
 
 @db_periodic_task(pacific_crontab(1, '15', day='1'), priority=60, queue='summaries')

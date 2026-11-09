@@ -51,6 +51,7 @@ from camp.apps.summaries.schedule import (
     HOURLY_FIRE_MINUTE,
     LATE_RUN_WARNING,
     LATE_SETTLE_MARGIN,
+    PEAK_8H_SETTLE_MARGIN,
     SETTLE_MARGIN,
     hour_for_run,
     is_pacific_hour,
@@ -1487,6 +1488,25 @@ class SettleTimeTests(TestCase):
         assert is_settled('day', end, now=pacific(2026, 11, 2, 7), late=True)
         assert not is_settled('day', None, late=True)
 
+    def test_peak_8h_margin(self):
+        end = pacific(2026, 11, 2)
+        assert not is_settled('day', end, now=pacific(2026, 11, 3, 3), peak_8h=True)
+        assert is_settled('day', end, now=pacific(2026, 11, 3, 3))
+        assert is_settled('day', end, now=pacific(2026, 11, 3, 4), peak_8h=True)
+        # Only the day resolution is affected.
+        month_end = pacific(2026, 11, 1)
+        now = pacific(2026, 11, 1, 4)
+        assert is_settled('month', month_end, now=now, peak_8h=True) == is_settled('month', month_end, now=now)
+
+    def test_peak_8h_margin_covers_refresh_crontab(self):
+        # The refresh is the next day's rollup. On fall-back day the following day
+        # has 25 hours, so it can land 26h10m after the day ends.
+        for end in [pacific(2026, 1, 2), pacific(2026, 7, 2), pacific(2026, 11, 1)]:
+            end_utc = end.astimezone(dt_timezone.utc)
+            runs = self.effective_runs(summary_tasks.daily_region_summaries, end_utc, 48 * 60)
+            assert len(runs) == 2, end
+            assert runs[1] + timedelta(hours=1) <= end_utc + PEAK_8H_SETTLE_MARGIN, end
+
     def test_late_margin_covers_finalize(self):
         # A late type's last change is the finalize_cimis_data run that re-pulls and re-rolls
         # the period, so the margin covers that run plus an hour of slack. For day and longer
@@ -1718,3 +1738,107 @@ class SummaryIntegrityCheckTests(TestCase):
         assert len(runs) == 1
         local = localtime(runs[0])
         assert (local.hour, local.minute, local.fold) == (2, 30, 0)
+
+
+class HourlyOutputCompletenessTests(TestCase):
+    """AQLite's CALIBRATED O3 is one value per hour; completeness comes from the CLEANED readings."""
+
+    def setUp(self):
+        from camp.apps.monitors.aqlite.tests import make_monitor
+        self.monitor = make_monitor()
+        self.hour = timezone.make_aware(datetime(2026, 3, 10, 12, 0, 0))
+
+    def _readings(self, hour, n):
+        from camp.apps.monitors.aqlite.tests import make_cleaned
+        for i in range(n):
+            make_cleaned(self.monitor, hour + timedelta(minutes=5 * i), 40.0 + i)
+
+    def _aggregate(self, hour):
+        from camp.apps.calibrations import processors
+        return processors['AQLiteHourlyAggregator'].aggregate(
+            self.monitor, hour, hour + timedelta(hours=1))
+
+    def _hourly(self, hour, processor):
+        return compute_monitor_summary(self.monitor, hour, O3, processor)
+
+    def test_aggregated_hour_expected_one(self):
+        self._readings(self.hour, 10)
+        self._aggregate(self.hour)
+        stats = self._hourly(self.hour, 'AQLiteHourlyAggregator')
+        assert stats['expected_count'] == 1
+        assert stats['count'] == 1
+        assert stats['is_complete'] is True
+
+    def test_aggregated_hour_incomplete_below_80pct(self):
+        self._readings(self.hour, 9)
+        self._aggregate(self.hour)
+        stats = self._hourly(self.hour, 'AQLiteHourlyAggregator')
+        assert stats['expected_count'] == 1
+        assert stats['is_complete'] is False
+
+    def test_raw_series_unchanged(self):
+        from camp.apps.monitors.aqlite.tests import make_raw
+        for i in range(10):
+            make_raw(self.monitor, self.hour + timedelta(minutes=5 * i), 40.0)
+        stats = self._hourly(self.hour, '')
+        assert stats['expected_count'] == 12
+
+    def test_backfill_matches_hourly(self):
+        from camp.apps.summaries.backfill import backfill_monitor_hours
+        second = self.hour + timedelta(hours=1)
+        self._readings(self.hour, 10)
+        self._readings(second, 9)
+        self._aggregate(self.hour)
+        self._aggregate(second)
+
+        backfill_monitor_hours(self.monitor, self.hour, second + timedelta(hours=1), [O3])
+
+        for hour, complete in ((self.hour, True), (second, False)):
+            row = MonitorSummary.objects.get(
+                monitor=self.monitor, entry_type='o3', processor='AQLiteHourlyAggregator',
+                resolution=MonitorSummary.Resolution.HOURLY, timestamp=hour)
+            expected = self._hourly(hour, 'AQLiteHourlyAggregator')
+            assert row.expected_count == expected['expected_count'] == 1
+            assert row.is_complete is expected['is_complete'] is complete
+
+    def test_backfill_fall_back_hours_stay_apart(self):
+        # 2026-11-01 01:00 PDT (08:00 UTC) and 01:00 PST (09:00 UTC), 10 readings each, so
+        # each hour is complete. Truncated in Pacific, the two merge into one ambiguous
+        # 01:00 key that equals neither UTC hour, and both would count 0 readings.
+        from camp.apps.summaries.backfill import backfill_monitor_hours
+        first = timezone.make_aware(datetime(2026, 11, 1, 8), dt_timezone.utc)
+        second = first + timedelta(hours=1)
+        for hour in (first, second):
+            self._readings(hour, 10)
+            self._aggregate(hour)
+
+        with timezone.override(settings.DEFAULT_TIMEZONE):
+            backfill_monitor_hours(self.monitor, first, second + timedelta(hours=1), [O3])
+
+        rows = MonitorSummary.objects.filter(
+            monitor=self.monitor, entry_type='o3', processor='AQLiteHourlyAggregator',
+            resolution=MonitorSummary.Resolution.HOURLY).order_by('timestamp')
+        assert [(r.timestamp, r.is_complete) for r in rows] == [(first, True), (second, True)]
+
+    def test_daily_rollup_complete(self):
+        from camp.apps.summaries.tasks import rollup_monitor_summaries
+        from camp.utils.datetime import make_aware
+        day = make_aware(datetime(2026, 3, 11), settings.DEFAULT_TIMEZONE)
+        for hour in iter_hours(day, day + timedelta(hours=24)):
+            self._readings(hour, 10)
+            self._aggregate(hour)
+            stats = self._hourly(hour, 'AQLiteHourlyAggregator')
+            MonitorSummary.objects.create(
+                monitor=self.monitor, timestamp=hour,
+                resolution=MonitorSummary.Resolution.HOURLY,
+                entry_type='o3', processor='AQLiteHourlyAggregator', **stats)
+
+        rollup_monitor_summaries(
+            MonitorSummary.Resolution.DAILY, MonitorSummary.Resolution.HOURLY,
+            day, day + timedelta(hours=24))
+
+        daily = MonitorSummary.objects.get(
+            monitor=self.monitor, processor='AQLiteHourlyAggregator',
+            resolution=MonitorSummary.Resolution.DAILY)
+        assert daily.expected_count == 24
+        assert daily.is_complete is True

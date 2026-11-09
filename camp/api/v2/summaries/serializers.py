@@ -24,6 +24,9 @@ class MonitorSummarySerializer(serializers.Serializer):
         'stddev',
         'p25',
         'p75',
+        'max_1h',
+        'max_8h',
+        'mean_24h',
         'is_complete',
     ]
 
@@ -59,6 +62,9 @@ class RegionSummarySerializer(serializers.Serializer):
         'stddev',
         'p25',
         'p75',
+        'max_1h',
+        'max_8h',
+        'mean_24h',
         'station_count',
     ]
 

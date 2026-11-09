@@ -20,6 +20,13 @@ class MonitorMetaScaleTests(TestCase):
         assert len(scale['levels']) == 6
         assert scale['levels'][0]['tier'] == 0
 
+    def test_scale_averaging(self):
+        entries = self._fetch_entries()
+        assert entries['o3']['scale']['averaging_hours'] == 1
+        assert entries['co']['scale']['daily_statistic'] == 'max_8h'
+        assert entries['pm25']['scale']['daily_statistic'] == 'mean_24h'
+        assert entries['o3']['scale']['daily_statistic_label'] == 'Highest 1-hour average'
+
     def test_levels_key_removed(self):
         entries = self._fetch_entries()
         assert all('levels' not in e for e in entries.values())

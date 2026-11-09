@@ -120,6 +120,10 @@ class AQLiteHourlyAggregator:
     entry_model = O3
     next_stage = O3.Stage.CALIBRATED
 
+    # One CALIBRATED value per hour, built from the CLEANED readings of that hour.
+    output_interval = '1h'
+    source_stage = O3.Stage.CLEANED
+
     @classmethod
     def aggregate(cls, monitor, hour_start, hour_end):
         result = (
