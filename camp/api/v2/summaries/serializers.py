@@ -3,10 +3,15 @@ from django.conf import settings
 from resticus import serializers
 
 from camp.api.v2.monitors.serializers import MonitorSerializer
+from camp.apps.summaries.schedule import row_is_final
 
 
 def _timestamp(s):
     return s.timestamp.astimezone(settings.DEFAULT_TIMEZONE).isoformat()
+
+
+def _is_final(s):
+    return row_is_final(s.resolution, s.timestamp, s.entry_type)
 
 
 class MonitorSummarySerializer(serializers.Serializer):
@@ -28,6 +33,7 @@ class MonitorSummarySerializer(serializers.Serializer):
         'max_8h',
         'mean_24h',
         'is_complete',
+        ('is_final', _is_final),
     ]
 
 
@@ -66,6 +72,7 @@ class RegionSummarySerializer(serializers.Serializer):
         'max_8h',
         'mean_24h',
         'station_count',
+        ('is_final', _is_final),
     ]
 
 

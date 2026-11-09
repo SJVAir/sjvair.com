@@ -58,6 +58,7 @@ from camp.apps.summaries.schedule import (
     is_settled,
     pacific_crontab,
     period_end,
+    row_is_final,
 )
 from camp.utils.datetime import localtime
 from camp.apps.summaries.tasks import (
@@ -1842,3 +1843,27 @@ class HourlyOutputCompletenessTests(TestCase):
             resolution=MonitorSummary.Resolution.DAILY)
         assert daily.expected_count == 24
         assert daily.is_complete is True
+
+
+class RowIsFinalTests(TestCase):
+    def test_pm25_daily_final_at_end_plus_3h(self):
+        day = pacific(2026, 11, 2)
+        assert not row_is_final('day', day, 'pm25', now=pacific(2026, 11, 3, 2, 59))
+        assert row_is_final('day', day, 'pm25', now=pacific(2026, 11, 3, 3))
+
+    def test_co_daily_waits_28h(self):
+        day = pacific(2026, 11, 2)
+        end = pacific(2026, 11, 3)
+        assert not row_is_final('day', day, 'co', now=end + timedelta(hours=28) - timedelta(minutes=1))
+        assert row_is_final('day', day, 'co', now=end + timedelta(hours=28))
+
+    def test_hour_waits_2h(self):
+        hour = pacific(2026, 11, 2, 10)
+        assert not row_is_final('hour', hour, 'pm25', now=pacific(2026, 11, 2, 12, 59))
+        assert row_is_final('hour', hour, 'pm25', now=pacific(2026, 11, 2, 13))
+
+    def test_cimis_temperature_uses_late_margin(self):
+        day = pacific(2026, 11, 2)
+        end = pacific(2026, 11, 3)
+        assert not row_is_final('day', day, 'temperature', now=end + timedelta(hours=6, minutes=59))
+        assert row_is_final('day', day, 'temperature', now=end + timedelta(hours=7))

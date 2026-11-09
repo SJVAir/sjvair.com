@@ -869,3 +869,58 @@ class MonitorSummaryFallBackDayTests(TestCase):
         make_monitor_summary(self.monitor, start + timedelta(hours=25))
         data = get_response_data(self._get('monitor-summary-hourly-day', 'hour', year=2026, month=11, day=1))
         assert len(data['data']) == 25
+
+
+class IsFinalFieldTests(TestCase):
+    fixtures = ['purple-air.yaml', 'regions.yaml', 'default-calibrations.yaml']
+
+    def test_monitor_row_old_is_final(self):
+        monitor = PurpleAir.objects.first()
+        make_monitor_summary(monitor, timezone.make_aware(datetime(2026, 1, 5)), resolution='day')
+        request = RequestFactory().get('/')
+        request.monitor = monitor
+        response = monitor_summary_list(
+            request, monitor_id=monitor.pk, entry_type='pm25', resolution='day', year=2026,
+        )
+        assert get_response_data(response)['data'][0]['is_final'] is True
+
+    def test_open_monitor_row_not_final(self):
+        monitor = PurpleAir.objects.first()
+        today = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+        make_monitor_summary(monitor, today, resolution='day')
+        request = RequestFactory().get('/')
+        request.monitor = monitor
+        response = monitor_summary_list(
+            request, monitor_id=monitor.pk, entry_type='pm25', resolution='day', year=today.year,
+        )
+        assert get_response_data(response)['data'][0]['is_final'] is False
+
+    def test_region_row_is_final(self):
+        region = Region.objects.get(name='Fresno County')
+        make_region_summary(region, timezone.make_aware(datetime(2026, 1, 5)), resolution='day')
+        response = region_summary_list(
+            RequestFactory().get('/'), region_id=region.sqid, entry_type='pm25',
+            resolution='day', year=2026,
+        )
+        assert get_response_data(response)['data'][0]['is_final'] is True
+
+    def test_bulk_rows_are_final(self):
+        region = Region.objects.get(name='Fresno County')
+        make_region_summary(region, timezone.make_aware(datetime(2026, 1, 5)), resolution='day')
+        response = bulk_region_summary_list(
+            RequestFactory().get('/', {'region': region.sqid, 'start': '2026-01-01', 'end': '2026-01-31'}),
+            entry_type='pm25', resolution='day',
+        )
+        assert get_response_data(response)['data'][0]['summaries'][0]['is_final'] is True
+
+        monitor = PurpleAir.objects.get(sensor_id=8892)
+        make_monitor_summary(
+            monitor, timezone.make_aware(datetime(2026, 1, 5)), resolution='day',
+            processor='PM25_EPA_Oct2021',
+        )
+        response = bulk_monitor_summary_list(
+            RequestFactory().get('/', {'start': '2026-01-01', 'end': '2026-01-31'}),
+            entry_type='pm25', resolution='day',
+        )
+        rows = [r for g in get_response_data(response)['data'] for r in g['summaries']]
+        assert rows and all(r['is_final'] is True for r in rows)
