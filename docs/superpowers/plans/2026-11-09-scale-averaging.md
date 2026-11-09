@@ -326,3 +326,96 @@ def test_to_json_carries_averaging(self):
   - `fill_daily_peaks ... --monitor-type airnow` / `vozbox` / per region type, `--dry-run` first.
 - Push and open the PR into `develop` only with the user's go-ahead. Merging needs the user's
   own yes.
+
+---
+
+## Addendum tasks (spec "Addendum", sections 8–10)
+
+These come after the first six tasks and the final-review fixes. The migration stays a single
+`0007_summary_peaks`. It hasn't been applied anywhere, so edit it rather than adding 0008, and
+keep its `SET LOCAL lock_timeout` operation first.
+
+### Task 7: `mean_24h` for 24-hour scales
+
+**Files:**
+- Modify: `camp/apps/entries/levels.py` (`DAILY_STATISTIC[24] = 'mean_24h'`)
+- Modify: `camp/apps/summaries/models.py` (`mean_24h = FloatField(_('24-hour average'), null=True, blank=True)` on `BaseSummary`)
+- Modify: `camp/apps/summaries/migrations/0007_summary_peaks.py` (add the third AddField per table)
+- Modify: `camp/apps/summaries/peaks.py`. Add `mean_24h(day_hours, hourly, standard=None) -> float | None`, then:
+  - `PEAK_STATISTICS` → `DAILY_FIGURES = ('max_1h', 'max_8h', 'mean_24h')`, keeping the old name as an alias only if other modules import it;
+  - `peak_entry_models` selects all three;
+  - add the function to `PEAK_FUNCTIONS`;
+  - include `mean_24h` in the writer's default `fields`.
+- Modify: `camp/api/v2/summaries/serializers.py` (add `'mean_24h'` to both row serializers)
+- Modify: CLAUDE.md (scale shape line: 24 → `mean_24h`; the Daily peaks bullet gains the 24-hour rule)
+- Test: `camp/apps/entries/tests/test_scales.py`, the meta scale tests, `camp/apps/summaries/test_peaks.py`, `camp/api/v2/summaries/tests.py`
+
+**Interfaces:**
+- Produces: `mean_24h(day_hours, hourly, standard=None)`. It returns the mean of the values for hours in `day_hours` that are present in `hourly` when their count is at least `_threshold(len(day_hours))`, else `None`, and ignores `standard`.
+- `peak_entry_models()` now returns PM25 and PM100 → `'mean_24h'` as well. The next-night refresh still selects only `'max_8h'` models.
+
+- [ ] **Step 1: Write failing tests.**
+  - `daily_statistic` for PM25/PM100 is `'mean_24h'`, and meta `entries.pm25.scale.daily_statistic == 'mean_24h'`. Update Task 1's assertions that expected `'mean'`.
+  - `test_mean_24h_threshold`: 18 hours of values [10]*17 + [28] → `11.0`; 17 hours → `None`. A 23-hour day gives a value at 18 and `None` at 17; a 25-hour day gives a value at 19 and `None` at 18.
+  - `test_mean_24h_no_standard_exception`: 5 hours of 500 → `None`.
+  - `test_mean_24h_is_mean_of_hourly_means`: two hourly rows with means 10 and 30 but counts 1 and 30 average to 20, not count-weighted.
+  - `test_fills_pm25_mean_24h`: a PM25 monitor daily row gets `mean_24h` and keeps `max_1h`/`max_8h` `None`; an O3 row keeps `mean_24h` `None`.
+  - `test_region_mean_24h`: a region PM25 daily row is filled from region hourly rows.
+  - `test_fresno_example`: 9 complete hours of 5.0 → `mean_24h is None`, while `mean` and `is_complete` are unchanged.
+  - The API: `mean_24h` is present on monitor, region and bulk rows.
+- [ ] **Step 2: Run them.** Expected: FAIL.
+- [ ] **Step 3: Implement.** Regenerate nothing: hand-edit 0007, then check `sqlmigrate summaries 0007` in the test container (plain `ADD COLUMN ... double precision NULL` ×6 after the `SET LOCAL`).
+- [ ] **Step 4: Run** `camp/apps/entries camp/api/v2/monitors camp/apps/summaries camp/api/v2/summaries`. Expected: PASS.
+- [ ] **Step 5: Commit** `Summaries: mean_24h for 24-hour scales`.
+
+### Task 8: Skip sentinel hourly values, and report the skips
+
+**Files:**
+- Modify: `camp/apps/summaries/peaks.py` (the writer's hourly read and its return value)
+- Modify: `camp/apps/summaries/tasks.py` (the rollups and the refresh log the count)
+- Modify: `camp/apps/summaries/management/commands/fill_daily_peaks.py` (print the count)
+- Test: `camp/apps/summaries/test_peaks.py`
+
+**Interfaces:**
+- Produces:
+  - `SENTINEL_MAX = -900.0`: an hourly mean `<= SENTINEL_MAX` is treated as no data.
+  - `fill_daily_peaks(...) -> FillResult`, where `@dataclass FillResult: updated: dict[str, int]; skipped: int`. `skipped` is the number of hourly rows dropped as sentinels, across the rows it read.
+  - Update every caller and test that used the old dict return.
+
+- [ ] **Step 1: Write failing tests.**
+  - `test_sentinel_hour_not_data`: 18 complete O3 hours where one is `-999.0` give `max_1h` `None` (17 valid), and `result.skipped == 1`.
+  - `test_sentinel_not_in_8h_average`: a CO window with one -999 hour among 8 averages only the other 7.
+  - `test_sentinel_boundary`: `-900.0` is skipped, while `-899.9` is data.
+  - `test_command_prints_skips`: the command output contains `skipped 1 hourly value(s) at or below -900`.
+  - `test_rollup_logs_skips`: `assertLogs('camp.apps.summaries', 'WARNING')` when a daily rollup's fill skipped a value, and no warning when it skipped none. Use the module's existing logger name, found with `grep -n "getLogger" camp/apps/summaries/tasks.py`.
+- [ ] **Step 2: Run.** Expected: FAIL.
+- [ ] **Step 3: Implement.** Filter in Python while building the hourly series and count as you go. Don't put a WHERE clause on `mean`: counting needs the rows.
+- [ ] **Step 4: Run** `camp/apps/summaries camp/api/v2/summaries`. Expected: PASS.
+- [ ] **Step 5: Commit** `Summaries: daily figures skip sentinel hours and report them`.
+
+### Task 9: `backfill_airnow` reminder, docs, full suite
+
+**Files:**
+- Modify: `camp/apps/monitors/airnow/management/commands/backfill_airnow.py` (`help`, and the closing output)
+- Modify: CLAUDE.md (Daily peaks bullet: the sentinel rule; the deploy order with the PM types and `backfill_airnow` first)
+- Modify: `docs/superpowers/specs/2026-11-09-scale-averaging-design.md` Deploy section (the same order)
+- Test: `camp/apps/monitors/airnow/` command tests (find with `grep -rn "backfill_airnow" camp/apps/monitors/airnow/tests*`)
+
+- [ ] **Step 1: Write a failing test.** After a successful run (with `backfill_airnow` patched to return totals), the output contains `Summaries are not rebuilt`. It also contains `rebuild_summaries` and `fill_daily_peaks`, each with the run's start date and exclusive end date as Pacific `YYYY-MM-DD`, and with `--monitor-type airnow` for `fill_daily_peaks`.
+- [ ] **Step 2: Implement.** Add one help sentence and a closing `NOTICE` block:
+  ```
+  Summaries are not rebuilt by this command. Next:
+    rebuild_summaries <start> <end> --monitor <id> --monitors-only   (per affected monitor; also fills daily figures)
+    fill_daily_peaks <start> <end> --monitor-type airnow             (at least this)
+  ```
+  The `<end>` date rounds up to the next Pacific midnight when the run's end isn't one.
+- [ ] **Step 3: Update the docs.**
+  - The CLAUDE.md Daily peaks bullet gains `mean_24h` (if Task 7 didn't already add it) and the -900 skip.
+  - The deploy order in CLAUDE.md and in the spec's Deploy section:
+    1. Deploy (the release phase migrates) away from :40–:50 with no SummaryBackfillJob running.
+    2. `backfill_airnow` over the -999 range, then `rebuild_summaries` for those AirNow monitors.
+    3. AQLite rebuilds.
+    4. `fill_daily_peaks --dry-run`, then a real run, for monitor types airnow, aqlite, vozbox, purpleair, airgradient and every other type with PM2.5/PM10 daily rows (list them with `ENTRY_CONFIG`), then each region type with PM or gas rows.
+    5. Backfill before announcing.
+- [ ] **Step 4: Run the full suite** (`-n 4 --dist loadscope`). Expected: all pass.
+- [ ] **Step 5: Commit** `AirNow backfill: name the summary follow-ups; docs`.

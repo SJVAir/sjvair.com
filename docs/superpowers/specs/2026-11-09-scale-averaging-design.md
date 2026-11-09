@@ -234,6 +234,53 @@ Rounding: none at storage. The values are floats like `mean`.
   <id> --monitors-only` per AQLite monitor (hourly and up, all types for those monitors only).
   That runs before `fill_daily_peaks` for AQLite, and the rebuild itself fills the peaks.
 
+## Addendum (2026-11-09, after the first review)
+
+Three decisions came after the design above was built. Where they conflict with it, this
+section wins.
+
+### 8. PM 24-hour completeness: `mean_24h` (the user, via spec 5 and here)
+
+- Spec 5's decision (the user: "yes, use the 18-hour rule"): a 24-hour scale's day follows EPA's
+  24-hour completeness rule. A day with fewer than 75% of its hours can't be rated. The shape is
+  the one the user picked here: a new figure, not a flag.
+- New nullable daily field `mean_24h` on `BaseSummary`, for 24-hour scales (PM2.5, PM10). It's
+  the mean of the hourly means of the day's hours that have data (EPA computes a 24-hour average
+  from hourly averages). It's stored when at least `ceil(0.75 * n)` of the day's n hours have data
+  (18 of 23 or 24, 19 of 25), otherwise `null`. There's no "reaches the standard" exception:
+  EPA's 24-hour rule doesn't have one.
+- "Has data" is the same rule as for the peaks: a complete monitor hourly row, or any existing
+  region hourly row.
+- `daily_statistic` for 24-hour scales becomes `'mean_24h'` (was `'mean'`). For every
+  pollutant, the dashboard reads the field `daily_statistic` names, and `null` means "this day
+  can't be rated". `mean` and `is_complete` are unchanged.
+- It's written by the same writer, rollup and command as the peaks. Its settle margin is the
+  normal one, since it uses only the day's own hours. The migration is still the single
+  `0007_summary_peaks`, which adds three columns, because 0007 hasn't been applied anywhere.
+  The production backfill now also covers the PM monitor types and regions, which is most of the
+  summary data. It's chunked by month and grouped by owner like the rest.
+
+### 9. Sentinel values (the user, via the coordinator)
+
+- Keep the deploy cleanup order: `backfill_airnow` over the affected range, then rebuild those
+  monitors' summaries, before `fill_daily_peaks`.
+- Also, the daily figures skip any hourly mean at or below -900, treating that hour as having no
+  data, so a leftover -999 can't count toward the 75% rule or drag an average down.
+- Skips are never silent. `fill_daily_peaks` (the command) prints how many hourly values it
+  skipped. The rollup and the next-night refresh log a warning with the count when it's above
+  zero (*my call*).
+
+### 10. Reminder in `backfill_airnow` (the user)
+
+- `backfill_airnow` re-imports readings but never rebuilds summaries, so on its own it leaves
+  the daily figures stale.
+- Its help text, and its closing output, name the follow-ups: rebuild the affected monitors'
+  summaries (`rebuild_summaries <start> <end> --monitor <id> --monitors-only`, which also fills
+  the daily figures), or at least run `fill_daily_peaks` scoped to `--monitor-type airnow` over
+  the range.
+- `rebuild_summaries` and the automated `backfill_summaries` job need no reminder, because they
+  go through the daily rollup, which fills the figures itself.
+
 ## Testing
 
 - `LevelSet` / `Scale`: declared periods, derived `daily_statistic`, the JSON keys on every
