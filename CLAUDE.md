@@ -373,13 +373,17 @@ zones are missing there; see SJVAPCD Forecast Setup).
   existing rows with `fill_daily_peaks` (Pacific dates, end exclusive, always scoped like
   `repair_summaries`, one Pacific month at a time, idempotent, `--entry-type`, `--dry-run`).
   `fill_daily_peaks` skips hourly means <= -900 (the -999 missing sentinel) and prints the skip
-  count. Deploy order: (1) deploy (the release phase migrates; migration 0007 sets a 10 s
+  count; the rollup and the next-night refresh log a warning with it. Monitor ids can start with
+  `-`, so always pass `--monitor=<id>` (and `--region=<pk>`) with `=`. Deploy order: (1) deploy (the release phase migrates; migration 0007 sets a 10 s
   `lock_timeout`) away from :40-:50 and with no `SummaryBackfillJob` running; (2) `backfill_airnow`
-  over the -999 range, then `rebuild_summaries ... --monitor <id> --monitors-only` for those AirNow
-  monitors (the command's closing output names both, with Pacific dates); (3) the same rebuild per
+  over the -999 range, then `rebuild_summaries ... --monitor=<id> --monitors-only` for those AirNow
+  monitors, then `rebuild_summaries ... --monitor=<id> --regions-only` (that monitor's regions;
+  the region rows built during the -999 period are FEM-weighted means that include -999, usually
+  above -900, so the sentinel skip can't catch them) before any region fill (the command's closing
+  output names all of it, with Pacific dates); (3) the same monitor rebuild per
   AQLite monitor; (4) scoped `fill_daily_peaks`, `--dry-run` first, then for real, for monitor types
-  `airnow`, `aqlite`, `vozbox`, `purpleair`, `airgradient`, `aqview` and `bam1022` (the other enabled
-  types with PM2.5/PM10 daily rows), then each region type with PM or gas rows; (5) backfill before
+  `airnow`, `aqlite`, `vozbox`, `purpleair`, `airgradient`, `aqview` and `bam1022` (the enabled
+  monitor types with PM or gas daily rows), then each region type with PM or gas rows; (5) backfill before
   announcing the feature: settled daily responses are cached 24 h, so nulls served before the
   backfill stick for a day.
 

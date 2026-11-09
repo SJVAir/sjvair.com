@@ -229,6 +229,22 @@ class FillDailyPeaksTests(TestCase):
         assert result.skipped == 1
         assert row.max_1h == 20.0
 
+    def test_sentinel_not_in_mean_24h(self):
+        self.monitor_hours('pm25', [10.0] * 18 + [-999.0])
+        row = self.monitor_daily('pm25')
+        result = self.fill()
+        row.refresh_from_db()
+        assert row.mean_24h == 10.0
+        assert result.skipped == 1
+
+    def test_region_sentinel_skipped(self):
+        self.region_hours('o3', [50.0] * 23 + [-950.0])
+        row = self.region_daily('o3')
+        result = self.fill('region')
+        row.refresh_from_db()
+        assert row.max_1h == 50.0
+        assert result.skipped == 1
+
     def test_rollup_logs_skips(self):
         self.monitor_hours('o3', [50.0] * 23 + [-999.0])
         with self.assertLogs('camp.apps.summaries', 'WARNING') as logs:

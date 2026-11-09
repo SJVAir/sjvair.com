@@ -564,7 +564,8 @@ class BackfillCommandTests(TestCase):
     def test_names_summary_follow_ups(self):
         out = self.run_command('2026-09-01T12:00+00:00', '2026-09-03T12:00+00:00')
         assert 'Summaries are not rebuilt' in out
-        assert 'rebuild_summaries 2026-09-01 2026-09-04 --monitor <id> --monitors-only' in out
+        assert 'rebuild_summaries 2026-09-01 2026-09-04 --monitor=<id> --monitors-only' in out
+        assert 'rebuild_summaries 2026-09-01 2026-09-04 --monitor=<id> --regions-only' in out
         assert 'fill_daily_peaks 2026-09-01 2026-09-04 --monitor-type airnow' in out
 
     def test_end_on_pacific_midnight_is_not_rounded_up(self):

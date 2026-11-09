@@ -230,8 +230,8 @@ Rounding: none at storage. The values are floats like `mean`.
 - The aggregator itself, the CALIBRATED values, alerts and `LatestEntry` don't change.
 - Region rows are unaffected: their `expected_count` comes from monitor weights, not monitor
   expected counts.
-- Existing AQLite rows need rebuilding: `rebuild_summaries <first AQLite date> <today> --monitor
-  <id> --monitors-only` per AQLite monitor (hourly and up, all types for those monitors only).
+- Existing AQLite rows need rebuilding: `rebuild_summaries <first AQLite date> <today>
+  --monitor=<id> --monitors-only` per AQLite monitor (hourly and up, all types for those monitors only).
   That runs before `fill_daily_peaks` for AQLite, and the rebuild itself fills the peaks.
 
 ## Addendum (2026-11-09, after the first review)
@@ -275,7 +275,7 @@ section wins.
 - `backfill_airnow` re-imports readings but never rebuilds summaries, so on its own it leaves
   the daily figures stale.
 - Its help text, and its closing output, name the follow-ups: rebuild the affected monitors'
-  summaries (`rebuild_summaries <start> <end> --monitor <id> --monitors-only`, which also fills
+  summaries (`rebuild_summaries <start> <end> --monitor=<id> --monitors-only`, which also fills
   the daily figures), or at least run `fill_daily_peaks` scoped to `--monitor-type airnow` over
   the range.
 - `rebuild_summaries` and the automated `backfill_summaries` job need no reminder, because they
@@ -314,15 +314,20 @@ section wins.
 
 1. Deploy (the release phase migrates) away from :40–:50 and with no `SummaryBackfillJob`
    running (section 5).
-2. `backfill_airnow` over the -999 range, then `rebuild_summaries <start> <end> --monitor <id>
-   --monitors-only` for those AirNow monitors (the command's closing output prints both, with
-   Pacific dates).
-3. Per AQLite monitor: `rebuild_summaries <first AQLite date> <today> --monitor <id>
+2. `backfill_airnow` over the -999 range, then `rebuild_summaries <start> <end> --monitor=<id>
+   --monitors-only` for those AirNow monitors, then `rebuild_summaries <start> <end>
+   --monitor=<id> --regions-only` for each (it rebuilds that monitor's regions; `rebuild_summaries`
+   has no region-type flag, only `--region=<pk>` or `--monitor=<id>` scoping). Region hourly rows
+   built during the -999 period are FEM-weighted means that include -999, usually above -900, so
+   the sentinel skip can't catch them; they must be rebuilt before any region fill. The command's
+   closing output prints all of it, with Pacific dates. Monitor ids can start with `-`, so
+   ids are always passed as `--monitor=<id>`.
+3. Per AQLite monitor: `rebuild_summaries <first AQLite date> <today> --monitor=<id>
    --monitors-only` (section 7). This also fills AQLite's peaks. Region rows that include AQLite
    monitors don't change from this step. Their peaks come from step 4.
 4. `fill_daily_peaks <first date> <today> --monitor-type <type> --dry-run`, then without
    `--dry-run`, for `airnow`, `aqlite`, `vozbox`, `purpleair`, `airgradient`, `aqview` and
-   `bam1022` (every enabled type with PM2.5/PM10 daily rows), then each region type with PM or
+   `bam1022` (every enabled monitor type with PM or gas daily rows), then each region type with PM or
    gas rows. `<today>` as the exclusive end fills through yesterday. Hourly means <= -900 are
    skipped and counted.
 5. Run the backfill before announcing the feature: settled daily responses are cached 24 h, so

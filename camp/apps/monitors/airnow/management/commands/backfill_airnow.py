@@ -62,8 +62,11 @@ class Command(BaseCommand):
         first_date, end_date = first.date().isoformat(), last.date().isoformat()
         self.stdout.write(self.style.NOTICE(
             'Summaries are not rebuilt by this command. Next:\n'
-            f'  rebuild_summaries {first_date} {end_date} --monitor <id> --monitors-only'
+            f'  rebuild_summaries {first_date} {end_date} --monitor=<id> --monitors-only'
             '   (per affected monitor; also fills daily figures)\n'
+            f'  rebuild_summaries {first_date} {end_date} --monitor=<id> --regions-only'
+            '   (per affected monitor, after the monitor rebuilds: the monitor\'s regions;\n'
+            '   region rows built during the -999 period are skewed)\n'
             f'  fill_daily_peaks {first_date} {end_date} --monitor-type airnow'
             '             (at least this)'
         ))
