@@ -10,7 +10,9 @@ from django.urls import reverse
 from django.utils import timezone
 
 from camp.api.v2.summaries.endpoints import (
+    BulkMonitorOpenDays,
     BulkMonitorSummaryList,
+    BulkRegionOpenDays,
     BulkRegionSummaryList,
     MonitorOpenDays,
     MonitorSummaryList,
@@ -20,6 +22,7 @@ from camp.api.v2.summaries.endpoints import (
 from camp.apps.summaries.aggregators import tdigest_to_dict
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.cimis.models import CIMIS
+from camp.apps.monitors.models import Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.regions.models import Region
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
@@ -1027,3 +1030,184 @@ class OpenDaysEndpointTests(TestCase):
         assert r.func.view_class is RegionOpenDays
         assert resolve(f'/api/2.0/monitors/{self.monitor.pk}/summaries/pm25/daily/2026/').func.view_class is MonitorSummaryList
         assert resolve(f'/api/2.0/regions/{self.region.sqid}/summaries/pm25/daily/2026/').func.view_class is RegionSummaryList
+
+
+class BulkOpenDaysEndpointTests(TestCase):
+    fixtures = ['purple-air.yaml', 'bam1022.yaml', 'regions.yaml', 'default-calibrations.yaml']
+
+    def setUp(self):
+        self.purpleair = PurpleAir.objects.get(sensor_id=8892)
+        self.bam = BAM1022.objects.get(pk='gO9_akFVTVW6mYBifOtoxg')
+        self.fresno = Region.objects.get(name='Fresno County')
+        self.kern = Region.objects.get(name='Kern County')
+        self.now = timezone.make_aware(datetime(2026, 10, 5, 0, 30))
+        self.yesterday = timezone.make_aware(datetime(2026, 10, 4))
+        # The fixture puts the BAM on top of the PurpleAir; move it so bbox scoping tells them apart.
+        self.bam.position = Point(self.bam.position.x + 10, self.bam.position.y + 10, srid=4326)
+        self.bam.save()
+
+    def _hours(self, make, owner, n=3, **kwargs):
+        start = self.yesterday + timedelta(hours=22)
+        for i in range(n):
+            row = make(owner, start + timedelta(hours=i), **kwargs)
+            digest = TDigest()
+            digest.update(10.0)
+            row.tdigest = tdigest_to_dict(digest)
+            row.save(update_fields=['tdigest'])
+
+    def _seed(self):
+        self._hours(make_monitor_summary, self.purpleair, processor='PM25_EPA_Oct2021')
+        self._hours(make_monitor_summary, self.purpleair, processor='')
+        self._hours(make_monitor_summary, self.bam, processor='')
+
+    def _monitors(self, data=None, **kwargs):
+        with patch('django.utils.timezone.now', return_value=self.now):
+            return self.client.get('/api/2.0/monitors/pm25/summaries/daily/open/', data or {}, **kwargs)
+
+    def _regions(self, data=None, **kwargs):
+        with patch('django.utils.timezone.now', return_value=self.now):
+            return self.client.get('/api/2.0/regions/pm25/summaries/daily/open/', data or [], **kwargs)
+
+    def _by_id(self, response):
+        assert response.status_code == 200
+        return {r['id']: r for r in get_response_data(response)['data']}
+
+    def test_shape_and_cache_headers(self):
+        self._seed()
+        response = self._monitors()
+        by_id = self._by_id(response)
+        row = by_id[str(self.purpleair.pk)]
+        assert row['name'] == self.purpleair.name and 'position' in row
+        assert len(row['summaries']) == 2
+        assert all(s['is_final'] is False and s['resolution'] == 'day' for s in row['summaries'])
+        cc = response['Cache-Control']
+        assert 'private' in cc and 'max-age=60' in cc
+        assert self._monitors(HTTP_IF_NONE_MATCH=response['ETag']).status_code == 304
+
+    def test_bbox_scopes_monitors(self):
+        self._seed()
+        lon, lat = self.purpleair.position.x, self.purpleair.position.y
+        by_id = self._by_id(self._monitors({'bbox': f'{lon - 0.01},{lat - 0.01},{lon + 0.01},{lat + 0.01}'}))
+        assert set(by_id) == {str(self.purpleair.pk)}
+
+    def test_invalid_bbox_is_400(self):
+        response = self._monitors({'bbox': 'nope'})
+        assert response.status_code == 400
+        assert 'no-cache' in response['Cache-Control']
+
+    def test_bad_region_id_404s(self):
+        assert self._monitors({'region': 'not-a-real-sqid'}).status_code == 404
+
+    def test_no_dates_needed(self):
+        assert self._monitors().status_code == 200
+
+    def test_default_series_is_published_and_processor_overrides(self):
+        self._seed()
+        by_id = self._by_id(self._monitors())
+        assert {s['processor'] for s in by_id[str(self.purpleair.pk)]['summaries']} == {'PM25_EPA_Oct2021'}
+        assert {s['processor'] for s in by_id[str(self.bam.pk)]['summaries']} == {''}
+
+        by_id = self._by_id(self._monitors({'processor': ''}))
+        assert {s['processor'] for s in by_id[str(self.purpleair.pk)]['summaries']} == {''}
+        by_id = self._by_id(self._monitors({'processor': 'PM25_EPA_Oct2021'}))
+        assert by_id[str(self.bam.pk)]['summaries'] == []
+
+    def test_monitor_filter_narrows(self):
+        self._seed()
+        by_id = self._by_id(self._monitors({'device': 'BAM1022'}))
+        assert set(by_id) == {str(self.bam.pk)}
+
+    def test_owner_without_rows_has_empty_summaries(self):
+        self._hours(make_monitor_summary, self.bam, processor='')
+        by_id = self._by_id(self._monitors())
+        assert by_id[str(self.purpleair.pk)]['summaries'] == []
+        assert len(by_id[str(self.bam.pk)]['summaries']) == 2
+
+    def _make_monitors(self, n):
+        return [
+            PurpleAir.objects.create(
+                name=f'Open {i}', sensor_id=95000 + i,
+                position=Point(-119.7, 36.7, srid=4326), location=PurpleAir.LOCATION.outside,
+            )
+            for i in range(n)
+        ]
+
+    def test_paginated_by_owner(self):
+        # 148 new + the two fixture monitors.
+        self._make_monitors(148)
+        page1 = get_response_data(self._monitors())
+        page2 = get_response_data(self._monitors({'page': 2}))
+        assert len(page1['data']) == 100
+        assert len(page2['data']) == 50
+        assert page1['count'] == 150 and page1['pages'] == 2 and page1['has_next_page'] is True
+        assert page2['page'] == 2 and page2['has_next_page'] is False
+        ids = [r['id'] for r in page1['data'] + page2['data']]
+        assert len(set(ids)) == 150
+        # Owners come in pk order (the database's collation), so pages never overlap.
+        assert ids == [str(pk) for pk in Monitor.objects.order_by('pk').values_list('pk', flat=True)]
+
+    def test_bulk_open_query_count(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        def count():
+            with CaptureQueriesContext(connection) as ctx:
+                assert self._monitors().status_code == 200
+            return len(ctx.captured_queries)
+
+        self._seed()
+        few = count()
+        for monitor in self._make_monitors(120):
+            self._hours(make_monitor_summary, monitor, n=1, processor='PM25_EPA_Oct2021')
+        many = count()
+        assert many == few
+        assert many <= 15
+
+    def test_open_endpoints_never_cache_long(self):
+        # Even if a date filter ever made the range look settled, open days stay at 60 s.
+        settled = {'timestamp__lt': timezone.make_aware(datetime(2020, 1, 1))}
+        self._seed()
+        for view in (BulkMonitorOpenDays, BulkRegionOpenDays, MonitorOpenDays, RegionOpenDays):
+            with patch.object(view, 'get_date_filter', return_value=settled):
+                with patch('django.utils.timezone.now', return_value=self.now):
+                    response = {
+                        BulkMonitorOpenDays: lambda: self.client.get('/api/2.0/monitors/pm25/summaries/daily/open/'),
+                        BulkRegionOpenDays: lambda: self.client.get(
+                            '/api/2.0/regions/pm25/summaries/daily/open/', {'region': self.fresno.sqid}),
+                        MonitorOpenDays: lambda: self.client.get(
+                            f'/api/2.0/monitors/{self.purpleair.pk}/summaries/pm25/daily/open/'),
+                        RegionOpenDays: lambda: self.client.get(
+                            f'/api/2.0/regions/{self.fresno.sqid}/summaries/pm25/daily/open/'),
+                    }[view]()
+            assert response.status_code == 200, view
+            assert 'max-age=60' in response['Cache-Control'], view
+
+    def test_region_bulk(self):
+        self._hours(make_region_summary, self.fresno)
+        response = self._regions([('region', self.fresno.sqid), ('region', self.kern.sqid)])
+        by_id = self._by_id(response)
+        assert set(by_id) == {self.fresno.sqid, self.kern.sqid}
+        assert 'boundary' not in by_id[self.fresno.sqid]
+        assert len(by_id[self.fresno.sqid]['summaries']) == 2
+        assert all('station_count' in s and s['is_final'] is False for s in by_id[self.fresno.sqid]['summaries'])
+        assert by_id[self.kern.sqid]['summaries'] == []
+        assert 'max-age=60' in response['Cache-Control']
+        assert get_response_data(response)['count'] == 2
+
+    def test_region_bulk_requires_region(self):
+        response = self._regions()
+        assert response.status_code == 400
+        assert 'region' in get_response_data(response)['errors']
+        assert 'no-cache' in response['Cache-Control']
+
+    def test_region_bulk_unknown_region_400(self):
+        assert self._regions([('region', 'nope')]).status_code == 400
+
+    def test_url_resolution(self):
+        from django.urls import resolve
+        assert resolve('/api/2.0/monitors/pm25/summaries/daily/open/').func.view_class is BulkMonitorOpenDays
+        assert resolve('/api/2.0/regions/pm25/summaries/daily/open/').func.view_class is BulkRegionOpenDays
+        assert resolve('/api/2.0/monitors/pm25/summaries/daily/').func.view_class is BulkMonitorSummaryList
+        assert resolve('/api/2.0/regions/pm25/summaries/daily/').func.view_class is BulkRegionSummaryList
+        assert resolve(f'/api/2.0/monitors/{self.purpleair.pk}/summaries/pm25/daily/open/').func.view_class is MonitorOpenDays
+        assert resolve(f'/api/2.0/regions/{self.fresno.sqid}/summaries/pm25/daily/open/').func.view_class is RegionOpenDays

@@ -49,8 +49,14 @@ class BulkSummaryDateRangeForm(forms.Form):
         return cleaned_data
 
 
-class BulkMonitorSummaryForm(BulkSummaryDateRangeForm):
+class BulkMonitorScopeForm(forms.Form):
+    """The monitor bulk endpoints' scoping (`region`, `MonitorFilter` and
+    `processor` are read straight from the query string)."""
     bbox = BboxField()
+
+
+class BulkMonitorSummaryForm(BulkMonitorScopeForm, BulkSummaryDateRangeForm):
+    pass
 
 
 class RegionListField(forms.Field):
@@ -78,5 +84,9 @@ class RegionListField(forms.Field):
         return regions
 
 
-class BulkRegionSummaryForm(BulkSummaryDateRangeForm):
+class BulkRegionScopeForm(forms.Form):
     region = RegionListField(required=True)
+
+
+class BulkRegionSummaryForm(BulkRegionScopeForm, BulkSummaryDateRangeForm):
+    pass
