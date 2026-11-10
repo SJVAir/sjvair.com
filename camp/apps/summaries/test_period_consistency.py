@@ -85,7 +85,7 @@ class PeriodConsistencyTests(TestCase):
         assert SummaryBackfillJob.objects.get().state == SummaryBackfillJob.State.DONE
 
     def _via_rebuild(self):
-        call_command('rebuild_summaries', '2026-10-26', '2026-11-04', '--monitor', str(self.monitor.pk), stdout=StringIO())
+        call_command('rebuild_summaries', '2026-10-26', '2026-11-04', f'--monitor={self.monitor.pk}', stdout=StringIO())
 
     def _via_tasks(self):
         start, end = _pacific(2026, 10, 26), _pacific(2026, 11, 4)
