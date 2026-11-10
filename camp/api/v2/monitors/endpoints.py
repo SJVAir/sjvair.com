@@ -11,8 +11,9 @@ from resticus.views import Endpoint
 from django import forms
 from django.conf import settings
 from django.contrib.gis.db.models.functions import Distance
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.http import Http404, HttpResponse, StreamingHttpResponse
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
 from django.views.decorators.csrf import csrf_exempt
@@ -23,7 +24,7 @@ from camp.apps.entries.models import BaseEntry, PM25
 from camp.apps.entries.stages import STAGE_DESCRIPTIONS, Stage
 from camp.apps.entries.tasks import data_export
 from camp.apps.entries.utils import get_entry_model_by_name
-from camp.apps.monitors.models import Monitor
+from camp.apps.monitors.models import LatestEntry, Monitor
 from camp.utils.forms import LatLonForm
 from camp.utils.datetime import make_aware
 from camp.utils.views import CachedEndpointMixin
@@ -444,17 +445,24 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
     streaming = True
 
     def get_queryset(self, *args, **kwargs):
+        # No latest_entries prefetch: nothing here reads it (is_active uses
+        # the last_entry_timestamp annotation).
         queryset = (super()
             .get_queryset(*args, **kwargs)
+            .prefetch_related(None)
             .get_public()
             .published_for(self.entry_model)
             .filter(position__isnull=False)
         )
 
-        # Only monitors that are recently active...
-        queryset = queryset.get_active(timedelta(
-            days=settings.MONITOR_ACTIVE_WINDOW_DAYS
-        ).total_seconds())
+        # Only monitors that are recently active. An EXISTS, not
+        # get_active()'s join + DISTINCT: that join repeats each monitor once
+        # per LatestEntry row, and the inflated row estimate pushed the plan
+        # over Postgres' JIT threshold (~400-500 ms of JIT per run).
+        cutoff = timezone.now() - timedelta(days=settings.MONITOR_ACTIVE_WINDOW_DAYS)
+        queryset = queryset.filter(Exists(
+            LatestEntry.objects.filter(monitor_id=OuterRef('pk'), timestamp__gte=cutoff)
+        )).order_by('name', 'id')  # Meta.ordering, with the id tiebreak the DISTINCT's sort gave
 
         # ...and, for PM2.5, recently healthy. Health checks score the
         # dual-channel PM2.5 sensors only, so they don't gate other
