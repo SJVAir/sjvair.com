@@ -980,6 +980,53 @@ class ZoneAwareTimestampTests(TestCase):
                 assert self.at_value(self.BOUNDARY_PARAMS['zoneless']) == Decimal('12.0')
 
 
+@override_settings(MONITOR_ENABLED_TYPES=[])
+class MonitorListQueryCountTests(TestCase):
+    '''
+        Each AirGradient's data_providers reads its place; without
+        select_related that was one query per AirGradient on every list
+        cache miss (266 locally).
+    '''
+    fixtures = ['default-calibrations.yaml']
+
+    def setUp(self):
+        from camp.apps.monitors.airgradient.models import Place
+        self.factory = RequestFactory()
+        self.place = Place.objects.create(name='Test Place', url='https://example.com', token='test-token')
+        self.sensor_ids = iter(range(93000, 94000))
+        cache.clear()
+
+    def tearDown(self):
+        cache.clear()
+
+    def add_airgradients(self, count):
+        from django.contrib.gis.geos import Point
+        from camp.apps.monitors.airgradient.models import AirGradient
+        for _ in range(count):
+            sensor_id = next(self.sensor_ids)
+            AirGradient.objects.create(
+                name=f'AirGradient {sensor_id}', sensor_id=sensor_id, place=self.place,
+                position=Point(-119.78, 36.73, srid=4326), location=AirGradient.LOCATION.outside,
+            )
+
+    def count_queries(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        url = reverse('api:v2:monitors:monitor-list')
+        with CaptureQueriesContext(connection) as ctx:
+            response = monitor_list(self.factory.get(url, {'_cc': '1'}))
+            get_response_data(response)
+        assert response.status_code == 200
+        return len(ctx)
+
+    def test_query_count_does_not_grow_with_airgradients(self):
+        self.add_airgradients(1)
+        few = self.count_queries()
+        self.add_airgradients(5)
+        assert self.count_queries() == few
+
+
+
 class MonitorListDatasetTests(TestCase):
     fixtures = ['purple-air.yaml', 'default-calibrations.yaml']
 
