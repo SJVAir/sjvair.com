@@ -1144,3 +1144,112 @@ class MonitorListRegionTests(TestCase):
         monitor_list(self.factory.get(self.url, {'region': self.region_a.sqid}))
         content = get_response_data(monitor_list(self.factory.get(self.url, {'region': self.region_b.sqid})))
         assert self.ids(content) == {str(self.b.pk)}
+
+
+@override_settings(MONITOR_ENABLED_TYPES=[])
+class ClosestMonitorTests(TestCase):
+    '''
+        Pins closest/'s contract: the 3 nearest active, public, outdoor
+        monitors with a latest entry of the type, nearest first, distance in
+        feet. The query count must not grow with the number of candidates:
+        the endpoint used to load every candidate monitor before keeping 3.
+    '''
+    fixtures = ['default-calibrations.yaml']
+
+    origin = (36.7378, -119.7871)  # (lat, lon)
+
+    def setUp(self):
+        from camp.apps.monitors.airgradient.models import Place
+        self.factory = RequestFactory()
+        self.place = Place.objects.create(name='Test Place', url='https://example.com', token='test-token')
+        self.sensor_ids = iter(range(91000, 92000))
+
+    def make(self, lat_offset=0.0, lon_offset=0.0, model=PurpleAir, entry=True, **fields):
+        from django.contrib.gis.geos import Point
+        lat, lon = self.origin
+        defaults = {'location': model.LOCATION.outside}
+        if model is PurpleAir:
+            defaults['sensor_id'] = next(self.sensor_ids)
+        defaults.update(fields)
+        monitor = model.objects.create(
+            name=f'Monitor {lat_offset} {lon_offset}',
+            position=Point(lon + lon_offset, lat + lat_offset, srid=4326),
+            **defaults,
+        )
+        if entry:
+            monitor.create_entry(
+                entry_models.PM25,
+                timestamp=entry if isinstance(entry, datetime) else timezone.now(),
+                value=10.0,
+                sensor='a',
+                stage=entry_models.PM25.Stage.CLEANED,
+            )
+        return monitor
+
+    def make_airgradient(self, lat_offset=0.0, lon_offset=0.0):
+        from camp.apps.monitors.airgradient.models import AirGradient
+        return self.make(lat_offset, lon_offset, model=AirGradient,
+            sensor_id=next(self.sensor_ids), place=self.place)
+
+    def get(self, entry_type='pm25', **params):
+        lat, lon = self.origin
+        kwargs = {'entry_type': entry_type}
+        url = reverse('api:v2:monitors:monitor-closest', kwargs=kwargs)
+        request = self.factory.get(url, {'latitude': lat, 'longitude': lon, **params})
+        response = closest_monitor(request, **kwargs)
+        assert response.status_code == 200
+        return get_response_data(response)['data']
+
+    def test_nearest_three_in_distance_order(self):
+        # Created out of distance order so insertion order can't pass the test.
+        far = self.make(lon_offset=0.05)
+        third = self.make(lon_offset=0.03)
+        first = self.make(lon_offset=0.01)
+        fourth = self.make(lon_offset=0.04)
+        second = self.make(lat_offset=0.02)
+
+        ids = [m['id'] for m in self.get()]
+        assert ids == [str(first.pk), str(second.pk), str(third.pk)]
+        assert str(fourth.pk) not in ids and str(far.pk) not in ids
+
+    def test_distance_is_in_feet(self):
+        import pytest
+        self.make(lat_offset=0.01)
+        data = self.get()
+        # 0.01 degrees of latitude at 36.74N is about 1,109.9 m = 3,641 ft.
+        assert data[0]['distance'] == pytest.approx(3641, rel=0.005)
+
+    def test_latest_shape(self):
+        monitor = self.make()
+        data = self.get()
+        latest = data[0]['latest']
+        entry = entry_models.PM25.objects.get(pk=monitor.latest_entries.get(entry_type='pm25').entry_id)
+        assert latest['entry_type'] == 'pm25'
+        assert latest['value'] == str(entry.serialized_data()['value'])
+        for key in ('timestamp', 'sensor', 'stage', 'processor'):
+            assert key in latest
+        for key in ('id', 'name', 'position', 'distance'):
+            assert key in data[0]
+
+    def test_excludes_ineligible_monitors(self):
+        keep = self.make(lon_offset=0.05)
+        self.make(lon_offset=0.001, is_hidden=True)
+        self.make(lon_offset=0.002, location=PurpleAir.LOCATION.inside)
+        self.make(lon_offset=0.003, entry=timezone.now() - timedelta(hours=3))  # inactive
+        no_pm25 = self.make(lon_offset=0.004, entry=False)
+        no_pm25.create_entry(entry_models.Temperature, timestamp=timezone.now(), value=Decimal('70.0'))
+
+        assert [m['id'] for m in self.get()] == [str(keep.pk)]
+
+    def test_query_count_does_not_grow_with_candidates(self):
+        self.make_airgradient(lon_offset=0.001)
+        self.make(lon_offset=0.002)
+        self.make_airgradient(lon_offset=0.003)
+        with self.assertNumQueries(3):
+            assert len(self.get()) == 3
+
+        for i in range(10):
+            self.make(lon_offset=0.01 + i * 0.001)
+            self.make_airgradient(lon_offset=0.02 + i * 0.001)
+        with self.assertNumQueries(3):
+            assert len(self.get()) == 3
