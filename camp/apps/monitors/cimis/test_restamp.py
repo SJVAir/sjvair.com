@@ -76,6 +76,24 @@ def make_station(station_number='2'):
     )
 
 
+def make_dash_station(station_number='2'):
+    '''
+        A station whose id starts with "-", as about 1 in 64 random ids do.
+        A command line given it as a separate argument (`--monitor <id>`)
+        reads it as an option; only `--monitor=<id>` works.
+    '''
+    import uuid
+    from smalluuid import SmallUUID
+    raw = bytearray(uuid.uuid4().bytes)
+    raw[0] = 0xF8 | (raw[0] & 0x03)
+    station = make_station(station_number)
+    CIMIS.objects.filter(pk=station.pk).delete()
+    station.pk = station.id = SmallUUID(bytes=bytes(raw))
+    station.save(force_insert=True)
+    assert str(station.pk).startswith('-')
+    return station
+
+
 def store_legacy(monitor, days, hours=HOURS):
     '''Store rows the way the old ingest did: end-of-hour Pacific wall clock.'''
     count = 0
@@ -348,12 +366,12 @@ class RestampCommandTests(TestCase):
             call_command('restamp_cimis', stdout=StringIO())
 
     def test_command_has_no_end_option(self):
-        monitor = make_station('2')
-        with pytest.raises(CommandError):
-            call_command('restamp_cimis', '--monitor', monitor.pk, '--end', '2025-07-16', stdout=StringIO())
+        monitor = make_dash_station('2')
+        with pytest.raises(CommandError, match='--end'):
+            call_command('restamp_cimis', f'--monitor={monitor.pk}', '--end', '2025-07-16', stdout=StringIO())
 
     def test_command_reports_a_short_answer(self):
-        monitor = make_station('2')
+        monitor = make_dash_station('2')
         days = [date(2025, 7, 15), date(2025, 7, 16)]
         store_legacy(monitor, days)
         before = all_rows(monitor)
@@ -361,7 +379,7 @@ class RestampCommandTests(TestCase):
 
         with patch('camp.apps.monitors.cimis.restamp.CIMISAPI', return_value=fake_api(days={days[0]})), through(days[-1]):
             with pytest.raises(CommandError, match=re.escape(str(monitor.pk))):
-                call_command('restamp_cimis', '--monitor', monitor.pk, stdout=StringIO(), stderr=err)
+                call_command('restamp_cimis', f'--monitor={monitor.pk}', stdout=StringIO(), stderr=err)
 
         assert 'no labels' in err.getvalue()
         assert '2025-07-16' in err.getvalue()
@@ -372,13 +390,13 @@ class RestampCommandTests(TestCase):
             call_command('restamp_cimis', '--monitor', 'nope', stdout=StringIO())
 
     def test_command_restamps_and_prints_counts(self):
-        monitor = make_station('2')
+        monitor = make_dash_station('2')
         days = [date(2025, 7, 15), date(2025, 7, 16)]
         store_legacy(monitor, days)
         out = StringIO()
 
         with patch('camp.apps.monitors.cimis.restamp.CIMISAPI', return_value=fake_api()), through(days[-1]):
-            call_command('restamp_cimis', '--monitor', monitor.pk, stdout=out)
+            call_command('restamp_cimis', f'--monitor={monitor.pk}', stdout=out)
 
         output = out.getvalue()
         assert '2025-07-15' in output
@@ -390,14 +408,14 @@ class RestampCommandTests(TestCase):
         assert utc(days[0], 8) in stamps
 
     def test_command_dry_run_writes_nothing(self):
-        monitor = make_station('2')
+        monitor = make_dash_station('2')
         days = [date(2025, 7, 15), date(2025, 7, 16)]
         store_legacy(monitor, days)
         before = all_rows(monitor)
         out = StringIO()
 
         with patch('camp.apps.monitors.cimis.restamp.CIMISAPI', return_value=fake_api()), through(days[-1]):
-            call_command('restamp_cimis', '--monitor', monitor.pk, '--dry-run', stdout=out)
+            call_command('restamp_cimis', f'--monitor={monitor.pk}', '--dry-run', stdout=out)
 
         assert all_rows(monitor) == before
         assert 'dry run' in out.getvalue().lower()
