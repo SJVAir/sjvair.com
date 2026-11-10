@@ -457,17 +457,24 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
     streaming = True
 
     def get_queryset(self, *args, **kwargs):
+        # No latest_entries prefetch: nothing here reads it (is_active uses
+        # the last_entry_timestamp annotation).
         queryset = (super()
             .get_queryset(*args, **kwargs)
+            .prefetch_related(None)
             .get_public()
             .published_for(self.entry_model)
             .filter(position__isnull=False)
         )
 
-        # Only monitors that are recently active...
-        queryset = queryset.get_active(timedelta(
-            days=settings.MONITOR_ACTIVE_WINDOW_DAYS
-        ).total_seconds())
+        # Only monitors that are recently active. An EXISTS, not
+        # get_active()'s join + DISTINCT: that join repeats each monitor once
+        # per LatestEntry row, and the inflated row estimate pushed the plan
+        # over Postgres' JIT threshold (~400-500 ms of JIT per run).
+        cutoff = timezone.now() - timedelta(days=settings.MONITOR_ACTIVE_WINDOW_DAYS)
+        queryset = queryset.filter(Exists(
+            LatestEntry.objects.filter(monitor_id=OuterRef('pk'), timestamp__gte=cutoff)
+        )).order_by('name', 'id')  # Meta.ordering, with the id tiebreak the DISTINCT's sort gave
 
         # ...and, for PM2.5, recently healthy. Health checks score the
         # dual-channel PM2.5 sensors only, so they don't gate other

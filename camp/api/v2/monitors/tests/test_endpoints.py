@@ -556,6 +556,89 @@ class EndpointTests(TestCase):
         assert content['errors']['detail'][0]['message'] == endpoints.CreateEntry.upload_not_allowed
 
 
+@override_settings(MONITOR_ENABLED_TYPES=[], MONITOR_HEALTHY_THRESHOLD=0)
+class CurrentDataActiveTests(TestCase):
+    '''
+        current/ lists each public monitor with a position and a latest entry
+        of the type, active within MONITOR_ACTIVE_WINDOW_DAYS. "Active" used
+        to be get_active()'s join to LatestEntry + DISTINCT, which repeated
+        each monitor once per LatestEntry row and pushed the plan over
+        Postgres' JIT threshold; it is an EXISTS now.
+    '''
+    fixtures = ['default-calibrations.yaml']
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.sensor_ids = iter(range(95000, 96000))
+        cache.clear()
+
+    def tearDown(self):
+        cache.clear()
+
+    def make(self, age=timedelta(minutes=1), extra_types=(), name='PurpleAir'):
+        from django.contrib.gis.geos import Point
+        monitor = PurpleAir.objects.create(
+            name=name, sensor_id=next(self.sensor_ids),
+            position=Point(-119.78, 36.73, srid=4326), location=PurpleAir.LOCATION.outside,
+        )
+        timestamp = timezone.now() - age
+        monitor.create_entry(entry_models.PM25, timestamp=timestamp, value=10.0, sensor='a',
+            stage=entry_models.PM25.Stage.CLEANED)
+        for EntryModel in extra_types:
+            monitor.create_entry(EntryModel, timestamp=timestamp, value=Decimal('50.0'))
+        return monitor
+
+    def get_ids(self):
+        kwargs = {'entry_type': 'pm25'}
+        url = reverse('api:v2:monitors:current-data', kwargs=kwargs)
+        response = current_data(self.factory.get(url, {'_cc': '1'}), **kwargs)
+        assert response.status_code == 200
+        return [m['id'] for m in get_response_data(response)['data']]
+
+    def test_active_window(self):
+        window = timedelta(days=settings.MONITOR_ACTIVE_WINDOW_DAYS)
+        recent = self.make(age=timedelta(days=10))
+        edge = self.make(age=window - timedelta(hours=1))
+        self.make(age=window + timedelta(days=1))
+        assert sorted(self.get_ids()) == sorted([str(recent.pk), str(edge.pk)])
+
+    def test_ordered_by_name_then_id(self):
+        # Same-named monitors are common (the DISTINCT's sort used to break
+        # those ties by id; without it they came back in any order).
+        monitors = [self.make() for _ in range(5)]
+        named = self.make(name='Aardvark')
+        expected = [str(named.pk)] + [str(m.pk) for m in sorted(monitors, key=lambda m: m.pk.int)]
+        assert self.get_ids() == expected
+
+    def test_each_monitor_once_with_several_latest_entries(self):
+        monitor = self.make(extra_types=(entry_models.Temperature, entry_models.Humidity))
+        assert monitor.latest_entries.count() >= 3
+        assert self.get_ids() == [str(monitor.pk)]
+
+    def test_query_count_and_no_distinct(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        kwargs = {'entry_type': 'pm25'}
+        url = reverse('api:v2:monitors:current-data', kwargs=kwargs)
+
+        def run():
+            with CaptureQueriesContext(connection) as ctx:
+                response = current_data(self.factory.get(url, {'_cc': '1'}), **kwargs)
+                get_response_data(response)
+            return ctx.captured_queries
+
+        self.make(extra_types=(entry_models.Temperature,))
+        few = run()
+        for _ in range(5):
+            self.make(extra_types=(entry_models.Temperature,))
+        many = run()
+
+        # DefaultCalibration lookup, monitors, latest entries.
+        assert len(few) == len(many) == 3
+        main = max(many, key=lambda q: len(q['sql']))['sql']
+        assert 'DISTINCT' not in main
+
+
 class MonitorFilterDeviceTests(TestCase):
     '''
         MonitorFilter.filter_device() hardcodes a device-name -> lookup-field
