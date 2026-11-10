@@ -42,7 +42,7 @@ class MonitorMixin:
     def get_queryset(self):
         queryset = (super()
             .get_queryset()
-            .select_related('health')
+            .select_related('health', 'airgradient__place')
             .prefetch_related('latest_entries')
             .with_last_entry_timestamp()
         )
@@ -88,6 +88,8 @@ class MonitorList(CachedEndpointMixin, MonitorMixin, generics.ListEndpoint):
 
     cache_refresh = True
     cache_refresh_name = 'api:v2:monitors:monitor-list'
+    cache_encoded = True
+    cache_key_version = 1  # entries are encoded bytes, not data
     cache_timeout = 90
 
     filter_class = MonitorFilter
@@ -446,6 +448,8 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
     cache_refresh = True
     cache_refresh_kwargs = [{'entry_type': E.entry_type} for E in BaseEntry.get_subclasses()]
     cache_refresh_name = 'api:v2:monitors:current-data'
+    cache_encoded = True
+    cache_key_version = 1  # entries are encoded bytes, not data
     cache_timeout = 90
 
     paginate = False

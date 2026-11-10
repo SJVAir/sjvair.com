@@ -28,6 +28,7 @@ import vanilla
 from django_huey import get_queue
 from resticus import http
 from resticus.http import JSONResponse
+from resticus.settings import api_settings
 from ua_parser import parse as ua_parse
 
 from camp.apps.entries.models import PM25
@@ -54,6 +55,12 @@ class CachedEndpointMixin:
     # again, which matters on a long timeout: without it a day-old entry
     # keeps serving the old shape to a client expecting the new one.
     cache_key_version: Optional[int] = None
+    # Cache the encoded JSON body and serve it as a plain response, instead
+    # of caching the data and streaming it. Streaming re-encodes the data on
+    # every hit, one chunk per JSON token, and that per-chunk overhead
+    # dominates a large cached list (~160 ms for the monitor list). The body
+    # is byte-identical to the streamed one.
+    cache_encoded: bool = False
 
     # --- Prewarm knobs (opt-in) ---
     cache_refresh: bool = False
@@ -96,6 +103,8 @@ class CachedEndpointMixin:
 
         status = 'REFRESH' if warm else 'BYPASS' if clear else 'MISS'
         response = super().get(request, *args, **kwargs)
+        if self.cache_encoded and not isinstance(response, (HttpResponse, StreamingHttpResponse)):
+            response = api_settings.JSON_ENCODER().encode(response).encode('utf-8')
         if self.is_cacheable(response):
             try:
                 cache.set(cache_key, response, self.cache_timeout)
@@ -156,7 +165,9 @@ class CachedEndpointMixin:
         return params
 
     def _finalize_response(self, response, cache_status: str):
-        if not isinstance(response, (HttpResponse, StreamingHttpResponse)):
+        if isinstance(response, bytes):
+            response = HttpResponse(response, content_type='application/json')
+        elif not isinstance(response, (HttpResponse, StreamingHttpResponse)):
             if self.is_streaming():
                 response = self.streaming_response(response)
             else:
