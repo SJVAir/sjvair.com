@@ -11,8 +11,9 @@ from resticus.views import Endpoint
 from django import forms
 from django.conf import settings
 from django.contrib.gis.db.models.functions import Distance
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.http import Http404, HttpResponse, StreamingHttpResponse
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
 from django.views.decorators.csrf import csrf_exempt
@@ -23,7 +24,7 @@ from camp.apps.entries.models import BaseEntry, PM25
 from camp.apps.entries.stages import STAGE_DESCRIPTIONS, Stage
 from camp.apps.entries.tasks import data_export
 from camp.apps.entries.utils import get_entry_model_by_name
-from camp.apps.monitors.models import Monitor
+from camp.apps.monitors.models import LatestEntry, Monitor
 from camp.utils.forms import LatLonForm
 from camp.utils.datetime import make_aware
 from camp.utils.views import CachedEndpointMixin
@@ -398,29 +399,37 @@ class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
         if not form.is_valid():
             return self.model.objects.none()
 
-        queryset = (super()
-            .get_queryset()
-            .get_active()
+        # Everything up to the slice stays in SQL, so only the 3 nearest
+        # monitors are ever loaded. Not MonitorMixin's queryset: its
+        # latest_entries prefetch isn't needed here (is_active reads the
+        # last_entry_timestamp annotation). Active is an EXISTS, not
+        # get_active()'s join + DISTINCT: that join repeats each monitor once
+        # per LatestEntry row, and the inflated row estimate pushed the plan
+        # over Postgres' JIT threshold (~400 ms of JIT per request).
+        cutoff = timezone.now() - timedelta(seconds=Monitor.LAST_ACTIVE_LIMIT)
+        is_active = Exists(LatestEntry.objects.filter(monitor_id=OuterRef('pk'), timestamp__gte=cutoff))
+
+        queryset = (self.model.objects
+            .select_related('health', 'airgradient__place')
+            .with_last_entry_timestamp()
+            .filter(is_active)
             .get_public()
             .published_for(self.entry_model)
             .filter(location=Monitor.LOCATION.outside)
+            .annotate_latest_entry(self.entry_model)
             .annotate(distance=Distance('position', form.point, spheroid=True))
-            .order_by('distance')
+            .order_by('distance', 'id')
         )
-        # Apply filters (e.g. ?device=) before limiting to the 3 nearest
-        # and before with_latest_entry() - both matter: filtering after the
-        # slice would wrongly exclude a matching monitor just outside the
-        # raw top 3, and with_latest_entry() sets `latest_<type>`/`distance`
-        # by mutating the fetched instances in place, which a later
-        # .filter() call would silently lose (Django clones the queryset,
-        # discarding that in-memory state). Not using filter_class here
+        # Apply filters (e.g. ?device=) before limiting to the 3 nearest:
+        # filtering after the slice would wrongly exclude a matching monitor
+        # just outside the raw top 3. Not using filter_class here
         # deliberately - the base ListModelMixin would call filter_queryset()
-        # a second time after get_queryset() returns, right where it would
-        # do that damage.
+        # a second time after get_queryset() returns, on the evaluated list.
         queryset = MonitorFilter(self.request.GET, queryset=queryset).qs
-        queryset = queryset.with_latest_entry(self.entry_model)
 
-        return queryset[:3]
+        monitors = list(queryset[:3])
+        queryset.attach_latest_entries(monitors, self.entry_model)
+        return monitors
 
     def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
         entry_type = self.entry_model.entry_type

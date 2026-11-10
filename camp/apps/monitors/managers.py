@@ -206,6 +206,22 @@ class MonitorQuerySet(InheritanceQuerySet):
         return self.annotate(last_entry_timestamp=Subquery(subquery, output_field=DateTimeField()))
 
     def with_latest_entry(self, entry_model, stage=None, processor=None):
+        """
+        Evaluate the queryset, keep monitors with a latest entry of
+        `entry_model`, and attach it as `latest_<entry_type>`. Loads every
+        matching monitor: to keep only a few, use annotate_latest_entry(),
+        slice, then attach_latest_entries().
+        """
+        monitors = self.annotate_latest_entry(entry_model, stage=stage, processor=processor)
+        self.attach_latest_entries(monitors, entry_model)
+        return monitors
+
+    def annotate_latest_entry(self, entry_model, stage=None, processor=None):
+        """
+        SQL only: annotate `latest_<entry_type>_id` from LatestEntry and drop
+        monitors without one. Nothing is evaluated, so it can still be
+        filtered, ordered and sliced.
+        """
         from camp.apps.monitors.models import LatestEntry
 
         entry_type = entry_model.entry_type
@@ -229,10 +245,20 @@ class MonitorQuerySet(InheritanceQuerySet):
             .values('entry_id')[:1]
         )
 
-        monitors = (self
+        return (self
             .annotate(**{field_id: Subquery(subquery)})
             .exclude(**{f'{field_id}__isnull': True})
         )
+
+    @staticmethod
+    def attach_latest_entries(monitors, entry_model):
+        """
+        Fetch the entries named by annotate_latest_entry() in one query and
+        set `latest_<entry_type>` and `latest_entry` on each monitor, in
+        place. `monitors` is evaluated (a queryset's result cache is filled).
+        """
+        entry_type = entry_model.entry_type
+        field_id = f'latest_{entry_type}_id'
 
         entries = entry_model.objects.filter(pk__in=[getattr(m, field_id) for m in monitors])
         entry_map = {e.pk: e for e in entries}
@@ -241,8 +267,6 @@ class MonitorQuerySet(InheritanceQuerySet):
             entry = entry_map.get(getattr(monitor, field_id))
             setattr(monitor, f'latest_{entry_type}', entry)
             monitor.latest_entry = entry
-
-        return monitors
 
     def select_health(self, hours: int = 24, min_score: int = 1, threshold: float = 0.8, as_of: Optional[datetime] = None):
         from camp.apps.monitors.models import Monitor
