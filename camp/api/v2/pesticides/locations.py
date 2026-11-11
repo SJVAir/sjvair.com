@@ -105,6 +105,10 @@ class LocationListBase(generics.Endpoint):
             'geometry': json.loads(location.point.geojson),
             'properties': {
                 'id': location.sqid,
+                # The permanent public code, named as LocationSerializer
+                # names it, so a clicked site can be saved as a place.
+                'source': location.source,
+                'external_id': location.external_id,
                 'name': location.name,
                 'type': location.type,
                 'type_label': str(location.short_type),
@@ -163,6 +167,7 @@ class LocationList(CachedEndpointMixin, LocationListBase):
     `region` also takes `buffer=0|1|3|5` to widen the region by that many miles.
     """
     cache_timeout = 60 * 60 * 24
-    # v2: the GeoJSON property names changed. A day-long cache would keep
-    # handing the map the old ones long after the deploy.
-    cache_key_version = 2
+    # v2: the GeoJSON property names changed. v3: `source` and `external_id`
+    # added. A day-long cache would keep handing out the old shape long after
+    # the deploy.
+    cache_key_version = 3
