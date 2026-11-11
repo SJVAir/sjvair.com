@@ -25,6 +25,11 @@ class BuildPolicyTests(TestCase):
         assert parsed == expected
         assert list(parsed) == list(HOSTS)
 
+    def test_map_tiles_host_is_allowed(self):
+        parsed = parse(build_policy('/static/'))
+        assert 'https://api.maptiler.com' in parsed['connect-src']
+        assert 'https://api.maptiler.com' in parsed['img-src']
+
     def test_bare_static_path_is_dropped(self):
         policy = build_policy('/static/')
         assert '/static/' not in policy
