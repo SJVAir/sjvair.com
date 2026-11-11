@@ -4,7 +4,12 @@
 	"style-src": ["'self'", "{static}", "'unsafe-inline'"],
 	"font-src": ["'self'", "{static}"],
 	"img-src": ["'self'", "{static}", "data:", "blob:"],
-	"connect-src": ["'self'", "{static}", "https://o270131.ingest.us.sentry.io"],
+	"connect-src": [
+		"'self'",
+		"{static}",
+		"https://o270131.ingest.us.sentry.io",
+		"https://api.maptiler.com"
+	],
 	"worker-src": ["'self'", "blob:"],
 	"manifest-src": ["'self'"],
 	"frame-ancestors": ["'none'"],
