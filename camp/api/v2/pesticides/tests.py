@@ -1458,6 +1458,15 @@ class LocationEndpointTests(TestCase):
         assert names == ['Alpha Elementary', 'Bravo Child Care']
         assert [f['properties']['name'] for f in self.features(lat=35.36, lng=-119.04, radius=1)] == ['Charlie Academy']
 
+    def test_features_carry_the_location_code(self):
+        # (source, external_id) is the permanent public code a saved place
+        # refers to; named as LocationSerializer names them.
+        props = {f['properties']['name']: f['properties'] for f in self.features(region=self.county.sqid)}
+        assert props['Alpha Elementary']['source'] == 'cde-public'
+        assert props['Alpha Elementary']['external_id'] == '1'
+        assert props['Bravo Child Care']['source'] == 'cdss-ccl'
+        assert props['Bravo Child Care']['external_id'] == '2'
+
     def test_a_bad_area_is_a_bad_request(self):
         assert self.client.get(self.url, {'region': 'nope'}).status_code == 400
         assert self.client.get(self.url, {'lat': 'x', 'lng': '-119'}).status_code == 400
@@ -1475,6 +1484,8 @@ class LocationEndpointTests(TestCase):
         assert feature['geometry'] == {'type': 'Point', 'coordinates': [-119.79, 36.71]}
         assert feature['properties'] == {
             'id': self.school.sqid,
+            'source': 'cde-public',
+            'external_id': '1',
             'name': 'Alpha Elementary',
             'type': 'public_school',
             'type_label': 'Public school',
