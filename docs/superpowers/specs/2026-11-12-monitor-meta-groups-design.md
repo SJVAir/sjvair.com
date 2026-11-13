@@ -57,7 +57,8 @@ Additions only; nothing existing changes.
 | `reference` (Reference-grade) | airnow, aqlite, aqview, bam1022 |
 | `low-cost` (Low-cost sensors) | airgradient, purpleair, vozbox |
 
-Taken from monitor-map's `REFERENCE_GRADE_TYPES` and `LOW_COST_TYPES`.
+Taken from monitor-map's `REFERENCE_GRADE_TYPES` and `LOW_COST_TYPES`; these are exactly the
+types whose `GRADE` is `fem` and `lcs` today.
 
 ### Help text (wording approved by the user)
 
@@ -76,9 +77,12 @@ Every other entry type (weather, `particulates`) is `null`.
 
 ## Where the values live
 
-- `MonitorGroup` choices class (`models.TextChoices`, `gettext_lazy` labels) in the monitors app,
-  with the order in which its members are declared as `order`.
-- `group = MonitorGroup.X` class attribute on each enabled `Monitor` subclass; base `Monitor.group = None`.
+- `Monitor.Group` choices class (`models.TextChoices`, `gettext_lazy` labels), nested in `Monitor`
+  next to `Monitor.Grade`; `order` is the member's declaration index.
+- The group is derived from the existing `GRADE`, not a new per-type attribute (the user,
+  2026-11-12): `FEM` and `FRM` are `reference`, `LCS` is `low-cost`. `GRADE` already matches
+  monitor-map's lists exactly, and a second attribute could disagree with it. A type whose grade
+  maps to no group (CIMIS: `None`) has `group: null`; CIMIS isn't in the meta anyway.
 - `description = _('...')` class attribute on the 8 entry models, next to `label`;
   `BaseEntry.description = None`.
 - The endpoint serializes lazy strings with `str()`, as `get_stages` does.
@@ -91,6 +95,10 @@ Every other entry type (weather, `particulates`) is `null`.
 - C. A list of groups naming their types. Order built in, but each type's group is stated twice
   (list and model) and they can disagree.
 
+Where the group comes from: a separate `group` attribute per type was dropped for deriving it
+from `GRADE`, which already carries the same split. If a group that doesn't follow certification is
+ever wanted, add an override then.
+
 Help-text scope: the user picked all 8 air-quality pollutants over PM2.5 and ozone only (publishing
 a new pollutant stays a fixture-only change, and dashboard widgets can reuse the text) and over all
 24 entry types (weather isn't on the map).
@@ -99,7 +107,8 @@ a new pollutant stays a fixture-only change, and dashboard widgets can reuse the
 
 - Meta response has `monitor_groups` with both groups, keys, labels and orders as above.
 - Every enabled monitor type has a `group` that is a `monitor_groups` key (fails when a new type
-  is enabled without one); the 7 current types map as in the table.
+  is enabled with a grade that maps to no group); the 7 current types map as in the table.
+- The grade mapping: FEM and FRM give `reference`, LCS gives `low-cost`, `None` gives `None`.
 - The 8 pollutants' `description` match the table; every other entry type is `null`.
 
 ## Deferred
@@ -117,4 +126,4 @@ wait on it.
 
 ## Left to the builder
 
-Where `MonitorGroup` sits in the monitors app, and test file placement.
+Test file placement.
