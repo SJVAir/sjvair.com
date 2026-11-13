@@ -77,8 +77,9 @@ Every other entry type (weather, `particulates`) is `null`.
 
 ## Where the values live
 
-- `Monitor.Group` choices class (`models.TextChoices`, `gettext_lazy` labels), nested in `Monitor`
-  next to `Monitor.Grade`; `order` is the member's declaration index.
+- `Monitor.GradeGroup` choices class (`models.TextChoices`, `gettext_lazy` labels), nested in `Monitor`
+  next to `Monitor.Grade` (not `Group`: the app already has a `Group` model); `order` is the
+  member's declaration index.
 - The group is derived from the existing `GRADE`, not a new per-type attribute (the user,
   2026-11-12): `FEM` and `FRM` are `reference`, `LCS` is `low-cost`. `GRADE` already matches
   monitor-map's lists exactly, and a second attribute could disagree with it. A type whose grade
@@ -106,8 +107,12 @@ a new pollutant stays a fixture-only change, and dashboard widgets can reuse the
 ## Tests
 
 - Meta response has `monitor_groups` with both groups, keys, labels and orders as above.
-- Every enabled monitor type has a `group` that is a `monitor_groups` key (fails when a new type
-  is enabled with a grade that maps to no group); the 7 current types map as in the table.
+- Every enabled monitor type that has a `GRADE` has a `group` that is a `monitor_groups` key
+  (fails when a new type is enabled with a grade that maps to no group); the 7 current types map
+  as in the table.
+- A type with no `GRADE` stays in the meta with `group: null` (the user, 2026-11-12; map-sdk lists
+  it flat with no heading). Possible when `MONITOR_ENABLED_TYPES` is empty, which enables every
+  type, CIMIS included. Not left out: the meta's other fields still serve it.
 - The grade mapping: FEM and FRM give `reference`, LCS gives `low-cost`, `None` gives `None`.
 - The 8 pollutants' `description` match the table; every other entry type is `null`.
 
