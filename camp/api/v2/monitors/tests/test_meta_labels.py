@@ -1,9 +1,12 @@
 import pytest
 
+from unittest.mock import patch
+
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
 
 from camp.api.v2.monitors import endpoints
+from camp.apps.monitors.models import Monitor
 from camp.utils.test import get_response_data
 
 monitor_meta = endpoints.MonitorMetaEndpoint.as_view()
@@ -80,3 +83,62 @@ class MonitorMetaAlertsTests(TestCase):
         for monitor in self._fetch()['monitors'].values():
             for entry in monitor['entries'].values():
                 assert 'alerts' in entry
+
+
+class MonitorMetaGroupTests(TestCase):
+    fixtures = ['default-calibrations.yaml']
+
+    def _fetch(self):
+        url = reverse('api:v2:monitors:monitor-meta')
+        return get_response_data(monitor_meta(RequestFactory().get(url)))['data']
+
+    def test_monitor_groups(self):
+        assert self._fetch()['monitor_groups'] == {
+            'reference': {'key': 'reference', 'label': 'Reference-grade', 'order': 0},
+            'low-cost': {'key': 'low-cost', 'label': 'Low-cost sensors', 'order': 1},
+        }
+
+    def test_group_labels_are_plain_strings(self):
+        for group in self._fetch()['monitor_groups'].values():
+            assert type(group['label']) is str
+
+    def test_every_graded_type_has_a_group(self):
+        data = self._fetch()
+        for monitor_model in Monitor.get_enabled_subclasses():
+            if monitor_model.GRADE is not None:
+                assert data['monitors'][monitor_model.monitor_type]['group'] in data['monitor_groups']
+
+    def test_gradeless_type_listed_with_null_group(self):
+        # Empty MONITOR_ENABLED_TYPES enables every type, CIMIS (GRADE None) included.
+        with self.settings(MONITOR_ENABLED_TYPES=[]):
+            monitors = self._fetch()['monitors']
+        assert 'cimis' in monitors
+        assert monitors['cimis']['group'] is None
+
+    def test_current_type_groups(self):
+        monitors = self._fetch()['monitors']
+        expected = {
+            'airnow': 'reference', 'aqlite': 'reference', 'aqview': 'reference', 'bam1022': 'reference',
+            'airgradient': 'low-cost', 'purpleair': 'low-cost', 'vozbox': 'low-cost',
+        }
+        for monitor_type, group in expected.items():
+            if monitor_type in monitors:
+                assert monitors[monitor_type]['group'] == group
+
+    def test_bam1022_label_unchanged(self):
+        monitors = self._fetch()['monitors']
+        if 'bam1022' in monitors:
+            assert monitors['bam1022']['label'] == 'BAM 1022'
+
+
+class GradeGroupMappingTests(TestCase):
+    def test_grade_mapping(self):
+        cases = {
+            Monitor.Grade.FEM: Monitor.GradeGroup.REFERENCE,
+            Monitor.Grade.FRM: Monitor.GradeGroup.REFERENCE,
+            Monitor.Grade.LCS: Monitor.GradeGroup.LOW_COST,
+            None: None,
+        }
+        for grade, group in cases.items():
+            with patch.object(Monitor, 'GRADE', grade):
+                assert Monitor.get_grade_group() == group
