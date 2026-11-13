@@ -9,6 +9,7 @@ from .base import BaseEntry
 
 class PM25(BaseEntry):
     label = _('PM2.5')
+    description = _('Fine particles from smoke, dust, and vehicle exhaust.')
     epa_aqs_code = 88101
     units = 'µg/m³'
     summarize = True
@@ -34,6 +35,7 @@ class Particulates(BaseEntry):
 
 class PM10(BaseEntry):
     label = _('PM1.0')
+    description = _('The smallest particles, mostly from smoke and vehicle exhaust.')
     units = 'µg/m³'
 
     value = models.DecimalField(
@@ -44,6 +46,7 @@ class PM10(BaseEntry):
 
 class PM100(BaseEntry):
     label = _('PM10.0')
+    description = _('Coarser particles from dust, farming, and road traffic.')
     epa_aqs_code = 81102
     units = 'µg/m³'
 

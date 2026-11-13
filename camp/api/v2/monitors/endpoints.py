@@ -153,6 +153,7 @@ class MonitorMetaEndpoint(Endpoint):
             payload[monitor_model.monitor_type] = {
                 'label': monitor_model._meta.verbose_name,
                 'type': monitor_model.monitor_type,
+                'group': getattr(monitor_model.get_grade_group(), 'value', None),
                 'expected_interval': getattr(monitor_model, 'EXPECTED_INTERVAL', None),
                 'entries': {},
             }
@@ -200,6 +201,16 @@ class MonitorMetaEndpoint(Endpoint):
         )
         return scale.to_json()
 
+    def get_monitor_groups(self):
+        return {
+            group.value: {
+                'key': group.value,
+                'label': str(group.label),
+                'order': order,
+            }
+            for order, group in enumerate(Monitor.GradeGroup)
+        }
+
     def get_stages(self):
         return {
             stage.value: {
@@ -231,6 +242,7 @@ class MonitorMetaEndpoint(Endpoint):
                 'label': entry_model.label,
                 'type': entry_model.entry_type,
                 'units': entry_model.units,
+                'description': str(entry_model.description) if entry_model.description is not None else None,
                 'epa_aqs_code': entry_model.epa_aqs_code,
                 'scale': self.get_scale(entry_model),
                 'school_guidelines': school_guidelines if entry_model.entry_type == 'pm25' else None,
@@ -244,6 +256,7 @@ class MonitorMetaEndpoint(Endpoint):
         return {'data': {
             'default_pollutant': self.get_default_pollutant(),
             'available_pollutants': DefaultCalibration.objects.available_pollutants(published),
+            'monitor_groups': self.get_monitor_groups(),
             'monitors': self.get_monitors(published),
             'entries': self.get_entries(request),
             'stages': self.get_stages(),

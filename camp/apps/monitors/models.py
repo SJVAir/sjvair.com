@@ -126,6 +126,21 @@ class Monitor(models.Model):
 
     GRADE = None
 
+    class GradeGroup(models.TextChoices):
+        # Map toolbar groups (monitors/meta/ monitor_groups); ids are permanent.
+        REFERENCE = 'reference', _('Reference-grade')
+        LOW_COST = 'low-cost', _('Low-cost sensors')
+
+    GRADE_GROUPS = {
+        Grade.FEM: GradeGroup.REFERENCE,
+        Grade.FRM: GradeGroup.REFERENCE,
+        Grade.LCS: GradeGroup.LOW_COST,
+    }
+
+    @classmethod
+    def get_grade_group(cls):
+        return cls.GRADE_GROUPS.get(cls.GRADE)
+
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
