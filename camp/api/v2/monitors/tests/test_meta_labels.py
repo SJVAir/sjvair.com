@@ -115,20 +115,21 @@ class MonitorMetaGroupTests(TestCase):
         assert 'cimis' in monitors
         assert monitors['cimis']['group'] is None
 
+    CURRENT_GROUPS = {
+        'airnow': 'reference', 'aqlite': 'reference', 'aqview': 'reference', 'bam1022': 'reference',
+        'airgradient': 'low-cost', 'purpleair': 'low-cost', 'vozbox': 'low-cost',
+    }
+
     def test_current_type_groups(self):
-        monitors = self._fetch()['monitors']
-        expected = {
-            'airnow': 'reference', 'aqlite': 'reference', 'aqview': 'reference', 'bam1022': 'reference',
-            'airgradient': 'low-cost', 'purpleair': 'low-cost', 'vozbox': 'low-cost',
-        }
-        for monitor_type, group in expected.items():
-            if monitor_type in monitors:
-                assert monitors[monitor_type]['group'] == group
+        # Pinned, so a type leaving the base setting can't make this pass vacuously.
+        with self.settings(MONITOR_ENABLED_TYPES=list(self.CURRENT_GROUPS)):
+            monitors = self._fetch()['monitors']
+        assert {t: m['group'] for t, m in monitors.items()} == self.CURRENT_GROUPS
 
     def test_bam1022_label_unchanged(self):
-        monitors = self._fetch()['monitors']
-        if 'bam1022' in monitors:
-            assert monitors['bam1022']['label'] == 'BAM 1022'
+        with self.settings(MONITOR_ENABLED_TYPES=['bam1022']):
+            monitors = self._fetch()['monitors']
+        assert monitors['bam1022']['label'] == 'BAM 1022'
 
 
 class GradeGroupMappingTests(TestCase):
