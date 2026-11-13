@@ -238,7 +238,10 @@ zones are missing there; see SJVAPCD Forecast Setup).
   `narrows` and `placeholder_chemicals`; it's both pesticide datasets' `meta_url`. The
   pesticide entity search (`pesticides/search/`) returns one page plus `more`, and a
   `placeholder` flag on chemical results. `monitors/meta/` adds a `scale` per entry type plus `stages` and
-  `processors` labels. It no longer serves the legacy `levels` dict; `scale` is the only level
+  `processors` labels. It also lists `monitor_groups` (`reference`, `low-cost`; `{key, label, order}`,
+  ids permanent) and each monitor type's `group`, derived from `GRADE` (`Monitor.get_grade_group()`:
+  FEM/FRM reference, LCS low-cost, no grade `null`). Each entry type has `description`: plain help
+  text for the air-quality pollutants, `null` otherwise. It no longer serves the legacy `levels` dict; `scale` is the only level
   format. Each entry type has `school_guidelines` (null except `pm25`), defined in
   `camp/apps/entries/guidelines.py`: activity keys are permanent, the text is verbatim from the
   old schools page, and the `/guidelines/` pages render from the same source.
