@@ -242,6 +242,7 @@ class MonitorMetaEndpoint(Endpoint):
                 'label': entry_model.label,
                 'type': entry_model.entry_type,
                 'units': entry_model.units,
+                'description': str(entry_model.description) if entry_model.description is not None else None,
                 'epa_aqs_code': entry_model.epa_aqs_code,
                 'scale': self.get_scale(entry_model),
                 'school_guidelines': school_guidelines if entry_model.entry_type == 'pm25' else None,

@@ -142,3 +142,38 @@ class GradeGroupMappingTests(TestCase):
         for grade, group in cases.items():
             with patch.object(Monitor, 'GRADE', grade):
                 assert Monitor.get_grade_group() == group
+
+
+DESCRIPTIONS = {
+    'pm25': 'Fine particles from smoke, dust, and vehicle exhaust.',
+    'o3': 'Ground-level gas that forms in sunlight on hot days.',
+    'pm10': 'The smallest particles, mostly from smoke and vehicle exhaust.',
+    'pm100': 'Coarser particles from dust, farming, and road traffic.',
+    'no2': 'Gas from vehicle and engine exhaust, highest near busy roads.',
+    'so2': 'Gas from burning fuels that contain sulfur, mostly from industry.',
+    'co': 'Colorless, odorless gas from vehicle exhaust and burning fuel.',
+    'co2': 'Gas from breathing and burning fuel; high levels indoors mean a room needs fresh air.',
+}
+
+
+class MonitorMetaDescriptionTests(TestCase):
+    fixtures = ['default-calibrations.yaml']
+
+    def _fetch(self):
+        url = reverse('api:v2:monitors:monitor-meta')
+        return get_response_data(monitor_meta(RequestFactory().get(url)))['data']
+
+    def test_pollutant_descriptions(self):
+        entries = self._fetch()['entries']
+        for entry_type, text in DESCRIPTIONS.items():
+            assert entries[entry_type]['description'] == text
+            assert type(entries[entry_type]['description']) is str
+
+    def test_other_entry_types_null(self):
+        entries = self._fetch()['entries']
+        for entry_type, entry in entries.items():
+            assert 'description' in entry
+            if entry_type not in DESCRIPTIONS:
+                assert entry['description'] is None
+        assert entries['particulates']['description'] is None
+        assert entries['temperature']['description'] is None
