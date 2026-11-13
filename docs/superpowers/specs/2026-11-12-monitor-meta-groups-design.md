@@ -46,7 +46,7 @@ Additions only; nothing existing changes.
 
 - `monitor_groups`: keyed by group id, each `{key, label, order}`. Same pattern as `stages` and
   `processors`. Clients sort headings by `order`, not by JSON key order.
-- `monitors[type].group`: a `monitor_groups` key. Every enabled monitor type has one.
+- `monitors[type].group`: a `monitor_groups` key, or `null` for a type with no `GRADE`.
 - `entries[type].description`: a string, or `null`.
 - Group ids `reference` and `low-cost` are permanent (clients key on them); labels may change.
 
