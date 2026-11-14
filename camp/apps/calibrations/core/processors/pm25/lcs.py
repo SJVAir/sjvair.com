@@ -43,12 +43,12 @@ class PM25_LCS_Correction(BaseProcessor):
         return True
 
     def out_of_bounds(self, value):
-        # Plantower sensors aren't reliable above ~1000 µg/m³; a broken
-        # channel often pegs at 2500-3300 instead.
+        # Dense smoke has read in the 900s; a broken channel often pegs
+        # at 2500-3300 instead.
         return (
             value is None
             or value < -15
-            or value > 1000
+            or value > 1500
         )
 
     def is_repeated(self, entry, max_repeat=5) -> bool:
