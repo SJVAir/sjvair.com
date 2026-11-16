@@ -1,10 +1,10 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from unittest import mock
 from unittest.mock import patch
 
 import pytest
 from tdigest import TDigest
-from django.contrib.gis.geos import Point
+from django.contrib.gis.geos import MultiPolygon, Point, Polygon
 from django.core.cache import cache
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
@@ -25,7 +25,8 @@ from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.monitors.models import Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
-from camp.apps.regions.models import Region
+from camp.apps.regions.models import Boundary, Region
+from camp.apps.regions.querysets import TRACT_VINTAGE
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.utils.test import get_response_data
 
@@ -702,6 +703,84 @@ class BulkRegionSummaryListTests(TestCase):
         assert len(fresno_timestamps) == 2
         assert fresno_timestamps == sorted(fresno_timestamps)
 
+    # Whole-type scope (?type=)
+
+    def _ids(self, query, **kwargs):
+        response = self._get(query, **kwargs)
+        assert response.status_code == 200
+        return {r['id'] for r in get_response_data(response)['data']}
+
+    def _tract(self, external_id, version):
+        region = Region.objects.create(name=external_id, slug=external_id, type='tract', external_id=external_id)
+        region.boundary = Boundary.objects.create(
+            region=region, version=version,
+            geometry=MultiPolygon(Polygon.from_bbox((-119.8, 36.7, -119.7, 36.8)), srid=4326))
+        region.save(update_fields=['boundary'])
+        make_region_summary(region, self.day, resolution='day', entry_type='pm25')
+        return region
+
+    def test_type_scope_returns_every_current_region_of_the_type(self):
+        assert self._ids({**self.january, 'type': 'county'}) == {self.fresno.sqid, self.kern.sqid}
+
+    def test_type_scope_leaves_out_other_types(self):
+        city = Region.objects.get(type='city')
+        make_region_summary(city, self.day, resolution='day', entry_type='pm25')
+        assert city.sqid not in self._ids({**self.january, 'type': 'county'})
+        assert self._ids({**self.january, 'type': 'city'}) == {city.sqid}
+
+    def test_type_scope_leaves_out_retired_regions(self):
+        Region.all_objects.filter(pk=self.kern.pk).update(retired_at=date(2026, 1, 15))
+        assert self._ids({**self.january, 'type': 'county'}) == {self.fresno.sqid}
+        # An explicit list still answers for the retired region.
+        assert self._ids({**self.january, 'region': self.kern.sqid}) == {self.kern.sqid}
+
+    def test_type_scope_leaves_out_old_vintage_tracts(self):
+        current = self._tract('06019000100', TRACT_VINTAGE)
+        old = self._tract('06019000200', '2010')
+        assert self._ids({**self.january, 'type': 'tract'}) == {current.sqid}
+        assert self._ids({**self.january, 'region': old.sqid}) == {old.sqid}
+
+    def test_type_and_region_together_is_400(self):
+        response = self._get({**self.january, 'type': 'county', 'region': self.fresno.sqid})
+        assert response.status_code == 400
+        assert get_response_data(response)['errors']['__all__'][0]['code'] == 'exclusive'
+
+    def test_neither_type_nor_region_is_400(self):
+        response = self._get({**self.january, 'type': ''})
+        assert response.status_code == 400
+        assert get_response_data(response)['errors']['region'][0]['code'] == 'required'
+
+    def test_blank_type_with_region_list_is_a_region_request(self):
+        assert self._ids({**self.january, 'type': '', 'region': self.fresno.sqid}) == {self.fresno.sqid}
+
+    def test_land_use_type_is_400(self):
+        response = self._get({**self.january, 'type': 'land_use'})
+        assert response.status_code == 400
+        assert get_response_data(response)['errors']['type'][0]['code'] == 'invalid_choice'
+
+    def test_unknown_type_is_400(self):
+        response = self._get({**self.january, 'type': 'galaxy'})
+        assert response.status_code == 400
+        assert get_response_data(response)['errors']['type'][0]['code'] == 'invalid_choice'
+
+    def test_type_scope_still_checks_the_date_span(self):
+        response = self._get({'type': 'county', 'start': '2020-01-01', 'end': '2026-01-01'})
+        assert response.status_code == 400
+
+    def test_type_scope_leaves_out_regions_without_a_boundary(self):
+        # /regions/geojson/ draws only regions with a boundary; the type scope matches it.
+        bare = Region.objects.create(name='Bare', slug='bare', type='county', external_id='06999')
+        make_region_summary(bare, self.day, resolution='day', entry_type='pm25')
+        assert bare.sqid not in self._ids({**self.january, 'type': 'county'})
+        assert self._ids({**self.january, 'region': bare.sqid}) == {bare.sqid}
+
+    def test_type_scope_with_no_rows_is_empty_200(self):
+        assert self._ids({**self.january, 'type': 'cdp'}) == set()
+
+    def test_type_scope_hourly(self):
+        make_region_summary(self.fresno, self.day, resolution='hour', entry_type='pm25')
+        assert self._ids({**self.january, 'type': 'county'}, resolution='hour') == {self.fresno.sqid}
+
 
 class SummaryCacheHeaderTests(TestCase):
     fixtures = ['purple-air.yaml', 'default-calibrations.yaml', 'regions.yaml']
@@ -1234,6 +1313,21 @@ class BulkOpenDaysEndpointTests(TestCase):
     def test_region_bulk_unknown_region_400(self):
         assert self._regions([('region', 'nope')]).status_code == 400
 
+    def test_region_bulk_type_scope(self):
+        self._hours(make_region_summary, self.fresno)
+        by_id = self._by_id(self._regions([('type', 'county')]))
+        # Kern (a county) has no hourly rows in the open window, so it isn't listed.
+        assert set(by_id) == {self.fresno.sqid}
+        assert len(by_id[self.fresno.sqid]['summaries']) == 2
+
+    def test_region_bulk_type_and_region_400(self):
+        response = self._regions([('type', 'county'), ('region', self.fresno.sqid)])
+        assert response.status_code == 400
+        assert get_response_data(response)['errors']['__all__'][0]['code'] == 'exclusive'
+
+    def test_region_bulk_land_use_400(self):
+        assert self._regions([('type', 'land_use')]).status_code == 400
+
     def test_url_resolution(self):
         from django.urls import resolve
         assert resolve('/api/2.0/monitors/pm25/summaries/daily/open/').func.view_class is BulkMonitorOpenDays
@@ -1270,3 +1364,66 @@ class OneNowPerRequestTests(TestCase):
         [row] = get_response_data(response)['data']
         assert row['is_final'] is False
         assert 'max-age=60' in response['Cache-Control']
+
+
+class BulkRegionTypeScopeScaleTests(TestCase):
+    """A whole type of more than 1,000 regions, which an id list can't carry
+    (DATA_UPLOAD_MAX_NUMBER_FIELDS is 1,000)."""
+
+    def setUp(self):
+        self.regions = Region.objects.bulk_create([
+            Region(name=f'Z{n:05}', slug=f'z{n:05}', type='zipcode', external_id=f'{n:05}')
+            for n in range(1100)
+        ])
+        geometry = MultiPolygon(Polygon.from_bbox((-119.8, 36.7, -119.7, 36.8)), srid=4326)
+        boundaries = Boundary.objects.bulk_create([
+            Boundary(region=region, version='2020', geometry=geometry) for region in self.regions
+        ])
+        for region, boundary in zip(self.regions, boundaries):
+            region.boundary = boundary
+        Region.objects.bulk_update(self.regions, ['boundary'])
+
+    def _page_ids(self, url, query):
+        ids, page = [], 1
+        while True:
+            response = self.client.get(url, {**query, 'page': page})
+            assert response.status_code == 200
+            data = get_response_data(response)
+            ids += [r['id'] for r in data['data']]
+            if not data['has_next_page']:
+                return ids, page
+            page += 1
+
+    def test_more_than_1000_regions_by_type(self):
+        regions = self.regions
+        day = timezone.make_aware(datetime(2026, 1, 1))
+        RegionSummary.objects.bulk_create([
+            RegionSummary(region=region, timestamp=day, resolution='day', entry_type='pm25',
+                          station_count=3, weight=30.0, **STATS)
+            for region in regions
+        ])
+
+        ids, pages = self._page_ids('/api/2.0/regions/pm25/summaries/daily/', {
+            'type': 'zipcode', 'start': '2026-01-01', 'end': '2026-01-01',
+        })
+        assert pages == 7  # page_size 168
+        assert len(ids) == 1100
+        assert set(ids) == {region.sqid for region in regions}
+
+    def test_more_than_1000_regions_by_type_open_days(self):
+        now = timezone.make_aware(datetime(2026, 1, 1, 12, 0))
+        hour = timezone.make_aware(datetime(2026, 1, 1, 9, 0))
+        # The shared STATS carry an empty digest, which can't be rolled up.
+        digest = TDigest()
+        digest.update(10.0)
+        stats = {**STATS, 'tdigest': tdigest_to_dict(digest)}
+        RegionSummary.objects.bulk_create([
+            RegionSummary(region=region, timestamp=hour, resolution='hour', entry_type='pm25',
+                          station_count=3, weight=30.0, **stats)
+            for region in self.regions
+        ])
+        with patch('django.utils.timezone.now', return_value=now):
+            ids, pages = self._page_ids('/api/2.0/regions/pm25/summaries/daily/open/', {'type': 'zipcode'})
+        assert pages == 11  # 100 regions per page
+        assert len(ids) == 1100
+        assert set(ids) == {region.sqid for region in self.regions}

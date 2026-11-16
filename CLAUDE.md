@@ -397,6 +397,13 @@ zones are missing there; see SJVAPCD Forecast Setup).
   docker compose run --rm web python manage.py fill_daily_peaks 2026-01-01 2026-11-10 \
     --monitor-type airnow --dry-run
   ```
+- **Bulk region scope**: `regions/<entry_type>/summaries/<resolution>/` and its `daily/open/` take
+  exactly one of `region` (repeatable sqids, resolved through `all_objects`, so retired and
+  old-vintage regions answer) or `type` (one `Region.Type` value: every current region of it with a
+  boundary, `Region.objects.exclude(boundary=None).current_vintage()`, the set `/regions/geojson/` draws); both or neither is a 400
+  (`exclusive` / `required`), and `land_use` or an unknown type is `invalid_choice`.
+  `BulkRegionScopeForm` cleans either to a Region queryset the views use as a sub-select, so a whole
+  type (tracts, MTRS) never travels as an id list (Django refuses over 1,000 query fields).
 - **Open days**: the nightly daily rollups run at 01:00 Pacific (monitors) and 01:10 (regions),
   so the latest daily rows are missing until then. `monitors/<id>/summaries/<entry_type>/daily/open/` (`?processor=`, default
   the raw `''` series) and `regions/<id>/summaries/<entry_type>/daily/open/` return unsaved DAILY
@@ -404,7 +411,7 @@ zones are missing there; see SJVAPCD Forecast Setup).
   stored row for it (`camp/apps/summaries/open_days.py`; at most 2 rows). Bulk
   `monitors/<entry_type>/summaries/daily/open/` (scoped like the bulk list: `region`, `bbox`,
   `MonitorFilter`, the published series or `?processor=`) and `regions/<entry_type>/summaries/daily/open/`
-  (`region` required) page by owner, 100 per page, and list only owners with an HOURLY row of
+  (`region` or `type` required) page by owner, 100 per page, and list only owners with an HOURLY row of
   the series in use (published or `?processor=`) since the first open day (an EXISTS in the owner
   query); a listed owner whose only hours are a stored yesterday's has `summaries: []`. The built
   rows are cached server-side for 60 s (`cached_open_rows`: kind, entry type, series filter,

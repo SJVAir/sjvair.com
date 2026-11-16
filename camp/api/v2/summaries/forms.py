@@ -85,7 +85,38 @@ class RegionListField(forms.Field):
 
 
 class BulkRegionScopeForm(forms.Form):
-    region = RegionListField(required=True)
+    """Exactly one of `region` (repeatable ids, retired regions included) or
+    `type` (every current region of one type that has a boundary, the set
+    /regions/geojson/ draws).
+    The scope lands in `cleaned_data['regions']`, always a Region queryset, which
+    the views use as a sub-select (`region__in=` / `pk__in=`)."""
+
+    TYPE_CHOICES = [choice for choice in Region.Type.choices if choice[0] != Region.Type.LAND_USE]
+
+    region = RegionListField(required=False)
+    type = forms.ChoiceField(choices=TYPE_CHOICES, required=False)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if 'region' in self.errors or 'type' in self.errors:
+            return cleaned_data
+
+        regions = cleaned_data.get('region')
+        region_type = cleaned_data.get('type')
+        if regions and region_type:
+            self.add_error(None, forms.ValidationError(
+                'Pass either region or type, not both.', code='exclusive',
+            ))
+        elif region_type:
+            cleaned_data['regions'] = (Region.objects
+                .filter(type=region_type).exclude(boundary=None).current_vintage())
+        elif regions:
+            cleaned_data['regions'] = Region.all_objects.filter(pk__in=[region.pk for region in regions])
+        else:
+            self.add_error('region', forms.ValidationError(
+                'At least one region, or a type, is required.', code='required',
+            ))
+        return cleaned_data
 
 
 class BulkRegionSummaryForm(BulkRegionScopeForm, BulkSummaryDateRangeForm):

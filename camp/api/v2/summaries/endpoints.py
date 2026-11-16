@@ -21,7 +21,7 @@ from camp.apps.summaries.periods import period_end
 from camp.apps.summaries.schedule import is_settled, settle_flags
 from camp.utils.datetime import make_aware
 
-from .filters import BulkMonitorSummaryFilter, BulkRegionSummaryFilter
+from .filters import BulkMonitorSummaryFilter, BulkRegionOpenDaysFilter, BulkRegionSummaryFilter
 from .forms import (
     BulkMonitorScopeForm,
     BulkMonitorSummaryForm,
@@ -345,9 +345,11 @@ class BulkRegionSummaryList(BulkFormMixin, SummaryMixin, generics.ListEndpoint):
     """Summary statistics for one or more regions matching an inclusive `start`/`end`
     date range. Each result is a region (same shape as RegionList) with its matching
     rows nested under `summaries` (without the region's `boundary` - fetch that from
-    the regions list, it would otherwise repeat on every page a region spans). `start`,
-    `end`, and at least one `region` are required, and every `region` id must exist;
-    invalid/missing parameters return a 400 with form errors.
+    the regions list, it would otherwise repeat on every page a region spans). `start`
+    and `end` are required, plus exactly one of `region` (repeatable; every id must
+    exist, retired regions included) or `type` (every current region of that type
+    with a boundary, the set /regions/geojson/ draws; not `land_use`). Invalid/missing parameters
+    return a 400 with form errors.
 
     Pagination is by summary row, not by region, same cross-page merge contract
     as BulkMonitorSummaryList: if the last region `id` on a page matches the first
@@ -364,7 +366,7 @@ class BulkRegionSummaryList(BulkFormMixin, SummaryMixin, generics.ListEndpoint):
         # which isn't stable enough to paginate on (same reasoning as the monitor bulk).
         return (super()
             .get_queryset()
-            .filter(region__in=self.form.cleaned_data['region'])
+            .filter(region__in=self.form.cleaned_data['regions'])
             .order_by('region_id', 'timestamp')
         )
 
@@ -463,24 +465,24 @@ class BulkMonitorOpenDays(BulkOpenDaysMixin, BulkMonitorScopeMixin, generics.Lis
 
 
 class BulkRegionOpenDays(BulkOpenDaysMixin, generics.ListEndpoint):
-    """Open-day rows for one or more regions (at least one `region` is required,
+    """Open-day rows for one or more regions (exactly one of `region` or `type`,
     as in BulkRegionSummaryList), with no `start`/`end`."""
 
     model = Region
     serializer_class = BulkRegionSummaryGroupSerializer
     form_class = BulkRegionScopeForm
+    filter_class = BulkRegionOpenDaysFilter
 
     def get_queryset(self):
         # Only regions with an hourly row since the first open day; the EXISTS
         # is served by the (region, entry_type, resolution, timestamp) unique index.
-        ids = [region.pk for region in self.form.cleaned_data['region']]
         recent = RegionSummary.objects.filter(
             region_id=OuterRef('pk'),
             entry_type=self.entry_model.entry_type,
             resolution=BaseSummary.Resolution.HOURLY,
             timestamp__gte=open_days(self.now)[0],
         )
-        return Region.all_objects.filter(Exists(recent), pk__in=ids).order_by('pk')
+        return Region.all_objects.filter(Exists(recent), pk__in=self.form.cleaned_data['regions']).order_by('pk')
 
     def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
         regions = list(source)
