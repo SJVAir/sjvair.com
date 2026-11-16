@@ -1115,6 +1115,10 @@ def notices_version():
 
 
 def bump_notices_version():
+    """
+    Start a new notices version, retiring every cached notices answer. Call it
+    after anything that writes PesticideNotice rows.
+    """
     value = str(time.time_ns())
     cache.set(NOTICES_VERSION_KEY, value, None)
     return value

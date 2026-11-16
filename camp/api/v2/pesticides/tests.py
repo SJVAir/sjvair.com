@@ -1223,7 +1223,7 @@ class NoticeDayEndpointTests(TestCase):
         assert all('past' not in f['properties'] for f in features)
 
     def test_bad_date(self):
-        for value in ('2026-13-01', 'nope', '2026-6-1', '0001-01-01'):
+        for value in ('2026-13-01', 'nope', '2026-6-1', '0001-01-01', '2026-W01-1'):
             response = self.client.get(self.url, {'date': value})
             assert response.status_code == 400, value
             assert response.json() == {'error': 'date must be YYYY-MM-DD'}
@@ -2329,6 +2329,12 @@ class PesticidesMetaTests(TestCase):
         from camp.apps.pesticides.badges import BADGES
         data = self.get()
         assert [b['key'] for b in data['badges']] == [b['key'] for b in BADGES]
+        assert [(b['key'], b['label'], b['note']) for b in data['badges']] == [
+            ('prop65', 'Prop 65', 'prop65'), ('carb_tac', 'CARB TAC', 'carb_tac'),
+            ('iarc_1', 'IARC 1', 'iarc_1'), ('iarc_2a', 'IARC 2A', 'iarc_2a'),
+            ('iarc_2b', 'IARC 2B', 'iarc_2b'), ('iarc_3', 'IARC 3', 'iarc_3'),
+            ('california_restricted', 'Restricted', 'california_restricted'),
+        ]
         assert data['links'] == {'spraydays_signup': 'https://spraydays.cdpr.ca.gov/'}
 
     def test_placeholder_chemicals(self):

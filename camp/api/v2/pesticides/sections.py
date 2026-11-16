@@ -4,6 +4,7 @@ Totals come from PesticideUseRollup; geometry from the MTRS Region boundaries.
 """
 import json
 import math
+import re
 
 from datetime import date, timedelta
 
@@ -536,13 +537,13 @@ def parse_day(params):
     value = params.get('date')
     if not value:
         return None, None
-    try:
-        day = date.fromisoformat(value)
-    except ValueError:
-        day = None
     # fromisoformat also takes other ISO forms (20260601, 2026-W01-1); only
     # YYYY-MM-DD is the documented one.
-    if day is None or len(value) != 10 or not stats.MIN_FILTER_YEAR <= day.year <= stats.MAX_FILTER_YEAR:
+    try:
+        day = date.fromisoformat(value) if re.fullmatch(r'\d{4}-\d{2}-\d{2}', value) else None
+    except ValueError:
+        day = None
+    if day is None or not stats.MIN_FILTER_YEAR <= day.year <= stats.MAX_FILTER_YEAR:
         return None, 'date must be YYYY-MM-DD'
     return day, None
 

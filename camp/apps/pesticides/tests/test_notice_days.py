@@ -84,3 +84,26 @@ class FetchBumpsVersionTests(TestCase):
             with pytest.raises(RuntimeError):
                 tasks.fetch_pesticide_notices.call_local()
         assert stats.notices_version() != before
+
+
+class FetchSpraydaysCommandTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    def test_bumps_the_notices_version(self):
+        from django.core.management import call_command
+        before = stats.notices_version()
+        with mock.patch('camp.apps.pesticides.management.commands.fetch_spraydays.fetch_applications'):
+            call_command('fetch_spraydays', verbosity=0)
+        assert stats.notices_version() != before
+
+    def test_bumps_even_when_the_fetch_fails(self):
+        from django.core.management import call_command
+        before = stats.notices_version()
+        with mock.patch(
+            'camp.apps.pesticides.management.commands.fetch_spraydays.fetch_applications',
+            side_effect=RuntimeError('boom'),
+        ):
+            with pytest.raises(RuntimeError):
+                call_command('fetch_spraydays', verbosity=0)
+        assert stats.notices_version() != before
