@@ -10,6 +10,7 @@ from camp.api.v2.meta.endpoints import DatasetCatalogEndpoint
 from camp.apps.calheatscore.scales import get_heat_scale
 from camp.apps.calibrations.models import DefaultCalibration
 from camp.apps.forecasts.scales import get_aqi_forecast_scale, get_burn_status_scale
+from camp.apps.pesticides.scales import get_spray_notice_scale
 from camp.apps.hms.scales import get_fire_scale, get_smoke_scale
 from camp.utils.test import get_response_data
 
@@ -179,9 +180,10 @@ class DatasetCatalogTests(TestCase):
     def test_domain_scale_labels_match_catalog(self):
         scales = [
             get_heat_scale(), get_smoke_scale(), get_fire_scale(),
-            get_aqi_forecast_scale(), get_burn_status_scale(),
+            get_aqi_forecast_scale(), get_burn_status_scale(), get_spray_notice_scale(),
         ]
-        assert {s.id for s in scales} == {'heat-score', 'smoke-density', 'fire-frp', 'aqi-forecast', 'burn-status'}
+        assert {s.id for s in scales} == {
+            'heat-score', 'smoke-density', 'fire-frp', 'aqi-forecast', 'burn-status', 'spray-notice'}
         for scale in scales:
             entry = next(
                 e for d in self.get()['datasets'] for e in d['entry_types'] if e['id'] == scale.id

@@ -9,6 +9,7 @@ from camp.apps.pesticides import maps, notes, stats
 from camp.apps.pesticides.badges import BADGES
 from camp.apps.pesticides.forms import UNASSIGNED_CATEGORIES
 from camp.apps.pesticides.models import Chemical
+from camp.apps.pesticides.scales import get_spray_notice_scale
 from camp.apps.pesticides.places import SPRAYDAYS_URL
 
 from .endpoints import NO_METHOD
@@ -110,6 +111,8 @@ class PesticidesMeta(generics.Endpoint):
             'notice_filters': list(NOTICE_VALUE_FILTERS),
             'years': list(reversed(stats.available_years())),
             'ramp': {'colors': maps.RAMP, 'no_data': maps.NO_DATA},
+            # Keyed by catalog entry-type id, like hms/meta/'s.
+            'scales': {scale.id: scale.to_json() for scale in (get_spray_notice_scale(),)},
         }})
         response['Cache-Control'] = 'public, max-age=86400'
         return response

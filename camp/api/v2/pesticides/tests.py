@@ -2310,7 +2310,7 @@ class PesticidesMetaTests(TestCase):
         data = self.get()
         assert set(data) == {
             'categories', 'iarc_groups', 'methods', 'narrows', 'placeholder_chemicals',
-            'notes', 'badges', 'links', 'notice_filters', 'years', 'ramp'}
+            'notes', 'badges', 'links', 'notice_filters', 'years', 'ramp', 'scales'}
         categories = data['categories']
         assert [c['key'] for c in categories] == list(Chemical.Category.values)
         assert {c['key'] for c in categories if not c['in_use']} == {
@@ -2367,6 +2367,11 @@ class PesticidesMetaTests(TestCase):
         assert data['notes']['shades_valley']['title'] == 'What the shades mean'
         assert data['notes']['shades'] == json.loads(json.dumps(notes.all_notes()['shades']))
         assert data['notes']['shades']['summary'].startswith('Darker squares and counties')
+
+    def test_scales(self):
+        # Keyed by catalog entry-type id, like hms/meta/'s.
+        from camp.apps.pesticides.scales import get_spray_notice_scale
+        assert self.get()['scales'] == {'spray-notice': get_spray_notice_scale().to_json()}
 
     def test_placeholder_chemicals(self):
         unknown = Chemical.objects.create(chem_code=-1, name='UNKNOWN')

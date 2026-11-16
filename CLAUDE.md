@@ -242,7 +242,9 @@ zones are missing there; see SJVAPCD Forecast Setup).
   (`spraydays_signup`) and `notice_filters` (the value filters the notice endpoints accept:
   `chemical_id`, `product_id`, `category`, `iarc_group`, `narrow`, `aerial_ground`), `years`
   (years with data, newest first), `ramp` (`{colors, no_data}` from `maps.RAMP`/`maps.NO_DATA`,
-  the map's shade colors) and a `notes.shades_valley` note (what the shades mean). The
+  the map's shade colors), a `notes.shades_valley` note (what the shades mean) and `scales`
+  (`{"spray-notice": <Scale>}`, keyed by catalog entry-type id like `hms/meta/`'s: one
+  `category` level `notice`, "Spray notice", `#e64980`; `camp/apps/pesticides/scales.py`). The
   pesticide entity search (`pesticides/search/`) returns one page plus `more`, and a
   `placeholder` flag on chemical results. `monitors/meta/` adds a `scale` per entry type plus `stages` and
   `processors` labels. It no longer serves the legacy `levels` dict; `scale` is the only level
