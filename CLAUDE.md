@@ -299,10 +299,11 @@ zones are missing there; see SJVAPCD Forecast Setup).
   MTRS section name minus its `-NN` suffix; `townships.township_of`), permanent while the MTRS
   sections keep their names.
 - **Pesticide map** `pesticides/sections/` and `pesticides/townships/` take `classes=1` and add
-  `classes`: `{figure: {breaks, min}}` for `lbs_chemical`, `acres_treated` and `applications`
+  `classes`: `{figure: {breaks, min, colors}}` for `lbs_chemical`, `acres_treated` and `applications`
   (`camp/apps/pesticides/classes.py`). `breaks` are up to 8 quantile classes cut on the distinct
   positive values; zero means no data and is left out, and `min` is the smallest positive value
-  (`null` when none). The population is valley-wide: every section (or township) the rollup has
+  (`null` when none). `colors` is one fill per class in break order, `maps.sample_ramp(RAMP, len(breaks))`
+  (`[]` with no breaks; no data is meta's `ramp.no_data`), so clients never sample the ramp. The population is valley-wide: every section (or township) the rollup has
   for the year, never just the viewport, and the figures are the ones the features carry
   (with `county`, a border feature counts only that county's use and may fall below `min`).
   Value params (`month`, `chemical`/`product`/`commodity` and their `_id` forms, `method`,
@@ -310,7 +311,7 @@ zones are missing there; see SJVAPCD Forecast Setup).
   ones (`bbox`, `radius`, `region`, `county`, `geometry`) don't (`county` is stripped). Each
   `month` is ranked alone, and `compare=` ranks the scope year, not the compared one;
   `year=all` gives all-years classes. Cached under the pesticide data version through
-  `stats.all_years_key('classes', ...)` (no TTL; an import retires it). A request without
+  `stats.all_years_key('classes-v2', ...)` (no TTL; an import retires it). A request without
   `classes=1` is unchanged. `sections/<id>/` `top_chemicals[].badges` lists badge keys (keys of
   meta's `badges`).
 - **Pesticide notices by day** `pesticides/notices/active/?date=YYYY-MM-DD` (Pacific) lists the

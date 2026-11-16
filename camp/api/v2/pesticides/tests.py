@@ -10,7 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from camp.apps.monitors.cimis.models import CIMIS
-from camp.apps.pesticides import stats
+from camp.apps.pesticides import maps, stats
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product
 from camp.apps.pesticides.models import PesticideUseRollup
 from camp.apps.pesticides.places import monthly_use, rollup_rows_for
@@ -2659,7 +2659,7 @@ class MapClassesTests(RollupTestMixin, TestCase):
         assert [f['properties']['mtrs'] for f in body['features']] == [self.section.external_id]
         assert body['classes'] == classes.valley_classes('section', self.year, False, {})
         # Both sections are ranked, not only the one in the bbox.
-        assert body['classes']['lbs_chemical'] == {'breaks': [70.0, 670.0], 'min': 70.0}
+        assert body['classes']['lbs_chemical'] == {'breaks': [70.0, 670.0], 'min': 70.0, 'colors': maps.sample_ramp(maps.RAMP, 2)}
         assert body['classes'] == self.figures_breaks(self.section_figures())
 
     def test_spatial_params_ignored(self):
@@ -2681,7 +2681,7 @@ class MapClassesTests(RollupTestMixin, TestCase):
         expected = self.figures_breaks(self.section_figures({'month': '6'}))
         assert body['classes'] == expected
         # June is CHLORPYRIFOS's 20 lbs in 9101 alone.
-        assert body['classes']['lbs_chemical'] == {'breaks': [20.0], 'min': 20.0}
+        assert body['classes']['lbs_chemical'] == {'breaks': [20.0], 'min': 20.0, 'colors': maps.sample_ramp(maps.RAMP, 1)}
 
     def test_filters_change_classes(self):
         plain = self.get(self.SECTIONS)
@@ -2689,10 +2689,10 @@ class MapClassesTests(RollupTestMixin, TestCase):
         assert carcinogen['classes'] != plain['classes']
         expected = self.figures_breaks(self.section_figures({'category': 'carcinogen'}, {'category': ['carcinogen']}))
         assert carcinogen['classes'] == expected
-        assert carcinogen['classes']['lbs_chemical'] == {'breaks': [30.0, 150.0], 'min': 30.0}
+        assert carcinogen['classes']['lbs_chemical'] == {'breaks': [30.0, 150.0], 'min': 30.0, 'colors': maps.sample_ramp(maps.RAMP, 2)}
         # Other value filters reach the classes too.
         chem = self.get(self.SECTIONS, chemical=253)
-        assert chem['classes']['lbs_chemical'] == {'breaks': [20.0, 40.0], 'min': 20.0}
+        assert chem['classes']['lbs_chemical'] == {'breaks': [20.0, 40.0], 'min': 20.0, 'colors': maps.sample_ramp(maps.RAMP, 2)}
 
     def test_compare_classes_scope_year(self):
         assert self.get(self.SECTIONS, compare=2022)['classes'] == self.get(self.SECTIONS)['classes']
@@ -2700,7 +2700,7 @@ class MapClassesTests(RollupTestMixin, TestCase):
 
     def test_all_years(self):
         body = self.get(self.SECTIONS, year='all')
-        assert body['classes']['lbs_chemical'] == {'breaks': [130.0, 1150.0], 'min': 130.0}
+        assert body['classes']['lbs_chemical'] == {'breaks': [130.0, 1150.0], 'min': 130.0, 'colors': maps.sample_ramp(maps.RAMP, 2)}
 
     def test_no_classes_without_param(self):
         for url in (self.SECTIONS, self.TOWNSHIPS):
@@ -2722,9 +2722,9 @@ class MapClassesTests(RollupTestMixin, TestCase):
         for url in (self.SECTIONS, self.TOWNSHIPS):
             body = self.get(url, month=1)
             assert body['classes'] == {
-                'lbs_chemical': {'breaks': [], 'min': None},
-                'acres_treated': {'breaks': [], 'min': None},
-                'applications': {'breaks': [], 'min': None},
+                'lbs_chemical': {'breaks': [], 'min': None, 'colors': []},
+                'acres_treated': {'breaks': [], 'min': None, 'colors': []},
+                'applications': {'breaks': [], 'min': None, 'colors': []},
             }
 
     def test_township_level(self):
