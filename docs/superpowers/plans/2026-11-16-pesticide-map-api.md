@@ -157,6 +157,46 @@ Behaviour:
 - [ ] **Step 4: Run, and confirm they pass.** Also run `camp/apps/pesticides/tests/test_notes.py` and `camp/api/v2/meta/tests/test_catalog.py`.
 - [ ] **Step 5: Commit** `Pesticides meta: notes, badges and the SprayDays link`
 
+### Task 5b: The charts' filter values on the map endpoints (`*_id`, `aerial_ground`, commodity on notices)
+
+Spec: "The charts' filter values on the map endpoints".
+
+**Files:**
+- Modify: `camp/api/v2/pesticides/fields.py` (move `SqidChoiceField` here from `endpoints.py`; re-export it from `endpoints.py` as Task 4 did for the others)
+- Modify: `camp/api/v2/pesticides/sections.py` (`MapFilterForm`, `apply_filters`, `section_totals_available`, the notices filter block)
+- Modify: `camp/api/v2/pesticides/meta.py` (`notice_filters`)
+- Test: `camp/api/v2/pesticides/tests.py` (new `MapIdFilterTests(RollupTestMixin, TestCase)`)
+
+**Interfaces:**
+- `MapFilterForm` gains `chemical_id = SqidChoiceField(Chemical)`, `product_id = SqidChoiceField(Product)`, `commodity_id = SqidChoiceField(Commodity)` and `aerial_ground` (choices `G`, `A`, `F`, `O`, `none`; the same choices as `PesticidePlaceForm.aerial_ground`). `parse_map_filters(params)` also returns the "both forms" error: `'give chemical or chemical_id, not both'` (and likewise for product and commodity). Cleaned values are model instances for the ids.
+- `NOTICE_METHOD_FOR_CODE = {'G': 'Ground', 'A': 'Aircraft', 'F': 'Fumigation'}` lives in `stats.py` beside `NOTICE_METHOD_LABELS`.
+- Produces `NOTICE_VALUE_FILTERS = ('chemical_id', 'product_id', 'category', 'iarc_group', 'narrow', 'aerial_ground')`, served as meta `notice_filters`.
+
+Behaviour:
+- **Sections and townships.** `chemical_id` filters `chemical=obj`, `product_id` filters `product=obj`, `commodity_id` filters `commodity=obj`, and `aerial_ground` filters like `method`.
+  - Counting: `chemical_id` sets `chemical_scoped` exactly as `chemical` does.
+  - Any of them makes `section_totals_available` false.
+- **Notices.**
+  - `chemical_id` and `product_id` join the single `lookups` filter (`chemicals=obj`, `products=obj`).
+  - `aerial_ground` uses the mapping. `O` is `~Q(application_method__iexact__in…)` over the three, excluding blank; `none` is `application_method=''`.
+  - `commodity_id` gives 400 `"notices don't record a commodity"`.
+- Without the new params, every response is unchanged.
+
+- [ ] **Step 1: Write failing tests** (fixture `pesticides-explorer`):
+  - `test_chemical_id_equals_code`: sections and townships with `chemical_id=<GLYPHOSATE sqid>` equal the response with `chemical=1855`, apart from nothing. Compare the features' properties.
+  - `test_product_and_commodity_ids`: the same equality for `product_id` vs `product=<prodno>` and `commodity_id` vs `commodity=<site_code>`.
+  - `test_both_forms_400`: `chemical=1855&chemical_id=<sqid>` gives 400 `{'error': 'give chemical or chemical_id, not both'}`.
+  - `test_bad_id_400`: `chemical_id=zzzz` gives 400 with `'error'` equal to `'Not a chemical id.'`.
+  - `test_aerial_ground_sections`: `aerial_ground=G` equals `method=G`, and `aerial_ground=none` equals `method=none`. `aerial_ground=X` gives 400.
+  - `test_aerial_ground_notices`: set notice 2 to `Aircraft` and notice 3 to `Ground`. `A` gives [2] and `G` gives [3]. A notice set to `Hand` matches `O`. A blank one matches `none`.
+  - `test_notice_chemical_id_same_chemical`: `chemical_id=<CHLORPYRIFOS sqid>&iarc_group=2A` gives [], and `chemical_id=<GLYPHOSATE sqid>&iarc_group=2A` gives [3].
+  - `test_notice_commodity_id_400`: 400 `{'error': "notices don't record a commodity"}` on active and on archive.
+  - `test_meta_notice_filters`: `data['notice_filters'] == list(NOTICE_VALUE_FILTERS)`. Extend `test_shape`'s key set.
+- [ ] **Step 2: Run, and confirm they fail.**
+- [ ] **Step 3: Implement.** Update the endpoint docstrings.
+- [ ] **Step 4: Run all of `camp/api/v2/pesticides/tests.py` and `camp/apps/pesticides/tests/`, and confirm they pass.**
+- [ ] **Step 5: Commit** `Pesticide map endpoints: the charts' filter values (ids, aerial_ground; no commodity on notices)`
+
 ### Task 6: Docs and PR 1
 
 **Files:** `CLAUDE.md` (Metadata Endpoints, the `pesticides/meta/` bullet, plus a new "Pesticide notices by day" bullet)
@@ -217,7 +257,7 @@ Behaviour:
 - Consumes `section_figures` and `parse_map_filters` (Task 7), `fold_townships`, `stats.cached`, `stats.all_years_key`, `maps.quantile_classes`, `section_totals` (unfiltered fast path).
 - Produces in `classes.py`:
   - `FIGURES = ('lbs_chemical', 'acres_treated', 'applications')`;
-  - `VALUE_PARAMS = ('month', 'chemical', 'product', 'commodity', 'method', 'narrow', 'concern', 'category', 'iarc_group')`;
+  - `VALUE_PARAMS = ('month', 'chemical', 'product', 'commodity', 'chemical_id', 'product_id', 'commodity_id', 'method', 'aerial_ground', 'narrow', 'concern', 'category', 'iarc_group')` (ids hash by pk);
   - `breaks_for(values: dict) -> dict`: `{'breaks': quantile_classes(values).breaks, 'min': min(positive) or None}`;
   - `valley_classes(level: str, year, all_years: bool, params) -> dict`. `level` is `'section'` or `'township'`. Returns `{figure: breaks_for(...)}`, cached under `stats.all_years_key('classes', level, year_value, md5(json of the sorted cleaned VALUE_PARAMS))`. Category lists are sorted (as `CategoryListField` returns them), so spellings share a key.
 - The endpoints add `classes` to the returned dict when `params.get('classes') == '1'`, built over the scope year (also under `compare=`).

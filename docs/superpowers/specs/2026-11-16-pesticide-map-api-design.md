@@ -133,6 +133,40 @@ One spec, two PRs into `develop`:
 - `past` is computed against now, so a 5-minute cache can show a flag up to 5 minutes late.
   That's accepted. A settled day's `past` values are all `true` and stable.
 
+### The charts' filter values on the map endpoints
+
+Added 2026-11-16 at the dashboard's request: the Map uses "the same filters as charts", and
+charts send `place/`'s values. This applies to `sections/`, `townships/`, `notices/active/`
+and `notices/archive/`. **The user's choices:** separate parameter names for ids (a), the
+method mapping, and the commodity answer below.
+
+- **`chemical_id`, `product_id`, `commodity_id`** take our sqids, validated with `place/`'s
+  `SqidChoiceField`. The existing `chemical`/`product`/`commodity` keep taking CDPR codes,
+  unchanged (the explorer sends codes, and an all-digit sqid can't be told from a code).
+  Giving both forms of one filter is a 400:
+  `{"error": "give chemical or chemical_id, not both"}` (likewise for product and commodity).
+  An id that isn't one, or names no row, is a 400 with the field's message
+  (`Not a chemical id.` / `No chemical has this id.`).
+- **`aerial_ground`** takes `place/`'s codes `G`, `A`, `F`, `O`, `none`.
+  - On sections and townships it means the same as the existing `method` (rollup codes;
+    `none` is blank).
+  - On notices it maps to SprayDays' wording: `G` → `Ground`, `A` → `Aircraft`,
+    `F` → `Fumigation` (case-insensitive), `O` → any other non-blank method, `none` → blank.
+  - An unknown code is a 400. The existing `method` parameter is unchanged on all of them.
+    If both `method` and `aerial_ground` are given, both apply.
+- **Commodity on notices:** SprayDays notices record no crop. `commodity_id` on a notices
+  endpoint is a 400: `{"error": "notices don't record a commodity"}`. Plain `commodity`
+  stays ignored there, as today. Meta's `notice_filters` lists the value filters the
+  notice endpoints accept: `chemical_id`, `product_id`, `category`, `iarc_group`, `narrow`,
+  `aerial_ground`.
+- **Same chemical on notices:** `chemical_id` goes in the same single `.filter()` as
+  `category`/`iarc_group`, so together they must hold on one chemical, as `place/` filters
+  ingredient rows.
+- **Counting on sections/townships:** `chemical_id` counts like `chemical` (per-row columns).
+  `product_id`/`commodity_id` count like `product`/`commodity`.
+- **PR 2:** `classes`' value filters include `chemical_id`, `product_id`, `commodity_id` and
+  `aerial_ground`. Category/IARC counting treats `chemical_id` as `chemical`.
+
 ### `pesticides/meta/` additions
 
 - **`notes`**: `{key: {key, title, summary, detail, source_url}}` (`detail` may be `null`),
