@@ -345,9 +345,11 @@ class BulkRegionSummaryList(BulkFormMixin, SummaryMixin, generics.ListEndpoint):
     """Summary statistics for one or more regions matching an inclusive `start`/`end`
     date range. Each result is a region (same shape as RegionList) with its matching
     rows nested under `summaries` (without the region's `boundary` - fetch that from
-    the regions list, it would otherwise repeat on every page a region spans). `start`,
-    `end`, and at least one `region` are required, and every `region` id must exist;
-    invalid/missing parameters return a 400 with form errors.
+    the regions list, it would otherwise repeat on every page a region spans). `start`
+    and `end` are required, plus exactly one of `region` (repeatable; every id must
+    exist, retired regions included) or `type` (every current region of that type,
+    as /regions/geojson/ draws them; not `land_use`). Invalid/missing parameters
+    return a 400 with form errors.
 
     Pagination is by summary row, not by region, same cross-page merge contract
     as BulkMonitorSummaryList: if the last region `id` on a page matches the first
@@ -364,7 +366,7 @@ class BulkRegionSummaryList(BulkFormMixin, SummaryMixin, generics.ListEndpoint):
         # which isn't stable enough to paginate on (same reasoning as the monitor bulk).
         return (super()
             .get_queryset()
-            .filter(region__in=self.form.cleaned_data['region'])
+            .filter(region__in=self.form.cleaned_data['regions'])
             .order_by('region_id', 'timestamp')
         )
 

@@ -1,10 +1,10 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from unittest import mock
 from unittest.mock import patch
 
 import pytest
 from tdigest import TDigest
-from django.contrib.gis.geos import Point
+from django.contrib.gis.geos import MultiPolygon, Point, Polygon
 from django.core.cache import cache
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
@@ -25,7 +25,8 @@ from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.monitors.models import Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
-from camp.apps.regions.models import Region
+from camp.apps.regions.models import Boundary, Region
+from camp.apps.regions.querysets import TRACT_VINTAGE
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.utils.test import get_response_data
 
@@ -701,6 +702,77 @@ class BulkRegionSummaryListTests(TestCase):
         ]
         assert len(fresno_timestamps) == 2
         assert fresno_timestamps == sorted(fresno_timestamps)
+
+    # Whole-type scope (?type=)
+
+    def _ids(self, query, **kwargs):
+        response = self._get(query, **kwargs)
+        assert response.status_code == 200
+        return {r['id'] for r in get_response_data(response)['data']}
+
+    def _tract(self, external_id, version):
+        region = Region.objects.create(name=external_id, slug=external_id, type='tract', external_id=external_id)
+        region.boundary = Boundary.objects.create(
+            region=region, version=version,
+            geometry=MultiPolygon(Polygon.from_bbox((-119.8, 36.7, -119.7, 36.8)), srid=4326))
+        region.save(update_fields=['boundary'])
+        make_region_summary(region, self.day, resolution='day', entry_type='pm25')
+        return region
+
+    def test_type_scope_returns_every_current_region_of_the_type(self):
+        assert self._ids({**self.january, 'type': 'county'}) == {self.fresno.sqid, self.kern.sqid}
+
+    def test_type_scope_leaves_out_other_types(self):
+        city = Region.objects.get(type='city')
+        make_region_summary(city, self.day, resolution='day', entry_type='pm25')
+        assert city.sqid not in self._ids({**self.january, 'type': 'county'})
+        assert self._ids({**self.january, 'type': 'city'}) == {city.sqid}
+
+    def test_type_scope_leaves_out_retired_regions(self):
+        Region.all_objects.filter(pk=self.kern.pk).update(retired_at=date(2026, 1, 15))
+        assert self._ids({**self.january, 'type': 'county'}) == {self.fresno.sqid}
+        # An explicit list still answers for the retired region.
+        assert self._ids({**self.january, 'region': self.kern.sqid}) == {self.kern.sqid}
+
+    def test_type_scope_leaves_out_old_vintage_tracts(self):
+        current = self._tract('06019000100', TRACT_VINTAGE)
+        old = self._tract('06019000200', '2010')
+        assert self._ids({**self.january, 'type': 'tract'}) == {current.sqid}
+        assert self._ids({**self.january, 'region': old.sqid}) == {old.sqid}
+
+    def test_type_and_region_together_is_400(self):
+        response = self._get({**self.january, 'type': 'county', 'region': self.fresno.sqid})
+        assert response.status_code == 400
+        assert get_response_data(response)['errors']['__all__'][0]['code'] == 'exclusive'
+
+    def test_neither_type_nor_region_is_400(self):
+        response = self._get({**self.january, 'type': ''})
+        assert response.status_code == 400
+        assert get_response_data(response)['errors']['region'][0]['code'] == 'required'
+
+    def test_blank_type_with_region_list_is_a_region_request(self):
+        assert self._ids({**self.january, 'type': '', 'region': self.fresno.sqid}) == {self.fresno.sqid}
+
+    def test_land_use_type_is_400(self):
+        response = self._get({**self.january, 'type': 'land_use'})
+        assert response.status_code == 400
+        assert get_response_data(response)['errors']['type'][0]['code'] == 'invalid_choice'
+
+    def test_unknown_type_is_400(self):
+        response = self._get({**self.january, 'type': 'galaxy'})
+        assert response.status_code == 400
+        assert get_response_data(response)['errors']['type'][0]['code'] == 'invalid_choice'
+
+    def test_type_scope_still_checks_the_date_span(self):
+        response = self._get({'type': 'county', 'start': '2020-01-01', 'end': '2026-01-01'})
+        assert response.status_code == 400
+
+    def test_type_scope_with_no_rows_is_empty_200(self):
+        assert self._ids({**self.january, 'type': 'cdp'}) == set()
+
+    def test_type_scope_hourly(self):
+        make_region_summary(self.fresno, self.day, resolution='hour', entry_type='pm25')
+        assert self._ids({**self.january, 'type': 'county'}, resolution='hour') == {self.fresno.sqid}
 
 
 class SummaryCacheHeaderTests(TestCase):
