@@ -1,3 +1,4 @@
+import json
 import pytest
 from datetime import date, timedelta
 from unittest.mock import patch
@@ -2292,7 +2293,9 @@ class PesticidesMetaTests(TestCase):
     def test_shape(self):
         from camp.apps.pesticides import notes
         data = self.get()
-        assert set(data) == {'categories', 'iarc_groups', 'methods', 'narrows', 'placeholder_chemicals'}
+        assert set(data) == {
+            'categories', 'iarc_groups', 'methods', 'narrows', 'placeholder_chemicals',
+            'notes', 'badges', 'links'}
         categories = data['categories']
         assert [c['key'] for c in categories] == list(Chemical.Category.values)
         assert {c['key'] for c in categories if not c['in_use']} == {
@@ -2314,6 +2317,19 @@ class PesticidesMetaTests(TestCase):
         assert narrows['aerial']['description'] == stats.NARROW_HELP['aerial']
         assert all(n['description'] for n in narrows.values())
         assert data['placeholder_chemicals'] == []
+
+    def test_notes_served(self):
+        from camp.apps.pesticides import notes
+        served = self.get()['notes']
+        assert served['noi_meaning'] == json.loads(json.dumps(notes.all_notes()['noi_meaning']))
+        for key in ('pur_lag', 'badges', 'prop65', 'carb_tac', 'iarc_2a', 'california_restricted'):
+            assert key in served, key
+
+    def test_badges_and_links(self):
+        from camp.apps.pesticides.badges import BADGES
+        data = self.get()
+        assert [b['key'] for b in data['badges']] == [b['key'] for b in BADGES]
+        assert data['links'] == {'spraydays_signup': 'https://spraydays.cdpr.ca.gov/'}
 
     def test_placeholder_chemicals(self):
         unknown = Chemical.objects.create(chem_code=-1, name='UNKNOWN')

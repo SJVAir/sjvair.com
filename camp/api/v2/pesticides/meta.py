@@ -6,8 +6,10 @@ uses (model choices, `stats`, the health notes), read here and never changed.
 from resticus import generics, http
 
 from camp.apps.pesticides import notes, stats
+from camp.apps.pesticides.badges import BADGES
 from camp.apps.pesticides.forms import UNASSIGNED_CATEGORIES
 from camp.apps.pesticides.models import Chemical
+from camp.apps.pesticides.places import SPRAYDAYS_URL
 
 from .endpoints import NO_METHOD
 
@@ -86,7 +88,10 @@ class PesticidesMeta(generics.Endpoint):
     ones no import assigns), `iarc_groups`, application `methods` (the use records' codes;
     spray notices name their methods in SprayDays' own words, which this doesn't cover),
     the `narrows` (`?narrow=`), and the `placeholder_chemicals` (CDPR's stand-ins for an
-    unnamed ingredient). Keys are permanent; labels may change.
+    unnamed ingredient). Also the server-owned explainer text: `notes` (key -> `{key, title,
+    summary, detail, source_url}`), the classification `badges` (`{key, label, note}` in
+    display order; `note` is a key of `notes`) and `links` (`spraydays_signup`). Keys are
+    permanent; labels may change.
     """
 
     def get(self, request):
@@ -96,6 +101,9 @@ class PesticidesMeta(generics.Endpoint):
             'methods': methods(),
             'narrows': narrows(),
             'placeholder_chemicals': placeholder_chemicals(),
+            'notes': dict(notes.all_notes()),
+            'badges': BADGES,
+            'links': {'spraydays_signup': SPRAYDAYS_URL},
         }})
         response['Cache-Control'] = 'public, max-age=86400'
         return response
