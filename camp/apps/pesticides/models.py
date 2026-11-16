@@ -511,6 +511,10 @@ class PesticideUse(TimeStampedModel):
             models.Index(fields=['chemical']),
             models.Index(fields=['commodity']),
             models.Index(fields=['application_date']),
+            # The records browser's default order, newest first with undated
+            # rows last. A backward scan of the index above puts NULLs first,
+            # so without this every page sorted the whole year.
+            models.Index(models.F('application_date').desc(nulls_last=True), models.F('id').desc(), name='pesticide_use_date_desc_idx'),
             models.Index(fields=['chemical', 'year']),
             models.Index(fields=['product', 'year']),
             models.Index(fields=['commodity', 'year']),

@@ -95,6 +95,14 @@ class RebuildTests(TestCase):
         assert row.lbs_chemical == 900.0
         assert row.applications == 9
 
+    def test_rebuild_retires_cached_stats(self):
+        key = stats.all_years_key('valley-by-year', '')
+        cache.set(key, 'stale')
+        with self.captureOnCommitCallbacks(execute=True):
+            rollup.rebuild_year(2023)
+        assert stats.all_years_key('valley-by-year', '') != key
+        assert cache.get(stats.all_years_key('valley-by-year', '')) is None
+
     def test_rebuild_is_idempotent_and_replaces_the_year(self):
         assert rollup.rebuild_year(2023) == 6
         assert rollup.rebuild_year(2023) == 6

@@ -26,10 +26,11 @@ def generation():
 def clear_caches():
     """Orphan every cached compliance aggregate: they're keyed under the generation (import_icis_air calls this)."""
     cache.set(GENERATION_KEY, generation() + 1, None)
+    stats.clear_caches()
 
 
 def key(*parts):
-    return ':'.join(str(part) for part in (f'emissions:compliance:v{stats.CACHE_VERSION}.{CACHE_VERSION}', generation(), *parts))
+    return ':'.join(str(part) for part in (f'emissions:compliance:v{stats.CACHE_VERSION}.{CACHE_VERSION}', stats.generation(), generation(), *parts))
 
 
 SOURCE = 'icis-air'

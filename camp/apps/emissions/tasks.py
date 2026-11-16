@@ -1,6 +1,6 @@
 from django.core.management import call_command
 
-from django_huey import db_periodic_task, get_queue
+from django_huey import db_periodic_task, db_task, get_queue
 from huey import crontab
 
 
@@ -26,3 +26,18 @@ def import_wells():
 def import_carbon_mapper():
     with get_queue('primary').lock_task('import-carbon-mapper'):
         call_command('import_carbon_mapper')
+
+
+@db_periodic_task(crontab(minute='45'), priority=10)
+def warm_emissions_caches():
+    warm_emissions_caches_now()
+
+
+# Also queued by clear_caches() after an import. Primary, like the
+# pesticides one: a pass is short, and secondary is for backfills and
+# large imports.
+@db_task(priority=10)
+def warm_emissions_caches_now():
+    from camp.apps.emissions import warm
+    with get_queue('primary').lock_task('warm-emissions-caches'):
+        warm.warm()

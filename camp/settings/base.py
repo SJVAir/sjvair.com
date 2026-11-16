@@ -214,12 +214,20 @@ DATABASES = {
 # Redis
 
 REDIS_URL = None
-for var in ["REDIS_URL", "OPENREDIS_URL"]:
+for var in ["REDIS_URL", "OPENREDIS_URL", "REDISCLOUD_URL"]:
     REDIS_URL = env(var)
     if REDIS_URL is not None:
         if REDIS_URL.startswith('rediss'):
             REDIS_URL = f"{REDIS_URL}{'&' if '?' in REDIS_URL else '?'}ssl_cert_reqs=none"
         break
+
+
+def redis_db_url(index):
+    """REDIS_URL's database `index`. The /N goes before any query string: a rediss URL carries ?ssl_cert_reqs=none."""
+    if REDIS_URL is None:
+        return None
+    base, _, query = REDIS_URL.partition('?')
+    return f'{base}/{index}' + (f'?{query}' if query else '')
 
 
 # Auth
@@ -388,13 +396,17 @@ RESTICUS = {
 }
 
 # huey / django-huey
+#
+# Each queue in its own Redis database: /0, /1, /2 of REDIS_URL, or on Redis
+# Cloud (which serves only database 0) a separate database per queue, set in
+# REDIS_PRIMARY_URL / REDIS_SECONDARY_URL / REDIS_SUMMARIES_URL.
 
 DJANGO_HUEY = {
     'default': 'primary',
     'queues': {
         'primary': {
             'name': 'primary_tasks',
-            'connection': {'url': f'{REDIS_URL}/0'},
+            'connection': {'url': env('REDIS_PRIMARY_URL', redis_db_url(0))},
             'consumer': {
                 'periodic': True,
                 'workers': int(env('HUEY_PRIMARY_WORKERS', env('HUEY_WORKERS', 4)))
@@ -404,7 +416,7 @@ DJANGO_HUEY = {
         },
         'secondary': {
             'name': 'secondary_tasks',
-            'connection': {'url': f'{REDIS_URL}/1'},
+            'connection': {'url': env('REDIS_SECONDARY_URL', redis_db_url(1))},
             'consumer': {
                 'periodic': True,
                 'workers': int(env('HUEY_SECONDARY_WORKERS', env('HUEY_WORKERS', 4)))
@@ -414,7 +426,7 @@ DJANGO_HUEY = {
         },
         'summaries': {
             'name': 'summaries_tasks',
-            'connection': {'url': f'{REDIS_URL}/2'},
+            'connection': {'url': env('REDIS_SUMMARIES_URL', redis_db_url(2))},
             'consumer': {
                 'periodic': True,
                 'workers': int(env('HUEY_SUMMARIES_WORKERS', env('HUEY_WORKERS', 2)))
@@ -522,6 +534,24 @@ if "SENTRY_DSN" in os.environ:
         release=COMMIT_HASH,
     )
 
+
+
+# Logging
+#
+# Django's defaults only email request tracebacks (and only to ADMINS, which
+# isn't set), so a 500 left nothing but "status=500" in the Heroku logs. Print
+# them to stderr too; everything else keeps Django's defaults.
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler'},
+    },
+    'loggers': {
+        'django.request': {'handlers': ['console'], 'level': 'ERROR'},
+    },
+}
 
 
 # Scout APM

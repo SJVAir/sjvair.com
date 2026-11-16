@@ -983,6 +983,8 @@ FIND_AREA_TYPE_LABELS = {
 }
 # :v2 -- the synthetic places are gone; a list cached before then must not be served.
 FIND_AREA_PLACES_KEY = f'emissions:v{stats.CACHE_VERSION}:find-area-places:v3'
+# Regions, not emissions data, so no import generation retires it: a day.
+FIND_AREA_PLACES_TTL = 60 * 60 * 24
 RADIUS_CHOICES = (1, 3, 5)
 RADIUS_ZOOMS = {1: 13, 3: 12, 5: 11}
 MAX_LABEL = 120
@@ -1008,7 +1010,7 @@ def find_area_places(url_name='emissions:region'):
             'short_name': name[:-len(' County')] if name.endswith(' County') else name,
             'url': reverse(url_name, kwargs={'sqid': sqid, 'slug': slug}),
         } for sqid, slug, name, region_type in regions]
-    return cache.get_or_set(f'{FIND_AREA_PLACES_KEY}:{url_name}', compute, stats.CACHE_TIMEOUT)
+    return cache.get_or_set(f'{FIND_AREA_PLACES_KEY}:{url_name}', compute, FIND_AREA_PLACES_TTL)
 
 
 # Each map tab's "Search by location" (find-field.html) lands on the same tab:

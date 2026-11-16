@@ -8,7 +8,9 @@ from camp.utils.datetime import make_aware
 
 
 class AirNow(Monitor):
-    LAST_ACTIVE_LIMIT = int(60 * 60 * 1.5)
+    # An hour's RawConcentration (our RAW) first shows up about 1h20m after
+    # the hour starts, so the newest RAW is 1h20m to 2h20m old.
+    LAST_ACTIVE_LIMIT = int(60 * 60 * 3)
 
     DATA_PROVIDERS = [{
         'name': 'AirNow Partners',

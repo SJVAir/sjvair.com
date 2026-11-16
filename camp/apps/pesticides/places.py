@@ -303,7 +303,7 @@ def schools_nearby(region, year, all_years=False, concern=False):
     """
     The schools and child care centers of a school district, each with the
     pesticide use reported in the 3x3 block of sections around it (see
-    stats.block_totals) -- the rows behind the district page's schools table.
+    stats.block_totals_many) -- the rows behind the district page's schools table.
 
     Two groups, because the table can be filtered down to the first: `run_by`,
     the public schools this district actually runs, and `others` -- charters
@@ -355,10 +355,8 @@ def schools_nearby(region, year, all_years=False, concern=False):
         )
 
         groups = {
-            'run_by': [_school_entry(location, rows, year, all_years, is_run_by=True, districts=districts)
-                for location in run_by],
-            'others': [_school_entry(location, rows, year, all_years, is_run_by=False, districts=districts)
-                for location in others],
+            'run_by': _school_entries(run_by, rows, year, all_years, is_run_by=True, districts=districts),
+            'others': _school_entries(others, rows, year, all_years, is_run_by=False, districts=districts),
         }
         for entries in groups.values():
             entries.sort(key=lambda entry: (-entry['lbs'], entry['display_name']))
@@ -397,10 +395,10 @@ def area_schools(area, year, all_years=False, concern=False):
         if concern:
             rows = stats.narrow_rows(rows, concern)
         districts = schools.district_urls(url_method='get_pesticides_url')
-        others = [
-            _school_entry(location, rows, year, all_years, is_run_by=False, districts=districts)
-            for location in area.locations().one_per_place().select_related('city', 'school_district').order_by('name', 'pk')
-        ]
+        others = _school_entries(
+            area.locations().one_per_place().select_related('city', 'school_district').order_by('name', 'pk'),
+            rows, year, all_years, is_run_by=False, districts=districts,
+        )
         others.sort(key=lambda entry: (-entry['lbs'], entry['display_name']))
         cities = {entry['display_city'].lower() for entry in others if entry['display_city']}
         return {'run_by': [], 'others': others, 'show_city': len(cities) > 1}
@@ -417,8 +415,14 @@ def area_districts(area):
     )
 
 
-def _school_entry(location, rows, year, all_years, is_run_by, districts=None):
-    totals = stats.block_totals(rows, location.point, year, all_years)
+def _school_entries(locations, rows, year, all_years, is_run_by, districts=None):
+    # Every site's block in one go: per site, it was three queries apiece.
+    locations = list(locations)
+    blocks = stats.block_totals_many(rows, [location.point for location in locations], year, all_years)
+    return [_school_entry(location, totals, is_run_by, districts) for location, totals in zip(locations, blocks)]
+
+
+def _school_entry(location, totals, is_run_by, districts=None):
     section = totals['section']
     metadata = location.metadata or {}
     return {
@@ -632,10 +636,10 @@ def place_context(area, year, all_years=False, concern=False, params=None, clip=
     # The concern scope gets its own cache entries; without it the keys stay
     # exactly what they were.
     scope_key = (concern,) if concern else ()
-    if all_years:
-        data = stats.cached(stats.all_years_key('place-v3', area.cache_key(), *scope_key), build)
-    else:
-        data = build()
+    # Every year scoped, not only all of them: one year of a county is still
+    # a few hundred milliseconds of rollup, and it only changes on a rebuild.
+    data = stats.cached(stats.all_years_key(
+        'place-v3', area.cache_key(), stats.year_param(year, all_years) or 'none', *scope_key), build)
     totals = data['totals']
 
     upcoming = upcoming_context(area, concern)

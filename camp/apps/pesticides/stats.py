@@ -4,10 +4,13 @@ already-filtered queryset so the same code serves chemical, product, and
 commodity pages. Aggregates run over PesticideUseRollup, the per-section,
 per-month rollup of PesticideUse rebuilt by camp.apps.pesticides.rollup.
 """
+import math
+import time
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 from django.contrib.gis.db.models.functions import Centroid
+from django.contrib.gis.geos import MultiPoint, Polygon
 from django.contrib.gis.measure import D
 from django.conf import settings
 from django.core.cache import cache
@@ -39,10 +42,15 @@ MOVERS_PCT_MIN_LBS = 100
 # landing page's leaderboards, which are that page's main content.
 RELATED_LIMIT = 5
 # Aggregates that read more than one year of rollup rows for a whole county or
-# the whole valley. They only change on import, so an hour is plenty.
+# the whole valley. They only change on a rollup rebuild, which bumps the data
+# version their keys carry (see data_version), so they never expire: with an
+# hour, most visits to a quiet site found them gone. Entries left behind by an
+# old version just age out of memcached.
 ALL_YEARS_KEY = 'pesticides:all-years'
-ALL_YEARS_TTL = 60 * 60
-LATEST_YEAR_TTL = 60 * 60
+ALL_YEARS_TTL = None
+DATA_VERSION_KEY = 'pesticides:data-version'
+# refresh_landing_stats deletes and rebuilds these after every import.
+LATEST_YEAR_TTL = None
 LANDING_TTL = 60 * 60 * 24
 NOTICE_WINDOW_TTL = 60 * 60
 SJV_COUNTY_COUNT = 8
@@ -322,8 +330,26 @@ def is_concern(value):
     return str(value or '').strip() == '1'
 
 
+def data_version():
+    """
+    The version every all_years_key carries. A rollup rebuild bumps it, which
+    retires every entry built from the old rollup at once; an evicted version
+    just starts a new one (and a cold cache), never a stale read.
+    """
+    value = cache.get(DATA_VERSION_KEY)
+    if value is None:
+        value = bump_data_version()
+    return value
+
+
+def bump_data_version():
+    value = str(time.time_ns())
+    cache.set(DATA_VERSION_KEY, value, None)
+    return value
+
+
 def all_years_key(*parts):
-    return ':'.join([ALL_YEARS_KEY, *(str(part) for part in parts)])
+    return ':'.join([ALL_YEARS_KEY, data_version(), *(str(part) for part in parts)])
 
 
 def cached(key, build, ttl=ALL_YEARS_TTL):
@@ -744,30 +770,94 @@ def block_sections(point):
     neighboring polygons don't always share an edge cleanly, but their
     centroids are reliably ~1 mile apart and the next ring out is ~2.
     """
+    return block_sections_many([point])[0]
+
+
+# Grid cells (in degrees) for pairing points with the sections near them in
+# Python. A cell is wider than a block's radius, so a point's own cell and the
+# eight around it always hold every section of its block.
+BLOCK_CELL_DEG = 0.05
+# PostGIS's ST_DistanceSphere radius for WGS 84, so a block matches the
+# distance filter it replaced.
+SPHERE_RADIUS_M = 6371008.7714
+
+
+def _block_cell(x, y):
+    return (math.floor(x / BLOCK_CELL_DEG), math.floor(y / BLOCK_CELL_DEG))
+
+
+def _sphere_distance_m(a, b):
+    lat1, lat2 = math.radians(a.y), math.radians(b.y)
+    dlat, dlng = lat2 - lat1, math.radians(b.x - a.x)
+    h = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlng / 2) ** 2
+    return 2 * SPHERE_RADIUS_M * math.asin(min(1.0, math.sqrt(h)))
+
+
+def block_sections_many(points):
+    """
+    block_sections for each of `points`, in two queries however many there
+    are: the sections the points sit in, then every section near any of
+    them, paired up in Python. A place's Schools tab has a block per site --
+    a thousand in Fresno County -- and three queries each took seconds.
+    """
     # Local import: camp.api.v2.pesticides.sections imports this module.
     from camp.api.v2.pesticides.sections import radius_bbox
 
-    home = (Region.objects
-        .filter(type=Region.Type.MTRS, boundary__isnull=False, boundary__geometry__contains=point)
+    points = list(points)
+    if not points:
+        return []
+    sections = Region.objects.filter(type=Region.Type.MTRS, boundary__isnull=False)
+
+    # The sections any point is in. A point on a shared edge goes to the
+    # first in the queryset's order, as `.first()` gave it one at a time.
+    homes = (sections
+        .filter(boundary__geometry__intersects=MultiPoint(points, srid=points[0].srid))
         .select_related('boundary')
-        .first()
     )
-    if home is None:
-        return None, []
-    centroid = home.boundary.geometry.centroid
-    pks = set(Region.objects
-        .filter(
-            type=Region.Type.MTRS,
-            boundary__isnull=False,
-            # Index-friendly prefilter, same reason as places.point_area().
-            boundary__geometry__bboverlaps=radius_bbox(centroid.y, centroid.x, BLOCK_MILES + 0.1),
-        )
+    if not homes.ordered:
+        homes = homes.order_by('pk')
+    home_cells = {}
+    for home in homes:
+        home.prepared = home.boundary.geometry.prepared
+        xmin, ymin, xmax, ymax = home.boundary.geometry.extent
+        (cx0, cy0), (cx1, cy1) = _block_cell(xmin, ymin), _block_cell(xmax, ymax)
+        for cx in range(cx0, cx1 + 1):
+            for cy in range(cy0, cy1 + 1):
+                home_cells.setdefault((cx, cy), []).append(home)
+    point_homes = [
+        next((home for home in home_cells.get(_block_cell(point.x, point.y), []) if home.prepared.contains(point)), None)
+        for point in points
+    ]
+
+    # Every section whose centroid could be in one of those blocks, by the
+    # same index-friendly bbox prefilter as before, over all of them at once.
+    centroids = {home.pk: home.boundary.geometry.centroid for home in point_homes if home is not None}
+    if not centroids:
+        return [(None, []) for _point in points]
+    boxes = [radius_bbox(c.y, c.x, BLOCK_MILES + 0.1).extent for c in centroids.values()]
+    envelope = Polygon.from_bbox((
+        min(b[0] for b in boxes), min(b[1] for b in boxes),
+        max(b[2] for b in boxes), max(b[3] for b in boxes),
+    ))
+    nearby = {}
+    candidates = (sections
+        .filter(boundary__geometry__bboverlaps=envelope)
         .annotate(section_centroid=Centroid('boundary__geometry'))
-        .filter(section_centroid__distance_lte=(centroid, D(m=BLOCK_RADIUS_M)))
-        .values_list('pk', flat=True)
+        .values_list('pk', 'section_centroid')
     )
-    pks.add(home.pk)
-    return home, sorted(pks)
+    for pk, centroid in candidates:
+        nearby.setdefault(_block_cell(centroid.x, centroid.y), []).append((pk, centroid))
+
+    blocks = {}
+    for home_pk, centroid in centroids.items():
+        cx, cy = _block_cell(centroid.x, centroid.y)
+        pks = {home_pk}
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                pks.update(pk for pk, other in nearby.get((cx + dx, cy + dy), [])
+                    if _sphere_distance_m(centroid, other) <= BLOCK_RADIUS_M)
+        blocks[home_pk] = sorted(pks)
+    return [(None, []) if home is None else (home, blocks[home.pk]) for home in point_homes]
 
 
 def block_totals(rows, point, year, all_years=False):
@@ -775,18 +865,30 @@ def block_totals(rows, point, year, all_years=False):
     Pounds and applications reported in the 3x3 block of sections around
     `point` -- "within about a mile" -- plus the section the point is in.
     """
-    home, pks = block_sections(point)
-    if not pks:
-        return {'lbs': 0, 'applications': 0, 'section': None}
-    data = in_year(rows.filter(mtrs__in=pks), year, all_years).aggregate(
-        lbs=Sum('lbs_chemical'),
-        applications=Sum('records'),
-    )
-    return {
-        'lbs': data['lbs'] or 0,
-        'applications': data['applications'] or 0,
-        'section': home,
-    }
+    return block_totals_many(rows, [point], year, all_years)[0]
+
+
+def block_totals_many(rows, points, year, all_years=False):
+    """block_totals for each of `points`: one group-by over every block's sections, summed per block."""
+    blocks = block_sections_many(points)
+    all_pks = {pk for _home, pks in blocks for pk in pks}
+    by_section = {}
+    if all_pks:
+        by_section = {
+            row['mtrs']: row
+            for row in in_year(rows.filter(mtrs__in=all_pks), year, all_years)
+                .values('mtrs')
+                .annotate(lbs=Sum('lbs_chemical'), applications=Sum('records'))
+        }
+    totals = []
+    for home, pks in blocks:
+        found = [by_section[pk] for pk in pks if pk in by_section]
+        totals.append({
+            'lbs': sum(row['lbs'] or 0 for row in found),
+            'applications': sum(row['applications'] or 0 for row in found),
+            'section': home,
+        })
+    return totals
 
 
 def by_township(rows, year, all_years=False, chemical_scoped=False):

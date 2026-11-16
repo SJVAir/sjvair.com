@@ -12,12 +12,14 @@ import time
 from django.core.cache import cache
 from django.db.models import Max, Min, Q
 
+from camp.apps.emissions import stats
 from camp.apps.emissions.models import MethanePlume, MethaneSource, SourceImport
 
 SOURCE = 'carbon-mapper'
 CACHE_VERSION = 4  # 2: GeoJSON features carry their newest plume; 3: no dairy or facility on them; 4: sector names from SECTORS
 GENERATION_KEY = 'emissions:methane:generation'
-CACHE_TIMEOUT = 60 * 60 * 24
+# No expiry: keys carry the generations (see stats.CACHE_TIMEOUT).
+CACHE_TIMEOUT = None
 
 
 def generation():
@@ -31,10 +33,11 @@ def generation():
 def clear_caches():
     """Orphan every cached methane aggregate and the GeoJSON: they're keyed under the generation."""
     cache.set(GENERATION_KEY, generation() + 1, None)
+    stats.clear_caches()
 
 
 def key(*parts):
-    return ':'.join(str(part) for part in (f'emissions:methane:v{CACHE_VERSION}', generation(), *parts))
+    return ':'.join(str(part) for part in (f'emissions:methane:v{CACHE_VERSION}', stats.generation(), generation(), *parts))
 
 
 def stamp():

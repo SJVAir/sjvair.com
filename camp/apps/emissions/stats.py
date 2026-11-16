@@ -17,6 +17,7 @@ from typing import Optional
 from urllib.parse import urlencode
 
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import (
     Case, Count, ExpressionWrapper, F, FloatField, IntegerField, OuterRef, Q, Subquery, Sum, Value, When,
 )
@@ -36,9 +37,13 @@ from camp.apps.regions.models import Region
 # read from ToxicEmission through value_expr()/scale() instead of the ten
 # named columns).
 CACHE_VERSION = 2
-CACHE_TIMEOUT = 60 * 60 * 24
+# No expiry: everything cached under it carries the generation, which every
+# import bumps, so nothing can go stale -- and with a day, the first visitor
+# each day waited on the slowest aggregates (11 s for a facility page).
+CACHE_TIMEOUT = None
 # Every stats/areas key includes the generation; bumping it orphans them all
 # (an import just landed). Persistent (no timeout), like the dairies one.
+# The other modules' keys carry it too (see clear_caches).
 GENERATION_KEY = 'emissions:stats:generation'
 
 
@@ -78,8 +83,22 @@ def display_city(value):
 
 
 def clear_caches():
-    """Orphan every cached explorer aggregate and area value: they're keyed under the generation."""
+    """
+    Orphan every cached explorer aggregate and area value: they're keyed under
+    the generation. Every other module's clear_caches() calls this too, and
+    their keys carry this generation beside their own, since their pages mix
+    in each other's data (a dairy page reads CEIDARS facilities, say). Then
+    queue a warm pass, once the import's writes are visible.
+    """
     cache.set(GENERATION_KEY, generation() + 1, None)
+    transaction.on_commit(queue_warm)
+
+
+def queue_warm():
+    # Lazy: tasks imports the warmer, which imports the views.
+    from camp.apps.emissions.tasks import warm_emissions_caches_now
+    # A minute's delay lets an import's several bumps land before the pass.
+    warm_emissions_caches_now.schedule(delay=60)
 
 
 def prefix():
@@ -124,7 +143,7 @@ def _int(value):
 def available_years():
     def compute():
         return sorted(EmissionsRecord.objects.values_list('year', flat=True).distinct())
-    return cache.get_or_set(f'{prefix()}:years', compute, 60 * 60)
+    return cache.get_or_set(f'{prefix()}:years', compute, CACHE_TIMEOUT)
 
 
 def latest_year():
@@ -139,7 +158,7 @@ def facility_count(year):
     return cache.get_or_set(
         f'{prefix()}:facility-count:{year}',
         lambda: EmissionsRecord.objects.filter(year=year).values('facility').distinct().count(),
-        60 * 60,
+        CACHE_TIMEOUT,
     )
 
 

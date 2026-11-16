@@ -108,10 +108,11 @@ def generation():
 def clear_caches():
     """Orphan every cached dairy aggregate and API response: they're keyed under the generation."""
     cache.set(GENERATION_KEY, generation() + 1, None)
+    stats.clear_caches()
 
 
 def key(*parts):
-    return ':'.join(str(part) for part in (f'emissions:dairies:v{CACHE_VERSION}', generation(), *parts))
+    return ':'.join(str(part) for part in (f'emissions:dairies:v{CACHE_VERSION}', stats.generation(), generation(), *parts))
 
 
 def city_urls():
