@@ -49,6 +49,7 @@ RELATED_LIMIT = 5
 ALL_YEARS_KEY = 'pesticides:all-years'
 ALL_YEARS_TTL = None
 DATA_VERSION_KEY = 'pesticides:data-version'
+NOTICES_VERSION_KEY = 'pesticides:notices-version'
 # refresh_landing_stats deletes and rebuilds these after every import.
 LATEST_YEAR_TTL = None
 LANDING_TTL = 60 * 60 * 24
@@ -1062,6 +1063,52 @@ def recent_uses(uses, limit=10):
 # the grower then has up to four days after that date to start. A notice is
 # "active" until that grace period has passed.
 NOTICE_GRACE_DAYS = 4
+
+
+def _pacific_day_start(day):
+    return datetime(day.year, day.month, day.day, tzinfo=settings.DEFAULT_TIMEZONE)
+
+
+def notice_day_bounds(day):
+    """
+    [start, end) Pacific instants of the notices active on `day`: scheduled
+    from four days before it through the end of the day itself.
+    """
+    return (
+        _pacific_day_start(day - timedelta(days=NOTICE_GRACE_DAYS)),
+        _pacific_day_start(day + timedelta(days=1)),
+    )
+
+
+def notices_on(notices, day):
+    start, end = notice_day_bounds(day)
+    return notices.filter(scheduled_application__gte=start, scheduled_application__lt=end)
+
+
+def notice_day_settled_at(day):
+    """
+    The instant after which no notice can newly be active on `day`: the later
+    of the Pacific start of day+5 and 96 hours past the end of the day (the two
+    differ by an hour across a DST change).
+    """
+    return max(
+        _pacific_day_start(day + timedelta(days=NOTICE_GRACE_DAYS + 1)),
+        _pacific_day_start(day + timedelta(days=1)) + timedelta(days=NOTICE_GRACE_DAYS),
+    )
+
+
+def notices_version():
+    """Like data_version, for the notices feeds; bumped when notices change."""
+    value = cache.get(NOTICES_VERSION_KEY)
+    if value is None:
+        value = bump_notices_version()
+    return value
+
+
+def bump_notices_version():
+    value = str(time.time_ns())
+    cache.set(NOTICES_VERSION_KEY, value, None)
+    return value
 
 
 def _upcoming(notices):
