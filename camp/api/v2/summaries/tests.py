@@ -1357,3 +1357,36 @@ class OneNowPerRequestTests(TestCase):
         [row] = get_response_data(response)['data']
         assert row['is_final'] is False
         assert 'max-age=60' in response['Cache-Control']
+
+
+class BulkRegionTypeScopeScaleTests(TestCase):
+    """A whole type of more than 1,000 regions, which an id list can't carry
+    (DATA_UPLOAD_MAX_NUMBER_FIELDS is 1,000)."""
+
+    def test_more_than_1000_regions_by_type(self):
+        regions = Region.objects.bulk_create([
+            Region(name=f'Z{n:05}', slug=f'z{n:05}', type='zipcode', external_id=f'{n:05}')
+            for n in range(1100)
+        ])
+        day = timezone.make_aware(datetime(2026, 1, 1))
+        RegionSummary.objects.bulk_create([
+            RegionSummary(region=region, timestamp=day, resolution='day', entry_type='pm25',
+                          station_count=3, weight=30.0, **STATS)
+            for region in regions
+        ])
+
+        ids, page = [], 1
+        while True:
+            response = self.client.get('/api/2.0/regions/pm25/summaries/daily/', {
+                'type': 'zipcode', 'start': '2026-01-01', 'end': '2026-01-01', 'page': page,
+            })
+            assert response.status_code == 200
+            data = get_response_data(response)
+            ids += [r['id'] for r in data['data']]
+            if not data['has_next_page']:
+                break
+            page += 1
+
+        assert page == 7  # page_size 168
+        assert len(ids) == 1100
+        assert set(ids) == {region.sqid for region in regions}
