@@ -1030,6 +1030,17 @@ class SectionEndpointTests(TestCase):
         assert [c['name'] for c in data['top_chemicals']] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
         assert data['top_commodities'][0]['name'] == 'GRAPE'
 
+    def test_top_chemicals_badges(self):
+        from camp.apps.pesticides.badges import chemical_badges
+        section = Region.objects.get(pk=9101)
+        data = self.client.get(reverse('api:v2:pesticides:section-detail', kwargs={'section_id': section.sqid})).json()
+        assert data['top_chemicals']
+        for row in data['top_chemicals']:
+            chemical = Chemical.objects.get(sqid=row['id'])
+            assert row['badges'] == chemical_badges(chemical)
+            assert 'is_of_concern' in row
+        assert all('badges' not in row for row in data['top_products'] + data['top_commodities'])
+
     def test_detail_404(self):
         assert self.client.get(reverse('api:v2:pesticides:section-detail', kwargs={'section_id': 'nope'})).status_code == 404
 
@@ -2295,7 +2306,7 @@ class PesticidesMetaTests(TestCase):
         data = self.get()
         assert set(data) == {
             'categories', 'iarc_groups', 'methods', 'narrows', 'placeholder_chemicals',
-            'notes', 'badges', 'links', 'notice_filters'}
+            'notes', 'badges', 'links', 'notice_filters', 'years', 'ramp'}
         categories = data['categories']
         assert [c['key'] for c in categories] == list(Chemical.Category.values)
         assert {c['key'] for c in categories if not c['in_use']} == {
@@ -2336,6 +2347,22 @@ class PesticidesMetaTests(TestCase):
             ('california_restricted', 'Restricted', 'california_restricted'),
         ]
         assert data['links'] == {'spraydays_signup': 'https://spraydays.cdpr.ca.gov/'}
+
+    def test_meta_years_and_ramp(self):
+        from django.core.cache import cache
+        from camp.apps.pesticides import maps, notes
+        cache.clear()
+        data = self.get()
+        assert data['years'] == list(reversed(stats.available_years()))
+        assert data['ramp'] == {'colors': maps.RAMP, 'no_data': maps.NO_DATA}
+        assert data['notes']['shades_valley']['summary'] == (
+            'Darker squares had more of what the map shows (pounds, acres treated, or '
+            'applications) in that year or month. Every section or township in the valley is '
+            'ranked together, so a color means the same range anywhere on the map, but not from '
+            'one month to the next. Gray means nothing was reported.')
+        assert data['notes']['shades_valley']['title'] == 'What the shades mean'
+        assert data['notes']['shades'] == json.loads(json.dumps(notes.all_notes()['shades']))
+        assert data['notes']['shades']['summary'].startswith('Darker squares and counties')
 
     def test_placeholder_chemicals(self):
         unknown = Chemical.objects.create(chem_code=-1, name='UNKNOWN')

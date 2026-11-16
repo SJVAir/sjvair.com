@@ -293,6 +293,9 @@ zones are missing there; see SJVAPCD Forecast Setup).
   a settled range is cached 24h server-side and sent `public, max-age=86400`, any other
   200 `max-age=900`, errors `no-cache`. A day with no outlines can't be told from a missed
   fetch (deferred).
+- **Township id** `pesticides/townships/` `id`/`name` is the PLSS name (e.g. `MDM-T14S-R20E`, the
+  MTRS section name minus its `-NN` suffix; `townships.township_of`), permanent while the MTRS
+  sections keep their names.
 - **Pesticide notices by day** `pesticides/notices/active/?date=YYYY-MM-DD` (Pacific) lists the
   notices active on that day, past or future: `start(D-4) <= scheduled_application < start(D+1)`
   (`start(X)` is 00:00 Pacific, built from calendar dates; `stats.notices_on`). Order, the 2000

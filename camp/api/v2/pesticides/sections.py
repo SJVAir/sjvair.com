@@ -18,6 +18,7 @@ from django.utils import timezone
 from resticus import generics, http
 
 from camp.apps.pesticides import classes, maps, stats
+from camp.apps.pesticides.badges import chemical_badges
 from camp.apps.pesticides.models import (
     Chemical, Commodity, PesticideNotice, PesticideSectionTotal, PesticideUseRollup, Product,
 )
@@ -493,6 +494,7 @@ class SectionDetailBase(generics.Endpoint):
                 # The map's section popup marks the chemicals of concern.
                 if field == 'chemical':
                     entry['is_of_concern'] = r.obj.is_of_concern
+                    entry['badges'] = chemical_badges(r.obj)
                 entries.append(entry)
             return entries
 
@@ -514,8 +516,9 @@ class SectionDetailBase(generics.Endpoint):
 
 
 class SectionDetail(CachedEndpointMixin, SectionDetailBase):
-    """One MTRS section: geometry, totals by year and by month, and top chemicals, products, and commodities for `year` (default latest). `narrow=concern|restricted|fumigant|aerial` (or legacy `concern=1`) counts only what that narrowing keeps."""
+    """One MTRS section: geometry, totals by year and by month, and top chemicals, products, and commodities for `year` (default latest). `narrow=concern|restricted|fumigant|aerial` (or legacy `concern=1`) counts only what that narrowing keeps. Each top chemical carries `badges` (keys of meta's `badges`)"""
     cache_timeout = 60 * 60
+    cache_key_version = 1
 
 
 class MapFilterForm(forms.Form):
@@ -789,7 +792,9 @@ class TownshipList(CachedEndpointMixin, TownshipListBase):
     """
     PLSS townships (6x6 blocks of MTRS sections) with pesticide-use totals, as GeoJSON.
 
-    Each township is the union of its sections. Optional
+    Each township is the union of its sections. A feature's `id` (and `name`) is the PLSS
+    township designation, the section name minus its `-NN` suffix (e.g. `MDM-T14S-R20E`). It
+    is permanent: it changes only if the MTRS sections are reimported under different names. Optional
     `bbox=west,south,east,north` limits the grid to what's on screen, and
     `geometry=0` returns the features with `null` geometry (values only) for
     a client that already holds the outlines. `region=<sqid>` with an optional
