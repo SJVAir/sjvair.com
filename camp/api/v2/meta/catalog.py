@@ -12,6 +12,7 @@ from camp.apps.calibrations.models import DefaultCalibration
 from camp.apps.emissions import pollutants
 from camp.apps.entries.models import meteorological
 from camp.apps.forecasts.scales import get_aqi_forecast_scale, get_burn_status_scale
+from camp.apps.pesticides.scales import get_spray_notice_scale
 from camp.apps.hms.scales import get_fire_scale, get_smoke_scale
 from camp.apps.monitors.models import Monitor
 from camp.apps.summaries.models import BaseSummary
@@ -158,7 +159,7 @@ STATIC_DATASETS = {
         'pesticide-notices', 'Pesticide Spray Notices',
         'Advance notices of planned restricted-use pesticide applications.',
         'SprayDays (California DPR)', '', ['point'],
-        [_other('spray-notice', 'Spray Notices', '', ['day'], 'sum')],
+        [_from_scale(get_spray_notice_scale(), ['day'], 'sum')],
         meta_url=lambda: reverse('api:v2:pesticides:pesticides-meta'),
     ),
     'forecasts': lambda: _dataset(

@@ -386,6 +386,22 @@ NOTICE_METHOD_LABELS = {'Aircraft': 'Air'}
 NOTICE_METHOD_FOR_CODE = {'G': 'Ground', 'A': 'Aircraft', 'F': 'Fumigation'}
 
 
+def notice_method_code(application_method):
+    """
+    The use-record method code (`aerial_ground`: G/A/F/O/none) for a notice's SprayDays
+    wording, by the same rule as the `aerial_ground` filter (sections.notice_method_q):
+    Ground, Aircraft and Fumigation ignoring case, any other non-blank wording `O`, blank
+    `none`. Never null: `application_method` is a non-null CharField.
+    """
+    if application_method == '':
+        return 'none'
+    lowered = application_method.lower()
+    for code, wording in NOTICE_METHOD_FOR_CODE.items():
+        if lowered == wording.lower():
+            return code
+    return 'O'
+
+
 def by_method(rows, year, lbs_field='lbs_chemical', all_years=False, apps_field='records'):
     """
     How the scope's use was applied, from CDPR's per-record method

@@ -242,7 +242,9 @@ zones are missing there; see SJVAPCD Forecast Setup).
   (`spraydays_signup`) and `notice_filters` (the value filters the notice endpoints accept:
   `chemical_id`, `product_id`, `category`, `iarc_group`, `narrow`, `aerial_ground`), `years`
   (years with data, newest first), `ramp` (`{colors, no_data}` from `maps.RAMP`/`maps.NO_DATA`,
-  the map's shade colors) and a `notes.shades_valley` note (what the shades mean). The
+  the map's shade colors), a `notes.shades_valley` note (what the shades mean) and `scales`
+  (`{"spray-notice": <Scale>}`, keyed by catalog entry-type id like `hms/meta/`'s: one
+  `category` level `notice`, "Spray notice", `#e64980`; `camp/apps/pesticides/scales.py`). The
   pesticide entity search (`pesticides/search/`) returns one page plus `more`, and a
   `placeholder` flag on chemical results. `monitors/meta/` adds a `scale` per entry type plus `stages` and
   `processors` labels. It no longer serves the legacy `levels` dict; `scale` is the only level
@@ -320,7 +322,10 @@ zones are missing there; see SJVAPCD Forecast Setup).
   (`start(X)` is 00:00 Pacific, built from calendar dates; `stats.notices_on`). Order, the 2000
   cap and every filter are unchanged; a bad date is a 400 `{"error": "date must be YYYY-MM-DD"}`.
   With `date`, each feature's `properties.past` is true once its window has ended
-  (`scheduled_application < now - NOTICE_GRACE_DAYS`); without it the property is absent. On
+  (`scheduled_application < now - NOTICE_GRACE_DAYS`); without it the property is absent. Every notice
+  feature (both endpoints) also carries `aerial_ground`: the filter's code for its SprayDays
+  `application_method` (`stats.notice_method_code`, never null; blank is `none`), beside the raw
+  wording; the notice cache's `cache_key_version` is 1 for it. On
   `notices/archive/`, `date` keeps the past notices active on that day.
   - **Filters on both notice endpoints:** `category` (repeated or comma-separated, any of them)
     and `iarc_group`; a notice matches when any chemical does, and with `chemical_id` they must
