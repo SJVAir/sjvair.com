@@ -1,3 +1,4 @@
+import json
 import pytest
 from datetime import date, timedelta
 from unittest.mock import patch
@@ -1171,6 +1172,126 @@ class ArchivedNoticeEndpointTests(TestCase):
             sections.MAX_NOTICES = original
 
 
+class NoticeDayEndpointTests(TestCase):
+    """notices/active/ and notices/archive/ with `date`, `category`, `iarc_group`."""
+    fixtures = ['pesticides-explorer']
+
+    # The explorer's feature properties, unchanged without the new params.
+    PROPERTY_KEYS = {
+        'id', 'scheduled_application', 'scheduled_end', 'county', 'application_method',
+        'treated_amount', 'treated_units', 'section', 'section_id', 'products', 'chemicals',
+    }
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.url = reverse('api:v2:pesticides:notice-active')
+        self.archive_url = reverse('api:v2:pesticides:notice-archive')
+
+    def sqid(self, pk):
+        return PesticideNotice.objects.get(pk=pk).sqid
+
+    def ids(self, params, url=None):
+        response = self.client.get(url or self.url, params)
+        assert response.status_code == 200, response.content
+        return [f['properties']['id'] for f in response.json()['features']]
+
+    def pacific(self, *args):
+        from datetime import datetime
+        from django.conf import settings
+        return datetime(*args, tzinfo=settings.DEFAULT_TIMEZONE)
+
+    def test_date_window(self):
+        PesticideNotice.objects.filter(pk=2).update(scheduled_application=self.pacific(2026, 6, 12, 10))
+        PesticideNotice.objects.filter(pk=3).update(scheduled_application=self.pacific(2026, 6, 16))
+        assert self.ids({'date': '2026-06-15'}) == [self.sqid(2)]
+        assert self.ids({'date': '2026-06-16'}) == [self.sqid(2), self.sqid(3)]
+
+    def test_date_includes_archived_notice(self):
+        data = self.client.get(self.url, {'date': '2020-01-17'}).json()
+        assert [f['properties']['id'] for f in data['features']] == [self.sqid(1)]
+        assert data['features'][0]['properties']['past'] is True
+
+    def test_past_flag_only_with_date(self):
+        # Notice 2 is 2099-01-10 08:00 UTC: active on 2099-01-12, not yet past.
+        for day, expected in (('2099-01-12', False), ('2020-01-17', True)):
+            features = self.client.get(self.url, {'date': day}).json()['features']
+            assert features
+            assert all(f['properties']['past'] is expected for f in features)
+        features = self.client.get(self.url).json()['features']
+        assert features
+        assert all('past' not in f['properties'] for f in features)
+
+    def test_bad_date(self):
+        for value in ('2026-13-01', 'nope', '2026-6-1', '0001-01-01', '2026-W01-1'):
+            response = self.client.get(self.url, {'date': value})
+            assert response.status_code == 400, value
+            assert response.json() == {'error': 'date must be YYYY-MM-DD'}
+
+    def test_category_any_chemical(self):
+        assert self.ids({'category': 'carcinogen'}) == [self.sqid(3)]
+        assert self.ids({'category': 'toxic_air_contaminant'}) == [self.sqid(2), self.sqid(3)]
+        assert self.ids({'category': ['carcinogen', 'oil']}) == [self.sqid(3)]
+        assert self.ids({'category': 'oil,carcinogen'}) == [self.sqid(3)]
+
+    def test_iarc_group(self):
+        assert self.ids({'iarc_group': '2A'}) == [self.sqid(3)]
+        response = self.client.get(self.url, {'iarc_group': '9'})
+        assert response.status_code == 400
+        assert '9' in response.json()['error']
+
+    def test_category_and_iarc_group_match_the_same_chemical(self):
+        # Notice 3: GLYPHOSATE (carcinogen, 2A) and CHLORPYRIFOS (TAC, no IARC).
+        assert self.ids({'category': 'toxic_air_contaminant', 'iarc_group': '2A'}) == []
+        assert self.ids({'category': 'carcinogen', 'iarc_group': '2A'}) == [self.sqid(3)]
+
+    def test_unknown_category(self):
+        response = self.client.get(self.url, {'category': 'foo'})
+        assert response.status_code == 400
+        assert response.json() == {'error': 'Unknown category: foo.'}
+
+    def test_settled_day_cached_for_a_day(self):
+        from camp.utils import views
+        now = self.pacific(2026, 6, 20, 12)
+        for day, timeout in (('2026-06-10', 86400), ('2026-06-20', 300)):
+            with patch.object(views, 'cache') as cache, patch('django.utils.timezone.now', return_value=now):
+                cache.get.return_value = None
+                assert self.client.get(self.url, {'date': day}).status_code == 200
+            assert cache.set.call_count == 1
+            assert cache.set.call_args.args[2] == timeout, day
+        # No date: the class-wide timeout, as before.
+        with patch.object(views, 'cache') as cache:
+            cache.get.return_value = None
+            self.client.get(self.url)
+        assert cache.set.call_count == 1
+        assert cache.set.call_args.args[2] == 300
+
+    def test_fetch_version_retires_cached_day(self):
+        PesticideNotice.objects.filter(pk=2).update(scheduled_application=self.pacific(2026, 6, 12, 10))
+        assert self.ids({'date': '2026-06-15'}) == [self.sqid(2)]
+        PesticideNotice.objects.filter(pk=2).update(scheduled_application=self.pacific(2026, 6, 1))
+        response = self.client.get(self.url, {'date': '2026-06-15'})
+        assert response['X-Cache-Status'] == 'HIT'
+        assert [f['properties']['id'] for f in response.json()['features']] == [self.sqid(2)]
+        stats.bump_notices_version()
+        response = self.client.get(self.url, {'date': '2026-06-15'})
+        assert response['X-Cache-Status'] == 'MISS'
+        assert response.json()['features'] == []
+
+    def test_archive_takes_date_and_filters(self):
+        params = {'date': '2020-01-17', 'category': 'toxic_air_contaminant'}
+        assert self.ids(params, self.archive_url) == [self.sqid(1)]
+        assert self.ids({'date': '2020-01-17', 'category': 'carcinogen'}, self.archive_url) == []
+
+    def test_no_new_params_unchanged(self):
+        active = self.client.get(self.url).json()['features']
+        assert [f['id'] for f in active] == [self.sqid(2), self.sqid(3)]
+        assert all(set(f['properties']) == self.PROPERTY_KEYS for f in active)
+        archive = self.client.get(self.archive_url).json()['features']
+        assert [f['id'] for f in archive] == [self.sqid(1)]
+        assert all(set(f['properties']) == self.PROPERTY_KEYS | {'past'} for f in archive)
+
+
 # ---------------------------------------------------------------------------
 # County outlines and township grid GeoJSON endpoints
 # ---------------------------------------------------------------------------
@@ -2172,7 +2293,9 @@ class PesticidesMetaTests(TestCase):
     def test_shape(self):
         from camp.apps.pesticides import notes
         data = self.get()
-        assert set(data) == {'categories', 'iarc_groups', 'methods', 'narrows', 'placeholder_chemicals'}
+        assert set(data) == {
+            'categories', 'iarc_groups', 'methods', 'narrows', 'placeholder_chemicals',
+            'notes', 'badges', 'links', 'notice_filters'}
         categories = data['categories']
         assert [c['key'] for c in categories] == list(Chemical.Category.values)
         assert {c['key'] for c in categories if not c['in_use']} == {
@@ -2195,9 +2318,163 @@ class PesticidesMetaTests(TestCase):
         assert all(n['description'] for n in narrows.values())
         assert data['placeholder_chemicals'] == []
 
+    def test_notes_served(self):
+        from camp.apps.pesticides import notes
+        served = self.get()['notes']
+        assert served['noi_meaning'] == json.loads(json.dumps(notes.all_notes()['noi_meaning']))
+        for key in ('pur_lag', 'badges', 'prop65', 'carb_tac', 'iarc_2a', 'california_restricted'):
+            assert key in served, key
+
+    def test_badges_and_links(self):
+        from camp.apps.pesticides.badges import BADGES
+        data = self.get()
+        assert [b['key'] for b in data['badges']] == [b['key'] for b in BADGES]
+        assert [(b['key'], b['label'], b['note']) for b in data['badges']] == [
+            ('prop65', 'Prop 65', 'prop65'), ('carb_tac', 'CARB TAC', 'carb_tac'),
+            ('iarc_1', 'IARC 1', 'iarc_1'), ('iarc_2a', 'IARC 2A', 'iarc_2a'),
+            ('iarc_2b', 'IARC 2B', 'iarc_2b'), ('iarc_3', 'IARC 3', 'iarc_3'),
+            ('california_restricted', 'Restricted', 'california_restricted'),
+        ]
+        assert data['links'] == {'spraydays_signup': 'https://spraydays.cdpr.ca.gov/'}
+
     def test_placeholder_chemicals(self):
         unknown = Chemical.objects.create(chem_code=-1, name='UNKNOWN')
         confidential = Chemical.objects.create(chem_code=-2, name='AI IS CONFIDENTIAL')
         Chemical.objects.create(chem_code=5, name='OTHER')
         assert self.get()['placeholder_chemicals'] == [
             {'id': confidential.sqid, 'name': 'AI IS CONFIDENTIAL'}, {'id': unknown.sqid, 'name': 'UNKNOWN'}]
+
+
+class MapIdFilterTests(RollupTestMixin, TestCase):
+    """The charts' filter values on the map endpoints: `*_id` sqids, `aerial_ground`."""
+    fixtures = ['pesticides-explorer']
+
+    SECTIONS = '/api/2.0/pesticides/sections/'
+    TOWNSHIPS = '/api/2.0/pesticides/townships/'
+    BASE = {'bbox': '-121,35,-118,37.5', 'year': 2023}
+
+    def setUp(self):
+        super().setUp()
+        self.active_url = reverse('api:v2:pesticides:notice-active')
+        self.archive_url = reverse('api:v2:pesticides:notice-archive')
+
+    def properties(self, url, params):
+        response = self.client.get(url, {**self.BASE, **params})
+        assert response.status_code == 200, response.content
+        return [f['properties'] for f in response.json()['features']]
+
+    def assert_same(self, a, b):
+        for url in (self.SECTIONS, self.TOWNSHIPS):
+            left, right = self.properties(url, a), self.properties(url, b)
+            assert left == right, url
+            assert left
+
+    def notice_ids(self, params, url=None):
+        response = self.client.get(url or self.active_url, params)
+        assert response.status_code == 200, response.content
+        return [f['properties']['id'] for f in response.json()['features']]
+
+    def notice(self, pk):
+        return PesticideNotice.objects.get(pk=pk).sqid
+
+    def test_chemical_id_equals_code(self):
+        glyphosate = Chemical.objects.get(chem_code=1855)
+        self.assert_same({'chemical_id': glyphosate.sqid}, {'chemical': 1855})
+        # And it narrows: not the unfiltered answer.
+        assert self.properties(self.SECTIONS, {'chemical_id': glyphosate.sqid}) != self.properties(self.SECTIONS, {})
+
+    def test_chemical_id_counts_per_row(self):
+        # chemical_id sets chemical_scoped as chemical does, the compared year included.
+        glyphosate = Chemical.objects.get(chem_code=1855)
+        self.assert_same({'chemical_id': glyphosate.sqid, 'compare': 2022}, {'chemical': 1855, 'compare': 2022})
+
+    def test_product_and_commodity_ids(self):
+        product = Product.objects.get(prodno=2)
+        commodity = Commodity.objects.get(site_code='3001')
+        self.assert_same({'product_id': product.sqid}, {'product': 2})
+        self.assert_same({'commodity_id': commodity.sqid}, {'commodity': '3001'})
+
+    def test_both_forms_400(self):
+        glyphosate = Chemical.objects.get(chem_code=1855)
+        product = Product.objects.get(prodno=2)
+        commodity = Commodity.objects.get(site_code='3001')
+        for url in (self.SECTIONS, self.TOWNSHIPS):
+            response = self.client.get(url, {**self.BASE, 'chemical': 1855, 'chemical_id': glyphosate.sqid})
+            assert response.status_code == 400
+            assert response.json() == {'error': 'give chemical or chemical_id, not both'}
+            response = self.client.get(url, {**self.BASE, 'product': 2, 'product_id': product.sqid})
+            assert response.json() == {'error': 'give product or product_id, not both'}
+            response = self.client.get(url, {**self.BASE, 'commodity': '3001', 'commodity_id': commodity.sqid})
+            assert response.json() == {'error': 'give commodity or commodity_id, not both'}
+        for url in (self.active_url, self.archive_url):
+            response = self.client.get(url, {'chemical': 1855, 'chemical_id': glyphosate.sqid})
+            assert response.status_code == 400
+            assert response.json() == {'error': 'give chemical or chemical_id, not both'}
+
+    def test_bad_id_400(self):
+        for url in (self.SECTIONS, self.TOWNSHIPS, self.active_url):
+            response = self.client.get(url, {**self.BASE, 'chemical_id': 'zzzz'})
+            assert response.status_code == 400
+            assert response.json()['error'] == 'Not a chemical id.'
+        # A well-formed id that names no row.
+        codec = Chemical._meta.get_field('sqid').sqids_instance
+        response = self.client.get(self.SECTIONS, {**self.BASE, 'chemical_id': codec.encode([999999])})
+        assert response.status_code == 400
+        assert response.json()['error'] == 'No chemical has this id.'
+
+    def test_aerial_ground_sections(self):
+        self.assert_same({'aerial_ground': 'G'}, {'method': 'G'})
+        self.assert_same({'aerial_ground': 'none'}, {'method': 'none'})
+        assert self.properties(self.SECTIONS, {'aerial_ground': 'A'}) != self.properties(self.SECTIONS, {})
+        for url in (self.SECTIONS, self.TOWNSHIPS, self.active_url):
+            response = self.client.get(url, {**self.BASE, 'aerial_ground': 'X'})
+            assert response.status_code == 400
+            assert 'X' in response.json()['error']
+
+    def test_aerial_ground_notices(self):
+        PesticideNotice.objects.filter(pk=2).update(application_method='Aircraft')
+        PesticideNotice.objects.filter(pk=3).update(application_method='Ground')
+        assert self.notice_ids({'aerial_ground': 'A'}) == [self.notice(2)]
+        assert self.notice_ids({'aerial_ground': 'G'}) == [self.notice(3)]
+        assert self.notice_ids({'aerial_ground': 'F'}) == []
+        assert self.notice_ids({'aerial_ground': 'O'}) == []
+        assert self.notice_ids({'aerial_ground': 'none'}) == []
+        # Any case.
+        PesticideNotice.objects.filter(pk=3).update(application_method='GROUND')
+        stats.bump_notices_version()
+        assert self.notice_ids({'aerial_ground': 'G'}) == [self.notice(3)]
+        PesticideNotice.objects.filter(pk=2).update(application_method='Hand')
+        PesticideNotice.objects.filter(pk=3).update(application_method='')
+        stats.bump_notices_version()
+        assert self.notice_ids({'aerial_ground': 'O'}) == [self.notice(2)]
+        assert self.notice_ids({'aerial_ground': 'none'}) == [self.notice(3)]
+        # The archive's notice 1 is Ground.
+        assert self.notice_ids({'aerial_ground': 'G'}, self.archive_url) == [self.notice(1)]
+        assert self.notice_ids({'aerial_ground': 'A'}, self.archive_url) == []
+
+    def test_notice_chemical_and_product_ids(self):
+        glyphosate = Chemical.objects.get(chem_code=1855)
+        roundup = Product.objects.get(prodno=1)
+        assert self.notice_ids({'chemical_id': glyphosate.sqid}) == self.notice_ids({'chemical': 1855}) == [self.notice(3)]
+        assert self.notice_ids({'product_id': roundup.sqid}) == self.notice_ids({'product': 1}) == [self.notice(3)]
+
+    def test_notice_chemical_id_same_chemical(self):
+        chlorpyrifos = Chemical.objects.get(chem_code=253)
+        glyphosate = Chemical.objects.get(chem_code=1855)
+        assert self.notice_ids({'chemical_id': chlorpyrifos.sqid, 'iarc_group': '2A'}) == []
+        assert self.notice_ids({'chemical_id': glyphosate.sqid, 'iarc_group': '2A'}) == [self.notice(3)]
+
+    def test_notice_commodity_id_400(self):
+        commodity = Commodity.objects.get(site_code='3001')
+        for url in (self.active_url, self.archive_url):
+            response = self.client.get(url, {'commodity_id': commodity.sqid})
+            assert response.status_code == 400
+            assert response.json() == {'error': "notices don't record a commodity"}
+        # Plain commodity stays ignored, as before.
+        assert self.notice_ids({'commodity': '3001'}) == self.notice_ids({})
+
+    def test_meta_notice_filters(self):
+        from camp.api.v2.pesticides.sections import NOTICE_VALUE_FILTERS
+        data = self.client.get(reverse('api:v2:pesticides:pesticides-meta')).json()['data']
+        assert data['notice_filters'] == list(NOTICE_VALUE_FILTERS)
+        assert data['notice_filters'] == ['chemical_id', 'product_id', 'category', 'iarc_group', 'narrow', 'aerial_ground']

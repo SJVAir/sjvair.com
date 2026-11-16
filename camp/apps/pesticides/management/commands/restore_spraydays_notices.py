@@ -8,6 +8,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils.dateparse import parse_datetime
 
+from camp.apps.pesticides import stats
 from camp.apps.pesticides.models import Chemical, PesticideNotice, Product
 from camp.apps.pesticides.spraydays import _MTRS_RE
 from camp.apps.regions.models import Region
@@ -149,6 +150,9 @@ class Command(BaseCommand):
                 missing_products.update(code for code in product_codes if code not in products)
                 missing_chemicals.update(code for code in chemical_codes if code not in chemicals)
                 created += 1
+
+        if created:
+            stats.bump_notices_version()
 
         self.stdout.write(f'Restored {created} notices; skipped {skipped} already present.')
         if unplaced:

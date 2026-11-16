@@ -86,6 +86,16 @@ class RestoreNoticesTests(TestCase):
         assert bare.mtrs_id is None and bare.point is None and bare.treated_amount is None
         assert not bare.products.exists()
 
+    def test_a_restore_bumps_the_notices_version(self):
+        from django.core.cache import cache
+        from camp.apps.pesticides import stats
+        exported = export_csv()
+        PesticideNotice.objects.all().delete()
+        cache.clear()
+        before = stats.notices_version()
+        self.restore(exported)
+        assert stats.notices_version() != before
+
     def test_a_notice_fetched_again_keeps_its_live_copy(self):
         exported = export_csv()
         total = PesticideNotice.objects.count()

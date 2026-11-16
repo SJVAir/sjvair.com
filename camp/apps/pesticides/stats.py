@@ -6,7 +6,7 @@ per-month rollup of PesticideUse rebuilt by camp.apps.pesticides.rollup.
 """
 import math
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from types import SimpleNamespace
 
 from django.contrib.gis.db.models.functions import Centroid
@@ -49,6 +49,7 @@ RELATED_LIMIT = 5
 ALL_YEARS_KEY = 'pesticides:all-years'
 ALL_YEARS_TTL = None
 DATA_VERSION_KEY = 'pesticides:data-version'
+NOTICES_VERSION_KEY = 'pesticides:notices-version'
 # refresh_landing_stats deletes and rebuilds these after every import.
 LATEST_YEAR_TTL = None
 LANDING_TTL = 60 * 60 * 24
@@ -378,6 +379,9 @@ METHOD_ORDER = ('G', 'A', 'F', 'O', '')
 # SprayDays names its methods itself; where they differ from the labels above
 # for the same thing, tables show ours.
 NOTICE_METHOD_LABELS = {'Aircraft': 'Air'}
+# The use records' method code a SprayDays method means (compared ignoring case). `O`
+# is any other non-blank method; blank is not reported.
+NOTICE_METHOD_FOR_CODE = {'G': 'Ground', 'A': 'Aircraft', 'F': 'Fumigation'}
 
 
 def by_method(rows, year, lbs_field='lbs_chemical', all_years=False, apps_field='records'):
@@ -1062,6 +1066,62 @@ def recent_uses(uses, limit=10):
 # the grower then has up to four days after that date to start. A notice is
 # "active" until that grace period has passed.
 NOTICE_GRACE_DAYS = 4
+
+
+def _pacific_day_start(day):
+    return datetime(day.year, day.month, day.day, tzinfo=settings.DEFAULT_TIMEZONE)
+
+
+def notice_day_bounds(day):
+    """
+    [start, end) Pacific instants of the notices active on `day`: scheduled
+    from four days before it through the end of the day itself.
+    """
+    return (
+        _pacific_day_start(day - timedelta(days=NOTICE_GRACE_DAYS)),
+        _pacific_day_start(day + timedelta(days=1)),
+    )
+
+
+def notices_on(notices, day):
+    """The notices (a queryset) active on `day`, per notice_day_bounds."""
+    start, end = notice_day_bounds(day)
+    return notices.filter(scheduled_application__gte=start, scheduled_application__lt=end)
+
+
+def notice_day_settled_at(day):
+    """
+    The instant after which no notice can newly be active on `day`: the later
+    of the Pacific start of day+5 and 96 hours past the end of the day (the two
+    differ by an hour across a DST change).
+    """
+    elapsed = (
+        _pacific_day_start(day + timedelta(days=1)).astimezone(dt_timezone.utc)
+        + timedelta(hours=24 * NOTICE_GRACE_DAYS)
+    ).astimezone(settings.DEFAULT_TIMEZONE)
+    return max(_pacific_day_start(day + timedelta(days=NOTICE_GRACE_DAYS + 1)), elapsed)
+
+
+def notices_version():
+    """
+    The version the notices feeds' cache keys carry. Bumped when notices
+    change, which retires every entry built before; an evicted version just
+    starts a new one, never a stale read.
+    """
+    value = cache.get(NOTICES_VERSION_KEY)
+    if value is None:
+        value = bump_notices_version()
+    return value
+
+
+def bump_notices_version():
+    """
+    Start a new notices version, retiring every cached notices answer. Call it
+    after anything that writes PesticideNotice rows.
+    """
+    value = str(time.time_ns())
+    cache.set(NOTICES_VERSION_KEY, value, None)
+    return value
 
 
 def _upcoming(notices):

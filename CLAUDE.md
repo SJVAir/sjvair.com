@@ -235,7 +235,12 @@ zones are missing there; see SJVAPCD Forecast Setup).
   `forecasts/meta/` return scales keyed by catalog entry-type id (forecasts also lists the
   zones with their regions). `pesticides/meta/` lists `categories` (with `in_use`),
   `iarc_groups`, `methods` (the use records' G/A/F/O/none, not SprayDays' notice methods),
-  `narrows` and `placeholder_chemicals`; it's both pesticide datasets' `meta_url`. The
+  `narrows` and `placeholder_chemicals`; it's both pesticide datasets' `meta_url`. It also serves
+  `notes` (every health note in `datafiles/pesticide-health-notes.yaml`, keyed:
+  `{key, title, summary, detail|null, source_url}`), `badges` (`[{key, label, note}]` in the
+  explorer's order; `note` is a key of `notes`; keys permanent, no styling), `links`
+  (`spraydays_signup`) and `notice_filters` (the value filters the notice endpoints accept:
+  `chemical_id`, `product_id`, `category`, `iarc_group`, `narrow`, `aerial_ground`). The
   pesticide entity search (`pesticides/search/`) returns one page plus `more`, and a
   `placeholder` flag on chemical results. `monitors/meta/` adds a `scale` per entry type plus `stages` and
   `processors` labels. It no longer serves the legacy `levels` dict; `scale` is the only level
@@ -288,6 +293,32 @@ zones are missing there; see SJVAPCD Forecast Setup).
   a settled range is cached 24h server-side and sent `public, max-age=86400`, any other
   200 `max-age=900`, errors `no-cache`. A day with no outlines can't be told from a missed
   fetch (deferred).
+- **Pesticide notices by day** `pesticides/notices/active/?date=YYYY-MM-DD` (Pacific) lists the
+  notices active on that day, past or future: `start(D-4) <= scheduled_application < start(D+1)`
+  (`start(X)` is 00:00 Pacific, built from calendar dates; `stats.notices_on`). Order, the 2000
+  cap and every filter are unchanged; a bad date is a 400 `{"error": "date must be YYYY-MM-DD"}`.
+  With `date`, each feature's `properties.past` is true once its window has ended
+  (`scheduled_application < now - NOTICE_GRACE_DAYS`); without it the property is absent. On
+  `notices/archive/`, `date` keeps the past notices active on that day.
+  - **Filters on both notice endpoints:** `category` (repeated or comma-separated, any of them)
+    and `iarc_group`; a notice matches when any chemical does, and with `chemical_id` they must
+    hold on the same chemical. An unknown value is a 400 `{"error": "<message>"}`.
+  - **The charts' values** (`sections/`, `townships/`, `notices/active/`, `notices/archive/`):
+    `chemical_id`, `product_id`, `commodity_id` take our sqids (`place/`'s `SqidChoiceField`;
+    bad id `Not a chemical id.`, unknown `No chemical has this id.`); `chemical`/`product`/
+    `commodity` still take CDPR codes. Giving both forms is a 400 `give chemical or chemical_id,
+    not both`. `aerial_ground` takes `G`, `A`, `F`, `O`, `none`: on sections and townships it
+    equals `method` (rollup codes); on notices it maps to SprayDays' wording (`G` Ground, `A`
+    Aircraft, `F` Fumigation, ignoring case; `O` any other non-blank method; `none` blank). An
+    unknown code is a 400; `method` is unchanged and, given too, also applies. Notices record
+    no crop: `commodity_id` there is a 400 `notices don't record a commodity` (plain
+    `commodity` is still ignored). Sections and townships don't take `category`/`iarc_group`.
+  - **Cache:** the key carries the notices version (`pesticides:notices-version`, no expiry, a
+    missing value starts a new one), which `fetch_pesticide_notices` bumps in a `finally`
+    (the daily fetch rewrites schedules, chemicals and products, even when it fails partway).
+    A `date` is settled once now is past the later of `start(D+5)` and `start(D+1)` plus
+    96 hours (`stats.notice_day_settled_at`); settled answers are cached 24 h, all others
+    `NOTICE_CACHE_TTL` (5 min), so `past` can lag up to 5 minutes.
 - **Pesticide place** `pesticides/place/` takes the same addressing (`?region_type=&region=` or
   `?monitor=`) and returns `months` and `years` from `PesticideUseRollup`: counties by
   `county=`, other regions by the MTRS sections they touch, monitors by their ZIP. Month 0

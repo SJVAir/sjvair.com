@@ -18,6 +18,7 @@ from camp.apps.regions.models import Region
 from camp.apps.regions.resolve import CACHE_TIMEOUT, PlaceError, PlaceNotFound, _place_key, place_json, resolve_place
 from camp.utils.views import CachedEndpointMixin
 
+from .fields import AERIAL_GROUND_CHOICES, NO_METHOD, CategoryListField, PlaceChoiceField, SqidChoiceField
 from .filters import ChemicalFilter, CommodityFilter, PesticideNoticeFilter, PesticideSummaryFilter, PesticideUseFilter, ProductFilter
 from .serializers import (
     ChemicalSerializer,
@@ -376,82 +377,6 @@ class EntitySearch(CachedEndpointMixin, EntitySearchBase):
     cache_timeout = 60 * 5
 
 
-class SqidChoiceField(forms.CharField):
-    """
-    One of `model`'s rows by its sqid (the `id` its list endpoint returns), cleaned to the
-    instance. Not a CDPR code: sqids can be all digits, so a code can't be told from an id.
-    A value that isn't one of our ids is `invalid`; a well-formed id with no row (deleted
-    or merged) is `not_found`, so a client can show a saved filter as retired.
-    """
-
-    MAX_PK = 2**63 - 1  # BigAutoField
-    # Decoding is quadratic in length, and a real id is well under this; refuse longer ones
-    # before decoding, so a long value can't cost CPU on every uncached error answer.
-    MAX_LENGTH = 32
-
-    def __init__(self, model, **kwargs):
-        self.model = model
-        kwargs.setdefault('required', False)
-        super().__init__(**kwargs)
-
-    def clean(self, value):
-        value = super().clean(value)
-        if not value:
-            return None
-        if len(value) > self.MAX_LENGTH:
-            raise forms.ValidationError(
-                f'Not a {self.model._meta.model_name} id.', code='invalid')
-        codec = self.model._meta.get_field('sqid').sqids_instance
-        decoded = codec.decode(value)
-        # sqids decodes some other spellings to the same number; only the canonical one is an id.
-        # Past the pk column's range it can't be a row, and the lookup itself would fail.
-        if len(decoded) != 1 or decoded[0] > self.MAX_PK or codec.encode(decoded) != value:
-            raise forms.ValidationError(
-                f'Not a {self.model._meta.model_name} id.', code='invalid')
-        try:
-            return self.model.objects.get(pk=decoded[0])
-        except self.model.DoesNotExist:
-            raise forms.ValidationError(
-                f'No {self.model._meta.model_name} has this id.', code='not_found')
-
-
-class CategoryListField(forms.Field):
-    """
-    Chemical categories, repeated (`category=a&category=b`) or comma-separated, kept as a
-    sorted, deduplicated list (so every spelling shares a cache key); blanks are dropped.
-    """
-    widget = forms.MultipleHiddenInput  # reads every value of the parameter
-
-    def __init__(self, **kwargs):
-        kwargs.setdefault('required', False)
-        super().__init__(**kwargs)
-
-    def clean(self, value):
-        values = {part.strip() for raw in (value or []) for part in str(raw).split(',')} - {''}
-        unknown = sorted(values - set(Chemical.Category.values))
-        if unknown:
-            raise forms.ValidationError(f'Unknown category: {", ".join(unknown)}.', code='invalid')
-        return sorted(values) or None
-
-
-class PlaceChoiceField(forms.ChoiceField):
-    """A ChoiceField whose unknown value is `invalid`, like the place endpoint's other fields."""
-
-    def __init__(self, **kwargs):
-        kwargs.setdefault('required', False)
-        super().__init__(**kwargs)
-
-    def validate(self, value):
-        try:
-            super().validate(value)
-        except forms.ValidationError as err:
-            raise forms.ValidationError(err.messages[0], code='invalid')
-
-
-# The blank (not reported) application method, as the explorer's forms name it.
-NO_METHOD = 'none'
-
-
 class PesticidePlaceForm(forms.Form):
     chemical = SqidChoiceField(Chemical)
     commodity = SqidChoiceField(Commodity)
@@ -459,7 +384,7 @@ class PesticidePlaceForm(forms.Form):
     category = CategoryListField()
     narrow = PlaceChoiceField(choices=stats.NARROW_CHOICES)
     iarc_group = PlaceChoiceField(choices=Chemical.IARCGroup.choices)
-    aerial_ground = PlaceChoiceField(choices=[*PesticideUse.AerialGround.choices, (NO_METHOD, 'Not reported')])
+    aerial_ground = PlaceChoiceField(choices=AERIAL_GROUND_CHOICES)
     year__gte = forms.IntegerField(required=False, min_value=1900, max_value=2100)
     year__lte = forms.IntegerField(required=False, min_value=1900, max_value=2100)
 
