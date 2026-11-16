@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.utils.functional import cached_property
 
+from camp.apps.calibrations.lookup import active_lookup
 from camp.apps.calibrations.models import Calibration
 from camp.apps.calibrations.core.processors.base import BaseProcessor
 from camp.utils.eval import evaluate_formula
@@ -15,6 +16,9 @@ class LinearExpressionProcessor(BaseProcessor):
     @cached_property
     def calibration(self):
         if self.entry.position:
+            # Bulk reprocessing activates a per-chunk lookup (see lookup.py).
+            if (lookup := active_lookup()) is not None:
+                return lookup.get_for_entry(self.entry, self.name)
             return Calibration.objects.get_for_entry(self.entry, self.name)
 
     def process(self):

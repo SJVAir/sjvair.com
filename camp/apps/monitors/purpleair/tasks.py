@@ -1,20 +1,28 @@
+import logging
 import time
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone as dt_timezone
 
 from django.conf import settings
 from django.contrib.gis.geos import Point
 from django.db import transaction
+from django.db.models import F, Q
 from django.utils import timezone
 
 from django_huey import db_task, db_periodic_task
 from huey import crontab
 
-from camp.apps.entries import models as entry_models
-from camp.apps.monitors.purpleair.api import purpleair_api
-from camp.apps.monitors.purpleair.models import PurpleAir
+from camp.apps.monitors.legacy_backfill import NEAR_DUPLICATE_WINDOW, _has_near, chunk_start_for
+from camp.apps.monitors.purpleair.api import (
+    PurpleAirAPIError, PurpleAirNotFound, PurpleAirRateLimited, purpleair_api,
+)
+from camp.apps.monitors.purpleair.history import existing_raw_timestamps, monitors_for_window
+from camp.apps.monitors.purpleair.models import PurpleAir, PurpleAirHistoryGap, PurpleAirHistoryJob
+from camp.apps.monitors.tasks import _fail_job, _insert_raw_entries, _is_stalled
 from camp.apps.regions.models import Region
 from camp.utils import gis
+
+logger = logging.getLogger(__name__)
 
 
 @db_periodic_task(crontab(minute='*'), priority=50)
@@ -136,57 +144,203 @@ def process_data(payload, cutoff_stage=None):
     monitor.save()
 
 
-@db_task(queue='secondary')
-def import_monitor_history(monitor_id, start_date, end_date, chunk_size=28):
-    monitor = PurpleAir.objects.get(pk=monitor_id)
-    history = purpleair_api.get_sensor_history(
-        sensor_index=monitor.sensor_id,
-        start_date=start_date,
-        end_date=end_date,
-        batch_days=28,
-    )
+# History import (PurpleAirHistoryJob). See
+# docs/superpowers/specs/2026-10-22-purpleair-history-import-design.md.
 
-    entries = {E: [] for E in entry_models.BaseEntry.get_subclasses()}
+HISTORY_RATE_LIMIT_BACKOFF = (5, 15, 45)  # seconds before each retry of the same request
+HISTORY_MAX_FOLLOWUPS = 3
+HISTORY_SHORT_SECONDS = 3600
+HISTORY_INSERT_BATCH = 5000
 
-    for i, payload in enumerate(history):
-        for entry in monitor.create_entries(payload, save=False):
-            EntryModel = type(entry)
-            entries[EntryModel].append(entry)
-            if len(entries[EntryModel]) >= 5000:
-                print(f'Saving {len(entries[EntryModel])} {EntryModel.entry_type} {entries[EntryModel][-1].timestamp}')
-                EntryModel.objects.bulk_create(entries[EntryModel], ignore_conflicts=True)
-                entries[EntryModel] = []
-
-    for EntryModel in entries.keys():
-        if entries[EntryModel]:
-            print(f'Saving {len(entries[EntryModel])} {EntryModel.entry_type}...')
-            EntryModel.objects.bulk_create(entries[EntryModel], ignore_conflicts=True)
+HISTORY_LOCK_STALE_SECONDS = 30
+HISTORY_BATCH_STALE_MINUTES = 60
+HISTORY_MAX_CONSECUTIVE_FAILURES = 5
 
 
-@db_task(queue='secondary')
-def process_monitor_history(monitor_id, start_date, end_date):
-    monitor = PurpleAir.objects.get(pk=monitor_id)
+def _history_request(monitor, start, end, stats):
+    for delay in (*HISTORY_RATE_LIMIT_BACKOFF, None):
+        stats['requests'] += 1
+        try:
+            return purpleair_api.get_sensor_history_window(monitor.sensor_id, start, end)
+        except PurpleAirRateLimited:
+            if delay is None:
+                raise
+            time.sleep(delay)
 
-    for EntryModel in entry_models.BaseEntry.get_subclasses():
-        if not monitor.is_processable(EntryModel):
-            continue
 
-        queryset = (EntryModel.objects
-            .filter(
-                monitor_id=monitor.pk,
-                timestamp__range=(start_date, end_date),
-                stage=EntryModel.Stage.RAW,
-                derived_entries__isnull=True
+def _history_fetch(monitor, start, end, stats):
+    '''
+    Returns (rows, gap) where gap is None or a (reason, message) tuple. Rows
+    fetched before an error are still returned so they get stored.
+    '''
+    rows = []
+    try:
+        rows = _history_request(monitor, start, end, stats)
+        short_before = end.timestamp() - HISTORY_SHORT_SECONDS
+        for _ in range(HISTORY_MAX_FOLLOWUPS):
+            if not rows or rows[-1]['time_stamp'] >= short_before:
+                return rows, None
+            more = _history_request(
+                monitor, datetime.fromtimestamp(rows[-1]['time_stamp'] + 1, tz=dt_timezone.utc), end, stats,
             )
-            .order_by('timestamp')
-            .iterator(chunk_size=1000)
+            if not more:
+                return rows, None  # the sensor really stopped reporting
+            rows = rows + more
+        if rows[-1]['time_stamp'] < short_before:
+            return rows, (PurpleAirHistoryGap.Reason.TRUNCATED, 'Response still short after follow-up requests.')
+        return rows, None
+    except PurpleAirNotFound as error:
+        return rows, (PurpleAirHistoryGap.Reason.NOT_FOUND, str(error))
+    except PurpleAirAPIError as error:
+        return rows, (PurpleAirHistoryGap.Reason.ERROR, str(error))
+
+
+def _history_store(monitor, rows, start, end):
+    '''
+    Builds entries for the rows (no per-entry queries), drops those with an
+    existing RAW row within NEAR_DUPLICATE_WINDOW, and bulk-inserts the rest.
+    Returns the number inserted.
+    '''
+    by_model = {}
+    for payload in rows:
+        for entry in monitor.create_entries(payload, save=False, validate=False):
+            by_model.setdefault(type(entry), []).append(entry)
+
+    created = 0
+    for entry_model, entries in by_model.items():
+        existing = existing_raw_timestamps(monitor, entry_model, start, end, NEAR_DUPLICATE_WINDOW)
+        seen = set()
+        missing = []
+        for entry in entries:
+            key = (entry.timestamp, entry.sensor)
+            if key in seen or _has_near(existing.get(entry.sensor, ()), entry.timestamp):
+                continue
+            seen.add(key)
+            missing.append(entry)
+        for i in range(0, len(missing), HISTORY_INSERT_BATCH):
+            created += _insert_raw_entries(entry_model, missing[i:i + HISTORY_INSERT_BATCH])
+    return created
+
+
+@db_task(priority=1, queue='secondary')
+def import_purpleair_history_chunk(job_id, monitor_id, start, end, batch_id=None):
+    '''
+    Import one monitor's history for [start, end) from the PurpleAir API as
+    RAW entries, then report to the job. batch_id=None (used by `retry`) means
+    the task isn't part of a tracked batch: counters update, pending_tasks
+    doesn't.
+    '''
+    stats = {'requests': 0, 'rows': 0, 'created': 0, 'points': 0}
+    monitor = PurpleAir.objects.filter(pk=monitor_id, sensor_id__isnull=False).first()
+    if monitor is None:
+        logger.warning('PurpleAir history: monitor %s no longer exists; skipping.', monitor_id)
+    else:
+        rows, gap = _history_fetch(monitor, start, end, stats)
+        stats['rows'] = len(rows)
+        stats['points'] = sum(
+            1 for row in rows for field in purpleair_api.HISTORY_FIELDS if row.get(field) is not None
+        )
+        if rows:
+            stats['created'] = _history_store(monitor, rows, start, end)
+        if gap is not None and PurpleAirHistoryJob.objects.filter(pk=job_id).exists():
+            reason, message = gap
+            PurpleAirHistoryGap.objects.update_or_create(
+                job_id=job_id, monitor=monitor, window_start=start, window_end=end,
+                defaults={'reason': reason, 'message': message},
+            )
+
+    jobs = PurpleAirHistoryJob.objects.filter(pk=job_id)
+    updates = {
+        'requests_made': F('requests_made') + stats['requests'],
+        'rows_fetched': F('rows_fetched') + stats['rows'],
+        'raw_entries_created': F('raw_entries_created') + stats['created'],
+        'data_points': F('data_points') + stats['points'],
+        'last_progress_at': timezone.now(),
+    }
+    if batch_id is not None:
+        jobs = jobs.filter(batch_id=batch_id)
+        updates['pending_tasks'] = F('pending_tasks') - 1
+    jobs.update(**updates)
+
+
+@db_periodic_task(crontab(minute='*'), priority=1, queue='secondary')
+def import_purpleair_history_tick():
+    '''
+    Drive one step of the active PurpleAirHistoryJob, if any. Never blocks on
+    the sub-tasks it dispatches. Mirrors backfill_legacy_entries_tick.
+    '''
+    now = timezone.now()
+
+    with transaction.atomic():
+        job = (
+            PurpleAirHistoryJob.objects
+            .select_for_update(skip_locked=True)
+            .filter(state=PurpleAirHistoryJob.State.RUNNING)
+            .filter(
+                Q(locked_at__isnull=True) |
+                Q(locked_at__lt=now - timedelta(seconds=HISTORY_LOCK_STALE_SECONDS))
+            )
+            .order_by('created')
+            .first()
+        )
+        if job is None:
+            return
+
+        job.locked_at = now
+        job.save(update_fields=['locked_at'])
+
+        if job.pending_tasks > 0:
+            stale_before = now - timedelta(minutes=HISTORY_BATCH_STALE_MINUTES)
+            if _is_stalled(job, stale_before):
+                _history_restart_batch(job)
+            return
+
+        if job.chunk_start is not None:
+            _history_complete_chunk(job)
+        else:
+            job.chunk_start = chunk_start_for(job.cursor, job.range_start, job.chunk_days)
+            if job.consecutive_failures >= HISTORY_MAX_CONSECUTIVE_FAILURES:
+                job.consecutive_failures = 0  # resumed after FAILED: fresh retry budget
+            _history_dispatch(job)
+
+
+def _history_dispatch(job):
+    monitor_ids = monitors_for_window(job.chunk_start, job.cursor, job.monitor_ids)
+
+    job.batch_id += 1
+    job.pending_tasks = len(monitor_ids)
+    job.phase_started_at = timezone.now()
+    job.save()
+
+    job_id = job.pk
+    batch_id = job.batch_id
+    chunk_start = job.chunk_start
+    chunk_end = job.cursor
+    for monitor_id in monitor_ids:
+        transaction.on_commit(
+            lambda m=monitor_id: import_purpleair_history_chunk(job_id, str(m), chunk_start, chunk_end, batch_id)
         )
 
-        for i, entry in enumerate(queryset):
-            if (i % 5000) == 0:
-                print(i, entry.entry_type, entry.timestamp)
-            monitor.process_entry_pipeline(entry)
+
+def _history_complete_chunk(job):
+    job.cursor = job.chunk_start
+    job.chunk_start = None
+    job.pending_tasks = 0
+    job.consecutive_failures = 0
+    job.last_error = ''
+    if job.cursor <= job.range_start:
+        job.state = PurpleAirHistoryJob.State.DONE
+    job.save()
 
 
+def _history_restart_batch(job):
+    job.consecutive_failures += 1
+    job.last_error = (
+        f'Batch {job.batch_id} stalled with {job.pending_tasks} pending task(s); restarting.'
+    )
 
+    if job.consecutive_failures >= HISTORY_MAX_CONSECUTIVE_FAILURES:
+        _fail_job(job, 'PurpleAir history import', 'import_purpleair_history')
+        return
 
+    _history_dispatch(job)

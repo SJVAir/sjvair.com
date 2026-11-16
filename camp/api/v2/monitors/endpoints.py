@@ -458,14 +458,6 @@ class CreateEntry(EntryMixin, generics.CreateEndpoint):
             results.append(entry)
             results.extend(self.request.monitor.process_entry_pipeline(entry))
 
-        # Legacy
-        entry = self.request.monitor.create_entry_legacy(self.request.data)
-        if entry:
-            self.request.monitor.check_latest(entry)
-
-            if self.request.monitor.latest_id == entry.pk:
-                self.request.monitor.save()
-
         return {'data': self.serialize(results)}
 
     def serialize(self, *args, **kwargs):

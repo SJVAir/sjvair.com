@@ -15,6 +15,7 @@ from camp.apps.entries import models as entry_models
 from camp.apps.entries.utils import get_all_entry_models
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.cimis.models import CIMIS
+from camp.apps.monitors.models import Entry as LegacyEntry
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.utils.datetime import make_aware
 from camp.utils.test import debug, get_response_data
@@ -483,6 +484,7 @@ class EndpointTests(TestCase):
             'BP(mmHg)': Decimal('764.5'),
             'ConcHR(ug/m3)': Decimal('14'),
         }
+        legacy_count = LegacyEntry.objects.filter(monitor=monitor).count()
         url = reverse('api:v2:monitors:entry-create', kwargs={'monitor_id': monitor.pk})
         request = self.factory.post(url, payload, HTTP_ACCESS_KEY=str(monitor.access_key))
         request.monitor = monitor
@@ -490,6 +492,7 @@ class EndpointTests(TestCase):
         content = get_response_data(response)
 
         assert response.status_code == 200
+        assert LegacyEntry.objects.filter(monitor=monitor).count() == legacy_count
         assert isinstance(content.get('data'), list)
         assert len(content['data']) == 5
 

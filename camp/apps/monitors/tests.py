@@ -86,6 +86,31 @@ class MonitorTests(TestCase):
         assert latest.entry.pk == entry.pk
         assert latest.entry is latest._entry  # cached!
 
+    def test_get_inactive_is_the_complement_of_get_active(self):
+        monitor = self.get_purpleair()
+        LatestEntry.objects.filter(monitor=monitor).delete()
+
+        def inactive_ids():
+            return set(Monitor.objects.get_inactive().values_list('pk', flat=True))
+
+        def set_latest(processor, timestamp):
+            entry = entry_models.PM25.objects.create(
+                monitor=monitor, timestamp=timestamp, sensor='a', location='outside',
+                stage=entry_models.PM25.Stage.RAW, processor=processor, value=10,
+            )
+            latest = LatestEntry(monitor=monitor)
+            latest.entry = entry
+            latest.save()
+
+        assert monitor.pk in inactive_ids()
+
+        set_latest('', timezone.now() - timedelta(days=30))
+        assert monitor.pk in inactive_ids()
+
+        set_latest('PM25_UnitCorrection', timezone.now())
+        assert monitor.pk not in inactive_ids()
+        assert monitor.pk in set(Monitor.objects.get_active().values_list('pk', flat=True))
+
     def test_filter_healthy_as_of_excludes_future_health_checks(self):
         from camp.apps.qaqc.models import HealthCheck
 

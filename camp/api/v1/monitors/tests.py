@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from . import endpoints
 
+from camp.apps.entries import models as entry_models
 from camp.apps.monitors.models import Entry
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
@@ -91,55 +92,74 @@ class EndpointTests(TestCase):
         assert len(content['data']) == content['count'] == sensor_count
         assert set(e['sensor'] for e in content['data']) == {params['sensor']}
 
+    def _post_entry(self, monitor, payload):
+        url = reverse('api:v1:monitors:entry-list', kwargs={'monitor_id': monitor.pk})
+        request = self.factory.post(url, payload, HTTP_ACCESS_KEY=str(monitor.access_key))
+        request.monitor = monitor
+        response = entry_list(request, monitor_id=monitor.pk)
+        return response, get_response_data(response)
+
     def test_create_entry(self):
         '''
-            Test that we can create an entry.
+            Uploads go into the entries app, not the legacy Entry table.
         '''
         monitor = self.get_bam1022()
+        timestamp = timezone.now().replace(minute=0, second=0, microsecond=0)
         payload = {
-            'Time': timezone.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'Time': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
             'AT(C)': '30.6',
             'RH(%)': '25.0',
             'BP(mmHg)': '764.5',
             'ConcHR(ug/m3)': '24',
         }
-        url = reverse('api:v1:monitors:entry-list', kwargs={'monitor_id': monitor.pk})
-        request = self.factory.post(url, payload, HTTP_ACCESS_KEY=str(monitor.access_key))
-        request.monitor = monitor
-        response = entry_list(request, monitor_id=monitor.pk)
-        content = get_response_data(response)
+        legacy_count = Entry.objects.filter(monitor=monitor).count()
+
+        response, content = self._post_entry(monitor, payload)
 
         assert response.status_code == 200
-        assert content['data']['celsius'] == payload['AT(C)']
-        assert content['data']['fahrenheit'] is not None
+        assert {e['entry_type'] for e in content['data']} == {'pm25', 'temperature', 'humidity', 'pressure'}
+        assert Entry.objects.filter(monitor=monitor).count() == legacy_count
 
-        entry = Entry.objects.latest('timestamp')
-        assert entry.celsius == Decimal(payload['AT(C)'])
-        assert entry.humidity == Decimal(payload['RH(%)'])
+        temperature = entry_models.Temperature.objects.get(monitor=monitor, stage=entry_models.Temperature.Stage.RAW)
+        assert temperature.value == Decimal('87.1')
+        assert entry_models.Humidity.objects.get(monitor=monitor).value == Decimal('25.0')
+        assert entry_models.PM25.objects.filter(monitor=monitor, stage=entry_models.PM25.Stage.CLEANED).exists()
 
     def test_duplicate_entry(self):
         '''
-            Test that duplicate entries by timestamp are not created.
+            Re-posting the same reading updates it in place rather than duplicating it.
         '''
         monitor = self.get_bam1022()
         payload = {
-            'Time': timezone.now(),
+            'Time': timezone.now().strftime('%Y-%m-%d %H:%M:%S'),
             'AT(C)': '30.60',
             'RH(%)': '25.00',
             'BP(mmHg)': '764.5',
             'ConcHR(ug/m3)': '24',
         }
 
-        # Create the initial entry
-        entry = monitor.create_entry_legacy(payload)
-
-        # Now call the API with the same payload and verify that it fails.
-        url = reverse('api:v1:monitors:entry-list', kwargs={'monitor_id': monitor.pk})
-        request = self.factory.post(url, payload, HTTP_ACCESS_KEY=str(monitor.access_key))
-        request.monitor = monitor
-        response = entry_list(request, monitor_id=monitor.pk)
-        content = get_response_data(response)
+        self._post_entry(monitor, payload)
+        response, content = self._post_entry(monitor, {**payload, 'ConcHR(ug/m3)': '25'})
 
         assert response.status_code == 200
-        assert content['data']['pm25'] == entry.pm25
-        assert monitor.entries.filter(timestamp=payload['Time']).count() == 1
+        raw = entry_models.PM25.objects.get(monitor=monitor, stage=entry_models.PM25.Stage.RAW)
+        assert raw.value == Decimal('25')
+
+    def test_create_entry_rejected_for_upload_disabled_monitor(self):
+        monitor = self.get_purple_air()
+        assert monitor.ENTRY_UPLOAD_ENABLED is False
+
+        response, content = self._post_entry(monitor, {'pm25': '12.0'})
+
+        assert response.status_code == 403
+
+
+class DeprecationHeaderTests(TestCase):
+    def test_v1_responses_are_marked_deprecated(self):
+        response = self.client.get(reverse('api:v1:current-time'))
+        assert response['Deprecation'] == 'true'
+        assert 'rel="successor-version"' in response['Link']
+
+    def test_v2_responses_are_not(self):
+        response = self.client.get(reverse('api:v2:current-time'))
+        assert 'Deprecation' not in response

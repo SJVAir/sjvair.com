@@ -12,6 +12,17 @@ from camp.apps.entries import models as entry_models
 from camp.apps.monitors.models import Monitor, Entry
 from camp.utils.datetime import parse_datetime
 
+PM25_SENTINEL = Decimal('99999')
+
+
+def _is_sentinel(value):
+    # Uploads arrive as strings ('99999', '99999.0'), so compare numerically.
+    try:
+        return Decimal(str(value)) == PM25_SENTINEL
+    except (ArithmeticError, ValueError, TypeError):
+        return False
+
+
 # ConcRT(ug/m3): real-time PM2.5 concentration (measurements are recorded every minute, but the ConcRT can be set at 5, 10, 15 minute intervals, in which case RT becomes an average of the previous 5, 10 or 15 minutes)
 # ConcHR(ug/m3): average hourly PM2.5 concentration (see attached graph of RT (15 min) vs HR values)
 # ConcS(ug/m3): not sure (it may be the Span Scale setting)
@@ -86,6 +97,12 @@ class BAM1022(Monitor):
                 entries.append(entry)
 
         return entries
+
+    def create_entry(self, EntryModel, save=True, **data):
+        if EntryModel is entry_models.PM25 and _is_sentinel(data.get('value')):
+            # Bad entry (sentinel error state) -- don't create it.
+            return None
+        return super().create_entry(EntryModel, save=save, **data)
 
     def create_entry_legacy(self, payload, sensor=None):
         timestamp = parse_datetime(payload['Time'])
