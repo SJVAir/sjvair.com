@@ -302,9 +302,10 @@ zones are missing there; see SJVAPCD Forecast Setup).
   `classes`: `{figure: {breaks, min, colors}}` for `lbs_chemical`, `acres_treated` and `applications`
   (`camp/apps/pesticides/classes.py`). `breaks` are up to 8 quantile classes cut on the distinct
   positive values; zero means no data and is left out, and `min` is the smallest positive value
-  (`null` when none). `colors` is one fill per class in break order, `maps.sample_ramp(RAMP, len(breaks))`
-  (`[]` with no breaks; no data is meta's `ramp.no_data`), so clients never sample the ramp. The population is valley-wide: every section (or township) the rollup has
-  for the year, never just the viewport, and the figures are the ones the features carry
+  (`null` when none). `colors` is one fill per class in break order,
+  `maps.sample_ramp(RAMP, len(breaks))` (`[]` with no breaks; no data is meta's `ramp.no_data`),
+  so clients never sample the ramp. The population is valley-wide: every section (or township)
+  the rollup has for the year, never just the viewport, and the figures are the ones the features carry
   (with `county`, a border feature counts only that county's use and may fall below `min`).
   Value params (`month`, `chemical`/`product`/`commodity` and their `_id` forms, `method`,
   `aerial_ground`, `narrow`, `concern`, `category`, `iarc_group`) change the classes; spatial
