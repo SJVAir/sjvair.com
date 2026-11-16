@@ -6,7 +6,7 @@ per-month rollup of PesticideUse rebuilt by camp.apps.pesticides.rollup.
 """
 import math
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from types import SimpleNamespace
 
 from django.contrib.gis.db.models.functions import Centroid
@@ -1081,6 +1081,7 @@ def notice_day_bounds(day):
 
 
 def notices_on(notices, day):
+    """The notices (a queryset) active on `day`, per notice_day_bounds."""
     start, end = notice_day_bounds(day)
     return notices.filter(scheduled_application__gte=start, scheduled_application__lt=end)
 
@@ -1091,14 +1092,19 @@ def notice_day_settled_at(day):
     of the Pacific start of day+5 and 96 hours past the end of the day (the two
     differ by an hour across a DST change).
     """
-    return max(
-        _pacific_day_start(day + timedelta(days=NOTICE_GRACE_DAYS + 1)),
-        _pacific_day_start(day + timedelta(days=1)) + timedelta(days=NOTICE_GRACE_DAYS),
-    )
+    elapsed = (
+        _pacific_day_start(day + timedelta(days=1)).astimezone(dt_timezone.utc)
+        + timedelta(hours=24 * NOTICE_GRACE_DAYS)
+    ).astimezone(settings.DEFAULT_TIMEZONE)
+    return max(_pacific_day_start(day + timedelta(days=NOTICE_GRACE_DAYS + 1)), elapsed)
 
 
 def notices_version():
-    """Like data_version, for the notices feeds; bumped when notices change."""
+    """
+    The version the notices feeds' cache keys carry. Bumped when notices
+    change, which retires every entry built before; an evicted version just
+    starts a new one, never a stale read.
+    """
     value = cache.get(NOTICES_VERSION_KEY)
     if value is None:
         value = bump_notices_version()

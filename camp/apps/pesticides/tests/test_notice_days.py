@@ -47,8 +47,12 @@ class NoticeDayTests(TestCase):
         assert stats.notice_day_settled_at(date(2026, 6, 15)) == datetime(2026, 6, 20, tzinfo=PACIFIC)
 
     def test_settled_at_dst_week(self):
-        expected = datetime(2026, 3, 6, tzinfo=PACIFIC) + timedelta(days=4)
-        assert stats.notice_day_settled_at(date(2026, 3, 5)) == expected
+        # 96 real hours past Mar 6 00:00 PST is Mar 10 01:00 PDT, later than Mar 10 00:00.
+        assert stats.notice_day_settled_at(date(2026, 3, 5)) == datetime(2026, 3, 10, 1, tzinfo=PACIFIC)
+
+    def test_settled_at_fall_back_week(self):
+        # 96 real hours past Oct 30 00:00 PDT is Nov 2 23:00 PST, earlier than Nov 3 00:00.
+        assert stats.notice_day_settled_at(date(2026, 10, 29)) == datetime(2026, 11, 3, tzinfo=PACIFIC)
 
     def test_notices_version_bumps(self):
         v = stats.notices_version()
