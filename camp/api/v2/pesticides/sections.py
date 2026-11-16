@@ -538,12 +538,17 @@ class ActiveNoticeListBase(generics.Endpoint):
                     notices = notices.filter(**{lookup: cast(value)})
                 except ValueError:
                     return bad_request(f'{param} is invalid')
-        # Any chemical of the notice matching is enough; .distinct() below
-        # keeps a notice with several matching chemicals to one row.
+        # Any chemical of the notice matching is enough, but with both filters
+        # it must be the same chemical (as place/ filters ingredient rows), so
+        # they go in one filter() call: one join. .distinct() below keeps a
+        # notice with several matching chemicals to one row.
+        lookups = {}
         if filters.get('category'):
-            notices = notices.filter(chemicals__categories__overlap=filters['category'])
+            lookups['chemicals__categories__overlap'] = filters['category']
         if filters.get('iarc_group'):
-            notices = notices.filter(chemicals__iarc_group=filters['iarc_group'])
+            lookups['chemicals__iarc_group'] = filters['iarc_group']
+        if lookups:
+            notices = notices.filter(**lookups)
         # Same shape of cap as SectionList's MAX_SECTIONS: an unbounded
         # response (no bbox, or one covering the whole valley) would serialize
         # every active notice in the state. Counting first keeps that off the

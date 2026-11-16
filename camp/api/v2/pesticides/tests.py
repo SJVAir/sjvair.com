@@ -1239,6 +1239,11 @@ class NoticeDayEndpointTests(TestCase):
         assert response.status_code == 400
         assert '9' in response.json()['error']
 
+    def test_category_and_iarc_group_match_the_same_chemical(self):
+        # Notice 3: GLYPHOSATE (carcinogen, 2A) and CHLORPYRIFOS (TAC, no IARC).
+        assert self.ids({'category': 'toxic_air_contaminant', 'iarc_group': '2A'}) == []
+        assert self.ids({'category': 'carcinogen', 'iarc_group': '2A'}) == [self.sqid(3)]
+
     def test_unknown_category(self):
         response = self.client.get(self.url, {'category': 'foo'})
         assert response.status_code == 400
@@ -1257,6 +1262,7 @@ class NoticeDayEndpointTests(TestCase):
         with patch.object(views, 'cache') as cache:
             cache.get.return_value = None
             self.client.get(self.url)
+        assert cache.set.call_count == 1
         assert cache.set.call_args.args[2] == 300
 
     def test_fetch_version_retires_cached_day(self):
