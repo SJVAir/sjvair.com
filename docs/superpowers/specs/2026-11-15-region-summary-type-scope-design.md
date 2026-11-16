@@ -24,9 +24,9 @@ New parameter `type`: one region type value (`Region.Type`, e.g. `tract`, `zipco
   Django's `QueryDict.get` does (decided: one type per request).
 - `type=land_use` is a 400 (land use isn't referenceable, has no stable codes and no
   summaries). Any other unknown value is a 400 (`invalid_choice`). `mtrs` is allowed.
-- The scope is the type's **current** regions: `Region.objects` (not retired) and
-  `.current_vintage()` (tracts on `TRACT_VINTAGE` only), the same set
-  `/regions/geojson/` draws. A type with no current regions (or none with rows) is an
+- The scope is the type's **current** regions: `Region.objects` (not retired),
+  `.exclude(boundary=None)` and `.current_vintage()` (tracts on `TRACT_VINTAGE` only),
+  the same set `/regions/geojson/` draws. A type with no current regions (or none with rows) is an
   empty 200.
 - `region=` lists are unchanged: explicit ids still resolve through `Region.all_objects`,
   retired and old-vintage regions included.

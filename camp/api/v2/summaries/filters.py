@@ -31,9 +31,8 @@ class BulkMonitorSummaryFilter(FilterSet):
         fields = []
 
 
-class BulkRegionSummaryFilter(FilterSet):
-    start = django_filters.DateFilter(method='noop', help_text='Inclusive start date (required).')
-    end = django_filters.DateFilter(method='noop', help_text='Inclusive end date (required).')
+class BulkRegionScopeFilter(FilterSet):
+    # Schema-only, like BulkMonitorSummaryFilter; BulkRegionScopeForm does the scoping.
     region = django_filters.CharFilter(method='noop', help_text='Region id; repeatable. Exclusive with type.')
     type = django_filters.CharFilter(
         method='noop', help_text='Region type; every current region of it. Exclusive with region.',
@@ -41,22 +40,18 @@ class BulkRegionSummaryFilter(FilterSet):
 
     def noop(self, queryset, name, value):
         return queryset
+
+
+class BulkRegionSummaryFilter(BulkRegionScopeFilter):
+    start = django_filters.DateFilter(method='noop', help_text='Inclusive start date (required).')
+    end = django_filters.DateFilter(method='noop', help_text='Inclusive end date (required).')
 
     class Meta:
         model = RegionSummary
         fields = []
 
 
-class BulkRegionOpenDaysFilter(FilterSet):
-    # Schema-only, like BulkRegionSummaryFilter; BulkRegionScopeForm does the scoping.
-    region = django_filters.CharFilter(method='noop', help_text='Region id; repeatable. Exclusive with type.')
-    type = django_filters.CharFilter(
-        method='noop', help_text='Region type; every current region of it. Exclusive with region.',
-    )
-
-    def noop(self, queryset, name, value):
-        return queryset
-
+class BulkRegionOpenDaysFilter(BulkRegionScopeFilter):
     class Meta:
         model = Region
         fields = []

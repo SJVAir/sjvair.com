@@ -56,6 +56,11 @@ class OpenAPISchemaTests(TestCase):
         param_names = {p['name'] for p in path['parameters']}
         assert {'start', 'end', 'bbox', 'region', 'processor'} <= param_names
 
+    def test_region_summary_bulk_documents_type_and_region(self):
+        for path in ('/regions/{entry_type}/summaries/daily/', '/regions/{entry_type}/summaries/daily/open/'):
+            param_names = {p['name'] for p in self.paths[path]['get']['parameters']}
+            assert {'region', 'type'} <= param_names, path
+
     def test_task_status_is_not_documented(self):
         assert not any('task' in p for p in self.paths)
 

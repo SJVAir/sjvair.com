@@ -86,7 +86,8 @@ class RegionListField(forms.Field):
 
 class BulkRegionScopeForm(forms.Form):
     """Exactly one of `region` (repeatable ids, retired regions included) or
-    `type` (every current region of one type, as /regions/geojson/ draws them).
+    `type` (every current region of one type that has a boundary, the set
+    /regions/geojson/ draws).
     The scope lands in `cleaned_data['regions']`, always a Region queryset, which
     the views use as a sub-select (`region__in=` / `pk__in=`)."""
 
@@ -107,7 +108,8 @@ class BulkRegionScopeForm(forms.Form):
                 'Pass either region or type, not both.', code='exclusive',
             ))
         elif region_type:
-            cleaned_data['regions'] = Region.objects.current_vintage().filter(type=region_type)
+            cleaned_data['regions'] = (Region.objects
+                .filter(type=region_type).exclude(boundary=None).current_vintage())
         elif regions:
             cleaned_data['regions'] = Region.all_objects.filter(pk__in=[region.pk for region in regions])
         else:

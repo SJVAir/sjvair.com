@@ -767,6 +767,13 @@ class BulkRegionSummaryListTests(TestCase):
         response = self._get({'type': 'county', 'start': '2020-01-01', 'end': '2026-01-01'})
         assert response.status_code == 400
 
+    def test_type_scope_leaves_out_regions_without_a_boundary(self):
+        # /regions/geojson/ draws only regions with a boundary; the type scope matches it.
+        bare = Region.objects.create(name='Bare', slug='bare', type='county', external_id='06999')
+        make_region_summary(bare, self.day, resolution='day', entry_type='pm25')
+        assert bare.sqid not in self._ids({**self.january, 'type': 'county'})
+        assert self._ids({**self.january, 'region': bare.sqid}) == {bare.sqid}
+
     def test_type_scope_with_no_rows_is_empty_200(self):
         assert self._ids({**self.january, 'type': 'cdp'}) == set()
 
@@ -1363,11 +1370,32 @@ class BulkRegionTypeScopeScaleTests(TestCase):
     """A whole type of more than 1,000 regions, which an id list can't carry
     (DATA_UPLOAD_MAX_NUMBER_FIELDS is 1,000)."""
 
-    def test_more_than_1000_regions_by_type(self):
-        regions = Region.objects.bulk_create([
+    def setUp(self):
+        self.regions = Region.objects.bulk_create([
             Region(name=f'Z{n:05}', slug=f'z{n:05}', type='zipcode', external_id=f'{n:05}')
             for n in range(1100)
         ])
+        geometry = MultiPolygon(Polygon.from_bbox((-119.8, 36.7, -119.7, 36.8)), srid=4326)
+        boundaries = Boundary.objects.bulk_create([
+            Boundary(region=region, version='2020', geometry=geometry) for region in self.regions
+        ])
+        for region, boundary in zip(self.regions, boundaries):
+            region.boundary = boundary
+        Region.objects.bulk_update(self.regions, ['boundary'])
+
+    def _page_ids(self, url, query):
+        ids, page = [], 1
+        while True:
+            response = self.client.get(url, {**query, 'page': page})
+            assert response.status_code == 200
+            data = get_response_data(response)
+            ids += [r['id'] for r in data['data']]
+            if not data['has_next_page']:
+                return ids, page
+            page += 1
+
+    def test_more_than_1000_regions_by_type(self):
+        regions = self.regions
         day = timezone.make_aware(datetime(2026, 1, 1))
         RegionSummary.objects.bulk_create([
             RegionSummary(region=region, timestamp=day, resolution='day', entry_type='pm25',
@@ -1375,18 +1403,27 @@ class BulkRegionTypeScopeScaleTests(TestCase):
             for region in regions
         ])
 
-        ids, page = [], 1
-        while True:
-            response = self.client.get('/api/2.0/regions/pm25/summaries/daily/', {
-                'type': 'zipcode', 'start': '2026-01-01', 'end': '2026-01-01', 'page': page,
-            })
-            assert response.status_code == 200
-            data = get_response_data(response)
-            ids += [r['id'] for r in data['data']]
-            if not data['has_next_page']:
-                break
-            page += 1
-
-        assert page == 7  # page_size 168
+        ids, pages = self._page_ids('/api/2.0/regions/pm25/summaries/daily/', {
+            'type': 'zipcode', 'start': '2026-01-01', 'end': '2026-01-01',
+        })
+        assert pages == 7  # page_size 168
         assert len(ids) == 1100
         assert set(ids) == {region.sqid for region in regions}
+
+    def test_more_than_1000_regions_by_type_open_days(self):
+        now = timezone.make_aware(datetime(2026, 1, 1, 12, 0))
+        hour = timezone.make_aware(datetime(2026, 1, 1, 9, 0))
+        # The shared STATS carry an empty digest, which can't be rolled up.
+        digest = TDigest()
+        digest.update(10.0)
+        stats = {**STATS, 'tdigest': tdigest_to_dict(digest)}
+        RegionSummary.objects.bulk_create([
+            RegionSummary(region=region, timestamp=hour, resolution='hour', entry_type='pm25',
+                          station_count=3, weight=30.0, **stats)
+            for region in self.regions
+        ])
+        with patch('django.utils.timezone.now', return_value=now):
+            ids, pages = self._page_ids('/api/2.0/regions/pm25/summaries/daily/open/', {'type': 'zipcode'})
+        assert pages == 11  # 100 regions per page
+        assert len(ids) == 1100
+        assert set(ids) == {region.sqid for region in self.regions}

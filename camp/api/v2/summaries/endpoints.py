@@ -347,8 +347,8 @@ class BulkRegionSummaryList(BulkFormMixin, SummaryMixin, generics.ListEndpoint):
     rows nested under `summaries` (without the region's `boundary` - fetch that from
     the regions list, it would otherwise repeat on every page a region spans). `start`
     and `end` are required, plus exactly one of `region` (repeatable; every id must
-    exist, retired regions included) or `type` (every current region of that type,
-    as /regions/geojson/ draws them; not `land_use`). Invalid/missing parameters
+    exist, retired regions included) or `type` (every current region of that type
+    with a boundary, the set /regions/geojson/ draws; not `land_use`). Invalid/missing parameters
     return a 400 with form errors.
 
     Pagination is by summary row, not by region, same cross-page merge contract

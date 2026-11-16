@@ -399,8 +399,8 @@ zones are missing there; see SJVAPCD Forecast Setup).
   ```
 - **Bulk region scope**: `regions/<entry_type>/summaries/<resolution>/` and its `daily/open/` take
   exactly one of `region` (repeatable sqids, resolved through `all_objects`, so retired and
-  old-vintage regions answer) or `type` (one `Region.Type` value: every current region of it,
-  `Region.objects.current_vintage()`, the set `/regions/geojson/` draws); both or neither is a 400
+  old-vintage regions answer) or `type` (one `Region.Type` value: every current region of it with a
+  boundary, `Region.objects.exclude(boundary=None).current_vintage()`, the set `/regions/geojson/` draws); both or neither is a 400
   (`exclusive` / `required`), and `land_use` or an unknown type is `invalid_choice`.
   `BulkRegionScopeForm` cleans either to a Region queryset the views use as a sub-select, so a whole
   type (tracts, MTRS) never travels as an id list (Django refuses over 1,000 query fields).
