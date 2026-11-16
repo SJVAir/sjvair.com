@@ -689,6 +689,8 @@ class ActiveNoticeListBase(generics.Endpoint):
                 'scheduled_end': (n.scheduled_application + grace).isoformat(),
                 'county': n.county.name if n.county else None,
                 'application_method': n.application_method,
+                # The filter's code for that wording, for clients that label it like the filter.
+                'aerial_ground': stats.notice_method_code(n.application_method),
                 'treated_amount': n.treated_amount,
                 'treated_units': n.treated_units,
                 'section': n.mtrs.external_id if n.mtrs else None,
@@ -832,6 +834,8 @@ class NoticeCacheMixin(CachedEndpointMixin):
     SprayDays fetch bumps it), five minutes, or a day for a settled `date`.
     """
     cache_timeout = NOTICE_CACHE_TTL
+    # 1: features gained `aerial_ground`.
+    cache_key_version = 1
 
     def get_view_cache_key(self):
         return f'{super().get_view_cache_key()}|g:{stats.notices_version()}'

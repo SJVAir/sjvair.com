@@ -1187,6 +1187,45 @@ class ArchivedNoticeEndpointTests(TestCase):
             sections.MAX_NOTICES = original
 
 
+class NoticeMethodCodeTests(TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def test_notice_method_code(self):
+        assert stats.notice_method_code('Ground') == 'G'
+        assert stats.notice_method_code('AIRCRAFT') == 'A'
+        assert stats.notice_method_code('fumigation') == 'F'
+        assert stats.notice_method_code('Hand') == 'O'
+        assert stats.notice_method_code('Aerial') == 'O'
+        assert stats.notice_method_code('') == 'none'
+
+    def test_features_carry_the_code_beside_the_wording(self):
+        # The same rule as the aerial_ground filter, so a card's label matches the filter.
+        PesticideNotice.objects.filter(pk=2).update(application_method='Aircraft')
+        PesticideNotice.objects.filter(pk=3).update(application_method='')
+        PesticideNotice.objects.filter(pk=1).update(application_method='Hand')
+        active = self.client.get(reverse('api:v2:pesticides:notice-active')).json()['features']
+        by_id = {f['properties']['id']: f['properties'] for f in active}
+        two = by_id[PesticideNotice.objects.get(pk=2).sqid]
+        assert (two['application_method'], two['aerial_ground']) == ('Aircraft', 'A')
+        assert by_id[PesticideNotice.objects.get(pk=3).sqid]['aerial_ground'] == 'none'
+        archive = self.client.get(reverse('api:v2:pesticides:notice-archive')).json()['features']
+        assert archive[0]['properties']['aerial_ground'] == 'O'
+        # Every code a feature carries filters back to that feature.
+        for code in ('A', 'none'):
+            ids = {f['properties']['id'] for f in self.client.get(
+                reverse('api:v2:pesticides:notice-active'), {'aerial_ground': code}).json()['features']}
+            assert all(by_id[i]['aerial_ground'] == code for i in ids) and ids
+
+    def test_cache_key_versioned(self):
+        # Cached notice answers from before `aerial_ground` must never be served.
+        from camp.api.v2.pesticides.sections import ActiveNoticeList
+        assert ActiveNoticeList.cache_key_version == 1
+
+
 class NoticeDayEndpointTests(TestCase):
     """notices/active/ and notices/archive/ with `date`, `category`, `iarc_group`."""
     fixtures = ['pesticides-explorer']
@@ -1195,6 +1234,7 @@ class NoticeDayEndpointTests(TestCase):
     PROPERTY_KEYS = {
         'id', 'scheduled_application', 'scheduled_end', 'county', 'application_method',
         'treated_amount', 'treated_units', 'section', 'section_id', 'products', 'chemicals',
+        'aerial_ground',
     }
 
     def setUp(self):

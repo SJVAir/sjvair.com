@@ -322,7 +322,10 @@ zones are missing there; see SJVAPCD Forecast Setup).
   (`start(X)` is 00:00 Pacific, built from calendar dates; `stats.notices_on`). Order, the 2000
   cap and every filter are unchanged; a bad date is a 400 `{"error": "date must be YYYY-MM-DD"}`.
   With `date`, each feature's `properties.past` is true once its window has ended
-  (`scheduled_application < now - NOTICE_GRACE_DAYS`); without it the property is absent. On
+  (`scheduled_application < now - NOTICE_GRACE_DAYS`); without it the property is absent. Every notice
+  feature (both endpoints) also carries `aerial_ground`: the filter's code for its SprayDays
+  `application_method` (`stats.notice_method_code`, never null; blank is `none`), beside the raw
+  wording; the notice cache's `cache_key_version` is 1 for it. On
   `notices/archive/`, `date` keeps the past notices active on that day.
   - **Filters on both notice endpoints:** `category` (repeated or comma-separated, any of them)
     and `iarc_group`; a notice matches when any chemical does, and with `chemical_id` they must

@@ -9,7 +9,11 @@ and on dark backgrounds (count markers draw their number and outline in the back
 """
 from camp.utils.scales import Scale, ScaleLevel
 
-from .places import SPRAYDAYS_URL
+from .spraydays import BASE_URL
+
+# The same sign-up URL as places.SPRAYDAYS_URL, from the light SprayDays client module
+# (places pulls in the API layer).
+SPRAYDAYS_URL = f'{BASE_URL}/'
 
 SOURCE = {
     'name': 'California Department of Pesticide Regulation, SprayDays',
