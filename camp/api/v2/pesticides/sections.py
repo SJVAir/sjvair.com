@@ -249,13 +249,14 @@ def totals_properties(totals, previous=None):
     return properties
 
 
-def with_classes(body, params, level, year, all_years, filters):
+def with_classes(body, params, level, year, all_years, filters, build=None):
     """
     `body` plus `classes` (valley-wide breaks over the scope year; see classes.py) when
-    `classes=1` is asked for. Any other value leaves the body as it was.
+    `classes=1` is asked for. Any other value leaves the body as it was. `build` is passed
+    to valley_classes() (a cache-miss builder from figures the endpoint already has).
     """
     if params.get('classes') == '1':
-        body['classes'] = classes.valley_classes(level, year, all_years, params, filters)
+        body['classes'] = classes.valley_classes(level, year, all_years, params, filters, build=build)
     return body
 
 
@@ -516,7 +517,12 @@ class SectionDetailBase(generics.Endpoint):
 
 
 class SectionDetail(CachedEndpointMixin, SectionDetailBase):
-    """One MTRS section: geometry, totals by year and by month, and top chemicals, products, and commodities for `year` (default latest). `narrow=concern|restricted|fumigant|aerial` (or legacy `concern=1`) counts only what that narrowing keeps. Each top chemical carries `badges` (keys of meta's `badges`)"""
+    """
+    One MTRS section: geometry, totals by year and by month, and top chemicals, products,
+    and commodities for `year` (default latest). `narrow=concern|restricted|fumigant|aerial`
+    (or legacy `concern=1`) counts only what that narrowing keeps. Each top chemical carries
+    `badges` (keys of meta's `badges`).
+    """
     cache_timeout = 60 * 60
     cache_key_version = 1
 
@@ -785,7 +791,14 @@ class TownshipListBase(generics.Endpoint):
             })
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
         body = {'type': 'FeatureCollection', 'year': year_value(year, all_years), 'features': features}
-        return with_classes(body, params, 'township', year, all_years, filters)
+        # Without `county` the totals are already every township's, from the same rows and
+        # counting build_classes() would use when it reads the rollup, so a cache miss
+        # builds the classes from them rather than aggregating the valley again. When it
+        # would read PesticideSectionTotal instead, let it (cheap, and its own figures).
+        build = None
+        if not params.get('county') and not section_totals_available(params):
+            build = lambda: classes.classes_from(totals)  # noqa: E731
+        return with_classes(body, params, 'township', year, all_years, filters, build=build)
 
 
 class TownshipList(CachedEndpointMixin, TownshipListBase):

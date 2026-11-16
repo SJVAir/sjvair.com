@@ -1040,6 +1040,10 @@ class SectionEndpointTests(TestCase):
             assert row['badges'] == chemical_badges(chemical)
             assert 'is_of_concern' in row
         assert all('badges' not in row for row in data['top_products'] + data['top_commodities'])
+        # Pinned: GLYPHOSATE is a carcinogen (Prop 65) and IARC 2A; SULFUR carries none.
+        by_name = {row['name']: row['badges'] for row in data['top_chemicals']}
+        assert by_name['GLYPHOSATE'] == ['prop65', 'iarc_2a']
+        assert by_name['SULFUR'] == []
 
     def test_detail_404(self):
         assert self.client.get(reverse('api:v2:pesticides:section-detail', kwargs={'section_id': 'nope'})).status_code == 404
@@ -2747,4 +2751,71 @@ class MapClassesTests(RollupTestMixin, TestCase):
                         value = props[figure]
                         if value:
                             cls = body['classes'][figure]
-                            assert cls['min'] <= value <= cls['breaks'][-1], (url, extra, figure)
+                            assert value <= cls['breaks'][-1], (url, extra, figure)
+                            # A county-filtered border feature counts only that county's
+                            # use, so it may fall below the valley-wide `min`.
+                            if 'county' not in extra:
+                                assert cls['min'] <= value, (url, extra, figure)
+
+    def test_township_classes_reuse_valley_totals(self):
+        # Without `county` the township totals are valley-wide, so a cold classes=1 builds
+        # the township figures once (not again inside build_classes).
+        from camp.api.v2.pesticides import sections
+        from camp.apps.pesticides import classes
+        with patch.object(sections, 'section_figures', wraps=sections.section_figures) as figures, \
+                patch.object(classes, 'build_classes', wraps=classes.build_classes) as build:
+            body = self.get(self.TOWNSHIPS, category='carcinogen')
+        assert figures.call_count == 1
+        assert build.call_count == 0
+        filters = {'category': ['carcinogen']}
+        params = {'category': 'carcinogen', 'year': str(self.year)}
+        # The cached value is the one build_classes would make, under its key.
+        independent = classes.build_classes('township', self.year, False, params, filters)
+        assert body['classes'] == independent
+        assert classes.valley_classes('township', self.year, False, params, filters) == independent
+
+    def test_township_county_still_builds_valley(self):
+        from camp.apps.pesticides import classes
+        with patch.object(classes, 'build_classes', wraps=classes.build_classes) as build:
+            body = self.get(self.TOWNSHIPS, category='carcinogen', county='kern', bbox='')
+        assert build.call_count == 1
+        assert body['classes'] == self.get(self.TOWNSHIPS, category='carcinogen')['classes']
+
+    def test_month_spellings_share_a_key(self):
+        from camp.apps.pesticides import classes
+        with patch.object(classes, 'build_classes', wraps=classes.build_classes) as build:
+            a = self.get(self.SECTIONS, month='6')
+            b = self.get(self.SECTIONS, month='06')
+        assert build.call_count == 1
+        assert a['classes'] == b['classes']
+
+    def test_category_spellings_share_a_key(self):
+        from camp.apps.pesticides import classes
+        with patch.object(classes, 'build_classes', wraps=classes.build_classes) as build:
+            a = self.client.get(self.SECTIONS, {
+                'bbox': self.bbox, 'year': self.year, 'classes': '1',
+                'category': 'carcinogen,toxic_air_contaminant'})
+            b = self.client.get(self.SECTIONS, {
+                'bbox': self.bbox, 'year': self.year, 'classes': '1',
+                'category': ['toxic_air_contaminant', 'carcinogen']})
+        assert a.status_code == b.status_code == 200
+        assert build.call_count == 1
+        assert a.json()['classes'] == b.json()['classes']
+
+    def test_narrow_spellings_share_a_key(self):
+        from camp.apps.pesticides import classes
+        with patch.object(classes, 'build_classes', wraps=classes.build_classes) as build:
+            bodies = [self.get(self.SECTIONS, narrow=value) for value in ('concern', 'Concern')]
+            bodies.append(self.get(self.SECTIONS, concern='1'))
+        assert build.call_count == 1
+        assert all(b['classes'] == bodies[0]['classes'] for b in bodies)
+
+    def test_all_years_category(self):
+        from camp.api.v2.pesticides.sections import apply_filters, section_figures
+        body = self.get(self.SECTIONS, year='all', category='carcinogen')
+        params, filters = {'category': 'carcinogen'}, {'category': ['carcinogen']}
+        rows = stats.in_year(PesticideUseRollup.objects.filter(mtrs__isnull=False), None, True)
+        rows, _ = apply_filters(rows, params, filters)
+        expected = self.figures_breaks(section_figures(rows, params, filters))
+        assert body['classes'] == expected
+        assert body['classes']['lbs_chemical']['breaks']

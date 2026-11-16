@@ -93,8 +93,8 @@ class PesticidesMeta(generics.Endpoint):
     summary, detail, source_url}`), the classification `badges` (`{key, label, note}` in
     display order; `note` is a key of `notes`) and `links` (`spraydays_signup`), and
     `notice_filters`: the value filters the notice endpoints accept (they record no
-    commodity). Also `years` (years with data, newest first) and `ramp` (`colors`, `no_data`: the map's
-    shade colors). Keys are permanent; labels may change.
+    commodity). Also `years` (years with data, newest first) and `ramp` (`colors`,
+    `no_data`: the map's shade colors). Keys are permanent; labels may change.
     """
 
     def get(self, request):

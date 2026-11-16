@@ -55,12 +55,17 @@ class ValleyClassesTests(RollupTestMixin, TestCase):
         assert a == b
         assert build.call_count == 1
 
-    def test_category_spellings_share_a_key(self):
-        a = classes.cache_key('section', self.year, False, {}, {'category': ['carcinogen', 'toxic_air_contaminant']})
-        b = classes.cache_key('section', self.year, False, {}, {'category': ['carcinogen', 'toxic_air_contaminant']})
-        assert a == b
-        assert a != classes.cache_key('section', self.year, False, {}, {'category': ['carcinogen']})
-        assert a != classes.cache_key('township', self.year, False, {}, {'category': ['carcinogen', 'toxic_air_contaminant']})
+    def test_cache_key_normalizes(self):
+        key = lambda params, filters=None: classes.cache_key('section', self.year, False, params, filters or {})  # noqa: E731
+        assert key({'month': '6'}) == key({'month': '06'}) == key({'month': 6})
+        assert key({'narrow': 'Concern'}) == key({'narrow': 'concern'}) == key({'concern': '1'})
+        assert key({'narrow': 'junk'}) == key({})
+        assert key({'chemical': '0253'}) == key({'chemical': '253'})
+        assert key({'commodity': '29143'}) != key({})
+        cats = ['carcinogen', 'toxic_air_contaminant']
+        assert key({}, {'category': cats}) != key({}, {'category': ['carcinogen']})
+        assert key({}, {'category': cats}) != classes.cache_key('township', self.year, False, {}, {'category': cats})
+        assert key({'month': '6'}) != key({'month': '7'})
 
     def test_import_retires(self):
         with patch.object(classes, 'build_classes', wraps=classes.build_classes) as build:
