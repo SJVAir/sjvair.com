@@ -5,8 +5,9 @@ Totals come from PesticideUseRollup; geometry from the MTRS Region boundaries.
 import json
 import math
 
-from datetime import timedelta
+from datetime import date, timedelta
 
+from django import forms
 from django.contrib.gis.geos import GEOSGeometry, Point, Polygon
 from django.contrib.gis.measure import D
 from django.db.models import Sum
@@ -17,7 +18,7 @@ from resticus import generics, http
 
 from camp.apps.pesticides import maps, stats
 from camp.apps.pesticides.models import (
-    PesticideNotice, PesticideSectionTotal, PesticideUseRollup,
+    Chemical, PesticideNotice, PesticideSectionTotal, PesticideUseRollup,
 )
 from camp.apps.pesticides.townships import township_geometries
 from camp.apps.regions.models import Region
@@ -25,9 +26,16 @@ from camp.apps.regions.shapes import parse_buffer, region_shape
 from camp.utils.gis import round_coords
 from camp.utils.views import CachedEndpointMixin
 
+from .fields import CategoryListField, PlaceChoiceField
+
 MAX_SECTIONS = 2500
 MAX_NOTICES = 2000
 NOTICE_CACHE_TTL = 300
+# A settled day's notices only change when the daily fetch rewrites them,
+# and that bumps the notices version in the cache key.
+SETTLED_NOTICE_CACHE_TTL = 60 * 60 * 24
+
+
 def totals_aggregates(chemical_scoped=False):
     """
     The per-feature sums. The output names are the API's; which column feeds
@@ -445,19 +453,61 @@ class SectionDetail(CachedEndpointMixin, SectionDetailBase):
     cache_timeout = 60 * 60
 
 
+class MapFilterForm(forms.Form):
+    category = CategoryListField()
+    iarc_group = PlaceChoiceField(choices=Chemical.IARCGroup.choices)
+
+
+def parse_map_filters(params):
+    """
+    The map layers' chemical filters (`category`, `iarc_group`), cleaned.
+    Returns (the non-blank values, None) or ({}, the first field error's message).
+    """
+    form = MapFilterForm(params)
+    if not form.is_valid():
+        return {}, next(iter(form.errors.values()))[0]
+    return {key: value for key, value in form.cleaned_data.items() if value}, None
+
+
+def parse_day(params):
+    """`date=YYYY-MM-DD` as a date. Returns (date or None, error or None)."""
+    value = params.get('date')
+    if not value:
+        return None, None
+    try:
+        day = date.fromisoformat(value)
+    except ValueError:
+        day = None
+    # fromisoformat also takes other ISO forms (20260601, 2026-W01-1); only
+    # YYYY-MM-DD is the documented one.
+    if day is None or len(value) != 10 or not stats.MIN_FILTER_YEAR <= day.year <= stats.MAX_FILTER_YEAR:
+        return None, 'date must be YYYY-MM-DD'
+    return day, None
+
+
 class ActiveNoticeListBase(generics.Endpoint):
     # See the comment on SectionListBase: the get() implementation lives on
     # this un-cached base so CachedEndpointMixin.get() on ActiveNoticeList
     # below is the one actually dispatched to.
     past = False
 
-    def notices(self, params):
-        """The notices this endpoint serves before its filters, soonest first. Returns (queryset, error)."""
-        return stats._upcoming(PesticideNotice.objects.all()).order_by('scheduled_application', 'pk'), None
+    def notices(self, params, day=None):
+        """The notices this endpoint serves before its filters, soonest first: those active on `day`, else today's. Returns (queryset, error)."""
+        if day is not None:
+            notices = stats.notices_on(PesticideNotice.objects.all(), day)
+        else:
+            notices = stats._upcoming(PesticideNotice.objects.all())
+        return notices.order_by('scheduled_application', 'pk'), None
 
     def get(self, request):
         params = request.GET
-        notices, error = self.notices(params)
+        day, error = parse_day(params)
+        if error:
+            return bad_request(error)
+        filters, error = parse_map_filters(params)
+        if error:
+            return bad_request(error)
+        notices, error = self.notices(params, day)
         if error:
             return bad_request(error)
         notices = notices.select_related('county', 'mtrs').prefetch_related('chemicals', 'products')
@@ -488,6 +538,12 @@ class ActiveNoticeListBase(generics.Endpoint):
                     notices = notices.filter(**{lookup: cast(value)})
                 except ValueError:
                     return bad_request(f'{param} is invalid')
+        # Any chemical of the notice matching is enough; .distinct() below
+        # keeps a notice with several matching chemicals to one row.
+        if filters.get('category'):
+            notices = notices.filter(chemicals__categories__overlap=filters['category'])
+        if filters.get('iarc_group'):
+            notices = notices.filter(chemicals__iarc_group=filters['iarc_group'])
         # Same shape of cap as SectionList's MAX_SECTIONS: an unbounded
         # response (no bbox, or one covering the whole valley) would serialize
         # every active notice in the state. Counting first keeps that off the
@@ -518,6 +574,11 @@ class ActiveNoticeListBase(generics.Endpoint):
         if self.past:
             for feature in features:
                 feature['properties']['past'] = True
+        elif day is not None:
+            # Only with a date, so the explorer's response is unchanged.
+            cutoff = timezone.now() - grace
+            for feature, n in zip(features, notices):
+                feature['properties']['past'] = n.scheduled_application < cutoff
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
         return {'type': 'FeatureCollection', 'as_of': timezone.now().isoformat(), 'features': features}
 
@@ -613,16 +674,32 @@ class TownshipList(CachedEndpointMixin, TownshipListBase):
     cache_timeout = 60 * 60
 
 
-class ActiveNoticeList(CachedEndpointMixin, ActiveNoticeListBase):
-    """Active SprayDays notices of intent (scheduled from four days ago onward) as GeoJSON points. Optional `bbox=west,south,east,north`, `chemical` (chem code), `product` (prodno), `county` (slug), `narrow=concern|restricted|fumigant|aerial`. `region=<sqid>` with an optional `buffer=0|1|3|5` keeps the notices inside that region widened by that many miles. A request matching more than 2000 notices returns 400; narrow it with a bbox or a filter."""
+class NoticeCacheMixin(CachedEndpointMixin):
+    """
+    The notice endpoints' cache: keyed by the notices version (the daily
+    SprayDays fetch bumps it), five minutes, or a day for a settled `date`.
+    """
     cache_timeout = NOTICE_CACHE_TTL
+
+    def get_view_cache_key(self):
+        return f'{super().get_view_cache_key()}|g:{stats.notices_version()}'
+
+    def get_cache_timeout(self, response):
+        day, _ = parse_day(self.request.GET)
+        if day is not None and timezone.now() >= stats.notice_day_settled_at(day):
+            return SETTLED_NOTICE_CACHE_TTL
+        return super().get_cache_timeout(response)
+
+
+class ActiveNoticeList(NoticeCacheMixin, ActiveNoticeListBase):
+    """Active SprayDays notices of intent (scheduled from four days ago onward) as GeoJSON points. Optional `date=YYYY-MM-DD` (Pacific) lists the notices active on that day instead (scheduled from four days before it through its end, past or future), each with `properties.past` (its four-day window has ended). Optional `bbox=west,south,east,north`, `chemical` (chem code), `product` (prodno), `county` (slug), `narrow=concern|restricted|fumigant|aerial`, `category` (repeated or comma-separated chemical categories, any of them) and `iarc_group` (keep notices with any chemical that matches). `region=<sqid>` with an optional `buffer=0|1|3|5` keeps the notices inside that region widened by that many miles. A request matching more than 2000 notices returns 400; narrow it with a bbox or a filter."""
 
 
 class ArchivedNoticeListBase(ActiveNoticeListBase):
     past = True
 
-    def notices(self, params):
-        """Notices past the grace period, newest first; one year with `year`, one month with `year` + `month`. Returns (queryset, error)."""
+    def notices(self, params, day=None):
+        """Notices past the grace period, newest first; one year with `year`, one month with `year` + `month`, the ones active on `day` with `date`. Returns (queryset, error)."""
         cutoff = timezone.now() - timedelta(days=stats.NOTICE_GRACE_DAYS)
         notices = PesticideNotice.objects.filter(scheduled_application__lt=cutoff)
         year, month = params.get('year'), params.get('month')
@@ -641,9 +718,10 @@ class ArchivedNoticeListBase(ActiveNoticeListBase):
                 return None, 'year is out of range'
             start, end = bounds
             notices = notices.filter(scheduled_application__gte=start, scheduled_application__lt=end)
+        if day is not None:
+            notices = stats.notices_on(notices, day)
         return notices.order_by('-scheduled_application', '-pk'), None
 
 
-class ArchivedNoticeList(CachedEndpointMixin, ArchivedNoticeListBase):
-    """Past SprayDays notices of intent (older than the four-day grace period) as GeoJSON points, newest first, each with `properties.past = true`. Same parameters and cap as notices/active/, plus optional `year` (a whole year) and `month` (1-12, needs a `year`) for one year or month (America/Los_Angeles)."""
-    cache_timeout = NOTICE_CACHE_TTL
+class ArchivedNoticeList(NoticeCacheMixin, ArchivedNoticeListBase):
+    """Past SprayDays notices of intent (older than the four-day grace period) as GeoJSON points, newest first, each with `properties.past = true`. Same parameters and cap as notices/active/ (`date`, `category` and `iarc_group` included; `date` keeps the past notices active on that day), plus optional `year` (a whole year) and `month` (1-12, needs a `year`) for one year or month (America/Los_Angeles)."""

@@ -18,6 +18,7 @@ from camp.apps.regions.models import Region
 from camp.apps.regions.resolve import CACHE_TIMEOUT, PlaceError, PlaceNotFound, _place_key, place_json, resolve_place
 from camp.utils.views import CachedEndpointMixin
 
+from .fields import CategoryListField, PlaceChoiceField
 from .filters import ChemicalFilter, CommodityFilter, PesticideNoticeFilter, PesticideSummaryFilter, PesticideUseFilter, ProductFilter
 from .serializers import (
     ChemicalSerializer,
@@ -413,39 +414,6 @@ class SqidChoiceField(forms.CharField):
         except self.model.DoesNotExist:
             raise forms.ValidationError(
                 f'No {self.model._meta.model_name} has this id.', code='not_found')
-
-
-class CategoryListField(forms.Field):
-    """
-    Chemical categories, repeated (`category=a&category=b`) or comma-separated, kept as a
-    sorted, deduplicated list (so every spelling shares a cache key); blanks are dropped.
-    """
-    widget = forms.MultipleHiddenInput  # reads every value of the parameter
-
-    def __init__(self, **kwargs):
-        kwargs.setdefault('required', False)
-        super().__init__(**kwargs)
-
-    def clean(self, value):
-        values = {part.strip() for raw in (value or []) for part in str(raw).split(',')} - {''}
-        unknown = sorted(values - set(Chemical.Category.values))
-        if unknown:
-            raise forms.ValidationError(f'Unknown category: {", ".join(unknown)}.', code='invalid')
-        return sorted(values) or None
-
-
-class PlaceChoiceField(forms.ChoiceField):
-    """A ChoiceField whose unknown value is `invalid`, like the place endpoint's other fields."""
-
-    def __init__(self, **kwargs):
-        kwargs.setdefault('required', False)
-        super().__init__(**kwargs)
-
-    def validate(self, value):
-        try:
-            super().validate(value)
-        except forms.ValidationError as err:
-            raise forms.ValidationError(err.messages[0], code='invalid')
 
 
 # The blank (not reported) application method, as the explorer's forms name it.

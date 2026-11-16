@@ -1171,6 +1171,120 @@ class ArchivedNoticeEndpointTests(TestCase):
             sections.MAX_NOTICES = original
 
 
+class NoticeDayEndpointTests(TestCase):
+    """notices/active/ and notices/archive/ with `date`, `category`, `iarc_group`."""
+    fixtures = ['pesticides-explorer']
+
+    # The explorer's feature properties, unchanged without the new params.
+    PROPERTY_KEYS = {
+        'id', 'scheduled_application', 'scheduled_end', 'county', 'application_method',
+        'treated_amount', 'treated_units', 'section', 'section_id', 'products', 'chemicals',
+    }
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.url = reverse('api:v2:pesticides:notice-active')
+        self.archive_url = reverse('api:v2:pesticides:notice-archive')
+
+    def sqid(self, pk):
+        return PesticideNotice.objects.get(pk=pk).sqid
+
+    def ids(self, params, url=None):
+        response = self.client.get(url or self.url, params)
+        assert response.status_code == 200, response.content
+        return [f['properties']['id'] for f in response.json()['features']]
+
+    def pacific(self, *args):
+        from datetime import datetime
+        from django.conf import settings
+        return datetime(*args, tzinfo=settings.DEFAULT_TIMEZONE)
+
+    def test_date_window(self):
+        PesticideNotice.objects.filter(pk=2).update(scheduled_application=self.pacific(2026, 6, 12, 10))
+        PesticideNotice.objects.filter(pk=3).update(scheduled_application=self.pacific(2026, 6, 16))
+        assert self.ids({'date': '2026-06-15'}) == [self.sqid(2)]
+        assert self.ids({'date': '2026-06-16'}) == [self.sqid(2), self.sqid(3)]
+
+    def test_date_includes_archived_notice(self):
+        data = self.client.get(self.url, {'date': '2020-01-17'}).json()
+        assert [f['properties']['id'] for f in data['features']] == [self.sqid(1)]
+        assert data['features'][0]['properties']['past'] is True
+
+    def test_past_flag_only_with_date(self):
+        # Notice 2 is 2099-01-10 08:00 UTC: active on 2099-01-12, not yet past.
+        for day, expected in (('2099-01-12', False), ('2020-01-17', True)):
+            features = self.client.get(self.url, {'date': day}).json()['features']
+            assert features
+            assert all(f['properties']['past'] is expected for f in features)
+        features = self.client.get(self.url).json()['features']
+        assert features
+        assert all('past' not in f['properties'] for f in features)
+
+    def test_bad_date(self):
+        for value in ('2026-13-01', 'nope', '2026-6-1', '0001-01-01'):
+            response = self.client.get(self.url, {'date': value})
+            assert response.status_code == 400, value
+            assert response.json() == {'error': 'date must be YYYY-MM-DD'}
+
+    def test_category_any_chemical(self):
+        assert self.ids({'category': 'carcinogen'}) == [self.sqid(3)]
+        assert self.ids({'category': 'toxic_air_contaminant'}) == [self.sqid(2), self.sqid(3)]
+        assert self.ids({'category': ['carcinogen', 'oil']}) == [self.sqid(3)]
+        assert self.ids({'category': 'oil,carcinogen'}) == [self.sqid(3)]
+
+    def test_iarc_group(self):
+        assert self.ids({'iarc_group': '2A'}) == [self.sqid(3)]
+        response = self.client.get(self.url, {'iarc_group': '9'})
+        assert response.status_code == 400
+        assert '9' in response.json()['error']
+
+    def test_unknown_category(self):
+        response = self.client.get(self.url, {'category': 'foo'})
+        assert response.status_code == 400
+        assert response.json() == {'error': 'Unknown category: foo.'}
+
+    def test_settled_day_cached_for_a_day(self):
+        from camp.utils import views
+        now = self.pacific(2026, 6, 20, 12)
+        for day, timeout in (('2026-06-10', 86400), ('2026-06-20', 300)):
+            with patch.object(views, 'cache') as cache, patch('django.utils.timezone.now', return_value=now):
+                cache.get.return_value = None
+                assert self.client.get(self.url, {'date': day}).status_code == 200
+            assert cache.set.call_count == 1
+            assert cache.set.call_args.args[2] == timeout, day
+        # No date: the class-wide timeout, as before.
+        with patch.object(views, 'cache') as cache:
+            cache.get.return_value = None
+            self.client.get(self.url)
+        assert cache.set.call_args.args[2] == 300
+
+    def test_fetch_version_retires_cached_day(self):
+        PesticideNotice.objects.filter(pk=2).update(scheduled_application=self.pacific(2026, 6, 12, 10))
+        assert self.ids({'date': '2026-06-15'}) == [self.sqid(2)]
+        PesticideNotice.objects.filter(pk=2).update(scheduled_application=self.pacific(2026, 6, 1))
+        response = self.client.get(self.url, {'date': '2026-06-15'})
+        assert response['X-Cache-Status'] == 'HIT'
+        assert [f['properties']['id'] for f in response.json()['features']] == [self.sqid(2)]
+        stats.bump_notices_version()
+        response = self.client.get(self.url, {'date': '2026-06-15'})
+        assert response['X-Cache-Status'] == 'MISS'
+        assert response.json()['features'] == []
+
+    def test_archive_takes_date_and_filters(self):
+        params = {'date': '2020-01-17', 'category': 'toxic_air_contaminant'}
+        assert self.ids(params, self.archive_url) == [self.sqid(1)]
+        assert self.ids({'date': '2020-01-17', 'category': 'carcinogen'}, self.archive_url) == []
+
+    def test_no_new_params_unchanged(self):
+        active = self.client.get(self.url).json()['features']
+        assert [f['id'] for f in active] == [self.sqid(2), self.sqid(3)]
+        assert all(set(f['properties']) == self.PROPERTY_KEYS for f in active)
+        archive = self.client.get(self.archive_url).json()['features']
+        assert [f['id'] for f in archive] == [self.sqid(1)]
+        assert all(set(f['properties']) == self.PROPERTY_KEYS | {'past'} for f in archive)
+
+
 # ---------------------------------------------------------------------------
 # County outlines and township grid GeoJSON endpoints
 # ---------------------------------------------------------------------------
