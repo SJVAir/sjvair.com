@@ -17,7 +17,8 @@ from django.utils import timezone
 
 from resticus import generics, http
 
-from camp.apps.pesticides import maps, stats
+from camp.apps.pesticides import classes, maps, stats
+from camp.apps.pesticides.badges import chemical_badges
 from camp.apps.pesticides.models import (
     Chemical, Commodity, PesticideNotice, PesticideSectionTotal, PesticideUseRollup, Product,
 )
@@ -138,6 +139,11 @@ def apply_filters(rows, params, filters):
     if 'aerial_ground' in filters:
         code = filters['aerial_ground']
         rows = rows.filter(method='' if code == NO_METHOD else code)
+    # Any of the categories, on the row's own chemical (as place/ filters them).
+    if 'category' in filters:
+        rows = rows.filter(chemical__categories__overlap=filters['category'])
+    if 'iarc_group' in filters:
+        rows = rows.filter(chemical__iarc_group=filters['iarc_group'])
     return rows, None
 
 
@@ -146,12 +152,30 @@ def chemical_scoped(params, filters):
     return bool(params.get('chemical')) or 'chemical_id' in filters
 
 
+def counts_by_record(params, filters):
+    """Whether the rows can hold several ingredient rows of one record: a category or IARC filter without a chemical."""
+    return not chemical_scoped(params, filters) and ('category' in filters or 'iarc_group' in filters)
+
+
+def section_figures(rows, params, filters):
+    """
+    `{section pk: totals}` over `rows`, rollup rows already narrowed by apply_filters(),
+    counted as place/ counts them (`counting_mode`). One chemical sums its own ingredient
+    rows; a category or IARC filter without one can keep several ingredient rows of a record,
+    so those take the MAX per record; anything else sums the once-per-record columns.
+    """
+    if counts_by_record(params, filters):
+        return stats.section_totals_by_record(rows)
+    scoped = chemical_scoped(params, filters)
+    return {r['mtrs']: r for r in rows.values('mtrs').annotate(**totals_aggregates(scoped))}
+
+
 # What apply_filters() narrows on. A request carrying none of these wants
 # plain section totals, which PesticideSectionTotal already holds; anything
 # here has to go back to the rollup, the only place those dimensions survive.
 SECTION_FILTER_PARAMS = (
     'month', 'chemical', 'product', 'commodity', 'county', 'method',
-    'chemical_id', 'product_id', 'commodity_id', 'aerial_ground',
+    'chemical_id', 'product_id', 'commodity_id', 'aerial_ground', 'category', 'iarc_group',
 )
 
 
@@ -164,13 +188,16 @@ def section_totals_available(params):
 
 def section_totals(section_pks, year, all_years):
     """
-    `{section pk: totals}` for `year` from PesticideSectionTotal.
+    `{section pk: totals}` for `year` from PesticideSectionTotal; `section_pks` None
+    means every section (the valley-wide classes).
 
     All years sums the stored years, which is still a fraction of the rollup
     rows behind them. No year at all matches in_year()'s "nothing loaded
     means nothing", rather than quietly totalling every year.
     """
-    rows = PesticideSectionTotal.objects.filter(mtrs__in=section_pks)
+    rows = PesticideSectionTotal.objects.all()
+    if section_pks is not None:
+        rows = rows.filter(mtrs__in=section_pks)
     if all_years:
         return {
             r['mtrs']: r
@@ -220,6 +247,17 @@ def totals_properties(totals, previous=None):
     if previous is not None:
         properties.update({f'{key}_prev': (previous[key] or 0) for key in TOTALS})
     return properties
+
+
+def with_classes(body, params, level, year, all_years, filters, build=None):
+    """
+    `body` plus `classes` (valley-wide breaks over the scope year; see classes.py) when
+    `classes=1` is asked for. Any other value leaves the body as it was. `build` is passed
+    to valley_classes() (a cache-miss builder from figures the endpoint already has).
+    """
+    if params.get('classes') == '1':
+        body['classes'] = classes.valley_classes(level, year, all_years, params, filters, build=build)
+    return body
 
 
 def year_value(year, all_years):
@@ -369,15 +407,14 @@ class SectionListBase(generics.Endpoint):
             rows, error = apply_filters(rows, params, filters)
             if error:
                 return bad_request(error)
-            scoped = chemical_scoped(params, filters)
-            totals = {r['mtrs']: r for r in rows.values('mtrs').annotate(**totals_aggregates(scoped))}
+            totals = section_figures(rows, params, filters)
             previous = {}
             if compare:
                 # The same filters over the compared year, so the change is
                 # the one the reader's filters describe and not the section's
                 # total.
                 compare_rows, _ = apply_filters(stats.in_year(in_bbox, compare), params, filters)
-                previous = {r['mtrs']: r for r in compare_rows.values('mtrs').annotate(**totals_aggregates(scoped))}
+                previous = section_figures(compare_rows, params, filters)
         counties = county_name_for(section_pks, year, all_years)
 
         # Section outlines never change, so a reader who already has them --
@@ -408,7 +445,8 @@ class SectionListBase(generics.Endpoint):
                 },
             })
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
-        return {'type': 'FeatureCollection', 'year': year_value(year, all_years), 'features': features}
+        body = {'type': 'FeatureCollection', 'year': year_value(year, all_years), 'features': features}
+        return with_classes(body, params, 'section', year, all_years, filters)
 
 
 class SectionList(CachedEndpointMixin, SectionListBase):
@@ -422,7 +460,10 @@ class SectionList(CachedEndpointMixin, SectionListBase):
     California restricted materials).
     The charts' values also filter: `chemical_id`, `product_id`, `commodity_id` (our ids, as
     `place/` takes them; giving one with its code form is a 400) and `aerial_ground`
-    (`G`, `A`, `F`, `O`, `none`; the same as `method`).
+    (`G`, `A`, `F`, `O`, `none`; the same as `method`), `category` (repeated or
+    comma-separated, any of them) and `iarc_group`, counted as `place/` counts them.
+    `classes=1` adds `classes`: quantile breaks (`{breaks, min}` per figure) over every section in
+    the valley for the year, month and value filters, whatever the bbox, region or county.
     """
     cache_timeout = 60 * 60
 
@@ -454,6 +495,7 @@ class SectionDetailBase(generics.Endpoint):
                 # The map's section popup marks the chemicals of concern.
                 if field == 'chemical':
                     entry['is_of_concern'] = r.obj.is_of_concern
+                    entry['badges'] = chemical_badges(r.obj)
                 entries.append(entry)
             return entries
 
@@ -475,8 +517,14 @@ class SectionDetailBase(generics.Endpoint):
 
 
 class SectionDetail(CachedEndpointMixin, SectionDetailBase):
-    """One MTRS section: geometry, totals by year and by month, and top chemicals, products, and commodities for `year` (default latest). `narrow=concern|restricted|fumigant|aerial` (or legacy `concern=1`) counts only what that narrowing keeps."""
+    """
+    One MTRS section: geometry, totals by year and by month, and top chemicals, products,
+    and commodities for `year` (default latest). `narrow=concern|restricted|fumigant|aerial`
+    (or legacy `concern=1`) counts only what that narrowing keeps. Each top chemical carries
+    `badges` (keys of meta's `badges`).
+    """
     cache_timeout = 60 * 60
+    cache_key_version = 1
 
 
 class MapFilterForm(forms.Form):
@@ -493,8 +541,8 @@ class MapFilterForm(forms.Form):
 
 
 # Which of MapFilterForm's fields each layer reads; the others aren't validated there, so a
-# layer ignores them as before. Sections and townships don't take category/iarc_group yet.
-ROLLUP_MAP_FILTERS = ('chemical_id', 'product_id', 'commodity_id', 'aerial_ground')
+# layer ignores them as before.
+ROLLUP_MAP_FILTERS = ('chemical_id', 'product_id', 'commodity_id', 'aerial_ground', 'category', 'iarc_group')
 # The value filters the notice endpoints accept, served as meta's `notice_filters`.
 NOTICE_VALUE_FILTERS = ('chemical_id', 'product_id', 'category', 'iarc_group', 'narrow', 'aerial_ground')
 NOTICE_MAP_FILTERS = ('category', 'iarc_group', 'chemical_id', 'product_id', 'aerial_ground')
@@ -689,12 +737,19 @@ class TownshipListBase(generics.Endpoint):
         if error:
             return bad_request(error)
         scoped = chemical_scoped(params, filters)
-        totals = stats.by_township(rows, year, all_years, chemical_scoped=scoped)
+        # A category or IARC filter counts per record (section_figures), folded into
+        # townships; everything else keeps by_township's per-section sums.
+        def township_totals(rows, year, all_years=False):
+            if counts_by_record(params, filters):
+                return stats.fold_townships(section_figures(rows, params, filters))
+            return stats.by_township(rows, year, all_years, chemical_scoped=scoped)
+
+        totals = township_totals(rows, year, all_years)
         previous = {}
         if compare:
             compare_rows, _ = apply_filters(
                 stats.in_year(PesticideUseRollup.objects.all(), compare), params, filters)
-            previous = stats.by_township(compare_rows, compare, chemical_scoped=scoped)
+            previous = township_totals(compare_rows, compare)
 
         # The map keeps township outlines from its first load and asks for
         # `geometry=0` after that (a year or filter change only moves the
@@ -735,14 +790,24 @@ class TownshipListBase(generics.Endpoint):
                 },
             })
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
-        return {'type': 'FeatureCollection', 'year': year_value(year, all_years), 'features': features}
+        body = {'type': 'FeatureCollection', 'year': year_value(year, all_years), 'features': features}
+        # Without `county` the totals are already every township's, from the same rows and
+        # counting build_classes() would use when it reads the rollup, so a cache miss
+        # builds the classes from them rather than aggregating the valley again. When it
+        # would read PesticideSectionTotal instead, let it (cheap, and its own figures).
+        build = None
+        if not params.get('county') and not section_totals_available(params):
+            build = lambda: classes.classes_from(totals)  # noqa: E731
+        return with_classes(body, params, 'township', year, all_years, filters, build=build)
 
 
 class TownshipList(CachedEndpointMixin, TownshipListBase):
     """
     PLSS townships (6x6 blocks of MTRS sections) with pesticide-use totals, as GeoJSON.
 
-    Each township is the union of its sections. Optional
+    Each township is the union of its sections. A feature's `id` (and `name`) is the PLSS
+    township designation, the section name minus its `-NN` suffix (e.g. `MDM-T14S-R20E`). It
+    is permanent: it changes only if the MTRS sections are reimported under different names. Optional
     `bbox=west,south,east,north` limits the grid to what's on screen, and
     `geometry=0` returns the features with `null` geometry (values only) for
     a client that already holds the outlines. `region=<sqid>` with an optional
@@ -753,7 +818,10 @@ class TownshipList(CachedEndpointMixin, TownshipListBase):
     `narrow=concern|restricted|fumigant|aerial` (or legacy `concern=1`) to count only what that narrowing keeps.
     The charts' values also filter: `chemical_id`, `product_id`, `commodity_id` (our ids, as
     `place/` takes them; giving one with its code form is a 400) and `aerial_ground`
-    (`G`, `A`, `F`, `O`, `none`; the same as `method`).
+    (`G`, `A`, `F`, `O`, `none`; the same as `method`), `category` (repeated or
+    comma-separated, any of them) and `iarc_group`, counted as `place/` counts them.
+    `classes=1` adds `classes`: quantile breaks (`{breaks, min}` per figure) over every township in
+    the valley for the year, month and value filters, whatever the bbox, region or county.
     """
     cache_timeout = 60 * 60
 

@@ -240,7 +240,9 @@ zones are missing there; see SJVAPCD Forecast Setup).
   `{key, title, summary, detail|null, source_url}`), `badges` (`[{key, label, note}]` in the
   explorer's order; `note` is a key of `notes`; keys permanent, no styling), `links`
   (`spraydays_signup`) and `notice_filters` (the value filters the notice endpoints accept:
-  `chemical_id`, `product_id`, `category`, `iarc_group`, `narrow`, `aerial_ground`). The
+  `chemical_id`, `product_id`, `category`, `iarc_group`, `narrow`, `aerial_ground`), `years`
+  (years with data, newest first), `ramp` (`{colors, no_data}` from `maps.RAMP`/`maps.NO_DATA`,
+  the map's shade colors) and a `notes.shades_valley` note (what the shades mean). The
   pesticide entity search (`pesticides/search/`) returns one page plus `more`, and a
   `placeholder` flag on chemical results. `monitors/meta/` adds a `scale` per entry type plus `stages` and
   `processors` labels. It no longer serves the legacy `levels` dict; `scale` is the only level
@@ -293,6 +295,24 @@ zones are missing there; see SJVAPCD Forecast Setup).
   a settled range is cached 24h server-side and sent `public, max-age=86400`, any other
   200 `max-age=900`, errors `no-cache`. A day with no outlines can't be told from a missed
   fetch (deferred).
+- **Township id** `pesticides/townships/` `id`/`name` is the PLSS name (e.g. `MDM-T14S-R20E`, the
+  MTRS section name minus its `-NN` suffix; `townships.township_of`), permanent while the MTRS
+  sections keep their names.
+- **Pesticide map** `pesticides/sections/` and `pesticides/townships/` take `classes=1` and add
+  `classes`: `{figure: {breaks, min}}` for `lbs_chemical`, `acres_treated` and `applications`
+  (`camp/apps/pesticides/classes.py`). `breaks` are up to 8 quantile classes cut on the distinct
+  positive values; zero means no data and is left out, and `min` is the smallest positive value
+  (`null` when none). The population is valley-wide: every section (or township) the rollup has
+  for the year, never just the viewport, and the figures are the ones the features carry
+  (with `county`, a border feature counts only that county's use and may fall below `min`).
+  Value params (`month`, `chemical`/`product`/`commodity` and their `_id` forms, `method`,
+  `aerial_ground`, `narrow`, `concern`, `category`, `iarc_group`) change the classes; spatial
+  ones (`bbox`, `radius`, `region`, `county`, `geometry`) don't (`county` is stripped). Each
+  `month` is ranked alone, and `compare=` ranks the scope year, not the compared one;
+  `year=all` gives all-years classes. Cached under the pesticide data version through
+  `stats.all_years_key('classes', ...)` (no TTL; an import retires it). A request without
+  `classes=1` is unchanged. `sections/<id>/` `top_chemicals[].badges` lists badge keys (keys of
+  meta's `badges`).
 - **Pesticide notices by day** `pesticides/notices/active/?date=YYYY-MM-DD` (Pacific) lists the
   notices active on that day, past or future: `start(D-4) <= scheduled_application < start(D+1)`
   (`start(X)` is 00:00 Pacific, built from calendar dates; `stats.notices_on`). Order, the 2000
@@ -312,7 +332,12 @@ zones are missing there; see SJVAPCD Forecast Setup).
     Aircraft, `F` Fumigation, ignoring case; `O` any other non-blank method; `none` blank). An
     unknown code is a 400; `method` is unchanged and, given too, also applies. Notices record
     no crop: `commodity_id` there is a 400 `notices don't record a commodity` (plain
-    `commodity` is still ignored). Sections and townships don't take `category`/`iarc_group`.
+    `commodity` is still ignored). Sections and townships also take `category` (repeated or
+    comma-separated, any of them) and `iarc_group` (an unknown value is a 400 `{"error": …}`),
+    counted like `place/`: off `PesticideSectionTotal` onto the rollup, and without `chemical`
+    product pounds, acres and applications take the MAX per record key, summed per section
+    (`sections.section_figures`, `stats.section_totals_by_record`; townships fold those through
+    `stats.fold_townships`).
   - **Cache:** the key carries the notices version (`pesticides:notices-version`, no expiry, a
     missing value starts a new one), which `fetch_pesticide_notices` bumps in a `finally`
     (the daily fetch rewrites schedules, chemicals and products, even when it fails partway).

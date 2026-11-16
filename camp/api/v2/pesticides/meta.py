@@ -5,7 +5,7 @@ uses (model choices, `stats`, the health notes), read here and never changed.
 """
 from resticus import generics, http
 
-from camp.apps.pesticides import notes, stats
+from camp.apps.pesticides import maps, notes, stats
 from camp.apps.pesticides.badges import BADGES
 from camp.apps.pesticides.forms import UNASSIGNED_CATEGORIES
 from camp.apps.pesticides.models import Chemical
@@ -93,7 +93,8 @@ class PesticidesMeta(generics.Endpoint):
     summary, detail, source_url}`), the classification `badges` (`{key, label, note}` in
     display order; `note` is a key of `notes`) and `links` (`spraydays_signup`), and
     `notice_filters`: the value filters the notice endpoints accept (they record no
-    commodity). Keys are permanent; labels may change.
+    commodity). Also `years` (years with data, newest first) and `ramp` (`colors`,
+    `no_data`: the map's shade colors). Keys are permanent; labels may change.
     """
 
     def get(self, request):
@@ -107,6 +108,8 @@ class PesticidesMeta(generics.Endpoint):
             'badges': BADGES,
             'links': {'spraydays_signup': SPRAYDAYS_URL},
             'notice_filters': list(NOTICE_VALUE_FILTERS),
+            'years': list(reversed(stats.available_years())),
+            'ramp': {'colors': maps.RAMP, 'no_data': maps.NO_DATA},
         }})
         response['Cache-Control'] = 'public, max-age=86400'
         return response

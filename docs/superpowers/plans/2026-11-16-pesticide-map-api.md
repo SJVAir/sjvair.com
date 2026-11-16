@@ -215,6 +215,19 @@ Behaviour:
 
 # PR 2: use (branch `feature/pesticide-map-classes` from `origin/develop` after PR 1 merges; worktree `.worktrees/pesticide-map-classes`)
 
+**As built in PR 1 (#335, f159026d). These take precedence over the task text below where they differ:**
+- **Fields:** `CategoryListField`, `PlaceChoiceField` and `SqidChoiceField` live in `camp/api/v2/pesticides/fields.py` and are re-exported by `endpoints.py`.
+- **`parse_map_filters(params, fields) -> (dict, error)`** takes the tuple of fields the endpoint reads.
+  - Sections and townships pass `ROLLUP_MAP_FILTERS = ('chemical_id', 'product_id', 'commodity_id', 'aerial_ground')`. Task 7 adds `category` and `iarc_group` to it.
+  - Cleaned ids are model instances, and `category` is a sorted list.
+  - The "give X or X_id, not both" check happens inside it.
+- **`apply_filters(rows, params, filters)`** already applies the `*_id` and `aerial_ground` filters. Task 7 adds the `category`/`iarc_group` branches there.
+- **`chemical_scoped(params, filters)`** (true for `chemical` or `chemical_id`) exists. Use it wherever the task text says `bool(params.get('chemical'))`.
+- **`SECTION_FILTER_PARAMS`** already includes the `*_id` and `aerial_ground` names. Task 7 adds `category` and `iarc_group`.
+- **`section_figures(rows, params, filters)`**: Task 7 defines it. Its MAX-per-record path applies when `category`/`iarc_group` is present and `chemical_scoped(...)` is false.
+- **Task 8 cache key:** hash the cleaned filters (ids by `.pk`, category as its sorted list) plus the raw `month`, `chemical`, `product`, `commodity`, `method`, `narrow` and `concern` values.
+- **Tests:** run them with the wrapper `scratchpad/t.sh` (see the ledger's env.md); podman-compose doesn't work from a worktree.
+
 ### Task 7: `category` / `iarc_group` on `sections/` and `townships/`, counted like `place/`
 
 **Files:**

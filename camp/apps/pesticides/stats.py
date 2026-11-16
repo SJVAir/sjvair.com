@@ -14,6 +14,8 @@ from django.contrib.gis.geos import MultiPoint, Polygon
 from django.contrib.gis.measure import D
 from django.conf import settings
 from django.core.cache import cache
+from django.core.exceptions import EmptyResultSet
+from django.db import connection
 from django.db.models import Case, Count, Exists, F, FloatField, Max, Min, OuterRef, Q, Sum, When
 from django.db.models.functions import Lower, Trim
 from django.utils import timezone
@@ -920,6 +922,56 @@ def by_township(rows, year, all_years=False, chemical_scoped=False):
     )
     for row in section_rows:
         township = index.get(row['mtrs'])
+        if township is None:
+            continue
+        total = totals.setdefault(township, {field: 0 for field in TOWNSHIP_FIELDS})
+        for field in TOWNSHIP_FIELDS:
+            total[field] += row[field] or 0
+    return totals
+
+
+def section_totals_by_record(rows):
+    """
+    {section pk: {'lbs_chemical', 'lbs_product', 'acres_treated', 'applications'}} for rows
+    that can keep several ingredient rows of one record (a category or IARC filter, no
+    chemical), counted as `places.monthly_use` counts them: pounds sum `lbs_chemical`, and
+    product pounds, acres and applications take the MAX per record key, then sum per section.
+    """
+    # places imports the API's sections module, which imports this one.
+    from camp.apps.pesticides.places import _RECORD_KEY
+    inner = (
+        rows.order_by()
+        .values(*_RECORD_KEY)
+        .annotate(p=Sum('lbs_chemical'), pp=Max('lbs_product'), a=Max('acres_treated'), n=Max('applications'))
+    )
+    try:
+        sql, params = inner.query.sql_with_params()
+    except EmptyResultSet:
+        # .none() (no year loaded) or no sections: nothing to wrap.
+        return {}
+    with connection.cursor() as cursor:
+        cursor.execute(
+            'SELECT g.mtrs, SUM(g.p), SUM(g.pp), SUM(g.a), SUM(g.n) '
+            f'FROM ({sql}) g WHERE g.mtrs IS NOT NULL GROUP BY g.mtrs',
+            params,
+        )
+        return {
+            mtrs: {
+                'lbs_chemical': float(pounds or 0),
+                'lbs_product': float(product or 0),
+                'acres_treated': float(acres or 0),
+                'applications': int(applications or 0),
+            }
+            for mtrs, pounds, product, acres, applications in cursor.fetchall()
+        }
+
+
+def fold_townships(by_section):
+    """{township: totals} from {section pk: totals}, through the section -> township index (as by_township folds)."""
+    index = township_index()
+    totals = {}
+    for mtrs, row in by_section.items():
+        township = index.get(mtrs)
         if township is None:
             continue
         total = totals.setdefault(township, {field: 0 for field in TOWNSHIP_FIELDS})
