@@ -1,10 +1,13 @@
 from datetime import date, datetime, timedelta
+from unittest import mock
+
+import pytest
 
 from django.conf import settings
 from django.core.cache import cache
 from django.test import TestCase
 
-from camp.apps.pesticides import stats
+from camp.apps.pesticides import stats, tasks
 from camp.apps.pesticides.models import PesticideNotice
 
 PACIFIC = settings.DEFAULT_TIMEZONE
@@ -60,3 +63,24 @@ class NoticeDayTests(TestCase):
         assert stats.notices_version() != v
         cache.delete(stats.NOTICES_VERSION_KEY)
         assert stats.notices_version()
+
+
+class FetchBumpsVersionTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    def test_fetch_bumps_version(self):
+        before = stats.notices_version()
+        with mock.patch('camp.apps.pesticides.spraydays.fetch_applications'):
+            tasks.fetch_pesticide_notices.call_local()
+        assert stats.notices_version() != before
+
+    def test_failed_fetch_still_bumps(self):
+        before = stats.notices_version()
+        with mock.patch(
+            'camp.apps.pesticides.spraydays.fetch_applications',
+            side_effect=RuntimeError('boom'),
+        ):
+            with pytest.raises(RuntimeError):
+                tasks.fetch_pesticide_notices.call_local()
+        assert stats.notices_version() != before
