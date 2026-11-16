@@ -227,7 +227,12 @@ method mapping, and the commodity answer below.
   classes cut on distinct positive values, so fewer when there are few distinct values).
   `min` is the smallest positive value, so the legend can label the first class. *(Builder's
   call.)* Zero is no data: it's left out of the classes and drawn with `ramp.no_data`. With no
-  positive values: `{"breaks": [], "min": null}`.
+  positive values: `{"breaks": [], "min": null, "colors": []}`.
+- **`colors`** (added 2026-11-16 after #336, at the dashboard's request): each figure also
+  carries `colors`, one fill per class in break order (`maps.sample_ramp(RAMP, len(breaks))`,
+  the same fills `quantile_classes` gives the explorer's class legend; `[]` with no breaks). No data stays meta's
+  `ramp.no_data`. Clients never re-implement the sampling. The cache name became
+  `classes-v2` so entries without `colors` are never served.
 - **Population:** every section (for `sections/`) or every township (for `townships/`) in
   the valley, meaning every MTRS region the rollup has, for the request's year (or
   `year=all`), month and value filters (`month`, `chemical`, `product`, `commodity`,

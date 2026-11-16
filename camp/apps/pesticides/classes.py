@@ -22,14 +22,22 @@ VALUE_PARAMS = (
     'method', 'aerial_ground', 'narrow', 'concern', 'category', 'iarc_group',
 )
 LEVELS = ('section', 'township')
+CACHE_NAME = 'classes-v2'
 
 
 def breaks_for(values):
-    """`{'breaks', 'min'}` over `values` ({key: figure}); zero is no data and left out."""
+    """
+    `{'breaks', 'min', 'colors'}` over `values` ({key: figure}); zero is no data and left
+    out. `colors` has one fill per class, in break order: the ramp sampled across all its
+    stops (maps.sample_ramp), so a client never re-implements the sampling. No data is
+    meta's `ramp.no_data`.
+    """
     positive = {key: value for key, value in values.items() if value and value > 0}
+    quantiles = maps.quantile_classes(positive)
     return {
-        'breaks': maps.quantile_classes(positive).breaks,
+        'breaks': quantiles.breaks,
         'min': min(positive.values()) if positive else None,
+        'colors': quantiles.colors,
     }
 
 
@@ -68,7 +76,8 @@ def cache_key(level, year, all_years, params, filters):
     if narrow:
         values['narrow'] = narrow
     digest = hashlib.md5(json.dumps(values, sort_keys=True, default=str).encode()).hexdigest()
-    return stats.all_years_key('classes', level, stats.ALL_YEARS if all_years else year, digest)
+    # `classes-v2`: entries from before `colors` was added are never read again.
+    return stats.all_years_key(CACHE_NAME, level, stats.ALL_YEARS if all_years else year, digest)
 
 
 def without_county(params):

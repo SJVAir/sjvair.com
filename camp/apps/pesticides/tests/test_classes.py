@@ -10,11 +10,25 @@ from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
 class BreaksForTests(TestCase):
     def test_breaks_for(self):
         result = classes.breaks_for({1: 0, 2: 5, 3: 10})
-        assert result == {'breaks': maps.quantile_classes({2: 5, 3: 10}).breaks, 'min': 5}
+        quantiles = maps.quantile_classes({2: 5, 3: 10})
+        assert result == {'breaks': quantiles.breaks, 'min': 5, 'colors': quantiles.colors}
+
+    def test_colors_one_per_class_sampled_from_the_ramp(self):
+        # Fewer distinct values than ramp stops: the colors are sampled across the
+        # whole ramp (maps.sample_ramp), not its first stops, and end on the darkest.
+        result = classes.breaks_for({1: 5, 2: 10, 3: 20})
+        assert len(result['colors']) == len(result['breaks']) == 3
+        assert result['colors'] == maps.sample_ramp(maps.RAMP, 3)
+        assert result['colors'][-1] == maps.RAMP[-1]
+        assert result['colors'][0] == maps.RAMP[0]
+
+    def test_cache_key_is_versioned_for_colors(self):
+        # Entries cached before `colors` existed must never be served.
+        assert ':classes-v2:' in classes.cache_key('section', 2023, False, {}, {})
 
     def test_all_zero(self):
-        assert classes.breaks_for({1: 0, 2: 0}) == {'breaks': [], 'min': None}
-        assert classes.breaks_for({}) == {'breaks': [], 'min': None}
+        assert classes.breaks_for({1: 0, 2: 0}) == {'breaks': [], 'min': None, 'colors': []}
+        assert classes.breaks_for({}) == {'breaks': [], 'min': None, 'colors': []}
 
 
 class ValleyClassesTests(RollupTestMixin, TestCase):
@@ -28,7 +42,7 @@ class ValleyClassesTests(RollupTestMixin, TestCase):
         # 2023: section 9101 has 670 lbs, 9102 70 lbs.
         result = classes.valley_classes('section', self.year, False, {})
         assert set(result) == set(classes.FIGURES)
-        assert result['lbs_chemical'] == {'breaks': [70.0, 670.0], 'min': 70.0}
+        assert result['lbs_chemical'] == {'breaks': [70.0, 670.0], 'min': 70.0, 'colors': maps.sample_ramp(maps.RAMP, 2)}
 
     def test_unfiltered_matches_rollup(self):
         # The PesticideSectionTotal fast path gives what the rollup path would.
@@ -46,7 +60,7 @@ class ValleyClassesTests(RollupTestMixin, TestCase):
     def test_all_years(self):
         # 9101: 670 + 480; 9102: 70 + 60.
         result = classes.valley_classes('section', None, True, {})
-        assert result['lbs_chemical'] == {'breaks': [130.0, 1150.0], 'min': 130.0}
+        assert result['lbs_chemical'] == {'breaks': [130.0, 1150.0], 'min': 130.0, 'colors': maps.sample_ramp(maps.RAMP, 2)}
 
     def test_county_ignored(self):
         with patch.object(classes, 'build_classes', wraps=classes.build_classes) as build:
