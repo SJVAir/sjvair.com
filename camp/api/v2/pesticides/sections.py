@@ -138,6 +138,11 @@ def apply_filters(rows, params, filters):
     if 'aerial_ground' in filters:
         code = filters['aerial_ground']
         rows = rows.filter(method='' if code == NO_METHOD else code)
+    # Any of the categories, on the row's own chemical (as place/ filters them).
+    if 'category' in filters:
+        rows = rows.filter(chemical__categories__overlap=filters['category'])
+    if 'iarc_group' in filters:
+        rows = rows.filter(chemical__iarc_group=filters['iarc_group'])
     return rows, None
 
 
@@ -146,12 +151,30 @@ def chemical_scoped(params, filters):
     return bool(params.get('chemical')) or 'chemical_id' in filters
 
 
+def counts_by_record(params, filters):
+    """Whether the rows can hold several ingredient rows of one record: a category or IARC filter without a chemical."""
+    return not chemical_scoped(params, filters) and ('category' in filters or 'iarc_group' in filters)
+
+
+def section_figures(rows, params, filters):
+    """
+    `{section pk: totals}` over `rows`, rollup rows already narrowed by apply_filters(),
+    counted as place/ counts them (`counting_mode`). One chemical sums its own ingredient
+    rows; a category or IARC filter without one can keep several ingredient rows of a record,
+    so those take the MAX per record; anything else sums the once-per-record columns.
+    """
+    if counts_by_record(params, filters):
+        return stats.section_totals_by_record(rows)
+    scoped = chemical_scoped(params, filters)
+    return {r['mtrs']: r for r in rows.values('mtrs').annotate(**totals_aggregates(scoped))}
+
+
 # What apply_filters() narrows on. A request carrying none of these wants
 # plain section totals, which PesticideSectionTotal already holds; anything
 # here has to go back to the rollup, the only place those dimensions survive.
 SECTION_FILTER_PARAMS = (
     'month', 'chemical', 'product', 'commodity', 'county', 'method',
-    'chemical_id', 'product_id', 'commodity_id', 'aerial_ground',
+    'chemical_id', 'product_id', 'commodity_id', 'aerial_ground', 'category', 'iarc_group',
 )
 
 
@@ -369,15 +392,14 @@ class SectionListBase(generics.Endpoint):
             rows, error = apply_filters(rows, params, filters)
             if error:
                 return bad_request(error)
-            scoped = chemical_scoped(params, filters)
-            totals = {r['mtrs']: r for r in rows.values('mtrs').annotate(**totals_aggregates(scoped))}
+            totals = section_figures(rows, params, filters)
             previous = {}
             if compare:
                 # The same filters over the compared year, so the change is
                 # the one the reader's filters describe and not the section's
                 # total.
                 compare_rows, _ = apply_filters(stats.in_year(in_bbox, compare), params, filters)
-                previous = {r['mtrs']: r for r in compare_rows.values('mtrs').annotate(**totals_aggregates(scoped))}
+                previous = section_figures(compare_rows, params, filters)
         counties = county_name_for(section_pks, year, all_years)
 
         # Section outlines never change, so a reader who already has them --
@@ -422,7 +444,8 @@ class SectionList(CachedEndpointMixin, SectionListBase):
     California restricted materials).
     The charts' values also filter: `chemical_id`, `product_id`, `commodity_id` (our ids, as
     `place/` takes them; giving one with its code form is a 400) and `aerial_ground`
-    (`G`, `A`, `F`, `O`, `none`; the same as `method`).
+    (`G`, `A`, `F`, `O`, `none`; the same as `method`), `category` (repeated or
+    comma-separated, any of them) and `iarc_group`, counted as `place/` counts them.
     """
     cache_timeout = 60 * 60
 
@@ -493,8 +516,8 @@ class MapFilterForm(forms.Form):
 
 
 # Which of MapFilterForm's fields each layer reads; the others aren't validated there, so a
-# layer ignores them as before. Sections and townships don't take category/iarc_group yet.
-ROLLUP_MAP_FILTERS = ('chemical_id', 'product_id', 'commodity_id', 'aerial_ground')
+# layer ignores them as before.
+ROLLUP_MAP_FILTERS = ('chemical_id', 'product_id', 'commodity_id', 'aerial_ground', 'category', 'iarc_group')
 # The value filters the notice endpoints accept, served as meta's `notice_filters`.
 NOTICE_VALUE_FILTERS = ('chemical_id', 'product_id', 'category', 'iarc_group', 'narrow', 'aerial_ground')
 NOTICE_MAP_FILTERS = ('category', 'iarc_group', 'chemical_id', 'product_id', 'aerial_ground')
@@ -689,12 +712,19 @@ class TownshipListBase(generics.Endpoint):
         if error:
             return bad_request(error)
         scoped = chemical_scoped(params, filters)
-        totals = stats.by_township(rows, year, all_years, chemical_scoped=scoped)
+        # A category or IARC filter counts per record (section_figures), folded into
+        # townships; everything else keeps by_township's per-section sums.
+        def township_totals(rows, year, all_years=False):
+            if counts_by_record(params, filters):
+                return stats.fold_townships(section_figures(rows, params, filters))
+            return stats.by_township(rows, year, all_years, chemical_scoped=scoped)
+
+        totals = township_totals(rows, year, all_years)
         previous = {}
         if compare:
             compare_rows, _ = apply_filters(
                 stats.in_year(PesticideUseRollup.objects.all(), compare), params, filters)
-            previous = stats.by_township(compare_rows, compare, chemical_scoped=scoped)
+            previous = township_totals(compare_rows, compare)
 
         # The map keeps township outlines from its first load and asks for
         # `geometry=0` after that (a year or filter change only moves the
@@ -753,7 +783,8 @@ class TownshipList(CachedEndpointMixin, TownshipListBase):
     `narrow=concern|restricted|fumigant|aerial` (or legacy `concern=1`) to count only what that narrowing keeps.
     The charts' values also filter: `chemical_id`, `product_id`, `commodity_id` (our ids, as
     `place/` takes them; giving one with its code form is a 400) and `aerial_ground`
-    (`G`, `A`, `F`, `O`, `none`; the same as `method`).
+    (`G`, `A`, `F`, `O`, `none`; the same as `method`), `category` (repeated or
+    comma-separated, any of them) and `iarc_group`, counted as `place/` counts them.
     """
     cache_timeout = 60 * 60
 

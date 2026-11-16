@@ -2478,3 +2478,115 @@ class MapIdFilterTests(RollupTestMixin, TestCase):
         data = self.client.get(reverse('api:v2:pesticides:pesticides-meta')).json()['data']
         assert data['notice_filters'] == list(NOTICE_VALUE_FILTERS)
         assert data['notice_filters'] == ['chemical_id', 'product_id', 'category', 'iarc_group', 'narrow', 'aerial_ground']
+
+
+class MapCategoryFilterTests(RollupTestMixin, TestCase):
+    """`category` and `iarc_group` on sections/ and townships/, counted as place/ counts them."""
+    fixtures = ['pesticides-explorer']
+
+    SECTIONS = '/api/2.0/pesticides/sections/'
+    TOWNSHIPS = '/api/2.0/pesticides/townships/'
+    TOWNSHIP = 'MDM-T14S-R20E'  # the fixture's township of section 9101, its only section
+
+    def setUp(self):
+        super().setUp()
+        self.section = Region.objects.get(pk=9101)
+        self.bbox = ','.join(str(v) for v in self.section.boundary.geometry.extent)
+        self.year = stats.latest_year()
+
+    def section_props(self, **params):
+        response = self.client.get(self.SECTIONS, {'bbox': self.bbox, 'year': self.year, **params})
+        assert response.status_code == 200, response.content
+        return next(f['properties'] for f in response.json()['features'] if f['properties']['mtrs'] == self.section.external_id)
+
+    def township_props(self, **params):
+        response = self.client.get(self.TOWNSHIPS, {'year': self.year, **params})
+        assert response.status_code == 200, response.content
+        return next(f['properties'] for f in response.json()['features'] if f['id'] == self.TOWNSHIP)
+
+    def place(self, month=None, **params):
+        url = reverse('api:v2:pesticides:pesticide-place')
+        response = self.client.get(url, {'region_type': 'mtrs', 'region': self.section.external_id, **params})
+        assert response.status_code == 200, response.content
+        data = response.json()['data']
+        if month is None:
+            return next(y for y in data['years'] if y['year'] == self.year)
+        return next(m for m in data['months'] if m['year'] == self.year and m['month'] == month)
+
+    @staticmethod
+    def figures(props):
+        return {'pounds': props['lbs_chemical'], 'acres': props['acres_treated'], 'applications': props['applications']}
+
+    @staticmethod
+    def expected(place):
+        return {key: place[key] for key in ('pounds', 'acres', 'applications')}
+
+    def test_section_matches_place(self):
+        for filters in ({'category': 'carcinogen'}, {'iarc_group': '2A'}):
+            expected = self.expected(self.place(**filters))
+            assert expected['applications']
+            assert self.figures(self.section_props(**filters)) == expected, filters
+            month = self.expected(self.place(month=3, **filters))
+            assert self.figures(self.section_props(month=3, **filters)) == month, filters
+
+    def test_township_matches_place(self):
+        for filters in ({'category': 'carcinogen'}, {'iarc_group': '2A'}):
+            assert self.figures(self.township_props(**filters)) == self.expected(self.place(**filters)), filters
+            month = self.expected(self.place(month=3, **filters))
+            assert self.figures(self.township_props(month=3, **filters)) == month, filters
+
+    def test_two_ingredients_count_once(self):
+        # A second carcinogen on the same record (month 3's ROUNDUP PRO on almonds, by ground):
+        # one more ingredient row, not one more application.
+        row = PesticideUseRollup.objects.get(year=2023, month=3, mtrs=self.section, chemical__chem_code=1855)
+        other = Chemical.objects.create(chem_code=9999, name='OTHER CARCINOGEN', categories=['carcinogen'])
+        PesticideUseRollup.objects.create(
+            year=2023, month=3, county=row.county, mtrs=row.mtrs, chemical=other, product=row.product,
+            commodity=row.commodity, method=row.method, lbs_chemical=40, lbs_product=row.lbs_product,
+            acres_treated=row.acres_treated, applications=row.applications, records=0, acres_once=0)
+        stats.bump_data_version()
+        from django.core.cache import cache
+        cache.clear()
+        march = self.section_props(year=2023, month=3, category='carcinogen')
+        assert march['lbs_chemical'] == row.lbs_chemical + 40
+        assert march['acres_treated'] == row.acres_treated
+        assert march['applications'] == row.applications
+        assert march['lbs_product'] == row.lbs_product
+        # The year: GLYPHOSATE's March and April records, one application each.
+        year = self.section_props(year=2023, category='carcinogen')
+        assert year['applications'] == 2 and year['lbs_chemical'] == 190.0 and year['acres_treated'] == 15.0
+        assert self.figures(self.township_props(year=2023, category='carcinogen')) == self.figures(year)
+
+    def test_unknown_category_400(self):
+        for url in (self.SECTIONS, self.TOWNSHIPS):
+            response = self.client.get(url, {'bbox': self.bbox, 'category': 'foo'})
+            assert response.status_code == 400
+            assert response.json() == {'error': 'Unknown category: foo.'}
+            response = self.client.get(url, {'bbox': self.bbox, 'iarc_group': 'nope'})
+            assert response.status_code == 400
+            assert 'nope' in response.json()['error']
+
+    def test_order_independent_cache(self):
+        for url in (self.SECTIONS, self.TOWNSHIPS):
+            a = self.client.get(f'{url}?bbox={self.bbox}&category=carcinogen,toxic_air_contaminant')
+            b = self.client.get(f'{url}?bbox={self.bbox}&category=toxic_air_contaminant&category=carcinogen')
+            assert a.status_code == b.status_code == 200
+            assert a.json() == b.json()
+
+    def test_filters_narrow(self):
+        # TAC is CHLORPYRIFOS alone: June's 20 lbs in 9101.
+        tac = self.section_props(year=2023, category='toxic_air_contaminant')
+        assert tac['lbs_chemical'] == 20.0 and tac['applications'] == 1
+        compare = self.section_props(year=2023, compare=2022, category='carcinogen')
+        assert compare['lbs_chemical_prev'] == 80.0 and compare['applications_prev'] == 1
+
+    def test_no_new_params_unchanged(self):
+        # Without the new values the request stays on PesticideSectionTotal and never
+        # takes the per-record path; blank values are the same request.
+        with patch('camp.apps.pesticides.stats.section_totals_by_record', side_effect=AssertionError):
+            for url in (self.SECTIONS, self.TOWNSHIPS):
+                plain = self.client.get(url, {'bbox': self.bbox, 'year': 2023}).json()
+                blank = self.client.get(url, {'bbox': self.bbox, 'year': 2023, 'category': '', 'iarc_group': ''}).json()
+                assert plain == blank and plain['features']
+            assert self.section_props(year=2023)['lbs_chemical'] == 670.0
+            assert self.township_props(year=2023)['applications'] == 4

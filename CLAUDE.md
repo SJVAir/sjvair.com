@@ -312,7 +312,12 @@ zones are missing there; see SJVAPCD Forecast Setup).
     Aircraft, `F` Fumigation, ignoring case; `O` any other non-blank method; `none` blank). An
     unknown code is a 400; `method` is unchanged and, given too, also applies. Notices record
     no crop: `commodity_id` there is a 400 `notices don't record a commodity` (plain
-    `commodity` is still ignored). Sections and townships don't take `category`/`iarc_group`.
+    `commodity` is still ignored). Sections and townships also take `category` (repeated or
+    comma-separated, any of them) and `iarc_group` (an unknown value is a 400 `{"error": …}`),
+    counted like `place/`: off `PesticideSectionTotal` onto the rollup, and without `chemical`
+    product pounds, acres and applications take the MAX per record key, summed per section
+    (`sections.section_figures`, `stats.section_totals_by_record`; townships fold those through
+    `stats.fold_townships`).
   - **Cache:** the key carries the notices version (`pesticides:notices-version`, no expiry, a
     missing value starts a new one), which `fetch_pesticide_notices` bumps in a `finally`
     (the daily fetch rewrites schedules, chemicals and products, even when it fails partway).
