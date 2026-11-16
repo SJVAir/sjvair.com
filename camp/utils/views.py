@@ -107,12 +107,19 @@ class CachedEndpointMixin:
             response = api_settings.JSON_ENCODER().encode(response).encode('utf-8')
         if self.is_cacheable(response):
             try:
-                cache.set(cache_key, response, self.cache_timeout)
+                cache.set(cache_key, response, self.get_cache_timeout(response))
             except Exception as err:
                 # A cache that won't take the item (memcached's 1 MB limit, a
                 # backend hiccup) is a miss next time, never an error now.
                 logger.warning('Could not cache %s: %s', cache_key, err)
         return self._finalize_response(response, status)
+
+    def get_cache_timeout(self, response) -> int:
+        """
+        Seconds to cache this response. Called after the response is built,
+        so a subclass can read self.request to vary the timeout per request.
+        """
+        return self.cache_timeout
 
     def is_cacheable(self, response) -> bool:
         """

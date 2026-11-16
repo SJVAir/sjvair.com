@@ -162,6 +162,41 @@ class CachedEndpointTests(TestCase):
         # The version is the only thing that moved.
         assert v1.replace('|v:1', '') == unversioned
 
+    def _timeout_endpoint(self, **attrs):
+        class Base:
+            def get(self, request, *args, **kwargs):
+                return {'ok': True}
+
+        class Endpoint(CachedEndpointMixin, Base):
+            cache_timeout = 600
+
+            def __init__(self, request):
+                self.request = request
+                self.kwargs = {}
+
+            def is_streaming(self):
+                return False
+
+        for name, value in attrs.items():
+            setattr(Endpoint, name, value)
+        return Endpoint
+
+    def test_default_timeout_is_class_attribute(self):
+        from unittest.mock import patch
+        Endpoint = self._timeout_endpoint()
+        request = self.factory.get('/x/')
+        with patch('camp.utils.views.cache.set') as cache_set:
+            Endpoint(request).get(request)
+        assert cache_set.call_args.args[2] == 600
+
+    def test_get_cache_timeout_override_is_used(self):
+        from unittest.mock import patch
+        Endpoint = self._timeout_endpoint(get_cache_timeout=lambda self, response: 7)
+        request = self.factory.get('/x/')
+        with patch('camp.utils.views.cache.set') as cache_set:
+            Endpoint(request).get(request)
+        assert cache_set.call_args.args[2] == 7
+
     def test_prewarm(self):
         results = CachedEndpointMixin.prewarm_all_registered()
         assert len(results)
