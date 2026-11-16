@@ -2590,3 +2590,134 @@ class MapCategoryFilterTests(RollupTestMixin, TestCase):
                 assert plain == blank and plain['features']
             assert self.section_props(year=2023)['lbs_chemical'] == 670.0
             assert self.township_props(year=2023)['applications'] == 4
+
+
+class MapClassesTests(RollupTestMixin, TestCase):
+    """`classes=1` on sections/ and townships/: valley-wide breaks, ignoring the spatial scope."""
+    fixtures = ['pesticides-explorer']
+
+    SECTIONS = '/api/2.0/pesticides/sections/'
+    TOWNSHIPS = '/api/2.0/pesticides/townships/'
+
+    def setUp(self):
+        super().setUp()
+        self.section = Region.objects.get(pk=9101)
+        self.other = Region.objects.get(pk=9102)
+        self.bbox = ','.join(str(v) for v in self.section.boundary.geometry.extent)
+        self.year = stats.latest_year()
+
+    def get(self, url, **params):
+        response = self.client.get(url, {'bbox': self.bbox, 'year': self.year, 'classes': '1', **params})
+        assert response.status_code == 200, response.content
+        return response.json()
+
+    def figures_breaks(self, by_key):
+        from camp.apps.pesticides import classes
+        return {f: classes.breaks_for({k: v[f] for k, v in by_key.items()}) for f in classes.FIGURES}
+
+    def section_figures(self, params=None, filters=None):
+        from camp.api.v2.pesticides.sections import apply_filters, section_figures
+        params, filters = params or {}, filters or {}
+        rows = stats.in_year(PesticideUseRollup.objects.filter(mtrs__isnull=False), self.year)
+        rows, _ = apply_filters(rows, params, filters)
+        return section_figures(rows, params, filters)
+
+    def test_valley_not_bbox(self):
+        from camp.apps.pesticides import classes
+        body = self.get(self.SECTIONS)
+        assert [f['properties']['mtrs'] for f in body['features']] == [self.section.external_id]
+        assert body['classes'] == classes.valley_classes('section', self.year, False, {})
+        # Both sections are ranked, not only the one in the bbox.
+        assert body['classes']['lbs_chemical'] == {'breaks': [70.0, 670.0], 'min': 70.0}
+        assert body['classes'] == self.figures_breaks(self.section_figures())
+
+    def test_spatial_params_ignored(self):
+        from camp.apps.pesticides import classes
+        other_bbox = ','.join(str(v) for v in self.other.boundary.geometry.extent)
+        fresno = Region.objects.get(pk=9001)
+        with patch.object(classes, 'build_classes', wraps=classes.build_classes) as build:
+            bodies = [
+                self.get(self.SECTIONS),
+                self.get(self.SECTIONS, county='fresno'),
+                self.get(self.SECTIONS, bbox='', region=fresno.sqid),
+                self.get(self.SECTIONS, bbox=other_bbox),
+            ]
+        assert all(b['classes'] == bodies[0]['classes'] for b in bodies)
+        assert build.call_count == 1
+
+    def test_month_ranked_alone(self):
+        body = self.get(self.SECTIONS, month=6)
+        expected = self.figures_breaks(self.section_figures({'month': '6'}))
+        assert body['classes'] == expected
+        # June is CHLORPYRIFOS's 20 lbs in 9101 alone.
+        assert body['classes']['lbs_chemical'] == {'breaks': [20.0], 'min': 20.0}
+
+    def test_filters_change_classes(self):
+        plain = self.get(self.SECTIONS)
+        carcinogen = self.get(self.SECTIONS, category='carcinogen')
+        assert carcinogen['classes'] != plain['classes']
+        expected = self.figures_breaks(self.section_figures({'category': 'carcinogen'}, {'category': ['carcinogen']}))
+        assert carcinogen['classes'] == expected
+        assert carcinogen['classes']['lbs_chemical'] == {'breaks': [30.0, 150.0], 'min': 30.0}
+        # Other value filters reach the classes too.
+        chem = self.get(self.SECTIONS, chemical=253)
+        assert chem['classes']['lbs_chemical'] == {'breaks': [20.0, 40.0], 'min': 20.0}
+
+    def test_compare_classes_scope_year(self):
+        assert self.get(self.SECTIONS, compare=2022)['classes'] == self.get(self.SECTIONS)['classes']
+        assert self.get(self.TOWNSHIPS, compare=2022)['classes'] == self.get(self.TOWNSHIPS)['classes']
+
+    def test_all_years(self):
+        body = self.get(self.SECTIONS, year='all')
+        assert body['classes']['lbs_chemical'] == {'breaks': [130.0, 1150.0], 'min': 130.0}
+
+    def test_no_classes_without_param(self):
+        for url in (self.SECTIONS, self.TOWNSHIPS):
+            for value in (None, '0', ''):
+                params = {'bbox': self.bbox, 'year': self.year}
+                if value is not None:
+                    params['classes'] = value
+                assert 'classes' not in self.client.get(url, params).json()
+
+    def test_classes_only_adds_the_key(self):
+        for url in (self.SECTIONS, self.TOWNSHIPS):
+            for extra in ({}, {'category': 'carcinogen'}, {'month': 3}):
+                plain = self.client.get(url, {'bbox': self.bbox, 'year': self.year, **extra}).json()
+                with_classes = self.get(url, **extra)
+                with_classes.pop('classes')
+                assert with_classes == plain
+
+    def test_empty_month(self):
+        for url in (self.SECTIONS, self.TOWNSHIPS):
+            body = self.get(url, month=1)
+            assert body['classes'] == {
+                'lbs_chemical': {'breaks': [], 'min': None},
+                'acres_treated': {'breaks': [], 'min': None},
+                'applications': {'breaks': [], 'min': None},
+            }
+
+    def test_township_level(self):
+        body = self.get(self.TOWNSHIPS)
+        expected = self.figures_breaks(stats.fold_townships(self.section_figures()))
+        assert body['classes'] == expected
+        assert body['classes'] == self.figures_breaks(stats.by_township(PesticideUseRollup.objects.all(), self.year))
+        carcinogen = self.get(self.TOWNSHIPS, category='carcinogen')
+        expected = self.figures_breaks(stats.fold_townships(
+            self.section_figures({'category': 'carcinogen'}, {'category': ['carcinogen']})))
+        assert carcinogen['classes'] == expected
+
+    def test_feature_values_fall_in_classes(self):
+        for url in (self.SECTIONS, self.TOWNSHIPS):
+            for extra in ({}, {'month': 6}, {'category': 'carcinogen'}, {'county': 'kern', 'bbox': ''},
+                          {'year': 'all'}, {'iarc_group': '2A'}):
+                params = {'bbox': self.bbox if url == self.SECTIONS else '', **extra}
+                if url == self.SECTIONS and not params['bbox']:
+                    params['bbox'] = '-121,35,-118,37'
+                body = self.get(url, **params)
+                for feature in body['features']:
+                    props = feature['properties']
+                    for figure in ('lbs_chemical', 'acres_treated', 'applications'):
+                        value = props[figure]
+                        if value:
+                            cls = body['classes'][figure]
+                            assert cls['min'] <= value <= cls['breaks'][-1], (url, extra, figure)

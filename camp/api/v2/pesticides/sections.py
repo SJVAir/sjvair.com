@@ -17,7 +17,7 @@ from django.utils import timezone
 
 from resticus import generics, http
 
-from camp.apps.pesticides import maps, stats
+from camp.apps.pesticides import classes, maps, stats
 from camp.apps.pesticides.models import (
     Chemical, Commodity, PesticideNotice, PesticideSectionTotal, PesticideUseRollup, Product,
 )
@@ -187,13 +187,16 @@ def section_totals_available(params):
 
 def section_totals(section_pks, year, all_years):
     """
-    `{section pk: totals}` for `year` from PesticideSectionTotal.
+    `{section pk: totals}` for `year` from PesticideSectionTotal; `section_pks` None
+    means every section (the valley-wide classes).
 
     All years sums the stored years, which is still a fraction of the rollup
     rows behind them. No year at all matches in_year()'s "nothing loaded
     means nothing", rather than quietly totalling every year.
     """
-    rows = PesticideSectionTotal.objects.filter(mtrs__in=section_pks)
+    rows = PesticideSectionTotal.objects.all()
+    if section_pks is not None:
+        rows = rows.filter(mtrs__in=section_pks)
     if all_years:
         return {
             r['mtrs']: r
@@ -243,6 +246,16 @@ def totals_properties(totals, previous=None):
     if previous is not None:
         properties.update({f'{key}_prev': (previous[key] or 0) for key in TOTALS})
     return properties
+
+
+def with_classes(body, params, level, year, all_years, filters):
+    """
+    `body` plus `classes` (valley-wide breaks over the scope year; see classes.py) when
+    `classes=1` is asked for. Any other value leaves the body as it was.
+    """
+    if params.get('classes') == '1':
+        body['classes'] = classes.valley_classes(level, year, all_years, params, filters)
+    return body
 
 
 def year_value(year, all_years):
@@ -430,7 +443,8 @@ class SectionListBase(generics.Endpoint):
                 },
             })
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
-        return {'type': 'FeatureCollection', 'year': year_value(year, all_years), 'features': features}
+        body = {'type': 'FeatureCollection', 'year': year_value(year, all_years), 'features': features}
+        return with_classes(body, params, 'section', year, all_years, filters)
 
 
 class SectionList(CachedEndpointMixin, SectionListBase):
@@ -446,6 +460,8 @@ class SectionList(CachedEndpointMixin, SectionListBase):
     `place/` takes them; giving one with its code form is a 400) and `aerial_ground`
     (`G`, `A`, `F`, `O`, `none`; the same as `method`), `category` (repeated or
     comma-separated, any of them) and `iarc_group`, counted as `place/` counts them.
+    `classes=1` adds `classes`: quantile breaks (`{breaks, min}` per figure) over every section in
+    the valley for the year, month and value filters, whatever the bbox, region or county.
     """
     cache_timeout = 60 * 60
 
@@ -765,7 +781,8 @@ class TownshipListBase(generics.Endpoint):
                 },
             })
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
-        return {'type': 'FeatureCollection', 'year': year_value(year, all_years), 'features': features}
+        body = {'type': 'FeatureCollection', 'year': year_value(year, all_years), 'features': features}
+        return with_classes(body, params, 'township', year, all_years, filters)
 
 
 class TownshipList(CachedEndpointMixin, TownshipListBase):
@@ -785,6 +802,8 @@ class TownshipList(CachedEndpointMixin, TownshipListBase):
     `place/` takes them; giving one with its code form is a 400) and `aerial_ground`
     (`G`, `A`, `F`, `O`, `none`; the same as `method`), `category` (repeated or
     comma-separated, any of them) and `iarc_group`, counted as `place/` counts them.
+    `classes=1` adds `classes`: quantile breaks (`{breaks, min}` per figure) over every township in
+    the valley for the year, month and value filters, whatever the bbox, region or county.
     """
     cache_timeout = 60 * 60
 
