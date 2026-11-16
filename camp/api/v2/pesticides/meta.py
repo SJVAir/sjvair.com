@@ -12,6 +12,7 @@ from camp.apps.pesticides.models import Chemical
 from camp.apps.pesticides.places import SPRAYDAYS_URL
 
 from .endpoints import NO_METHOD
+from .sections import NOTICE_VALUE_FILTERS
 
 # The health note that explains each category. The three Prop 65 lists share one note,
 # and CARB's Toxic Air Contaminants have theirs; every other category has its own.
@@ -90,8 +91,9 @@ class PesticidesMeta(generics.Endpoint):
     the `narrows` (`?narrow=`), and the `placeholder_chemicals` (CDPR's stand-ins for an
     unnamed ingredient). Also the server-owned explainer text: `notes` (key -> `{key, title,
     summary, detail, source_url}`), the classification `badges` (`{key, label, note}` in
-    display order; `note` is a key of `notes`) and `links` (`spraydays_signup`). Keys are
-    permanent; labels may change.
+    display order; `note` is a key of `notes`) and `links` (`spraydays_signup`), and
+    `notice_filters`: the value filters the notice endpoints accept (they record no
+    commodity). Keys are permanent; labels may change.
     """
 
     def get(self, request):
@@ -104,6 +106,7 @@ class PesticidesMeta(generics.Endpoint):
             'notes': dict(notes.all_notes()),
             'badges': BADGES,
             'links': {'spraydays_signup': SPRAYDAYS_URL},
+            'notice_filters': list(NOTICE_VALUE_FILTERS),
         }})
         response['Cache-Control'] = 'public, max-age=86400'
         return response

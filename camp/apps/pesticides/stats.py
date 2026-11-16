@@ -379,6 +379,9 @@ METHOD_ORDER = ('G', 'A', 'F', 'O', '')
 # SprayDays names its methods itself; where they differ from the labels above
 # for the same thing, tables show ours.
 NOTICE_METHOD_LABELS = {'Aircraft': 'Air'}
+# The use records' method code a SprayDays method means (compared ignoring case). `O`
+# is any other non-blank method; blank is not reported.
+NOTICE_METHOD_FOR_CODE = {'G': 'Ground', 'A': 'Aircraft', 'F': 'Fumigation'}
 
 
 def by_method(rows, year, lbs_field='lbs_chemical', all_years=False, apps_field='records'):
