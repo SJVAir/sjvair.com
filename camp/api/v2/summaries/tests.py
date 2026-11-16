@@ -1306,6 +1306,21 @@ class BulkOpenDaysEndpointTests(TestCase):
     def test_region_bulk_unknown_region_400(self):
         assert self._regions([('region', 'nope')]).status_code == 400
 
+    def test_region_bulk_type_scope(self):
+        self._hours(make_region_summary, self.fresno)
+        by_id = self._by_id(self._regions([('type', 'county')]))
+        # Kern (a county) has no hourly rows in the open window, so it isn't listed.
+        assert set(by_id) == {self.fresno.sqid}
+        assert len(by_id[self.fresno.sqid]['summaries']) == 2
+
+    def test_region_bulk_type_and_region_400(self):
+        response = self._regions([('type', 'county'), ('region', self.fresno.sqid)])
+        assert response.status_code == 400
+        assert get_response_data(response)['errors']['__all__'][0]['code'] == 'exclusive'
+
+    def test_region_bulk_land_use_400(self):
+        assert self._regions([('type', 'land_use')]).status_code == 400
+
     def test_url_resolution(self):
         from django.urls import resolve
         assert resolve('/api/2.0/monitors/pm25/summaries/daily/open/').func.view_class is BulkMonitorOpenDays

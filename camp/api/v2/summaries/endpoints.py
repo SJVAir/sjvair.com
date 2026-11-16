@@ -21,7 +21,7 @@ from camp.apps.summaries.periods import period_end
 from camp.apps.summaries.schedule import is_settled, settle_flags
 from camp.utils.datetime import make_aware
 
-from .filters import BulkMonitorSummaryFilter, BulkRegionSummaryFilter
+from .filters import BulkMonitorSummaryFilter, BulkRegionOpenDaysFilter, BulkRegionSummaryFilter
 from .forms import (
     BulkMonitorScopeForm,
     BulkMonitorSummaryForm,
@@ -465,24 +465,24 @@ class BulkMonitorOpenDays(BulkOpenDaysMixin, BulkMonitorScopeMixin, generics.Lis
 
 
 class BulkRegionOpenDays(BulkOpenDaysMixin, generics.ListEndpoint):
-    """Open-day rows for one or more regions (at least one `region` is required,
+    """Open-day rows for one or more regions (exactly one of `region` or `type`,
     as in BulkRegionSummaryList), with no `start`/`end`."""
 
     model = Region
     serializer_class = BulkRegionSummaryGroupSerializer
     form_class = BulkRegionScopeForm
+    filter_class = BulkRegionOpenDaysFilter
 
     def get_queryset(self):
         # Only regions with an hourly row since the first open day; the EXISTS
         # is served by the (region, entry_type, resolution, timestamp) unique index.
-        ids = [region.pk for region in self.form.cleaned_data['region']]
         recent = RegionSummary.objects.filter(
             region_id=OuterRef('pk'),
             entry_type=self.entry_model.entry_type,
             resolution=BaseSummary.Resolution.HOURLY,
             timestamp__gte=open_days(self.now)[0],
         )
-        return Region.all_objects.filter(Exists(recent), pk__in=ids).order_by('pk')
+        return Region.all_objects.filter(Exists(recent), pk__in=self.form.cleaned_data['regions']).order_by('pk')
 
     def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
         regions = list(source)
