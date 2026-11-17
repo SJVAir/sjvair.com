@@ -2903,3 +2903,138 @@ class MapClassesTests(RollupTestMixin, TestCase):
         expected = self.figures_breaks(section_figures(rows, params, filters))
         assert body['classes'] == expected
         assert body['classes']['lbs_chemical']['breaks']
+
+
+class SectionDetailFilterTests(RollupTestMixin, TestCase):
+    """`sections/<id>/` takes the map's value filters and `month`, opt-in."""
+    fixtures = ['pesticides-explorer']
+
+    SECTIONS = '/api/2.0/pesticides/sections/'
+    PINNED = 'camp/api/v2/pesticides/testdata/section-detail-unfiltered.json'
+
+    def setUp(self):
+        super().setUp()
+        self.section = Region.objects.get(pk=9101)
+        self.url = f'{self.SECTIONS}{self.section.sqid}/'
+        self.bbox = ','.join(str(v) for v in self.section.boundary.geometry.extent)
+        self.year = stats.latest_year()
+
+    def detail(self, **params):
+        from django.core.cache import cache
+        cache.clear()
+        response = self.client.get(self.url, params)
+        assert response.status_code == 200, response.content
+        return response.json()
+
+    def feature(self, **params):
+        from django.core.cache import cache
+        cache.clear()
+        response = self.client.get(self.SECTIONS, {'bbox': self.bbox, 'year': self.year, **params})
+        assert response.status_code == 200, response.content
+        return next(f['properties'] for f in response.json()['features'] if f['properties']['mtrs'] == self.section.external_id)
+
+    def place(self, **params):
+        from django.core.cache import cache
+        cache.clear()
+        url = reverse('api:v2:pesticides:pesticide-place')
+        response = self.client.get(url, {'region_type': 'mtrs', 'region': self.section.external_id, **params})
+        assert response.status_code == 200, response.content
+        return response.json()['data']
+
+    def year_entry(self, data):
+        return next(y for y in data['years'] if y['year'] == self.year)
+
+    def test_unfiltered_unchanged(self):
+        # Pinned from the view before it took any filter: the explorer's popup sends only
+        # `year` and `narrow`, and its answers must stay byte-for-byte the same.
+        from django.core.cache import cache
+        with open(self.PINNED) as f:
+            pinned = json.load(f)
+        sets = {
+            'none': {}, 'year=latest': {'year': self.year},
+            'year=all': {'year': 'all'}, 'narrow=concern': {'narrow': 'concern'},
+        }
+        assert set(pinned) == set(sets)
+        for key, params in sets.items():
+            cache.clear()
+            response = self.client.get(self.url, params)
+            assert response.status_code == 200
+            assert response.content.decode() == pinned[key], key
+
+    def test_category_matches_place(self):
+        data = self.detail(year=self.year, category='carcinogen')
+        place = self.place(category='carcinogen')
+        year = self.year_entry(data)
+        expected = next(y for y in place['years'] if y['year'] == self.year)
+        assert expected['applications']
+        assert (year['lbs_chemical'], year['acres_treated'], year['applications']) == \
+            (expected['pounds'], expected['acres'], expected['applications'])
+        place_months = {m['month']: m for m in place['months'] if m['year'] == self.year}
+        assert [m['month'] for m in data['months']] == list(range(1, 13))
+        for row in data['months']:
+            m = place_months.get(row['month'], {'pounds': 0, 'acres': 0, 'applications': 0})
+            assert (row['lbs_chemical'], row['acres_treated'], row['applications']) == \
+                (m['pounds'], m['acres'], m['applications']), row
+        assert {c['name'] for c in data['top_chemicals']} == {'GLYPHOSATE'}
+
+    def test_category_top_products_count_once(self):
+        # A second carcinogen on the same record: one more ingredient row, not more product pounds.
+        row = PesticideUseRollup.objects.get(year=2023, month=3, mtrs=self.section, chemical__chem_code=1855)
+        other = Chemical.objects.create(chem_code=9999, name='OTHER CARCINOGEN', categories=['carcinogen'])
+        PesticideUseRollup.objects.create(
+            year=2023, month=3, county=row.county, mtrs=row.mtrs, chemical=other, product=row.product,
+            commodity=row.commodity, method=row.method, lbs_chemical=40, lbs_product=row.lbs_product,
+            acres_treated=row.acres_treated, applications=row.applications, records=0, acres_once=0)
+        stats.bump_data_version()
+        data = self.detail(year=2023, category='carcinogen')
+        products = data['top_products']
+        assert 0 < len(products) < 5
+        assert sum(p['lbs'] for p in products) == self.feature(year=2023, category='carcinogen')['lbs_product']
+        assert set(products[0]) == {'id', 'name', 'display_name', 'lbs'}
+        assert self.year_entry(data)['applications'] == 2
+
+    def test_chemical_id_matches_sections(self):
+        glyphosate = Chemical.objects.get(chem_code=1855)
+        year = self.year_entry(self.detail(year=self.year, chemical_id=glyphosate.sqid))
+        feature = self.feature(chemical_id=glyphosate.sqid)
+        assert year == {'year': self.year, **{
+            key: feature[key] for key in ('lbs_chemical', 'lbs_product', 'acres_treated', 'applications')}}
+
+    def test_month_narrows_top_lists_only(self):
+        plain = self.detail(year=self.year)
+        june = self.detail(year=self.year, month=6)
+        assert len(june['months']) == 12
+        assert june['months'] == plain['months']
+        assert june['years'] == plain['years']
+        rows = PesticideUseRollup.objects.filter(mtrs=self.section, month=6)
+        expected = [r.obj.sqid for r in stats.top_related(rows, self.year, 'chemical', limit=5)]
+        assert expected
+        assert [c['id'] for c in june['top_chemicals']] == expected
+        assert june['top_chemicals'] != plain['top_chemicals']
+
+    def test_bad_values_400(self):
+        glyphosate = Chemical.objects.get(chem_code=1855)
+        cases = [
+            ({'month': '13'}, 'month must be 1-12'),
+            ({'chemical_id': 'zzz'}, 'Not a chemical id.'),
+            ({'chemical': '1855', 'chemical_id': glyphosate.sqid}, 'give chemical or chemical_id, not both'),
+        ]
+        for params, message in cases:
+            response = self.client.get(self.url, params)
+            assert response.status_code == 400, params
+            assert response.json() == {'error': message}
+        assert self.client.get(self.url, {'category': 'foo'}).status_code == 400
+
+    def test_cache_keys_by_filter(self):
+        from django.core.cache import cache
+        cache.clear()
+        plain = self.client.get(self.url, {'year': self.year}).json()
+        filtered = self.client.get(self.url, {'year': self.year, 'category': 'carcinogen'}).json()
+        assert filtered != plain
+        assert [c['name'] for c in filtered['top_chemicals']] == ['GLYPHOSATE']
+        assert len(plain['top_chemicals']) > 1
+
+    def test_cdpr_codes_alone_ignored(self):
+        plain = self.detail(year=self.year)
+        for params in ({'chemical': '1855'}, {'product': '1'}, {'commodity': '01'}, {'method': 'A'}, {'county': 'kern'}):
+            assert self.detail(year=self.year, **params) == plain, params
