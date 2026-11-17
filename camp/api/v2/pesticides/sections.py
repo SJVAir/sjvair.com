@@ -503,6 +503,8 @@ class SectionDetailBase(generics.Endpoint):
         narrow = stats.resolve_narrow(params)
         if narrow:
             rows = stats.narrow_rows(rows, narrow)
+        # The county is the section's, so it reads the rows before the map's filters.
+        county_rows = rows
         rows = apply_map_filters(rows, filters)
         has_year = bool(year or all_years)
         # The top lists alone follow `month`; `years` and `months` stay whole.
@@ -520,17 +522,18 @@ class SectionDetailBase(generics.Endpoint):
             months = [
                 {
                     'month': m,
-                    'lbs': (found.get(m) or {}).get('lbs_chemical') or 0,
-                    'acres': (found.get(m) or {}).get('acres_treated') or 0,
-                    'applications': (found.get(m) or {}).get('applications') or 0,
+                    'lbs': figures.get('lbs_chemical') or 0,
+                    'acres': figures.get('acres_treated') or 0,
+                    'applications': figures.get('applications') or 0,
                 }
                 for m in range(1, 13)
+                for figures in [found.get(m) or {}]
             ] if has_year else []
         else:
             years = list(rows.values('year').annotate(**totals_aggregates(scoped)).order_by('-year'))
             apps_field = stats.apps_field_for(scoped)
             months = stats.by_month(rows, year, all_years=all_years, apps_field=apps_field) if has_year else []
-        county = rows.values_list('county__name', flat=True).order_by('county__name').first()
+        county = county_rows.values_list('county__name', flat=True).order_by('county__name').first()
 
         def entry(obj, lbs, field):
             item = {'id': obj.sqid, 'name': obj.name, 'display_name': obj.display_name, 'lbs': lbs}

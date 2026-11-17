@@ -2977,6 +2977,15 @@ class SectionDetailFilterTests(RollupTestMixin, TestCase):
                 (m['pounds'], m['acres'], m['applications']), row
         assert {c['name'] for c in data['top_chemicals']} == {'GLYPHOSATE'}
 
+    def test_unmatched_filter_keeps_county(self):
+        # A filter matching nothing in the section empties the lists, not the section's county.
+        unused = Chemical.objects.create(chem_code=30002, name='NEVER USED HERE')
+        expected = self.detail(year=self.year)['county']
+        assert expected
+        data = self.detail(year=self.year, chemical_id=unused.sqid)
+        assert data['county'] == expected
+        assert data['top_chemicals'] == [] and data['top_products'] == [] and data['top_commodities'] == []
+
     def test_category_top_products_count_once(self):
         # A second carcinogen on the same record: one more ingredient row, not more product pounds.
         row = PesticideUseRollup.objects.get(year=2023, month=3, mtrs=self.section, chemical__chem_code=1855)

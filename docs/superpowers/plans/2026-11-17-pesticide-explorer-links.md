@@ -39,7 +39,7 @@ Reword `notes.shades_valley`.
 ```bash
 podman run --rm --network sjvaircom_sjvair-net --env-file .env.test -e BAM_MIRROR_ENABLED=0 \
   -e TWILIO_AUTH_TOKEN=test-token -v "$PWD":/app:z -w /app sjvair-com-test:latest \
-  pytest <path>[::<test>] -v 2>&1 | tee /tmp/claude-1000/-home-alex-workspace-sjvair-sjvair-com/316e03fa-bc62-41e5-92d7-c2e8669bd6e8/scratchpad/explorer-links-test.log
+  pytest <path>[::<test>] -v 2>&1 | tee <scratchpad>/explorer-links-test.log
 ```
 
 resticus hides tracebacks in tests (a bare `Http500`). When one appears, patch the view's
