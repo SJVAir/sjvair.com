@@ -485,8 +485,8 @@ class ProcessorTests(TestCase):
         monitor = self.make_bam()
         now = timezone.now().replace(minute=0, second=0, microsecond=0)
         self.seed_raw_history(monitor, now)
-        assert self.clean(monitor, now, '10000').value == Decimal('10000')
-        assert self.clean(monitor, now + timedelta(hours=1), '10000.01') is None
+        assert self.clean(monitor, now, '2999.99').value == Decimal('2999.99')
+        assert self.clean(monitor, now + timedelta(hours=1), '3000') is None
         assert self.clean(monitor, now + timedelta(hours=2), '99999') is None
         assert self.clean(monitor, now + timedelta(hours=3), '-10').value == 0
 
@@ -554,4 +554,4 @@ class ProcessorTests(TestCase):
         monitor = AirNow.objects.create(name='Test AirNow', position='POINT(0 0)', county='Fresno', location='outside')
         now = timezone.now()
         assert self.clean(monitor, now).value == Decimal('12.5')
-        assert self.clean(monitor, now + timedelta(hours=1), '10000.01') is None
+        assert self.clean(monitor, now + timedelta(hours=1), '3000') is None

@@ -15,13 +15,13 @@ class PM25_FEM_Cleaner(BaseProcessor):
     next_stage = PM25.Stage.CLEANED
 
     MIN_VALID = -10
-    MAX_VALID = 10000  # Instrument spec range; 99999 is the invalid sentinel
+    MAX_VALID = 3000
 
     def process(self):
         if self.entry.value is None:
             return None
 
-        if (self.entry.value < self.MIN_VALID) or (self.entry.value > self.MAX_VALID):
+        if (self.entry.value < self.MIN_VALID) or (self.entry.value >= self.MAX_VALID):
             return None  # Discard clearly invalid data
 
         # Monitor types that track instrument alarms (e.g. BAM 1022) decide
