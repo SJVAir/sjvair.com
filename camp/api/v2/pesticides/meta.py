@@ -94,8 +94,9 @@ class PesticidesMeta(generics.Endpoint):
     unnamed ingredient). Also the server-owned explainer text: `notes` (key -> `{key, title,
     summary, detail, source_url}`), the classification `badges` (`{key, label, note}` in
     display order; `note` is a key of `notes`) and `links`, and `notice_filters`: the value
-    filters the notice endpoints accept (they record no commodity). Also `years` (years with data, newest first) and `ramp` (`colors`,
-    `no_data`: the map's shade colors). Keys are permanent; labels may change.
+    filters the notice endpoints accept (they record no commodity). Also `years` (years
+    with data, newest first) and `ramp` (`colors`, `no_data`: the map's shade colors). Keys
+    are permanent; labels may change.
 
     `links`: `spraydays_signup`, and the explorer pages as absolute URL templates on the
     request's origin: `section_page`, `section_records`, `section_notices`,

@@ -325,18 +325,18 @@ zones are missing there; see SJVAPCD Forecast Setup).
   meta's `badges`). `sections/<id>/` also takes the `*_id`, `category`, `iarc_group`,
   `aerial_ground` and `month` filters, counted like `sections/`; `month` narrows the top lists
   only (`months` stays the year's twelve rows). A request without them is unchanged.
-  - **Explorer links** (`links`/`link_params` in `pesticides/meta/`; `camp/apps/pesticides/links.py`):
-    fill a template by replacing `{id}`, then appending `&param=value` (`?` when the template
-    has no query) for each `link_params` entry whose `from` value the client has,
-    URL-encoded. `from` values: `year` (`all` for all years; `section_records` needs it as
-    well as the dates), `month_start`/`month_end` (first and last Pacific day of a month
-    period, `YYYY-MM-DD`; omit for a year period), `chemical_id`, `product_id`,
-    `commodity_id`, `aerial_ground`, `narrow` (the values sent to `sections/`, same names),
-    `notices_year` and `notices_month` (year and month 1-12 of the notices layer's day). Use
-    `section_notices_past` when the notices layer is on and showing a past day, else
-    `section_notices`. Left off because no explorer page takes them: `category` and
-    `iarc_group` everywhere, `month` on the section and chemical pages, `aerial_ground` and
-    `commodity_id` on the notices links, and `county` everywhere.
+  - **Explorer links** (`links`/`link_params` in `pesticides/meta/`;
+    `camp/apps/pesticides/links.py`): fill a template by replacing `{id}`, then appending
+    `&param=value` (`?` when the template has no query) for each `link_params` entry whose `from`
+    value the client has, URL-encoded. `from` values: `year` (`all` for all years;
+    `section_records` needs it as well as the dates), `month_start`/`month_end` (first and last
+    Pacific day of a month period, `YYYY-MM-DD`; omit for a year period), `chemical_id`,
+    `product_id`, `commodity_id`, `aerial_ground`, `narrow` (the values sent to `sections/`, same
+    names), `notices_year` and `notices_month` (year and month 1-12 of the notices layer's day).
+    Use `section_notices_past` when the notices layer is on and showing a past day, else
+    `section_notices`. Left off because no explorer page takes them: `category` and `iarc_group`
+    everywhere, `month` on the section and chemical pages, `aerial_ground` and `commodity_id` on
+    the notices links, and `county` everywhere.
 - **Pesticide notices by day** `pesticides/notices/active/?date=YYYY-MM-DD` (Pacific) lists the
   notices active on that day, past or future: `start(D-4) <= scheduled_application < start(D+1)`
   (`start(X)` is 00:00 Pacific, built from calendar dates; `stats.notices_on`). Order, the 2000
