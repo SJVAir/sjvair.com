@@ -140,6 +140,13 @@ class HandlePayloadTests(TestCase):
         self.monitor.refresh_from_db()
         assert self.monitor.status is None
 
+    def test_large_status_stored_unchanged(self):
+        # Status is a Uint32 on the device; values past smallint range must round-trip.
+        for offset, value in enumerate((99999, 2**32 - 1)):
+            self.monitor.handle_payload(payload(self.t0 + timedelta(hours=offset), str(value)))
+            status = BAMStatus.objects.get(monitor=self.monitor, timestamp=self.t0 + timedelta(hours=offset))
+            assert int(status.code) == value
+
     def test_reupload_updates_code_in_place(self):
         self.monitor.handle_payload(payload(self.t0, '00512'))
         self.monitor.handle_payload(payload(self.t0, '00128'))

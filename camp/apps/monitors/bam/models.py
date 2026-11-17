@@ -274,7 +274,8 @@ class BAMStatus(models.Model):
     sqid = SqidsField(alphabet=shuffle_alphabet('bam.BAMStatus'))
     monitor = models.ForeignKey(BAM1022, related_name='statuses', on_delete=models.CASCADE)
     timestamp = models.DateTimeField(_('Timestamp'), help_text=_('End of the hour the record covers.'))
-    code = EnumField(BAM1022.StatusCode, verbose_name=_('Status code'))
+    # Status is a Uint32 on the device (Met One 7500 spec), so size the column for 32 bits.
+    code = EnumField(BAM1022.StatusCode, bit_length=32, verbose_name=_('Status code'))
 
     class Meta:
         ordering = ['-timestamp']
