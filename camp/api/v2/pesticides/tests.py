@@ -2442,7 +2442,7 @@ class PesticidesMetaTests(TestCase):
             'Darker squares had more of what the map shows (pounds, acres treated, or '
             'applications) in that year or month. Every section or township in the valley is '
             'ranked together, so a color means the same range anywhere on the map, but not from '
-            'one month to the next. Gray means nothing was reported.')
+            'one month to the next. An outline with no shading means nothing was reported.')
         assert data['notes']['shades_valley']['title'] == 'What the shades mean'
         assert data['notes']['shades'] == json.loads(json.dumps(notes.all_notes()['shades']))
         assert data['notes']['shades']['summary'].startswith('Darker squares and counties')

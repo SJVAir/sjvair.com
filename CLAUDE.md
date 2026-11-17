@@ -239,10 +239,16 @@ zones are missing there; see SJVAPCD Forecast Setup).
   `notes` (every health note in `datafiles/pesticide-health-notes.yaml`, keyed:
   `{key, title, summary, detail|null, source_url}`), `badges` (`[{key, label, note}]` in the
   explorer's order; `note` is a key of `notes`; keys permanent, no styling), `links`
-  (`spraydays_signup`) and `notice_filters` (the value filters the notice endpoints accept:
+  (`spraydays_signup` plus the five absolute explorer templates `section_page`,
+  `section_records`, `section_notices`, `section_notices_past` and `chemical_page`, built on
+  the request's origin from `reverse()` under `/tools/pesticides/`; `{id}` is the section's
+  or chemical's sqid, and the `chemical_page` one is the bare-sqid redirect, which carries the
+  query along; keys permanent), `link_params` (`[{param, from}]` per link key: the query
+  params a client may add) and `notice_filters` (the value filters the notice endpoints accept:
   `chemical_id`, `product_id`, `category`, `iarc_group`, `narrow`, `aerial_ground`), `years`
   (years with data, newest first), `ramp` (`{colors, no_data}` from `maps.RAMP`/`maps.NO_DATA`,
-  the map's shade colors), a `notes.shades_valley` note (what the shades mean) and `scales`
+  the map's shade colors), a `notes.shades_valley` note (what the shades mean; no-data areas
+  are described as an outline with no shading, not a color) and `scales`
   (`{"spray-notice": <Scale>}`, keyed by catalog entry-type id like `hms/meta/`'s: one
   `category` level `notice`, "Spray notice", `#e64980`; `camp/apps/pesticides/scales.py`). The
   pesticide entity search (`pesticides/search/`) returns one page plus `more`, and a
@@ -316,7 +322,21 @@ zones are missing there; see SJVAPCD Forecast Setup).
   `year=all` gives all-years classes. Cached under the pesticide data version through
   `stats.all_years_key('classes-v2', ...)` (no TTL; an import retires it). A request without
   `classes=1` is unchanged. `sections/<id>/` `top_chemicals[].badges` lists badge keys (keys of
-  meta's `badges`).
+  meta's `badges`). `sections/<id>/` also takes the `*_id`, `category`, `iarc_group`,
+  `aerial_ground` and `month` filters, counted like `sections/`; `month` narrows the top lists
+  only (`months` stays the year's twelve rows). A request without them is unchanged.
+  - **Explorer links** (`links`/`link_params` in `pesticides/meta/`; `camp/apps/pesticides/links.py`):
+    fill a template by replacing `{id}`, then appending `&param=value` (`?` when the template
+    has no query) for each `link_params` entry whose `from` value the client has,
+    URL-encoded. `from` values: `year` (`all` for all years; `section_records` needs it as
+    well as the dates), `month_start`/`month_end` (first and last Pacific day of a month
+    period, `YYYY-MM-DD`; omit for a year period), `chemical_id`, `product_id`,
+    `commodity_id`, `aerial_ground`, `narrow` (the values sent to `sections/`, same names),
+    `notices_year` and `notices_month` (year and month 1-12 of the notices layer's day). Use
+    `section_notices_past` when the notices layer is on and showing a past day, else
+    `section_notices`. Left off because no explorer page takes them: `category` and
+    `iarc_group` everywhere, `month` on the section and chemical pages, `aerial_ground` and
+    `commodity_id` on the notices links, and `county` everywhere.
 - **Pesticide notices by day** `pesticides/notices/active/?date=YYYY-MM-DD` (Pacific) lists the
   notices active on that day, past or future: `start(D-4) <= scheduled_application < start(D+1)`
   (`start(X)` is 00:00 Pacific, built from calendar dates; `stats.notices_on`). Order, the 2000
