@@ -47,18 +47,23 @@ note names a colour that the dashboard doesn't draw.
 
 ### 1. `links` and `link_params` in `pesticides/meta/`
 
-All link URLs are absolute (`request.build_absolute_uri`), like `spraydays_signup`, so that a
-client on another origin (the dashboard's dev server, SDK users) gets working links. `{id}` is
-the section's or chemical's sqid. Keys are permanent.
+All link URLs are absolute, like `spraydays_signup`, so that a client on another origin (SDK
+users) gets working links. The origin is the request's (`request.build_absolute_uri('/')`, with
+the path from `reverse()` appended; passing the template itself would percent-encode the
+braces). The explorer is mounted at `/tools/pesticides/`, and a test asserts those real paths.
+Behind a proxy that keeps the browser's `Host` (for example the dashboard's Vite dev proxy,
+`changeOrigin: false`), the origin is the proxy's, so the links work there only if that proxy
+also forwards `/tools/`. In production the dashboard is served from the site itself, so the
+origin is the site. `{id}` is the section's or chemical's sqid. Keys are permanent.
 
 ```json
 "links": {
   "spraydays_signup": "https://…",
-  "section_page": "https://www.sjvair.com/pesticides/sections/{id}/",
-  "section_records": "https://www.sjvair.com/pesticides/records/?section={id}",
-  "section_notices": "https://www.sjvair.com/pesticides/notices/?section={id}",
-  "section_notices_past": "https://www.sjvair.com/pesticides/notices/?section={id}&past=1",
-  "chemical_page": "https://www.sjvair.com/pesticides/chemicals/{id}/"
+  "section_page": "https://www.sjvair.com/tools/pesticides/sections/{id}/",
+  "section_records": "https://www.sjvair.com/tools/pesticides/records/?section={id}",
+  "section_notices": "https://www.sjvair.com/tools/pesticides/notices/?section={id}",
+  "section_notices_past": "https://www.sjvair.com/tools/pesticides/notices/?section={id}&past=1",
+  "chemical_page": "https://www.sjvair.com/tools/pesticides/chemicals/{id}/"
 },
 "link_params": {
   "section_page": [{"param": "year", "from": "year"}, {"param": "narrow", "from": "narrow"}],
