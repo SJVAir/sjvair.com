@@ -1,5 +1,6 @@
 from django.core.cache import cache
 from django.test import TestCase
+from django.urls import reverse
 
 from camp.apps.pesticides import rollup, stats, tasks
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, Product
@@ -817,3 +818,33 @@ class NoticeSummaryTests(TestCase):
     def test_acres_is_none_when_nothing_is_in_acres(self):
         PesticideNotice.objects.update(treated_units='Cubic Feet')
         assert stats.notice_summary(PesticideNotice.objects.all())['acres'] is None
+
+
+class TotalsByRecordTests(RollupTestMixin, TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def rows(self):
+        return PesticideUseRollup.objects.filter(chemical__categories__overlap=['carcinogen'])
+
+    def test_totals_by_record_groups(self):
+        rows = self.rows()
+        assert stats.totals_by_record(rows, 'mtrs') == stats.section_totals_by_record(rows)
+        assert stats.totals_by_record(rows, 'mtrs')
+
+        year = stats.latest_year()
+        section = Region.objects.get(pk=9101)
+        response = self.client.get(
+            reverse('api:v2:pesticides:pesticide-place'),
+            {'region_type': 'mtrs', 'region': section.external_id, 'category': 'carcinogen'},
+        )
+        assert response.status_code == 200, response.content
+        place = next(y for y in response.json()['data']['years'] if y['year'] == year)
+        assert place['applications']
+        by_year = stats.totals_by_record(rows.filter(mtrs=section.pk), 'year')[year]
+        assert by_year['lbs_chemical'] == place['pounds']
+        assert by_year['acres_treated'] == place['acres']
+        assert by_year['applications'] == place['applications']
+
+    def test_totals_by_record_rejects_other_columns(self):
+        with self.assertRaises(AssertionError):
+            stats.totals_by_record(self.rows(), 'mtrs; DROP TABLE x')

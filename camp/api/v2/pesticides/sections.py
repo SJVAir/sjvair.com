@@ -91,18 +91,28 @@ def clip_shape(params):
     return region_shape(region, miles), None
 
 
+def parse_month(params):
+    """`month` as an int. Returns (month, error): (None, None) when absent."""
+    if not params.get('month'):
+        return None, None
+    try:
+        month = int(params['month'])
+    except ValueError:
+        return None, 'month must be 1-12'
+    if not 1 <= month <= 12:
+        return None, 'month must be 1-12'
+    return month, None
+
+
 def apply_filters(rows, params, filters):
     """
     Entity/county/month/narrowing filters shared by both endpoints, plus `filters`, the
     cleaned map filters (`parse_map_filters(params, ROLLUP_MAP_FILTERS)`). Returns (rows, error).
     """
-    if params.get('month'):
-        try:
-            month = int(params['month'])
-        except ValueError:
-            return rows, 'month must be 1-12'
-        if not 1 <= month <= 12:
-            return rows, 'month must be 1-12'
+    month, error = parse_month(params)
+    if error:
+        return rows, error
+    if month is not None:
         rows = rows.filter(month=month)
     cast_lookups = {
         'chemical': ('chemical__chem_code', int),
@@ -131,6 +141,11 @@ def apply_filters(rows, params, filters):
     narrow = stats.resolve_narrow(params)
     if narrow:
         rows = stats.narrow_rows(rows, narrow)
+    return apply_map_filters(rows, filters), None
+
+
+def apply_map_filters(rows, filters):
+    """The cleaned map filters (`parse_map_filters`) applied to rollup rows."""
     # The charts' values: our ids, and `aerial_ground` (the same codes as `method`; both
     # apply when both are given).
     for name, field in (('chemical_id', 'chemical'), ('product_id', 'product'), ('commodity_id', 'commodity')):
@@ -144,7 +159,7 @@ def apply_filters(rows, params, filters):
         rows = rows.filter(chemical__categories__overlap=filters['category'])
     if 'iarc_group' in filters:
         rows = rows.filter(chemical__iarc_group=filters['iarc_group'])
-    return rows, None
+    return rows
 
 
 def chemical_scoped(params, filters):
@@ -476,28 +491,80 @@ class SectionDetailBase(generics.Endpoint):
         section = get_object_or_404(
             Region.all_objects.filter(type=Region.Type.MTRS).select_related('boundary'), sqid=section_id,
         )
-        year, all_years = parse_year(request.GET)
+        params = request.GET
+        filters, error = parse_map_filters(params, ROLLUP_MAP_FILTERS)
+        if error:
+            return bad_request(error)
+        month, error = parse_month(params)
+        if error:
+            return bad_request(error)
+        year, all_years = parse_year(params)
         rows = PesticideUseRollup.objects.filter(mtrs=section)
-        narrow = stats.resolve_narrow(request.GET)
+        narrow = stats.resolve_narrow(params)
         if narrow:
             rows = stats.narrow_rows(rows, narrow)
-        years = list(rows.values('year').annotate(**TOTALS).order_by('-year'))
-        months = stats.by_month(rows, year, all_years=all_years) if (year or all_years) else []
-        county = rows.values_list('county__name', flat=True).order_by('county__name').first()
+        # The county is the section's, so it reads the rows before the map's filters.
+        county_rows = rows
+        rows = apply_map_filters(rows, filters)
+        has_year = bool(year or all_years)
+        # The top lists alone follow `month`; `years` and `months` stay whole.
+        top_rows = rows if month is None else rows.filter(month=month)
+        # Counted as sections/ counts them (section_figures), so the card matches the shading.
+        # Only the filters decide: the CDPR `chemical` code is ignored here, so it mustn't switch columns.
+        by_record = counts_by_record({}, filters)
+        scoped = chemical_scoped({}, filters)
+        if by_record:
+            years = [
+                {'year': key, **figures}
+                for key, figures in sorted(stats.totals_by_record(rows, 'year').items(), reverse=True)
+            ]
+            found = stats.totals_by_record(stats.in_year(rows, year, all_years), 'month') if has_year else {}
+            months = [
+                {
+                    'month': m,
+                    'lbs': figures.get('lbs_chemical') or 0,
+                    'acres': figures.get('acres_treated') or 0,
+                    'applications': figures.get('applications') or 0,
+                }
+                for m in range(1, 13)
+                for figures in [found.get(m) or {}]
+            ] if has_year else []
+        else:
+            years = list(rows.values('year').annotate(**totals_aggregates(scoped)).order_by('-year'))
+            apps_field = stats.apps_field_for(scoped)
+            months = stats.by_month(rows, year, all_years=all_years, apps_field=apps_field) if has_year else []
+        county = county_rows.values_list('county__name', flat=True).order_by('county__name').first()
+
+        def entry(obj, lbs, field):
+            item = {'id': obj.sqid, 'name': obj.name, 'display_name': obj.display_name, 'lbs': lbs}
+            # The map's section popup marks the chemicals of concern.
+            if field == 'chemical':
+                item['is_of_concern'] = obj.is_of_concern
+                item['badges'] = chemical_badges(obj)
+            return item
 
         def top(field, lbs_field='lbs_chemical', limit=5):
-            if not (year or all_years):
+            if not has_year:
                 return []
-            related = stats.top_related(rows, year, field, lbs_field=lbs_field, limit=limit, all_years=all_years)
-            entries = []
-            for r in related:
-                entry = {'id': r.obj.sqid, 'name': r.obj.name, 'display_name': r.obj.display_name, 'lbs': r.lbs}
-                # The map's section popup marks the chemicals of concern.
-                if field == 'chemical':
-                    entry['is_of_concern'] = r.obj.is_of_concern
-                    entry['badges'] = chemical_badges(r.obj)
-                entries.append(entry)
-            return entries
+            related = stats.top_related(top_rows, year, field, lbs_field=lbs_field, limit=limit, all_years=all_years)
+            return [entry(r.obj, r.lbs, field) for r in related]
+
+        def top_products_by_record(limit=5):
+            # Product pounds repeat on every ingredient row of a record: MAX per record, then sum.
+            if not has_year:
+                return []
+            totals = stats.totals_by_record(stats.in_year(top_rows, year, all_years), 'product')
+            ranked = sorted(totals.items(), key=lambda item: (-item[1]['lbs_product'], item[0]))[:limit]
+            products = Product.objects.with_restricted().in_bulk([pk for pk, _ in ranked])
+            return [
+                entry(products[pk], figures['lbs_product'], 'product')
+                for pk, figures in ranked if pk in products
+            ]
+
+        if by_record:
+            top_products = top_products_by_record()
+        else:
+            top_products = top('product', lbs_field=stats.product_lbs_field(scoped))
 
         return {
             'id': section.sqid,
@@ -511,7 +578,7 @@ class SectionDetailBase(generics.Endpoint):
                 for m in months
             ],
             'top_chemicals': top('chemical'),
-            'top_products': top('product', lbs_field='lbs_product_once'),
+            'top_products': top_products,
             'top_commodities': top('commodity'),
         }
 
@@ -522,6 +589,18 @@ class SectionDetail(CachedEndpointMixin, SectionDetailBase):
     and commodities for `year` (default latest). `narrow=concern|restricted|fumigant|aerial`
     (or legacy `concern=1`) counts only what that narrowing keeps. Each top chemical carries
     `badges` (keys of meta's `badges`).
+
+    The map's value filters narrow `years`, `months` and the top lists, validated as on
+    `sections/` (a bad value is a 400 `{"error": ...}`): `chemical_id`, `product_id`,
+    `commodity_id` (our sqids), `category` (repeated or comma-separated, any of them),
+    `iarc_group` and `aerial_ground`. The CDPR-code forms (`chemical`, `product`, `commodity`,
+    `method`) and `county` stay ignored, except that giving a code and its id is a 400.
+    Counting matches `sections/`: with `chemical_id` the per-ingredient columns count; with
+    `category` or `iarc_group` and no chemical, product pounds, acres and applications take the
+    MAX per record key; otherwise the once-per-record columns count. Top chemicals and
+    commodities rank by chemical pounds either way. `month` (1-12) narrows the top lists only;
+    `months` stays the year's twelve rows. Without any of these params the response is
+    unchanged.
     """
     cache_timeout = 60 * 60
     cache_key_version = 1
