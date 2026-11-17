@@ -858,6 +858,14 @@ class MapPageTests(RollupTestMixin, TestCase):
         cache.clear()
         self.url = reverse('pesticides:map')
 
+    def test_section_map_config_links_unchanged(self):
+        config = views.section_map_config(2023, concern='concern', section_notices_extra='past=1&archive_year=2026&month=3')
+        assert config['section_page_url'] == '/tools/pesticides/sections/{id}/'
+        assert config['section_records_url'] == '/tools/pesticides/records/?section={id}&narrow=concern'
+        assert config['section_notices_url'] == '/tools/pesticides/notices/?section={id}&narrow=concern&past=1&archive_year=2026&month=3'
+        assert config['chemical_page_url'] == '/tools/pesticides/chemicals/{id}/'
+        assert views.section_map_config(2023)['section_records_url'].startswith('/tools/pesticides/records/?section={id}')
+
     def test_has_entity_pickers_and_carries_the_scope(self):
         html = self.client.get(self.url).content.decode()
         assert html.index('data-kind="product"') < html.index('data-kind="chemical"') < html.index('data-kind="commodity"')

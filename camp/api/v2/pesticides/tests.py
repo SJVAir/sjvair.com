@@ -2337,6 +2337,8 @@ class PesticidePlaceTests(RollupTestMixin, TestCase):
 
 
 class PesticidesMetaTests(TestCase):
+    fixtures = ['pesticides-explorer']
+
     def setUp(self):
         self.url = reverse('api:v2:pesticides:pesticides-meta')
 
@@ -2350,7 +2352,7 @@ class PesticidesMetaTests(TestCase):
         data = self.get()
         assert set(data) == {
             'categories', 'iarc_groups', 'methods', 'narrows', 'placeholder_chemicals',
-            'notes', 'badges', 'links', 'notice_filters', 'years', 'ramp', 'scales'}
+            'notes', 'badges', 'links', 'link_params', 'notice_filters', 'years', 'ramp', 'scales'}
         categories = data['categories']
         assert [c['key'] for c in categories] == list(Chemical.Category.values)
         assert {c['key'] for c in categories if not c['in_use']} == {
@@ -2373,6 +2375,43 @@ class PesticidesMetaTests(TestCase):
         assert all(n['description'] for n in narrows.values())
         assert data['placeholder_chemicals'] == []
 
+    def test_meta_explorer_links(self):
+        from camp.apps.pesticides.places import SPRAYDAYS_URL
+        data = self.get()
+        origin = 'http://testserver'
+        assert data['links'] == {
+            'spraydays_signup': SPRAYDAYS_URL,
+            'section_page': f'{origin}/tools/pesticides/sections/{{id}}/',
+            'section_records': f'{origin}/tools/pesticides/records/?section={{id}}',
+            'section_notices': f'{origin}/tools/pesticides/notices/?section={{id}}',
+            'section_notices_past': f'{origin}/tools/pesticides/notices/?section={{id}}&past=1',
+            'chemical_page': f'{origin}/tools/pesticides/chemicals/{{id}}/',
+        }
+        assert set(data['link_params']) == set(data['links']) - {'spraydays_signup'}
+        assert data['link_params']['section_records'] == [
+            {'param': 'year', 'from': 'year'}, {'param': 'start', 'from': 'month_start'},
+            {'param': 'end', 'from': 'month_end'}, {'param': 'chemical', 'from': 'chemical_id'},
+            {'param': 'product', 'from': 'product_id'}, {'param': 'commodity', 'from': 'commodity_id'},
+            {'param': 'method', 'from': 'aerial_ground'}, {'param': 'narrow', 'from': 'narrow'}]
+        assert data['link_params']['section_notices_past'][:2] == [
+            {'param': 'archive_year', 'from': 'notices_year'}, {'param': 'month', 'from': 'notices_month'}]
+        for entries in data['link_params'].values():
+            assert not {e['from'] for e in entries} & {'county', 'category', 'iarc_group'}
+
+    def test_meta_links_open_the_pages(self):
+        # BETA_TOOLS_GATE is off under test, so no beta user is needed.
+        links = self.get()['links']
+        section = Region.objects.get(pk=9101)
+        chemical = Chemical.objects.get(pk=1)
+        for key in ('section_page', 'section_records'):
+            path = links[key].replace('http://testserver', '').replace('{id}', section.sqid)
+            assert self.client.get(path).status_code == 200, key
+        path = links['chemical_page'].replace('http://testserver', '').replace('{id}', chemical.sqid)
+        r = self.client.get(path + '?year=2023&narrow=concern')
+        assert r.status_code == 301
+        assert r['Location'].endswith('?year=2023&narrow=concern')
+        assert r['Location'].startswith('/tools/pesticides/chemicals/')
+
     def test_notes_served(self):
         from camp.apps.pesticides import notes
         served = self.get()['notes']
@@ -2390,7 +2429,7 @@ class PesticidesMetaTests(TestCase):
             ('iarc_2b', 'IARC 2B', 'iarc_2b'), ('iarc_3', 'IARC 3', 'iarc_3'),
             ('california_restricted', 'Restricted', 'california_restricted'),
         ]
-        assert data['links'] == {'spraydays_signup': 'https://spraydays.cdpr.ca.gov/'}
+        assert data['links']['spraydays_signup'] == 'https://spraydays.cdpr.ca.gov/'
 
     def test_meta_years_and_ramp(self):
         from django.core.cache import cache

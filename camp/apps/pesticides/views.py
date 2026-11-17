@@ -5,7 +5,7 @@ import math
 import random
 from datetime import date, timedelta
 from types import SimpleNamespace
-from urllib.parse import unquote, urlencode
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib.gis.geos import Point
@@ -25,6 +25,7 @@ import vanilla
 
 from camp.api.v2.pesticides.sections import radius_bbox
 from camp.apps.pesticides import maps, notes, places, stats
+from camp.apps.pesticides.links import CHEMICAL_PAGE, SECTION_NOTICES, SECTION_PAGE, SECTION_RECORDS, page_url_pattern
 from camp.apps.pesticides.forms import (
     ChemicalFilterForm, CommodityFilterForm, NO_METHOD, NoticeFilterForm, ProductFilterForm, RecordsFilterForm,
 )
@@ -1196,14 +1197,6 @@ SJV_CENTER = '36.75,-119.80'
 SJV_ZOOM = 8
 
 
-def page_url_pattern(name):
-    """
-    A page URL with `{id}` where the sqid goes, for the map JS to fill in
-    client-side. `reverse()` percent-encodes the braces, so put them back.
-    """
-    return unquote(reverse(name, kwargs={'sqid': '{id}'}))
-
-
 # MapTiler's neutral gray "dataviz" vector style, as on the map figures
 # (camp.utils.mapfigure): a quiet ground for the choropleth.
 MAP_STYLE = mapfigure.MAP_STYLE
@@ -1264,17 +1257,17 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         'notices_past': '1' if past_notices else '0',
         'locations_url': '/api/2.0/pesticides/locations/',
         'section_url_pattern': '/api/2.0/pesticides/sections/{id}/',
-        'section_page_url': page_url_pattern('pesticides:section-detail'),
+        'section_page_url': SECTION_PAGE(),
         # Where a section's popup goes besides its own page: the records
         # browser and the notices list, each narrowed to that section and
         # carrying the page's scope. Built here rather than in the JS so
         # there's one place that decides what the scope looks like.
-        'section_records_url': reverse('pesticides:records') + '?section={id}' + scope_suffix,
+        'section_records_url': SECTION_RECORDS() + scope_suffix,
         # (In past mode the list link carries the mode and month along.)
-        'section_notices_url': reverse('pesticides:notice-list') + '?section={id}' + scope_suffix + (f'&{section_notices_extra}' if section_notices_extra else ''),
+        'section_notices_url': SECTION_NOTICES() + scope_suffix + (f'&{section_notices_extra}' if section_notices_extra else ''),
         # The bare-sqid redirect: it 301s to the slugged detail URL, so the
         # JS doesn't need the slug.
-        'chemical_page_url': page_url_pattern('pesticides:chemical-redirect'),
+        'chemical_page_url': CHEMICAL_PAGE(),
         'product_page_url': page_url_pattern('pesticides:product-redirect'),
         'notice_page_url': page_url_pattern('pesticides:notice-detail'),
         # The MapTiler SDK map (section-map.js) takes the key and a style id
