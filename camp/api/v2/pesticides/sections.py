@@ -91,18 +91,28 @@ def clip_shape(params):
     return region_shape(region, miles), None
 
 
+def parse_month(params):
+    """`month` as an int. Returns (month, error): (None, None) when absent."""
+    if not params.get('month'):
+        return None, None
+    try:
+        month = int(params['month'])
+    except ValueError:
+        return None, 'month must be 1-12'
+    if not 1 <= month <= 12:
+        return None, 'month must be 1-12'
+    return month, None
+
+
 def apply_filters(rows, params, filters):
     """
     Entity/county/month/narrowing filters shared by both endpoints, plus `filters`, the
     cleaned map filters (`parse_map_filters(params, ROLLUP_MAP_FILTERS)`). Returns (rows, error).
     """
-    if params.get('month'):
-        try:
-            month = int(params['month'])
-        except ValueError:
-            return rows, 'month must be 1-12'
-        if not 1 <= month <= 12:
-            return rows, 'month must be 1-12'
+    month, error = parse_month(params)
+    if error:
+        return rows, error
+    if month is not None:
         rows = rows.filter(month=month)
     cast_lookups = {
         'chemical': ('chemical__chem_code', int),
@@ -131,6 +141,11 @@ def apply_filters(rows, params, filters):
     narrow = stats.resolve_narrow(params)
     if narrow:
         rows = stats.narrow_rows(rows, narrow)
+    return apply_map_filters(rows, filters), None
+
+
+def apply_map_filters(rows, filters):
+    """The cleaned map filters (`parse_map_filters`) applied to rollup rows."""
     # The charts' values: our ids, and `aerial_ground` (the same codes as `method`; both
     # apply when both are given).
     for name, field in (('chemical_id', 'chemical'), ('product_id', 'product'), ('commodity_id', 'commodity')):
@@ -144,7 +159,7 @@ def apply_filters(rows, params, filters):
         rows = rows.filter(chemical__categories__overlap=filters['category'])
     if 'iarc_group' in filters:
         rows = rows.filter(chemical__iarc_group=filters['iarc_group'])
-    return rows, None
+    return rows
 
 
 def chemical_scoped(params, filters):

@@ -947,14 +947,22 @@ def by_township(rows, year, all_years=False, chemical_scoped=False):
 
 
 def section_totals_by_record(rows):
+    """`totals_by_record` grouped by section: {section pk: totals}."""
+    return totals_by_record(rows, 'mtrs')
+
+
+def totals_by_record(rows, group):
     """
-    {section pk: {'lbs_chemical', 'lbs_product', 'acres_treated', 'applications'}} for rows
+    {group value: {'lbs_chemical', 'lbs_product', 'acres_treated', 'applications'}}, `group`
+    one of the record key's columns (year, month, county, mtrs, product, commodity, method), for rows
     that can keep several ingredient rows of one record (a category or IARC filter, no
     chemical), counted as `places.monthly_use` counts them: pounds sum `lbs_chemical`, and
-    product pounds, acres and applications take the MAX per record key, then sum per section.
+    product pounds, acres and applications take the MAX per record key, then sum per group.
     """
     # places imports the API's sections module, which imports this one.
     from camp.apps.pesticides.places import _RECORD_KEY
+    # Interpolated into the SQL below.
+    assert group in _RECORD_KEY, group
     inner = (
         rows.order_by()
         .values(*_RECORD_KEY)
@@ -967,18 +975,18 @@ def section_totals_by_record(rows):
         return {}
     with connection.cursor() as cursor:
         cursor.execute(
-            'SELECT g.mtrs, SUM(g.p), SUM(g.pp), SUM(g.a), SUM(g.n) '
-            f'FROM ({sql}) g WHERE g.mtrs IS NOT NULL GROUP BY g.mtrs',
+            f'SELECT g.{group}, SUM(g.p), SUM(g.pp), SUM(g.a), SUM(g.n) '
+            f'FROM ({sql}) g WHERE g.{group} IS NOT NULL GROUP BY g.{group}',
             params,
         )
         return {
-            mtrs: {
+            key: {
                 'lbs_chemical': float(pounds or 0),
                 'lbs_product': float(product or 0),
                 'acres_treated': float(acres or 0),
                 'applications': int(applications or 0),
             }
-            for mtrs, pounds, product, acres, applications in cursor.fetchall()
+            for key, pounds, product, acres, applications in cursor.fetchall()
         }
 
 
