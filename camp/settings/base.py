@@ -229,6 +229,32 @@ def redis_db_url(index):
     return f'{base}/{index}' + (f'?{query}' if query else '')
 
 
+def redis_connection(url):
+    """
+    Huey `connection` kwargs for `url`, as a pool tuned for Redis Cloud.
+
+    Redis Cloud silently drops idle TCP/TLS connections, so a mostly-idle queue
+    (summaries) finds a dead socket on its next BZPOPMIN ("Broken pipe",
+    "Connection closed by server"). `health_check_interval` makes redis-py PING a
+    pooled connection that has been quiet that long before reusing it, and
+    `retry` replays a command that still hits a dropped connection on a fresh
+    one. huey won't accept extra kwargs alongside `url`, so hand it a ready pool.
+    """
+    if not url:
+        return {'url': url}
+
+    from redis import ConnectionPool
+    from redis.backoff import ExponentialWithJitterBackoff
+    from redis.retry import Retry
+
+    return {'connection_pool': ConnectionPool.from_url(
+        url,
+        health_check_interval=int(env('REDIS_HEALTH_CHECK_INTERVAL', 30)),
+        socket_keepalive=True,
+        retry=Retry(ExponentialWithJitterBackoff(base=0.1, cap=2), retries=3),
+    )}
+
+
 # Auth
 
 AUTHENTICATION_BACKENDS = (
@@ -390,12 +416,21 @@ RESTICUS = {
 # Cloud (which serves only database 0) a separate database per queue, set in
 # REDIS_PRIMARY_URL / REDIS_SECONDARY_URL / REDIS_SUMMARIES_URL.
 
+# Kept apart from DJANGO_HUEY, whose connections are prebuilt pools (see
+# redis_connection), for things that need the URL itself: the system-status
+# Redis checks.
+HUEY_REDIS_URLS = {
+    'primary': env('REDIS_PRIMARY_URL', redis_db_url(0)),
+    'secondary': env('REDIS_SECONDARY_URL', redis_db_url(1)),
+    'summaries': env('REDIS_SUMMARIES_URL', redis_db_url(2)),
+}
+
 DJANGO_HUEY = {
     'default': 'primary',
     'queues': {
         'primary': {
             'name': 'primary_tasks',
-            'connection': {'url': env('REDIS_PRIMARY_URL', redis_db_url(0))},
+            'connection': redis_connection(HUEY_REDIS_URLS['primary']),
             'consumer': {
                 'periodic': True,
                 'workers': int(env('HUEY_PRIMARY_WORKERS', env('HUEY_WORKERS', 4)))
@@ -405,7 +440,7 @@ DJANGO_HUEY = {
         },
         'secondary': {
             'name': 'secondary_tasks',
-            'connection': {'url': env('REDIS_SECONDARY_URL', redis_db_url(1))},
+            'connection': redis_connection(HUEY_REDIS_URLS['secondary']),
             'consumer': {
                 'periodic': False,
                 'workers': int(env('HUEY_SECONDARY_WORKERS', env('HUEY_WORKERS', 4)))
@@ -415,7 +450,7 @@ DJANGO_HUEY = {
         },
         'summaries': {
             'name': 'summaries_tasks',
-            'connection': {'url': env('REDIS_SUMMARIES_URL', redis_db_url(2))},
+            'connection': redis_connection(HUEY_REDIS_URLS['summaries']),
             'consumer': {
                 'periodic': True,
                 'workers': int(env('HUEY_SUMMARIES_WORKERS', env('HUEY_WORKERS', 2)))
