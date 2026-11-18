@@ -644,12 +644,13 @@ INTEGRITY_LOOKBACK = timedelta(days=400)
 @db_periodic_task(pacific_crontab(2, '30'), priority=1, queue='summaries')
 def check_summary_integrity(now=None):
     """
-    Count, and log as an error (Sentry captures it), two kinds of damage:
+    Count, and log as an error (Sentry captures it), three kinds of damage:
 
     - summary rows whose timestamp isn't a Pacific period start, in either
       table, over the last 400 days;
     - hours of the previous Pacific day with monitor hourly summaries but no
-      region hourly summaries at all.
+      region hourly summaries at all;
+    - coarse rows of a peak type whose period daily statistic was never filled.
 
     Read-only. The hour check is two bounded distinct-timestamp queries, not
     a per-region geo check. Logs how long the run took at info level, so the
@@ -685,15 +686,41 @@ def check_summary_integrity(now=None):
     region_hours = hour_timestamps(RegionSummary.objects.all())
     missing = [hour for hour in iter_hours(yesterday, today) if hour in monitor_hours and hour not in region_hours]
 
-    result = {'misaligned': misaligned, 'missing_region_hours': len(missing)}
-    logger.info(
-        'Summary integrity check took %.1fs (misaligned scan %.1fs, region hours %.1fs)',
-        time.monotonic() - began, scanned - began, time.monotonic() - scanned,
+    hours_done = time.monotonic()
+
+    peak_types = [model.entry_type for model in peak_entry_models()]
+    missing_statistics = sum(
+        model.objects.filter(
+            resolution__in=COARSE_RESOLUTIONS,
+            entry_type__in=peak_types,
+            timestamp__gte=start,
+            daily_statistic_days__isnull=True,
+        ).count()
+        for model in (MonitorSummary, RegionSummary)
     )
+
+    result = {
+        'misaligned': misaligned,
+        'missing_region_hours': len(missing),
+        'missing_period_statistics': missing_statistics,
+    }
+    logger.info(
+        'Summary integrity check took %.1fs (misaligned scan %.1fs, region hours %.1fs, period statistics %.1fs)',
+        time.monotonic() - began, scanned - began, hours_done - scanned, time.monotonic() - hours_done,
+    )
+    message = (
+        'Summary integrity check found %d misaligned row timestamp(s) and %d hour(s) '
+        'with monitor but no region summaries (%s): %s'
+    )
+    args = [misaligned, len(missing), yesterday.date(), ', '.join(h.isoformat() for h in missing)]
     if misaligned or missing:
+        if missing_statistics:
+            message += '; %d coarse row(s) missing the period daily statistic'
+            args.append(missing_statistics)
+        logger.error(message, *args)
+    elif missing_statistics:
         logger.error(
-            'Summary integrity check found %d misaligned row timestamp(s) and %d hour(s) '
-            'with monitor but no region summaries (%s): %s',
-            misaligned, len(missing), yesterday.date(), ', '.join(h.isoformat() for h in missing),
+            'Summary integrity check found %d coarse row(s) missing the period daily statistic',
+            missing_statistics,
         )
     return result

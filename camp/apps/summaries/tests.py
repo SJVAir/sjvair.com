@@ -1668,7 +1668,7 @@ class SummaryIntegrityCheckTests(TestCase):
     def test_clean_data_returns_zeros_and_logs_nothing(self):
         self._fill_day()
         with self.assertNoLogs('camp.apps.summaries', level='ERROR'):
-            assert self._run() == {'misaligned': 0, 'missing_region_hours': 0}
+            assert self._run() == {'misaligned': 0, 'missing_region_hours': 0, 'missing_period_statistics': 0}
 
     def test_logs_how_long_the_run_took(self):
         self._fill_day()
@@ -1701,6 +1701,45 @@ class SummaryIntegrityCheckTests(TestCase):
         with self.assertLogs('camp.apps.summaries', level='ERROR'):
             assert self._run()['misaligned'] == 2
 
+    def test_old_log_message_is_unchanged_when_only_misaligned_fires(self):
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 2, 28, 23),
+            resolution=BaseSummary.Resolution.MONTHLY,
+            entry_type='temperature', processor='', **compute_stats([10.0], 1),
+        )
+        with self.assertLogs('camp.apps.summaries', level='ERROR') as logs:
+            self._run()
+        assert len(logs.records) == 1
+        assert logs.records[0].getMessage() == (
+            'Summary integrity check found 1 misaligned row timestamp(s) and 0 hour(s) '
+            'with monitor but no region summaries (2026-11-01): '
+        )
+
+    def test_counts_missing_period_statistics(self):
+        M = BaseSummary.Resolution.MONTHLY
+        stats = compute_stats([10.0], 1)
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 10, 1), resolution=M,
+            entry_type='pm25', processor='', **stats)
+        # Days all null: filled, so not a miss.
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 9, 1), resolution=M,
+            entry_type='pm25', processor='', daily_statistic_days=0,
+            daily_statistic_expected_days=30, **stats)
+        # No daily statistic for this type.
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 10, 1), resolution=M,
+            entry_type='temperature', processor='', **stats)
+        stats.pop('is_complete', None)
+        RegionSummary.objects.create(
+            region=self.region, timestamp=pacific(2026, 10, 1), resolution=M,
+            entry_type='pm25', station_count=1, **stats)
+        with self.assertLogs('camp.apps.summaries', level='ERROR') as logs:
+            result = self._run()
+        assert result['missing_period_statistics'] == 2
+        assert len(logs.records) == 1
+        assert 'missing the period daily statistic' in logs.records[0].getMessage()
+
     def test_misaligned_rows_older_than_400_days_are_ignored(self):
         MonitorSummary.objects.create(
             monitor=self.monitor, timestamp=pacific(2024, 2, 28, 23),
@@ -1728,7 +1767,7 @@ class SummaryIntegrityCheckTests(TestCase):
         assert self._run()['missing_region_hours'] == 0
 
     def test_hour_with_no_monitor_rows_is_not_missing(self):
-        assert self._run() == {'misaligned': 0, 'missing_region_hours': 0}
+        assert self._run() == {'misaligned': 0, 'missing_region_hours': 0, 'missing_period_statistics': 0}
 
     def test_fires_once_on_fall_back_day_at_0230_pacific(self):
         validate = summary_tasks.check_summary_integrity.task_class().validate_datetime

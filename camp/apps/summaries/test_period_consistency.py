@@ -10,6 +10,8 @@ from django.test import TestCase
 from camp.apps.entries.models import PM25
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.regions.models import Region
+from camp.apps.summaries.peaks import peak_entry_models
+from camp.apps.summaries.period_stats import COARSE_RESOLUTIONS
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary, SummaryBackfillJob
 from camp.apps.summaries.periods import is_period_start, iter_hours, iter_period_starts
 from camp.apps.summaries.tasks import (
@@ -117,6 +119,31 @@ class PeriodConsistencyTests(TestCase):
         assert datetime(2026, 11, 1, 9, tzinfo=dt_timezone.utc) in stamps
         day_start = _pacific(2026, 11, 1)
         assert hourly.filter(timestamp__gte=day_start, timestamp__lt=_pacific(2026, 11, 2)).count() == 25
+
+    def test_rebuild_fills_every_coarse_row(self):
+        start = _pacific(2026, 6, 25).astimezone(dt_timezone.utc)
+        end = _pacific(2026, 10, 5).astimezone(dt_timezone.utc)
+        entries, ts, n = [], start, 0
+        while ts < end:
+            entries.append(PM25(
+                monitor=self.monitor, timestamp=ts, stage=PM25.Stage.RAW,
+                processor='', value=float(5 + n % 17), location=self.monitor.location,
+            ))
+            ts += timedelta(hours=1)
+            n += 1
+        PM25.objects.bulk_create(entries)
+
+        for scope in (f'--monitor={self.monitor.pk}', f'--region={self.region.pk}'):
+            call_command('rebuild_summaries', '2026-07-01', '2026-10-01', scope, stdout=StringIO())
+
+        peak_types = [m.entry_type for m in peak_entry_models()]
+        for model in (MonitorSummary, RegionSummary):
+            coarse = model.objects.filter(resolution__in=COARSE_RESOLUTIONS, entry_type__in=peak_types)
+            assert coarse.filter(resolution=R.MONTHLY).exists(), model
+            assert coarse.filter(resolution=R.QUARTERLY).exists(), model
+            for row in coarse:
+                assert row.daily_statistic_days is not None, (model, row.resolution, row.timestamp)
+                assert row.daily_statistic_expected_days is not None, (model, row.resolution, row.timestamp)
 
     def test_default_periods(self):
         def previous(resolution, now):
