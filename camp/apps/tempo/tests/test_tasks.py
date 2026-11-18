@@ -1,6 +1,8 @@
 from datetime import timedelta
 from unittest.mock import patch
 
+import requests
+
 from django.core import mail
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -80,6 +82,63 @@ class SyncTempoReprocessingTests(TestCase):
         sync_tempo_reprocessing.call_local()
 
         assert mock_sync.call_count == 90 * 24 * len(Granule.Product.choices)
+
+
+def unauthorized_error():
+    response = requests.Response()
+    response.status_code = 401
+    return requests.HTTPError('401 Client Error: Unauthorized', response=response)
+
+
+class AuthFailureStopsSyncTests(TestCase):
+    '''
+    An expired Earthdata token fails every request the same way; a run must
+    stop at the first 401 and report it once, not once per product-hour
+    (the 90-day resync alone is ~13k calls).
+    '''
+
+    @patch('camp.apps.tempo.tasks.sentry_sdk.capture_exception')
+    @patch('camp.apps.tempo.tasks.sync_granule')
+    def test_fetch_tempo_stops_at_first_unauthorized(self, mock_sync, mock_capture):
+        mock_sync.side_effect = unauthorized_error()
+
+        fetch_tempo.call_local()
+
+        assert mock_sync.call_count == 1
+        assert mock_capture.call_count == 1
+
+    @patch('camp.apps.tempo.tasks.sentry_sdk.capture_exception')
+    @patch('camp.apps.tempo.tasks.sync_granule')
+    def test_fetch_tempo_final_stops_at_first_unauthorized(self, mock_sync, mock_capture):
+        mock_sync.side_effect = unauthorized_error()
+
+        fetch_tempo_final.call_local()
+
+        assert mock_sync.call_count == 1
+        assert mock_capture.call_count == 1
+
+    @patch('camp.apps.tempo.tasks.sentry_sdk.capture_exception')
+    @patch('camp.apps.tempo.tasks.sync_granule')
+    def test_sync_tempo_reprocessing_stops_at_first_unauthorized(self, mock_sync, mock_capture):
+        from camp.apps.tempo.tasks import sync_tempo_reprocessing
+        mock_sync.side_effect = unauthorized_error()
+
+        sync_tempo_reprocessing.call_local()
+
+        assert mock_sync.call_count == 1
+        assert mock_capture.call_count == 1
+
+    @patch('camp.apps.tempo.tasks.sentry_sdk.capture_exception')
+    @patch('camp.apps.tempo.tasks.sync_granule')
+    def test_other_http_errors_do_not_stop_the_run(self, mock_sync, mock_capture):
+        response = requests.Response()
+        response.status_code = 503
+        mock_sync.side_effect = [requests.HTTPError('503', response=response)] + [None] * 10
+
+        fetch_tempo.call_local()
+
+        assert mock_sync.call_count == len(Granule.Product.choices)
+        assert mock_capture.call_count == 1
 
 
 class CheckEarthdataTokenExpiryTests(TestCase):

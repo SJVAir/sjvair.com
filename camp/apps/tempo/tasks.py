@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+import requests
 import sentry_sdk
 
 from django.conf import settings
@@ -17,6 +18,25 @@ from .sync import sync_granule
 PRODUCTS = [choice[0] for choice in Granule.Product.choices]
 
 
+def sync_granules(timestamps):
+    '''
+    Syncs every product for each timestamp, reporting individual failures to
+    Sentry and moving on. An auth failure (401/403: an expired or revoked
+    Earthdata token) fails every remaining request the same way, so it stops
+    the run after one report instead of one per product-hour.
+    '''
+    for timestamp in timestamps:
+        for product in PRODUCTS:
+            try:
+                sync_granule(product, timestamp)
+            except requests.HTTPError as exc:
+                sentry_sdk.capture_exception(exc)
+                if getattr(exc.response, 'status_code', None) in (401, 403):
+                    return
+            except Exception as exc:
+                sentry_sdk.capture_exception(exc)
+
+
 # TEMPO only observes during PT daylight hours; run hourly, 15 min past the
 # hour to give NASA's NRT pipeline (~180 min claimed latency, but the top of
 # the hour is safest to avoid) a head start. 13-23 UTC covers roughly
@@ -26,11 +46,7 @@ PRODUCTS = [choice[0] for choice in Granule.Product.choices]
 @db_periodic_task(crontab(minute='15', hour='13-23'), priority=50)
 def fetch_tempo():
     timestamp = (timezone.now() - timedelta(hours=3)).replace(minute=0, second=0, microsecond=0)
-    for product in PRODUCTS:
-        try:
-            sync_granule(product, timestamp)
-        except Exception as exc:
-            sentry_sdk.capture_exception(exc)
+    sync_granules([timestamp])
 
 
 # Re-check every hour of yesterday once NASA's standard product typically
@@ -42,13 +58,7 @@ def fetch_tempo():
 def fetch_tempo_final():
     yesterday = (localtime() - timedelta(days=1)).date()
     day_start = datetime.combine(yesterday, datetime.min.time(), tzinfo=settings.DEFAULT_TIMEZONE)
-    for hour in range(24):
-        timestamp = day_start + timedelta(hours=hour)
-        for product in PRODUCTS:
-            try:
-                sync_granule(product, timestamp)
-            except Exception as exc:
-                sentry_sdk.capture_exception(exc)
+    sync_granules(day_start + timedelta(hours=hour) for hour in range(24))
 
 
 # Re-syncs a rolling 90-day window weekly to pick up NASA's non-chronological
@@ -61,14 +71,8 @@ def fetch_tempo_final():
 def sync_tempo_reprocessing():
     end = timezone.now().replace(minute=0, second=0, microsecond=0)
     start = end - timedelta(days=90)
-    timestamp = start
-    while timestamp < end:
-        for product in PRODUCTS:
-            try:
-                sync_granule(product, timestamp)
-            except Exception as exc:
-                sentry_sdk.capture_exception(exc)
-        timestamp += timedelta(hours=1)
+    hours = int((end - start) / timedelta(hours=1))
+    sync_granules(start + timedelta(hours=hour) for hour in range(hours))
 
 
 @db_periodic_task(crontab(day_of_week='1', hour='9', minute='0'), priority=30)
