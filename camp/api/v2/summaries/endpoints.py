@@ -544,11 +544,15 @@ class RegionOpenPeriods(OpenPeriodsMixin, RegionOpenDays):
 
 
 class BulkMonitorOpenPeriods(OpenPeriodsMixin, BulkMonitorOpenDays):
-    """Open-period rows (see MonitorOpenPeriods) for every published monitor, scoped like
-    BulkMonitorSummaryList (`region`, `bbox`, MonitorFilter parameters, the published
-    series unless `processor` is given) but with no `start`/`end`. Paginated by monitor,
-    100 per page; only monitors with a DAILY row of the series in the open period(s) or
-    an HOURLY row since the first open day are listed."""
+    """Open-period rows (see MonitorOpenPeriods) for every published monitor, with no
+    `start`/`end`: `region` (repeatable) and `bbox` (`west,south,east,north`) scope the
+    monitors, and each monitor's published series is returned unless `processor` picks
+    one exact processor (blank for raw). The monitor list's filter parameters (e.g.
+    `device`) also narrow it. Paginated by monitor, ordered by id, 100 per page; `count`
+    counts monitors. Only monitors with a DAILY row of the series in the open period(s)
+    or an HOURLY row since the first open day are listed, so a listed monitor can still
+    have `summaries: []` (e.g. its only daily rows are in the previous period, which is
+    now stored). A monitor's rows are never split across pages."""
 
     filter_class = BulkMonitorScopeFilter
 
@@ -556,5 +560,8 @@ class BulkMonitorOpenPeriods(OpenPeriodsMixin, BulkMonitorOpenDays):
 class BulkRegionOpenPeriods(OpenPeriodsMixin, BulkRegionOpenDays):
     """Open-period rows (see RegionOpenPeriods) for one or more regions (exactly one of
     `region` or `type`, as in BulkRegionSummaryList), with no `start`/`end`. Paginated by
-    region, 100 per page; only regions with a DAILY row in the open period(s) or an
-    HOURLY row since the first open day are listed."""
+    region, ordered by id, 100 per page; `count` counts regions. Only regions with a
+    DAILY row in the open period(s) or an HOURLY row since the first open day are
+    listed, so a listed region can still have `summaries: []` (e.g. its only daily rows
+    are in the previous period, which is now stored). A region's rows are never split
+    across pages."""

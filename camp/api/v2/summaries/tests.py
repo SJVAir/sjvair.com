@@ -1614,6 +1614,36 @@ class OpenPeriodsEndpointTests(TestCase):
         kind, ids, _, resolution, _ = call.args
         assert kind == 'monitor' and ids == [self.purpleair.pk] and resolution == 'month'
 
+    def test_bulk_monitors_query_count(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        def new_monitor(i):
+            monitor = PurpleAir.objects.create(
+                name=f'Count {i}', sensor_id=97000 + i,
+                position=Point(-119.7, 36.7, srid=4326), location=PurpleAir.LOCATION.outside,
+            )
+            # A stored day in the month and an hour today, so every read runs.
+            self._monitor_day(monitor, processor='PM25_EPA_Oct2021', mean_24h=11.0)
+            self._monitor_hour(monitor, processor='PM25_EPA_Oct2021')
+
+        def count():
+            cache.clear()
+            with CaptureQueriesContext(connection) as ctx:
+                response = self._monitors()
+            assert response.status_code == 200
+            return len(get_response_data(response)['data']), len(ctx.captured_queries)
+
+        for i in range(3):
+            new_monitor(i)
+        owners, few = count()
+        assert owners == 3
+        for i in range(3, 30):
+            new_monitor(i)
+        owners, many = count()
+        assert owners == 30
+        assert few == many == 8
+
     # Bulk regions
 
     def _regions(self, path='monthly', data=None):

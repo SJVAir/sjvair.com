@@ -33,8 +33,9 @@ class BulkMonitorSummaryFilter(FilterSet):
 
 
 class BulkMonitorScopeFilter(FilterSet):
-    # Schema-only, like BulkMonitorSummaryFilter, for the bulk open-period endpoints
-    # (BulkMonitorScopeForm and get_processor_filter() do the scoping).
+    # Documents the bulk open-period endpoints' parameters; its filters are
+    # no-ops at runtime (BulkMonitorScopeForm, request.GET.getlist('region')
+    # and get_processor_filter() do the scoping).
     bbox = django_filters.CharFilter(method='noop', help_text='west,south,east,north')
     region = django_filters.CharFilter(method='noop', help_text='Region id; repeatable.')
     processor = django_filters.CharFilter(
