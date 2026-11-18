@@ -372,3 +372,52 @@ class FillPeriodStatisticsCommandTests(TestCase):
         assert 'nothing to do' in out
         self.row.refresh_from_db()
         assert self.row.daily_statistic_mean is None
+
+    def test_monitor_pk_with_leading_dash(self):
+        dashed = PurpleAir.objects.create(
+            id='-Gge' + 'FGbo' * 4 + 'Tj', name='Dashed', position='POINT(0 0)', sensor_id=92001)
+        assert str(dashed.pk).startswith('-')
+        ts = pacific(2026, 11)
+        for _ in range(30):
+            MonitorSummary.objects.create(
+                monitor=dashed, timestamp=ts, resolution=R.DAILY, entry_type='o3',
+                processor='', max_1h=70.0, **_stats(1.0))
+            ts = period_end('day', ts)
+        row = MonitorSummary.objects.create(
+            monitor=dashed, timestamp=pacific(2026, 11), resolution=R.MONTHLY,
+            entry_type='o3', processor='', **_stats(1.0))
+        out = self.run_command('2026-11-01', '2026-12-01', f'--monitor={dashed.pk}')
+        assert 'monitor o3: 1 row changed' in out
+        row.refresh_from_db()
+        assert (row.daily_statistic_mean, row.daily_statistic_days) == (70.0, 30)
+
+    def test_range_spanning_a_year_boundary(self):
+        MonitorSummary.objects.all().delete()
+        ts = pacific(2025, 12)
+        for _ in range(90):
+            MonitorSummary.objects.create(
+                monitor=self.monitor, timestamp=ts, resolution=R.DAILY, entry_type='o3',
+                processor='', max_1h=40.0, **_stats(1.0))
+            ts = period_end('day', ts)
+        dec = self.monitor_row(R.MONTHLY, pacific(2025, 12))
+        jan = self.monitor_row(R.MONTHLY, pacific(2026, 1))
+        season = self.monitor_row(R.SEASONAL, pacific(2025, 12))
+
+        out = self.run_command('2025-11-01', '2026-12-01', '--monitor', str(self.monitor.pk))
+        assert 'monitor o3: 3 rows changed' in out
+        dec.refresh_from_db()
+        jan.refresh_from_db()
+        season.refresh_from_db()
+        assert (dec.daily_statistic_days, dec.daily_statistic_expected_days) == (31, 31)
+        assert (jan.daily_statistic_days, jan.daily_statistic_expected_days) == (31, 31)
+        assert season.daily_statistic_expected_days == 90
+        assert season.daily_statistic_days == 90
+        assert season.daily_statistic_mean == 40.0
+
+        out = self.run_command('2025-11-01', '2026-12-01', '--monitor', str(self.monitor.pk))
+        assert 'nothing to do' in out
+
+    def monitor_row(self, resolution, ts):
+        return MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=ts, resolution=resolution,
+            entry_type='o3', processor='', **_stats(1.0))
