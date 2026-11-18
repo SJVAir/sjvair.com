@@ -187,3 +187,92 @@ class CacheWriteFailureTests(TestCase):
         assert response.status_code == 200
         assert response['X-Cache-Status'] == 'MISS'
         assert 'Too large' in logs.output[0]
+
+
+class EncodedCacheTests(TestCase):
+    '''
+        cache_encoded caches the encoded JSON body and serves it as a plain
+        response. Streaming the cached data re-encoded it into one chunk per
+        JSON token (87k for the monitor list), and that per-chunk overhead
+        was most of a cache hit's time.
+    '''
+    def setUp(self):
+        self.factory = RequestFactory()
+        cache.clear()
+
+    def tearDown(self):
+        cache.clear()
+
+    def make_endpoint(self, encoded):
+        import datetime
+        from decimal import Decimal
+        from django.utils import timezone as dj_timezone
+
+        class Base:
+            def get(self, request, *args, **kwargs):
+                if request.GET.get('bad'):
+                    return http.Http400({'error': 'nope'})
+                rows = ({'n': i, 'value': Decimal('1.50'), 'name': 'Café "x"'} for i in range(3))
+                return {
+                    'data': list(rows),
+                    'gen': (i for i in range(2)),
+                    'when': datetime.datetime(2026, 11, 10, 12, 0, tzinfo=dj_timezone.get_fixed_timezone(-480)),
+                }
+
+        class Endpoint(CachedEndpointMixin, Base):
+            cache_encoded = encoded
+            streaming = True
+
+            def __init__(self, request):
+                self.request = request
+                self.kwargs = {}
+
+            def is_streaming(self):
+                return True
+
+            def streaming_response(self, data, **kwargs):
+                kwargs.setdefault('status', 200)
+                return http.StreamingJSONResponse(data, **kwargs)
+
+        return Endpoint
+
+    def body(self, response):
+        if response.streaming:
+            return b''.join(response.streaming_content)
+        return response.content
+
+    def test_body_matches_the_streamed_body(self):
+        request = self.factory.get('/x/')
+        streamed = self.make_endpoint(False)(request).get(request)
+        cache.clear()
+        encoded = self.make_endpoint(True)(request).get(request)
+        assert streamed.streaming and not encoded.streaming
+        assert self.body(encoded) == self.body(streamed)
+        assert encoded['Content-Type'] == streamed['Content-Type'] == 'application/json'
+
+    def test_hit_serves_the_cached_bytes(self):
+        Endpoint = self.make_endpoint(True)
+        request = self.factory.get('/x/')
+        miss = Endpoint(request).get(request)
+        hit = Endpoint(request).get(request)
+        assert (miss['X-Cache-Status'], hit['X-Cache-Status']) == ('MISS', 'HIT')
+        assert not hit.streaming
+        assert hit.content == miss.content
+        assert isinstance(cache.get(Endpoint(request).get_view_cache_key()), bytes)
+
+    def test_errors_are_not_encoded_or_cached(self):
+        Endpoint = self.make_endpoint(True)
+        request = self.factory.get('/x/?bad=1')
+        first = Endpoint(request).get(request)
+        assert first.status_code == 400
+        assert cache.get(Endpoint(request).get_view_cache_key()) is None
+
+    def test_monitor_list_hit_is_not_streamed(self):
+        from camp.api.v2.monitors.endpoints import CurrentData
+        assert MonitorList.cache_encoded and CurrentData.cache_encoded
+        url = reverse('api:v2:monitors:monitor-list')
+        miss = monitor_list(self.factory.get(url))
+        hit = monitor_list(self.factory.get(url))
+        assert hit['X-Cache-Status'] == 'HIT'
+        assert not hit.streaming
+        assert hit.content == miss.content

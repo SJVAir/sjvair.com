@@ -106,6 +106,9 @@ class LatestEntry(models.Model):
         self._entry = value
 
 
+NOT_ANNOTATED = object()
+
+
 def published_rank(latest, lookup, default_stage):
     '''
     How well a LatestEntry matches the published reading, lowest first:
@@ -290,9 +293,10 @@ class Monitor(models.Model):
         now = timezone.now()
         cutoff = now - timedelta(seconds=self.LAST_ACTIVE_LIMIT)
 
-        # If annotation is missing or None, fall back to query
-        timestamp = getattr(self, 'last_entry_timestamp', None)
-        if timestamp is None:
+        # Without the with_last_entry_timestamp() annotation, query. With it,
+        # None means the monitor has no latest entries, so don't query again.
+        timestamp = getattr(self, 'last_entry_timestamp', NOT_ANNOTATED)
+        if timestamp is NOT_ANNOTATED:
             timestamp = (self.latest_entries
                 .order_by('-timestamp')
                 .values_list('timestamp', flat=True)
