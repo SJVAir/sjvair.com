@@ -222,7 +222,8 @@ zones are missing there; see SJVAPCD Forecast Setup).
   computed on request, cached, and backed by the per-monitor unique index (no
   table-wide MIN/MAX on entry tables); there is no background task.
 - **Scale shape** (`camp/utils/scales.py`): `{id, label, units, kind: range|category, source,
-  averaging_hours, daily_statistic, daily_statistic_label, levels[]}`; a level is `{key, label, color, tier, description,
+  averaging_hours, daily_statistic, daily_statistic_label, period_statistic, period_statistic_label,
+  levels[]}`; a level is `{key, label, color, tier, description,
   guidance, min, max, value, opacity}`. Scale ids are catalog entry-type ids and level `key`s are permanent. Ranges are
   half-open (`min <= value < max`) and the top level's `max` is `null`; categories use `value`.
   `tier` is 0-4 or `null` (no severity). `description` is the official wording (credited via
@@ -231,6 +232,10 @@ zones are missing there; see SJVAPCD Forecast Setup).
   and categories) and `daily_statistic` is how a day is judged against it: 24 `mean_24h`, 1
   `max_1h`, 8 `max_8h`, `null` otherwise; `daily_statistic_label` is its display text ("24-hour
   average", "Highest 1-hour average", "Highest 8-hour average"; `null` otherwise).
+  `period_statistic` is the coarse-row field holding the period's figure (`"daily_statistic_mean"`
+  when `daily_statistic` is set, else `null`) and `period_statistic_label` its display text
+  (`camp/apps/entries/levels.py`; "Average of daily highest 1-hour averages", "Average of daily
+  highest 8-hour averages", "Average of 24-hour averages"; `null` otherwise).
 - **Domain meta endpoints** (each a catalog `meta_url`): `calheatscore/meta/`, `hms/meta/` and
   `forecasts/meta/` return scales keyed by catalog entry-type id (forecasts also lists the
   zones with their regions). `pesticides/meta/` lists `categories` (with `in_use`),
@@ -455,7 +460,8 @@ zones are missing there; see SJVAPCD Forecast Setup).
   8-hour windows (`max_8h`, each window needing >= 6 of its 8 hours); a short day reports the
   peak only if it is at least the standard, else `null`. CO windows start in the day and may run
   into the next one, so the rollup refreshes `max_8h` the next night; the 28 h
-  `PEAK_8H_SETTLE_MARGIN` (`schedule.py`) covers the 25-hour fall-back day. The rollup fills
+  `PEAK_8H_SETTLE_MARGIN` (`schedule.py`) covers the 25-hour fall-back day and applies to CO's
+  day rows and its coarser rows (see Period daily statistic). The rollup fills
   peaks through `fill_daily_peaks` after its upsert, and a re-roll never wipes them. AQLite
   hourly-output series (processor `output_interval='1h'`) have `expected_count = 1` and are
   complete when the hour's CLEANED readings reach 80% of `expected_hourly_entries`. Backfill
@@ -510,6 +516,49 @@ zones are missing there; see SJVAPCD Forecast Setup).
   hour is summarized (~00:45 monitors / ~00:50 regions, 01:45 / 01:50 at worst). The cap is yesterday only until the day settles,
   so a missed nightly rollup shows as no data afterwards and needs `repair_summaries`. All four
   always send `private, max-age=60` with an ETag (304 on `If-None-Match`); errors `no-cache`.
+- **Period daily statistic** (`camp/apps/summaries/period_stats.py`): every summary row (monitor
+  and region) carries `daily_statistic_mean`, `daily_statistic_days`, `daily_statistic_expected_days`.
+  They are set only on coarse rows (`month`, `quarter`, `season`, `year`) of the peak types (those with
+  a `daily_statistic`); hour and day rows and other types keep all three `null`. `expected_days` is
+  the Pacific calendar days in the period (DST months still 30/31); `days` is the stored DAILY rows
+  of the series in the period whose figure (the `daily_statistic` field) is not null; `mean` is their
+  mean only when `days >= ceil(0.75 * expected_days)`, else `null` (`days` may be 0, never `null`
+  after a fill). Each series (monitor + processor, or region) averages only its own daily rows. Meta
+  names the field per scale (`period_statistic`, see Scale shape). `rollup_monitor_summaries` and
+  `rollup_region_summaries` call `fill_period_statistics` after their coarse upsert (the upserts'
+  `update_fields` leave the three columns alone), so the nightly rollups, backfill jobs,
+  `repair_summaries`, `rebuild_summaries` and the CIMIS re-roll all fill them. CO: the month and
+  coarser rollups read the last day's provisional `max_8h`, so `_refresh_previous_max_8h` refills
+  the coarse CO periods ending at the refreshed day, and `is_settled(..., peak_8h=True)` uses the
+  28 h `PEAK_8H_SETTLE_MARGIN` for them (`is_final` false and `max-age=60` for 28 h after the end).
+  Open periods (`camp/apps/summaries/open_periods.py`): `monitors/<id>/summaries/<entry_type>/
+  {monthly,quarterly,seasonal,yearly}/open/` (`?processor=`, default `''`),
+  `regions/<id>/summaries/<entry_type>/{...}/open/`, and the bulk
+  `monitors/<entry_type>/summaries/{...}/open/` and `regions/<entry_type>/summaries/{...}/open/`
+  (scoped, paged and cached like `daily/open/`) return unsaved rows for the period holding today
+  and the previous one while it isn't settled (plain margins) and the series has no stored row for
+  it: at most 2 rows per series. Stats roll up the stored MONTHLY rows of finished months (not for
+  `month`), the stored DAILY rows of the other days and the open-day rows of days with no stored
+  daily row (built with their t-digests). The figure averages the stored daily figures plus the
+  open days' (today's "so far"), against the days from the period's start through today (the
+  previous period: its full length). Peaks are `null` and `is_final` is `false`. The bulk ones
+  list owners with an HOURLY row since the first open day or a DAILY row in the open period(s).
+  Built rows are cached 60 s (`cached_open_period_rows`; kind, resolution, entry type, series
+  filter, hashed owner set, open periods and open days). `check_summary_integrity` counts coarse
+  rows the fill missed. Backfill existing coarse rows with `fill_period_statistics` (Pacific dates,
+  end exclusive, scoped like `fill_daily_peaks`, one Pacific year at a time, idempotent,
+  `--resolution`, `--entry-type`, `--dry-run`). Deploy order: (1) deploy (the release phase
+  migrates; migration 0008 sets a 10 s `lock_timeout`) away from :40-:50 and with no
+  `SummaryBackfillJob` running; (2) after the Daily peaks deploy steps (the AirNow -999 monitor
+  and region rebuilds, the AQLite rebuilds and the scoped `fill_daily_peaks`), scoped
+  `fill_period_statistics`, `--dry-run` first, then for real, for the same monitor types and region
+  types. It must follow them because it averages the daily figures they write. Rows those
+  rebuilds re-roll fill themselves, so it only matters for coarse rows that already exist.
+
+  ```bash
+  docker compose run --rm web python manage.py fill_period_statistics 2026-01-01 2026-11-19 \
+    --monitor-type airnow --dry-run
+  ```
 - **Summary cache rule** (`camp/api/v2/summaries/endpoints.py`): a 200 for a settled period is
   `private, max-age=86400`, any other 200 is `private, max-age=60`; both carry an `ETag` and
   answer `If-None-Match` with a 304 (which keeps the 200's headers). Errors are `no-cache`.
@@ -517,8 +566,9 @@ zones are missing there; see SJVAPCD Forecast Setup).
   `ROLLUP_LOCAL_TIME` there holds when each rollup runs after the period ends; a test checks
   the margins against the real crontabs, so moving a rollup past its settle time fails it.
   Monitor summary rows (and the bulk rows) carry `sum`; region rows don't.
-  Every row carries `is_final`: the settled rule per row and resolution (CO's `max_8h` uses its
-  28 h margin, CIMIS switch types `LATE_SETTLE_MARGIN`); open-day rows are always `false`. One
+  Every row carries `is_final`: the settled rule per row and resolution (CO, a `max_8h` type, uses
+  the 28 h margin on day and coarser rows; CIMIS switch types `LATE_SETTLE_MARGIN`); open-day and
+  open-period rows are always `false`. One
   instant per request: `SummaryMixin.dispatch` reads the time once and the cache rule, every
   row's `is_final` (`serializing_at` in the serializers) and the open days use it.
 - **Rollup timing**: Huey crontabs are UTC (its `utc=True` default; `DJANGO_HUEY` doesn't
@@ -557,7 +607,9 @@ zones are missing there; see SJVAPCD Forecast Setup).
   ```
 - **`check_summary_integrity`** (02:30 Pacific, read-only): logs an error (Sentry) when summary
   rows in the last 400 days are off a Pacific period start, or when hours of the previous
-  Pacific day have monitor hourly rows but no region hourly rows. Logs its run time at info.
+  Pacific day have monitor hourly rows but no region hourly rows, or when coarse rows of a peak
+  type in the last 400 days have `daily_statistic_days` null (`missing_period_statistics` in its
+  result). Logs its run time at info.
 - **Burn status** (`camp/apps/forecasts/scales.py`): the feed's `status` string is stored as
   received; unknown values are stored and logged by the ingest task. When a new value
   appears, add a level there. The "No Burning For All" string is still unconfirmed.
