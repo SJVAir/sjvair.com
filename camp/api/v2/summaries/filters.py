@@ -2,6 +2,7 @@ import django_filters
 
 from resticus.filters import FilterSet
 
+from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
 from camp.apps.summaries.models import MonitorSummary, RegionSummary
 
@@ -28,6 +29,27 @@ class BulkMonitorSummaryFilter(FilterSet):
 
     class Meta:
         model = MonitorSummary
+        fields = []
+
+
+class BulkMonitorScopeFilter(FilterSet):
+    # Schema-only, like BulkMonitorSummaryFilter, for the bulk open-period endpoints
+    # (BulkMonitorScopeForm and get_processor_filter() do the scoping).
+    bbox = django_filters.CharFilter(method='noop', help_text='west,south,east,north')
+    region = django_filters.CharFilter(method='noop', help_text='Region id; repeatable.')
+    processor = django_filters.CharFilter(
+        method='noop',
+        help_text=(
+            'Exact summary processor to return (blank for raw). When omitted, '
+            "each monitor's published series is used."
+        ),
+    )
+
+    def noop(self, queryset, name, value):
+        return queryset
+
+    class Meta:
+        model = Monitor
         fields = []
 
 

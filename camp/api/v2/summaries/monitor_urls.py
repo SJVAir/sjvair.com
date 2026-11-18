@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .endpoints import MonitorOpenDays, MonitorSummaryList
+from .endpoints import MonitorOpenDays, MonitorOpenPeriods, MonitorSummaryList
 
 view = MonitorSummaryList.as_view()
 
@@ -16,8 +16,12 @@ urlpatterns = [
     path('<entry_type>/daily/<int:year>/<int:month>/', view, {'resolution': 'day'}, name='monitor-summary-daily-month'),
 
     # coarser resolutions
+    path('<entry_type>/monthly/open/', MonitorOpenPeriods.as_view(), {'resolution': 'month'}, name='monitor-summary-monthly-open'),
     path('<entry_type>/monthly/<int:year>/', view, {'resolution': 'month'}, name='monitor-summary-monthly'),
+    path('<entry_type>/quarterly/open/', MonitorOpenPeriods.as_view(), {'resolution': 'quarter'}, name='monitor-summary-quarterly-open'),
     path('<entry_type>/quarterly/<int:year>/', view, {'resolution': 'quarter'}, name='monitor-summary-quarterly'),
+    path('<entry_type>/seasonal/open/', MonitorOpenPeriods.as_view(), {'resolution': 'season'}, name='monitor-summary-seasonal-open'),
     path('<entry_type>/seasonal/<int:year>/', view, {'resolution': 'season'}, name='monitor-summary-seasonal'),
+    path('<entry_type>/yearly/open/', MonitorOpenPeriods.as_view(), {'resolution': 'year'}, name='monitor-summary-yearly-open'),
     path('<entry_type>/yearly/', view, {'resolution': 'year'}, name='monitor-summary-yearly'),
 ]
