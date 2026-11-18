@@ -128,3 +128,36 @@ class TestPM25MultivariateLinearExpressionProcessor(BaseLinearProcessorTest):
 
         assert result is not None
         assert result.value == entry.value
+
+
+class TestOutOfRangeRegressionOutput(BaseLinearProcessorTest):
+    def run_processor(self, formula, value='10.0'):
+        self.create_calibration(
+            trainer=processors.PM25_UnivariateLinearRegression.name,
+            formula=formula,
+        )
+        entry = self.create_pm25_entry(value=D(value))
+        return entry, processors.PM25_UnivariateLinearRegression(entry=entry).run()
+
+    def test_overflowing_value_yields_no_entry(self):
+        entry, result = self.run_processor('pm25 * 90.36 + 99999')
+        assert result is None
+        assert PM25.objects.filter(monitor_id=self.colocated.pk, stage=PM25.Stage.CALIBRATED).count() == 0
+
+    def test_value_above_plausible_max_yields_no_entry(self):
+        entry, result = self.run_processor('pm25 * 200')  # 2000 > 1500
+        assert result is None
+
+    def test_negative_value_yields_no_entry(self):
+        entry, result = self.run_processor('pm25 - 50')
+        assert result is None
+
+    def test_value_at_max_is_kept(self):
+        entry, result = self.run_processor('pm25 * 150')  # 1500
+        assert result is not None
+        assert result.value == D('1500')
+
+    def test_out_of_range_logs_warning(self):
+        with self.assertLogs('camp.apps.calibrations.core.processors.ml.linear', level='WARNING') as logs:
+            self.run_processor('pm25 * 200')
+        assert 'out-of-range' in logs.output[0]

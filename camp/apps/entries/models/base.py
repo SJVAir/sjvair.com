@@ -20,6 +20,8 @@ class BaseEntry(models.Model):
     summarize = False
     Stage = stages.Stage
     Levels = None
+    # (min, max) a processed value must fall within to be saved; None = unbounded.
+    plausible_range = None
 
     id = SmallUUIDField(
         default=uuid_default(),

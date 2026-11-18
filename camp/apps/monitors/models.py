@@ -1,4 +1,5 @@
 import copy
+import logging
 import math
 import uuid
 
@@ -11,7 +12,7 @@ from django.conf import settings
 from django.core.exceptions import FieldDoesNotExist, ObjectDoesNotExist, ValidationError
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import Avg, Q
 from django.utils import timezone
 from django.utils.functional import cached_property
@@ -33,6 +34,8 @@ from camp.apps.regions.counties import county_name
 from camp.utils import classproperty
 from camp.utils.datetime import make_aware
 from camp.utils.fields import MACAddressField
+
+logger = logging.getLogger(__name__)
 
 
 class Group(models.Model):
@@ -413,11 +416,20 @@ class Monitor(models.Model):
         for key, value in data.items():
             setattr(entry, key, value)
 
-        if entry.validation_check():
-            if save:
-                entry.save()
+        created = entry.validation_check()
+        if created and save:
+            try:
+                with transaction.atomic():
+                    entry.save()
+            except IntegrityError:
+                # Lost a race with a concurrent writer of the same entry
+                # (check-then-insert); fall through to the upsert below.
+                created = False
+            else:
                 entry.refresh_from_db()
                 self.update_latest_entry(entry)
+
+        if created:
             return entry
 
         if save:
@@ -473,8 +485,20 @@ class Monitor(models.Model):
             if cutoff_stage and processor.next_stage == cutoff_stage:
                 continue
 
-            if (result := processor(entry).run()):
-                self.update_latest_entry(result)
+            # One failing processor must not stop the ones after it.
+            try:
+                with transaction.atomic():
+                    result = processor(entry).run()
+                    if result:
+                        self.update_latest_entry(result)
+            except Exception:
+                logger.exception(
+                    'Processor %s failed for %s %s (monitor=%s)',
+                    processor.name, entry.__class__.__name__, entry.pk, self.pk,
+                )
+                continue
+
+            if result:
                 processed_entries.append(result)
 
         return processed_entries
