@@ -30,6 +30,7 @@ from camp.apps.summaries.backfill import (
 )
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary, SummaryBackfillJob
 from camp.apps.summaries.peaks import fill_daily_peaks, peak_entry_models
+from camp.apps.summaries.period_stats import COARSE_RESOLUTIONS, fill_period_statistics
 from camp.apps.summaries.selection import (
     monitor_summary_entry_models,
     monitor_types_summarizing,
@@ -292,6 +293,10 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
         # The peaks aren't in update_fields, so the upsert keeps them; the fill rewrites them.
         if target_resolution == BaseSummary.Resolution.DAILY:
             _log_skipped(fill_daily_peaks('monitor', monitor_ids, window_start, window_end))
+        # Same for the period daily statistic on coarse rows.
+        if target_resolution in COARSE_RESOLUTIONS:
+            fill_period_statistics(
+                'monitor', monitor_ids, window_start, window_end, resolutions=[target_resolution])
 
 
 def rollup_region_summaries(target_resolution, source_resolution, window_start, window_end, region_ids=None):
@@ -341,6 +346,10 @@ def rollup_region_summaries(target_resolution, source_resolution, window_start, 
         # The peaks aren't in update_fields, so the upsert keeps them; the fill rewrites them.
         if target_resolution == BaseSummary.Resolution.DAILY:
             _log_skipped(fill_daily_peaks('region', region_ids, window_start, window_end))
+        # Same for the period daily statistic on coarse rows.
+        if target_resolution in COARSE_RESOLUTIONS:
+            fill_period_statistics(
+                'region', region_ids, window_start, window_end, resolutions=[target_resolution])
 
 
 # ---- Rollup periodic tasks ----
@@ -369,14 +378,22 @@ def _refresh_previous_max_8h(kind, start):
     The 8-hour windows starting late in a day reach into the next morning, so
     that day's daily rollup stores a provisional `max_8h`. Run with the next
     day's rollup, this recomputes the previous day's, now that the hours exist.
-    `start` is the day just rolled up.
+    `start` is the day just rolled up. When the refreshed day is the last day
+    of a coarse period, that period's daily statistic is refilled too.
     """
     models = [model for model, field in peak_entry_models().items() if field == 'max_8h']
+    day = _previous_period_start('day', start)
     result = fill_daily_peaks(
-        kind, None, _previous_period_start('day', start), start,
+        kind, None, day, start,
         entry_models=models, fields=('max_8h',),
     )
     _log_skipped(result)
+    for resolution in COARSE_RESOLUTIONS:
+        if period_end(resolution, day) == start:
+            fill_period_statistics(
+                kind, None, period_start(resolution, day), start,
+                resolutions=[resolution], entry_models=models,
+            )
 
 
 @db_periodic_task(pacific_crontab(1, '0'), priority=80, queue='summaries')

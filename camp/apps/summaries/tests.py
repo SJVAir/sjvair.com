@@ -1494,10 +1494,11 @@ class SettleTimeTests(TestCase):
         assert not is_settled('day', end, now=pacific(2026, 11, 3, 3), peak_8h=True)
         assert is_settled('day', end, now=pacific(2026, 11, 3, 3))
         assert is_settled('day', end, now=pacific(2026, 11, 3, 4), peak_8h=True)
-        # Only the day resolution is affected.
+        # Coarse rows wait for the last day's refresh too.
         month_end = pacific(2026, 11, 1)
-        now = pacific(2026, 11, 1, 4)
-        assert is_settled('month', month_end, now=now, peak_8h=True) == is_settled('month', month_end, now=now)
+        assert not is_settled('month', month_end, now=month_end + timedelta(hours=27), peak_8h=True)
+        assert is_settled('month', month_end, now=month_end + timedelta(hours=28), peak_8h=True)
+        assert is_settled('month', month_end, now=month_end + timedelta(hours=4))
 
     def test_peak_8h_margin_covers_refresh_crontab(self):
         # The refresh is the next day's rollup. On fall-back day the following day
@@ -1856,6 +1857,12 @@ class RowIsFinalTests(TestCase):
         end = pacific(2026, 11, 3)
         assert not row_is_final('day', day, 'co', now=end + timedelta(hours=28) - timedelta(minutes=1))
         assert row_is_final('day', day, 'co', now=end + timedelta(hours=28))
+
+    def test_co_monthly_row_not_final(self):
+        month = pacific(2026, 11, 1)
+        now = pacific(2026, 12, 1, 5)
+        assert row_is_final('month', month, 'co', now=now) is False
+        assert row_is_final('month', month, 'o3', now=now) is True
 
     def test_hour_waits_2h(self):
         hour = pacific(2026, 11, 2, 10)

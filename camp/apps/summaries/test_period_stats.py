@@ -1,4 +1,5 @@
 from datetime import datetime
+from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.gis.geos import Point
@@ -11,7 +12,12 @@ from camp.apps.regions.models import Region
 from camp.apps.summaries.aggregators import tdigest_to_dict
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.period_stats import expected_days, fill_period_statistics, period_figure
+from camp.apps.summaries.peaks import day_hours
 from camp.apps.summaries.periods import period_end
+from camp.apps.summaries.tasks import (
+    daily_monitor_summaries, monthly_monitor_summaries, monthly_region_summaries,
+    quarterly_monitor_summaries, quarterly_region_summaries,
+)
 from camp.utils.datetime import make_aware
 
 R = BaseSummary.Resolution
@@ -174,3 +180,128 @@ class FillPeriodStatisticsTests(TestCase):
         assert month.daily_statistic_mean == 15.0
         assert (season.daily_statistic_expected_days, season.daily_statistic_days) == (90, 70)
         assert season.daily_statistic_mean == 34.5
+
+
+PERIOD = ('daily_statistic_mean', 'daily_statistic_days', 'daily_statistic_expected_days')
+
+
+def period_values(row):
+    row.refresh_from_db()
+    return tuple(getattr(row, f) for f in PERIOD)
+
+
+class RollupFillsTests(TestCase):
+    """Each coarse rollup fills the period daily statistic after its upsert."""
+    fixtures = ['purple-air.yaml', 'regions.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        self.region = Region.objects.filter(boundary__isnull=False).first()
+
+    def daily(self, start, end, value=50.0):
+        ts = start
+        while ts < end:
+            MonitorSummary.objects.create(
+                monitor=self.monitor, timestamp=ts, resolution=R.DAILY, entry_type='o3',
+                processor='', is_complete=True, max_1h=value, **_stats(value))
+            RegionSummary.objects.create(
+                region=self.region, timestamp=ts, resolution=R.DAILY, entry_type='o3',
+                station_count=1, weight=1.0, max_1h=value, **_stats(value))
+            ts = period_end('day', ts)
+
+    def monthly(self, kind, ts):
+        model, owner = (MonitorSummary, {'monitor': self.monitor}) if kind == 'monitor' \
+            else (RegionSummary, {'region': self.region})
+        return model.objects.get(resolution=R.MONTHLY, entry_type='o3', timestamp=ts, **owner)
+
+    def test_monthly_rollup_fills(self):
+        nov = pacific(2026, 11)
+        self.daily(nov, pacific(2026, 12))
+        monthly_monitor_summaries.call_local(month_start=nov)
+        monthly_region_summaries.call_local(month_start=nov)
+        for kind in ('monitor', 'region'):
+            assert period_values(self.monthly(kind, nov)) == (50.0, 30, 30)
+
+    def test_quarterly_rollup_fills(self):
+        oct_, nov, dec = pacific(2026, 10), pacific(2026, 11), pacific(2026, 12)
+        self.daily(oct_, pacific(2027, 1))
+        for month in (oct_, nov, dec):
+            monthly_monitor_summaries.call_local(month_start=month)
+            monthly_region_summaries.call_local(month_start=month)
+        quarterly_monitor_summaries.call_local(quarter_start=oct_)
+        quarterly_region_summaries.call_local(quarter_start=oct_)
+        assert period_values(MonitorSummary.objects.get(
+            monitor=self.monitor, resolution=R.QUARTERLY, entry_type='o3', timestamp=oct_)) == (50.0, 92, 92)
+        assert period_values(RegionSummary.objects.get(
+            region=self.region, resolution=R.QUARTERLY, entry_type='o3', timestamp=oct_)) == (50.0, 92, 92)
+
+    def test_reroll_keeps_then_rewrites(self):
+        nov = pacific(2026, 11)
+        self.daily(nov, pacific(2026, 12))
+        monthly_monitor_summaries.call_local(month_start=nov)
+        row = self.monthly('monitor', nov)
+        assert period_values(row) == (50.0, 30, 30)
+        MonitorSummary.objects.filter(
+            monitor=self.monitor, resolution=R.DAILY, entry_type='o3', timestamp=nov,
+        ).update(max_1h=80.0)
+        monthly_monitor_summaries.call_local(month_start=nov)
+        assert period_values(row) == (51.0, 30, 30)
+
+
+class CORefreshTests(TestCase):
+    """The next night's max_8h refresh refills the periods its day ends."""
+    fixtures = ['purple-air.yaml', 'regions.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+
+    def hourly(self, hours, value):
+        for hour in hours:
+            MonitorSummary.objects.create(
+                monitor=self.monitor, timestamp=hour, resolution=R.HOURLY, entry_type='co',
+                processor='', is_complete=True, **_stats(value))
+
+    def test_last_day_refresh_refills_month(self):
+        nov, nov30, dec1 = pacific(2026, 11), pacific(2026, 11, 30), pacific(2026, 12)
+        ts = nov
+        while ts < nov30:
+            MonitorSummary.objects.create(
+                monitor=self.monitor, timestamp=ts, resolution=R.DAILY, entry_type='co',
+                processor='', is_complete=True, max_8h=1.0, **_stats(1.0))
+            ts = period_end('day', ts)
+        self.hourly(day_hours(nov30), 1.0)
+        daily_monitor_summaries(day=nov30)
+        monthly_monitor_summaries.call_local(month_start=nov)
+        month = MonitorSummary.objects.get(
+            monitor=self.monitor, resolution=R.MONTHLY, entry_type='co', timestamp=nov)
+        assert period_values(month)[0] == 1.0  # Nov 30 provisional: 1.0
+
+        # Dec 1 morning: the windows that start late on Nov 30 now see 20s.
+        self.hourly(day_hours(dec1)[:8], 20.0)
+        daily_monitor_summaries(day=dec1)
+
+        last = MonitorSummary.objects.get(
+            monitor=self.monitor, resolution=R.DAILY, entry_type='co', timestamp=nov30)
+        assert last.max_8h == 17.625
+        figures = [v for v in MonitorSummary.objects.filter(
+            monitor=self.monitor, resolution=R.DAILY, entry_type='co',
+            timestamp__gte=nov, timestamp__lt=dec1,
+        ).values_list('max_8h', flat=True) if v is not None]
+        mean, days, expected = period_values(month)
+        assert (days, expected) == (len(figures), 30)
+        assert mean == sum(figures) / len(figures)
+        assert mean > 1.0
+
+    def test_refresh_fills_only_periods_ending_with_the_day(self):
+        with patch('camp.apps.summaries.tasks.fill_period_statistics', return_value={}) as fill:
+            daily_monitor_summaries(day=pacific(2026, 11, 16))
+            assert fill.call_count == 0
+            daily_monitor_summaries(day=pacific(2026, 12))
+        # Nov 30 ends November and the Sep-Nov season, not Q4 or the year.
+        calls = {tuple(c.kwargs['resolutions']): c.args for c in fill.call_args_list}
+        assert calls == {
+            ('month',): ('monitor', None, pacific(2026, 11), pacific(2026, 12)),
+            ('season',): ('monitor', None, pacific(2026, 9), pacific(2026, 12)),
+        }
+        for c in fill.call_args_list:
+            assert [m.entry_type for m in c.kwargs['entry_models']] == ['co']
