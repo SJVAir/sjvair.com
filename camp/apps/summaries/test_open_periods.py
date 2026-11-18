@@ -1,4 +1,6 @@
+from contextlib import contextmanager
 from datetime import datetime
+from unittest import mock
 
 from django.conf import settings
 from django.core.cache import cache
@@ -14,6 +16,7 @@ from camp.api.v2.summaries.serializers import (
 from camp.apps.entries import models as entries
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.regions.models import Region
+from camp.apps.summaries import open_periods as open_periods_module
 from camp.apps.summaries.aggregators import rollup_region_stats, rollup_summaries, tdigest_to_dict
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.open_days import STATS_COLUMNS, build_open_rows
@@ -376,9 +379,10 @@ class BuildOpenPeriodRowsTests(OpenPeriodRowsMixin, TestCase):
         assert set(result) == set(ids)
         assert all(r.count == 1 + 3 for rows in result.values() for r in rows)
         # Plus build_open_rows' stored-yesterday check when yesterday is open.
+        self.hours('monitor', 'o3', pacific(2026, 12, 31), [40.0])
         with CaptureQueriesContext(connection) as ctx:
             build_open_period_rows('monitor', ids, entries.O3, 'year', pacific(2027, 1, 1, 0, 30))
-        assert len(ctx.captured_queries) <= 5
+        assert len(ctx.captured_queries) == 5
         # A month has no stand-ins: one daily read carries stats and figures.
         with CaptureQueriesContext(connection) as ctx:
             build_open_period_rows('monitor', ids, entries.O3, 'month', self.midday)
@@ -393,6 +397,71 @@ class BuildOpenPeriodRowsTests(OpenPeriodRowsMixin, TestCase):
         stats_reads = [q['sql'] for q in ctx.captured_queries if '"tdigest"' in q['sql'] and "'day'" in q['sql']]
         assert len(stats_reads) == 1
         assert 'NOT' in stats_reads[0]
+
+    @contextmanager
+    def exclusion_terms(self):
+        terms = []
+        real = open_periods_module._exclusions
+
+        def spy(*args):
+            terms.extend(real(*args))
+            return terms
+
+        with mock.patch.object(open_periods_module, '_exclusions', side_effect=spy):
+            yield terms
+
+    def test_exclusion_terms_shared(self):
+        # Ten monitors with the same stored months share one exclusion term per
+        # processor set; a processor stored for every monitor joins it.
+        monitors = [self.monitor] + [
+            PurpleAir.objects.create(name=f'X{i}', position='POINT(0 0)', sensor_id=94000 + i)
+            for i in range(9)
+        ]
+        for m in monitors:
+            for processor in ('', 'Other'):
+                for month in (1, 2, 3):
+                    MonitorSummary.objects.create(
+                        monitor=m, timestamp=pacific(2026, month, 1), resolution=R.MONTHLY,
+                        entry_type='o3', processor=processor, is_complete=True, **_stats(40.0),
+                    )
+                MonitorSummary.objects.create(
+                    monitor=m, timestamp=pacific(2026, 3, 5), resolution=R.DAILY, entry_type='o3',
+                    processor=processor, is_complete=True, max_1h=50.0, **_stats(99.0),
+                )
+                MonitorSummary.objects.create(
+                    monitor=m, timestamp=pacific(2026, 4, 5), resolution=R.DAILY, entry_type='o3',
+                    processor=processor, is_complete=True, max_1h=50.0, **_stats(20.0),
+                )
+        ids = [m.pk for m in monitors]
+
+        with self.exclusion_terms() as terms:
+            result = build_open_period_rows('monitor', ids, entries.O3, 'year', self.midday)
+        assert len(terms) == 1
+        for rows in result.values():
+            for row in rows:
+                # Three monthly rows plus April's daily row; March's daily is left out.
+                assert row.count == 4
+                assert row.daily_statistic_days == 2
+
+        # One monitor without an 'Other' March: its runs differ, so a second term.
+        MonitorSummary.objects.filter(
+            monitor=monitors[0], processor='Other', resolution=R.MONTHLY, timestamp=pacific(2026, 3, 1),
+        ).delete()
+        with self.exclusion_terms() as terms:
+            build_open_period_rows('monitor', ids, entries.O3, 'year', self.midday)
+        assert len(terms) == 3
+
+    def test_stored_previous_period_not_read_for_stats(self):
+        # The previous month is stored, so its days are left out of the stats read.
+        now = pacific(2026, 12, 1, 0, 30)
+        self.monthly('monitor', 'o3', pacific(2026, 11, 1), 40.0)
+        self.daily('monitor', 'o3', pacific(2026, 11, 5), 40.0, figure=50.0)
+        self.hours('monitor', 'o3', pacific(2026, 12, 1), [20.0])
+        with CaptureQueriesContext(connection) as ctx:
+            rows = self.rows('monitor', entries.O3, 'month', now=now)
+        assert [r.timestamp for r in rows] == [pacific(2026, 12, 1)]
+        stats_reads = [q['sql'] for q in ctx.captured_queries if '"tdigest"' in q['sql'] and "'day'" in q['sql']]
+        assert len(stats_reads) == 1 and 'NOT' in stats_reads[0]
 
     def test_month_gaps(self):
         # Stored January, February and April stand in; March has only daily rows.

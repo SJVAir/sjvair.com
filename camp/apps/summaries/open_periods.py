@@ -20,7 +20,7 @@ from camp.apps.summaries.open_days import (
 )
 from camp.apps.summaries.peaks import DAILY_FIGURES
 from camp.apps.summaries.period_stats import COARSE_RESOLUTIONS, expected_days, period_figure
-from camp.apps.summaries.periods import period_end, period_start
+from camp.apps.summaries.periods import iter_period_starts, period_end, period_start
 from camp.apps.summaries.schedule import is_settled
 
 MONTH = BaseSummary.Resolution.MONTHLY.value
@@ -50,6 +50,32 @@ def _month_runs(starts):
         else:
             runs.append([start, period_end('month', start)])
     return [tuple(run) for run in runs]
+
+
+def _exclusions(kind, owner, skipped):
+    """
+    Q terms (to OR) matching the daily rows of each series in its skipped
+    months. Series that skip the same months share a term, so a page of owners
+    with the same stored months needs one term per processor set, not one per
+    series (a long OR of per-series terms is costly to plan and JIT).
+    """
+    by_runs = defaultdict(set)  # (processor, runs) -> owners
+    for key, starts in skipped.items():
+        processor = key[1] if kind == 'monitor' else None
+        by_runs[(processor, tuple(_month_runs(starts)))].add(key[0])
+    # Processors sharing both the runs and the exact owner set share a term.
+    groups = defaultdict(set)  # (runs, owners) -> processors
+    for (processor, runs), owners in by_runs.items():
+        groups[(runs, frozenset(owners))].add(processor)
+
+    terms = []
+    for (runs, owners), processors in groups.items():
+        term = Q(**{f'{owner}__in': sorted(owners, key=str)})
+        if kind == 'monitor':
+            term &= Q(processor__in=sorted(processors))
+        term &= reduce(or_, (Q(timestamp__gte=start, timestamp__lt=end) for start, end in runs))
+        terms.append(term)
+    return terms
 
 
 def build_open_period_rows(
@@ -98,11 +124,6 @@ def build_open_period_rows(
             return (row[owner], row['processor'])
         return (row[owner],)
 
-    def series_filter(key):
-        if kind == 'monitor':
-            return {owner: key[0], 'processor': key[1]}
-        return {owner: key[0]}
-
     def period_of(ts):
         start = period_start(resolution, ts)
         return start if start in periods else None
@@ -138,10 +159,17 @@ def build_open_period_rows(
     daily = base.filter(
         resolution=BaseSummary.Resolution.DAILY, timestamp__gte=periods[0], timestamp__lt=span_end,
     )
-    exclusions = [
-        Q(**series_filter(key), timestamp__gte=start, timestamp__lt=end)
-        for key, starts in covered.items() for start, end in _month_runs(starts)
-    ]
+    # Days the stats read leaves out, per series: covered months, and the whole
+    # previous period where its own row is stored (that period is skipped).
+    skipped = defaultdict(set)
+    for key, starts in covered.items():
+        skipped[key] |= starts
+    if len(periods) > 1:
+        previous_months = set(iter_period_starts('month', periods[0], periods[1]))
+        for key, period in stored_coarse:
+            if period == periods[0]:
+                skipped[key] |= previous_months
+    exclusions = _exclusions(kind, owner, skipped)
     figures_apart = bool(statistic and exclusions)
     stats_daily = daily.exclude(reduce(or_, exclusions)) if exclusions else daily
     stats_columns = (*STATS_COLUMNS, *extra, *(() if figures_apart else figure_columns))
@@ -157,7 +185,7 @@ def build_open_period_rows(
 
     if figures_apart:
         series_columns = (owner, 'processor') if kind == 'monitor' else (owner,)
-        for row in daily.order_by('timestamp').values(*series_columns, 'timestamp', statistic):
+        for row in daily.values(*series_columns, 'timestamp', statistic):
             key = series_key(row)
             stored_days[key].add(row['timestamp'])
             period = period_of(row['timestamp'])
