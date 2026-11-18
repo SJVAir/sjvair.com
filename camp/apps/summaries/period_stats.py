@@ -1,13 +1,15 @@
 import math
 from bisect import bisect_left
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from django.db import transaction
 
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
-from camp.apps.summaries.peaks import _owner_group_size, _series_key, peak_entry_models
-from camp.apps.summaries.periods import iter_period_starts, period_end
+from camp.apps.summaries.peaks import (
+    OWNER_GROUP_SIZE, OWNER_HOURS_PER_GROUP, _series_key, peak_entry_models,
+)
+from camp.apps.summaries.periods import iter_period_starts, period_end, period_start
 
 COARSE_RESOLUTIONS = ('month', 'quarter', 'season', 'year')
 PERIOD_FIELDS = ('daily_statistic_mean', 'daily_statistic_days', 'daily_statistic_expected_days')
@@ -24,6 +26,13 @@ def period_figure(figures: list[float], expected: int) -> tuple[float | None, in
     if expected <= 0 or days < math.ceil(0.75 * expected):
         return None, days
     return float(sum(figures) / days), days
+
+
+def _group_size(start, end):
+    """Owners per read: this read returns one row per owner-day, so the span is
+    counted in days against the same budget the hourly reads use."""
+    span_days = max(1, expected_days(start, end))
+    return max(1, min(OWNER_GROUP_SIZE, OWNER_HOURS_PER_GROUP // span_days))
 
 
 def fill_period_statistics(
@@ -83,9 +92,9 @@ def fill_period_statistics(
 
     if not owner_ids:
         return {}
-    stamps = list(coarse.values_list('timestamp', 'resolution').distinct())
-    group_size = _owner_group_size(
-        min(t for t, _ in stamps), max(period_end(r, t) for t, r in stamps))
+    span_start = min(period_start(r, start) for r in resolutions)
+    span_end = max(period_end(r, end - timedelta(microseconds=1)) for r in resolutions)
+    group_size = _group_size(span_start, span_end)
 
     for i in range(0, len(owner_ids), group_size):
         group = owner_ids[i:i + group_size]

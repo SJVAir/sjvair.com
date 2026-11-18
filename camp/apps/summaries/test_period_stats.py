@@ -160,3 +160,17 @@ class FillPeriodStatisticsTests(TestCase):
         row.refresh_from_db()
         assert row.daily_statistic_mean == 50.0
         assert self.fill(start, end) == {}
+
+    def test_dst_month_and_season(self):
+        # March 2026 holds the 23-hour day; Dec 2025-Feb 2026 spans both year ends.
+        self.days('o3', 'max_1h', [float(i) for i in range(31)], pacific(2026, 3))
+        month = self.coarse(R.MONTHLY, pacific(2026, 3), 'o3')
+        self.days('pm25', 'mean_24h', [float(i) for i in range(70)], pacific(2025, 12))
+        season = self.coarse(R.SEASONAL, pacific(2025, 12), 'pm25')
+        self.fill(pacific(2025, 12), pacific(2026, 4))
+        month.refresh_from_db()
+        season.refresh_from_db()
+        assert (month.daily_statistic_expected_days, month.daily_statistic_days) == (31, 31)
+        assert month.daily_statistic_mean == 15.0
+        assert (season.daily_statistic_expected_days, season.daily_statistic_days) == (90, 70)
+        assert season.daily_statistic_mean == 34.5
