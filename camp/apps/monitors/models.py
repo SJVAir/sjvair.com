@@ -106,6 +106,20 @@ class LatestEntry(models.Model):
         self._entry = value
 
 
+def published_rank(latest, lookup, default_stage):
+    '''
+    How well a LatestEntry matches the published reading, lowest first:
+    0 matches `lookup` (Monitor.get_published_lookup), 1 is at the default
+    stage, 2 is anything else. MonitorQuerySet.with_latest_entry ranks the
+    same way in SQL.
+    '''
+    if all(getattr(latest, field) == value for field, value in lookup.items()):
+        return 0
+    if latest.stage == default_stage:
+        return 1
+    return 2
+
+
 class Monitor(models.Model):
     LOCATION = Choices('inside', 'outside')
 
@@ -311,6 +325,35 @@ class Monitor(models.Model):
     @classmethod
     def get_default_calibration(cls, EntryModel):
         return get_default_calibration(cls, EntryModel)
+
+    @classmethod
+    def get_published_lookup(cls, EntryModel, calibration=None):
+        '''
+        Field lookup (stage, and processor when there is one) for the
+        reading published for this monitor type and entry type: the
+        processor named by its DefaultCalibration row, or the default stage
+        when the row is blank or missing. Pass `calibration` to skip the
+        query when the caller already has it.
+
+        The map endpoints and monitor detail all use this, so they agree on
+        which of a monitor's latest entries to show.
+        '''
+        from camp.apps.calibrations.models import DefaultCalibration
+
+        if calibration is None:
+            calibration = (DefaultCalibration.objects
+                .filter(monitor_type=cls.monitor_type, entry_type=EntryModel.entry_type)
+                .values_list('calibration', flat=True)
+                .first()) or ''
+
+        if calibration:
+            config = cls.ENTRY_CONFIG.get(EntryModel, {})
+            for stage_processors in config.get('processors', {}).values():
+                for processor in stage_processors:
+                    if processor.name == calibration:
+                        return {'stage': processor.next_stage, 'processor': calibration}
+
+        return {'stage': cls.get_default_stage(EntryModel)}
 
     def get_device(self):
         return self.device or self.DEVICE or self._meta.verbose_name
@@ -564,29 +607,44 @@ class Monitor(models.Model):
 
     def get_latest_data(self):
         '''
-        Returns a dictionary of the most recent entries for each supported
-        entry type on this monitor. Assumes latest_entries are already filtered
-        by calibration (via .with_latest_entries()).
+        Returns a dictionary of the most recent entry for each entry type on
+        this monitor. A monitor keeps one LatestEntry per processor (e.g. the
+        cleaned and the calibrated PM2.5), so each type shows the published
+        one (see get_published_lookup), the same one the map endpoints show.
         '''
-        from itertools import groupby
+        from camp.apps.calibrations.models import DefaultCalibration
 
-        latests = list(self.latest_entries.all())
+        calibrations = dict(DefaultCalibration.objects
+            .filter(monitor_type=self.monitor_type)
+            .values_list('entry_type', 'calibration'))
 
-        # Batch-fetch actual entry objects grouped by entry type — one query per table
-        # instead of one query per LatestEntry row.
+        by_type = {}
+        for latest in self.latest_entries.all():
+            by_type.setdefault(latest.entry_type, []).append(latest)
+
+        chosen = []
+        for entry_type, rows in by_type.items():
+            entry_model = rows[0].entry_model
+            if entry_model is None:
+                continue
+            lookup = self.get_published_lookup(entry_model, calibrations.get(entry_type, ''))
+            default_stage = self.get_default_stage(entry_model)
+            chosen.append(min(rows, key=lambda row: (
+                published_rank(row, lookup, default_stage),
+                -row.timestamp.timestamp(),
+            )))
+
+        # One query per entry table, not one per LatestEntry row.
         entry_map = {}
-        for entry_type, group in groupby(
-            sorted(latests, key=lambda l: l.entry_type),
-            key=lambda l: l.entry_type
-        ):
-            group = list(group)
-            entry_model = group[0].entry_model
-            for entry in entry_model.objects.filter(pk__in=[l.entry_id for l in group]):
-                entry_map[entry.pk] = entry
+        for latest in chosen:
+            entry_map.setdefault(latest.entry_model, []).append(latest.entry_id)
+        entries = {}
+        for entry_model, ids in entry_map.items():
+            entries.update({entry.pk: entry for entry in entry_model.objects.filter(pk__in=ids)})
 
         data = {}
-        for latest in latests:
-            entry = entry_map.get(latest.entry_id)
+        for latest in chosen:
+            entry = entries.get(latest.entry_id)
             if entry is None:
                 continue
             payload = entry.declared_data()

@@ -871,3 +871,100 @@ class PublishedFixtureTests(TestCase):
         assert rows[('airnow', 'o3')] == ''
         assert rows[('vozbox', 'o3')] == 'VOZBox_QuinnCal'
         assert ('vozbox', 'pm25') not in rows
+
+
+@override_settings(MONITOR_HEALTHY_THRESHOLD=0)
+class PublishedLatestEntryTests(TestCase):
+    '''
+    A PurpleAir keeps a LatestEntry for its cleaned PM2.5 and another for
+    the calibrated one. current/, closest/, at/ and monitor detail all show
+    the one its DefaultCalibration row publishes (PM25_EPA_Oct2021), so the
+    map and the detail page agree.
+    '''
+    fixtures = ['purple-air.yaml', 'default-calibrations.yaml']
+
+    def setUp(self):
+        from django.core.cache import cache
+        from camp.apps.monitors.models import LatestEntry
+
+        cache.clear()
+        self.factory = RequestFactory()
+        self.now = timezone.now().replace(microsecond=0)
+        self.monitor = PurpleAir.objects.get(pk='jLI5fer7S0uyR7eMYNSPpg')
+
+        # Cleaned is created last, so an unordered pick tends to land on it.
+        self.calibrated = self._latest(
+            entry_models.PM25.Stage.CALIBRATED, 'PM25_EPA_Oct2021', Decimal('1771.47'))
+        self.cleaned = self._latest(
+            entry_models.PM25.Stage.CLEANED, 'PM25_LCS_Cleaning', Decimal('1077.00'))
+
+    def _latest(self, stage, processor, value):
+        from camp.apps.monitors.models import LatestEntry
+
+        entry = entry_models.PM25.objects.create(
+            monitor=self.monitor, timestamp=self.now, sensor='', stage=stage, processor=processor,
+            location=self.monitor.location, position=self.monitor.position, value=value,
+        )
+        LatestEntry.objects.create(
+            monitor=self.monitor, entry_type='pm25', entry_id=entry.pk,
+            stage=stage, processor=processor, timestamp=self.now,
+        )
+        return entry
+
+    def _detail(self):
+        kwargs = {'monitor_id': self.monitor.pk}
+        request = self.factory.get(reverse('api:v2:monitors:monitor-detail', kwargs=kwargs))
+        request.monitor = self.monitor
+        response = monitor_detail(request, **kwargs)
+        assert response.status_code == 200
+        return get_response_data(response)['data']['latest']['pm25']
+
+    def _from_list(self, view, name, params=None):
+        from django.core.cache import cache
+        cache.clear()
+        kwargs = {'entry_type': 'pm25'}
+        response = view(self.factory.get(reverse(name, kwargs=kwargs), params or {}), **kwargs)
+        assert response.status_code == 200
+        [monitor] = [m for m in get_response_data(response)['data'] if m['id'] == str(self.monitor.pk)]
+        return monitor['latest']
+
+    def _current(self):
+        return self._from_list(current_data, 'api:v2:monitors:current-data')
+
+    def _closest(self):
+        position = self.monitor.position
+        return self._from_list(closest_monitor, 'api:v2:monitors:monitor-closest',
+            {'latitude': position.y, 'longitude': position.x})
+
+    def _at(self):
+        return self._from_list(monitors_at, 'api:v2:monitors:monitor-at',
+            {'timestamp': self.now.isoformat()})
+
+    def _all(self):
+        return {
+            'detail': self._detail(),
+            'current': self._current(),
+            'closest': self._closest(),
+            'at': self._at(),
+        }
+
+    def test_every_endpoint_shows_the_published_calibration(self):
+        for name, latest in self._all().items():
+            assert latest['processor'] == 'PM25_EPA_Oct2021', name
+            assert Decimal(str(latest['value'])) == Decimal('1771.47'), name
+
+    def test_blank_default_calibration_publishes_the_default_stage(self):
+        from camp.apps.calibrations.models import DefaultCalibration
+        DefaultCalibration.objects.filter(monitor_type='purpleair', entry_type='pm25').update(calibration='')
+
+        for name, latest in self._all().items():
+            assert latest['processor'] == 'PM25_LCS_Cleaning', name
+            assert Decimal(str(latest['value'])) == Decimal('1077.00'), name
+
+    def test_falls_back_to_the_default_stage_without_a_calibrated_entry(self):
+        from camp.apps.monitors.models import LatestEntry
+        LatestEntry.objects.filter(processor='PM25_EPA_Oct2021').delete()
+        self.calibrated.delete()
+
+        for name, latest in self._all().items():
+            assert latest['processor'] == 'PM25_LCS_Cleaning', name
