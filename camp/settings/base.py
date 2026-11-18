@@ -435,7 +435,7 @@ DJANGO_HUEY = {
                 'periodic': True,
                 'workers': int(env('HUEY_PRIMARY_WORKERS', env('HUEY_WORKERS', 4)))
             },
-            'huey_class': 'huey.PriorityRedisHuey',
+            'huey_class': 'camp.utils.huey.PriorityRedisHuey',
             'immediate': bool(int(env('HUEY_IMMEDIATE', DEBUG)))
         },
         'secondary': {
@@ -445,7 +445,7 @@ DJANGO_HUEY = {
                 'periodic': False,
                 'workers': int(env('HUEY_SECONDARY_WORKERS', env('HUEY_WORKERS', 4)))
             },
-            'huey_class': 'huey.PriorityRedisHuey',
+            'huey_class': 'camp.utils.huey.PriorityRedisHuey',
             'immediate': bool(int(env('HUEY_IMMEDIATE', DEBUG)))
         },
         'summaries': {
@@ -455,7 +455,7 @@ DJANGO_HUEY = {
                 'periodic': True,
                 'workers': int(env('HUEY_SUMMARIES_WORKERS', env('HUEY_WORKERS', 2)))
             },
-            'huey_class': 'huey.PriorityRedisHuey',
+            'huey_class': 'camp.utils.huey.PriorityRedisHuey',
             'immediate': bool(int(env('HUEY_IMMEDIATE', DEBUG)))
         },
     }
