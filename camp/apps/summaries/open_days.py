@@ -41,7 +41,7 @@ def open_days(now: datetime) -> list[datetime]:
     return [period_start('day', today - timedelta(hours=1)), today]
 
 
-def _daily_statistic(entry_model):
+def daily_statistic(entry_model):
     statistic = getattr(getattr(entry_model, 'Levels', None), 'daily_statistic', None)
     return statistic if statistic in DAILY_FIGURES else None
 
@@ -106,7 +106,7 @@ def build_open_rows(
         fields = (owner, 'processor') if kind == 'monitor' else (owner,)
         stored = set(stored_qs.values_list(*fields))
 
-    statistic = _daily_statistic(entry_model)
+    statistic = daily_statistic(entry_model)
     standard = standard_for(entry_model) if statistic else None
 
     result = defaultdict(list)

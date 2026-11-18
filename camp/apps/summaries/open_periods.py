@@ -7,6 +7,8 @@ monthly and daily rows plus the open days, and never saved.
 import hashlib
 from collections import defaultdict
 from datetime import datetime, timedelta
+from functools import reduce
+from operator import or_
 
 from django.core.cache import cache
 from django.db.models import Q
@@ -14,7 +16,7 @@ from django.db.models import Q
 from camp.apps.summaries.aggregators import rollup_region_stats, rollup_summaries
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.open_days import (
-    OPEN_ROWS_CACHE_SECONDS, STATS_COLUMNS, _daily_statistic, build_open_rows, open_days,
+    OPEN_ROWS_CACHE_SECONDS, STATS_COLUMNS, build_open_rows, daily_statistic, open_days,
 )
 from camp.apps.summaries.peaks import DAILY_FIGURES
 from camp.apps.summaries.period_stats import COARSE_RESOLUTIONS, expected_days, period_figure
@@ -39,6 +41,17 @@ def open_periods(resolution: str, now: datetime) -> list[datetime]:
     return [period_start(resolution, current - timedelta(hours=1)), current]
 
 
+def _month_runs(starts):
+    """[start, end) spans of consecutive months in a set of month starts."""
+    runs = []
+    for start in sorted(starts):
+        if runs and runs[-1][1] == start:
+            runs[-1][1] = period_end('month', start)
+        else:
+            runs.append([start, period_end('month', start)])
+    return [tuple(run) for run in runs]
+
+
 def build_open_period_rows(
     kind: str, owner_ids: list, entry_model, resolution: str, now: datetime,
     processor_q: Q | None = None,
@@ -57,7 +70,8 @@ def build_open_period_rows(
     stored coarse rows. `processor_q` filters monitor series.
 
     Returns {owner_id: [rows]} ordered by series then period; owners with no
-    rows are absent. Runs one coarse read, one daily read and build_open_rows.
+    rows are absent. Runs one coarse read, one daily stats read, a daily figure read when
+    stored months stand in for days, and build_open_rows.
     """
     if kind == 'monitor':
         model, owner = MonitorSummary, 'monitor_id'
@@ -72,7 +86,7 @@ def build_open_period_rows(
     today = period_start('day', now)
     span_end = period_end(resolution, periods[-1])
     entry_type = entry_model.entry_type
-    statistic = _daily_statistic(entry_model)
+    statistic = daily_statistic(entry_model)
     figure_columns = (statistic,) if statistic else ()
 
     base = model.objects.filter(**{f'{owner}__in': owner_ids}, entry_type=entry_type)
@@ -83,6 +97,11 @@ def build_open_period_rows(
         if kind == 'monitor':
             return (row[owner], row['processor'])
         return (row[owner],)
+
+    def series_filter(key):
+        if kind == 'monitor':
+            return {owner: key[0], 'processor': key[1]}
+        return {owner: key[0]}
 
     def period_of(ts):
         start = period_start(resolution, ts)
@@ -113,19 +132,37 @@ def build_open_period_rows(
     for (key, period), rows in months.items():
         stats_inputs[(key, period)].extend(rows)
 
+    # The stats read skips the days a stored monthly row stands in for, so their
+    # digests are never fetched. When it skips any, a figure-only read covers
+    # every stored daily row (the figures and the stored-day check need them all).
     daily = base.filter(
         resolution=BaseSummary.Resolution.DAILY, timestamp__gte=periods[0], timestamp__lt=span_end,
-    ).order_by('timestamp').values(owner, 'timestamp', *STATS_COLUMNS, *extra, *figure_columns)
-    for row in daily:
+    )
+    exclusions = [
+        Q(**series_filter(key), timestamp__gte=start, timestamp__lt=end)
+        for key, starts in covered.items() for start, end in _month_runs(starts)
+    ]
+    figures_apart = bool(statistic and exclusions)
+    stats_daily = daily.exclude(reduce(or_, exclusions)) if exclusions else daily
+    stats_columns = (*STATS_COLUMNS, *extra, *(() if figures_apart else figure_columns))
+    for row in stats_daily.order_by('timestamp').values(owner, 'timestamp', *stats_columns):
         key = series_key(row)
         stored_days[key].add(row['timestamp'])
         period = period_of(row['timestamp'])
         if period is None:
             continue
-        if period_start('month', row['timestamp']) not in covered[key]:
-            stats_inputs[(key, period)].append(row)
-        if statistic and row[statistic] is not None:
+        stats_inputs[(key, period)].append(row)
+        if statistic and not figures_apart and row[statistic] is not None:
             figures[(key, period)].append(row[statistic])
+
+    if figures_apart:
+        series_columns = (owner, 'processor') if kind == 'monitor' else (owner,)
+        for row in daily.order_by('timestamp').values(*series_columns, 'timestamp', statistic):
+            key = series_key(row)
+            stored_days[key].add(row['timestamp'])
+            period = period_of(row['timestamp'])
+            if period is not None and row[statistic] is not None:
+                figures[(key, period)].append(row[statistic])
 
     open_rows = build_open_rows(
         kind, owner_ids, entry_model, now, processor_q=processor_q, with_tdigest=True,
@@ -137,7 +174,8 @@ def build_open_period_rows(
             period = period_of(open_row.timestamp)
             if period is None or open_row.timestamp in stored_days[key]:
                 continue
-            stats_inputs[(key, period)].append(record)
+            if period_start('month', open_row.timestamp) not in covered[key]:
+                stats_inputs[(key, period)].append(record)
             figure = getattr(open_row, statistic) if statistic else None
             if figure is not None:
                 figures[(key, period)].append(figure)

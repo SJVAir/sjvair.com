@@ -368,19 +368,84 @@ class BuildOpenPeriodRowsTests(OpenPeriodRowsMixin, TestCase):
                     processor='', is_complete=True, max_1h=50.0, **_stats(40.0),
                 )
         ids = [m.pk for m in monitors]
-        # Monthly, daily and the open days' hourly read (plus its stored-yesterday check
-        # when yesterday is open).
+        # The coarse read, the daily stats read (October's days left out), the daily
+        # figure read and the open days' hourly read.
         with CaptureQueriesContext(connection) as ctx:
             result = build_open_period_rows('monitor', ids, entries.O3, 'quarter', self.midday)
-        assert len(ctx.captured_queries) == 3
+        assert len(ctx.captured_queries) == 4
         assert set(result) == set(ids)
+        assert all(r.count == 1 + 3 for rows in result.values() for r in rows)
+        # Plus build_open_rows' stored-yesterday check when yesterday is open.
         with CaptureQueriesContext(connection) as ctx:
             build_open_period_rows('monitor', ids, entries.O3, 'year', pacific(2027, 1, 1, 0, 30))
-        assert len(ctx.captured_queries) <= 4
-        # A month needs no monthly stand-ins, but the previous month's stored check is the same read.
+        assert len(ctx.captured_queries) <= 5
+        # A month has no stand-ins: one daily read carries stats and figures.
         with CaptureQueriesContext(connection) as ctx:
             build_open_period_rows('monitor', ids, entries.O3, 'month', self.midday)
-        assert len(ctx.captured_queries) <= 3
+        assert len(ctx.captured_queries) == 3
+
+    def test_covered_days_not_fetched_for_stats(self):
+        self.monthly('monitor', 'o3', pacific(2026, 10, 1), 33.0)
+        self.daily('monitor', 'o3', pacific(2026, 10, 5), 99.0, figure=60.0)
+        self.daily('monitor', 'o3', pacific(2026, 11, 5), 40.0, figure=50.0)
+        with CaptureQueriesContext(connection) as ctx:
+            self.rows('monitor', entries.O3, 'quarter')
+        stats_reads = [q['sql'] for q in ctx.captured_queries if '"tdigest"' in q['sql'] and "'day'" in q['sql']]
+        assert len(stats_reads) == 1
+        assert 'NOT' in stats_reads[0]
+
+    def test_month_gaps(self):
+        # Stored January, February and April stand in; March has only daily rows.
+        stored = [self.monthly('monitor', 'o3', pacific(2026, m, 1), 30.0 + m) for m in (1, 2, 4)]
+        march = [self.daily('monitor', 'o3', pacific(2026, 3, d), 20.0, figure=50.0) for d in (1, 2)]
+        self.daily('monitor', 'o3', pacific(2026, 4, 1), 99.0, figure=50.0)
+        [row] = self.rows('monitor', entries.O3, 'year')
+        self.assert_stats(row, self.rollup('monitor', stored + march))
+        assert row.daily_statistic_days == 3
+
+    def test_open_yesterday_in_covered_month(self):
+        # 01:30 on Dec 1: November's monthly row is stored but Nov 30 is still an
+        # open day with no stored daily row. Its stats are in the monthly row; its
+        # figure still counts.
+        now = pacific(2026, 12, 1, 1, 30)
+        november = self.monthly('monitor', 'o3', pacific(2026, 11, 1), 40.0)
+        self.daily('monitor', 'o3', pacific(2026, 11, 5), 40.0, figure=50.0)
+        self.hours('monitor', 'o3', pacific(2026, 11, 30), [70.0] * 24)
+        today = self.hours('monitor', 'o3', pacific(2026, 12, 1), [20.0])
+        [row] = self.rows('monitor', entries.O3, 'quarter', now=now)
+        self.assert_stats(row, self.rollup('monitor', [november, *today]))
+        assert row.daily_statistic_days == 3
+        assert row.daily_statistic_expected_days == 62
+
+    def check_new_year_season(self, kind):
+        now = pacific(2027, 1, 15, 12)
+        december = self.monthly(kind, 'o3', pacific(2026, 12, 1), 33.0)
+        for d in days_between(pacific(2026, 12, 1), pacific(2027, 1, 1)):
+            self.daily(kind, 'o3', d, 99.0, figure=60.0)
+        january = [
+            self.daily(kind, 'o3', d, 40.0, figure=50.0)
+            for d in days_between(pacific(2027, 1, 1), pacific(2027, 1, 15))
+        ]
+        today = self.hours(kind, 'o3', pacific(2027, 1, 15), [40.0, 70.0])
+
+        [season] = self.rows(kind, entries.O3, 'season', now=now)
+        assert season.timestamp == pacific(2026, 12, 1)
+        self.assert_stats(season, self.rollup(kind, [december, *january, *today]))
+        assert season.daily_statistic_expected_days == 46
+        assert season.daily_statistic_days == 46
+        assert abs(season.daily_statistic_mean - (31 * 60.0 + 14 * 50.0 + 70.0) / 46) < 1e-9
+
+        [year] = self.rows(kind, entries.O3, 'year', now=now)
+        assert year.timestamp == pacific(2027, 1, 1)
+        self.assert_stats(year, self.rollup(kind, [*january, *today]))
+        assert year.daily_statistic_expected_days == 15
+        assert year.daily_statistic_days == 15
+
+    def test_new_year_season_monitor(self):
+        self.check_new_year_season('monitor')
+
+    def test_new_year_season_region(self):
+        self.check_new_year_season('region')
 
     def test_build_open_rows_with_tdigest(self):
         self.hours('monitor', 'o3', self.today, [40.0, 90.0])
