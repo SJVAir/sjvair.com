@@ -49,6 +49,9 @@ class MonitorSummarySerializer(serializers.Serializer):
         'max_1h',
         'max_8h',
         'mean_24h',
+        'daily_statistic_mean',
+        'daily_statistic_days',
+        'daily_statistic_expected_days',
         'is_complete',
         ('is_final', _is_final),
     ]
@@ -88,6 +91,9 @@ class RegionSummarySerializer(serializers.Serializer):
         'max_1h',
         'max_8h',
         'mean_24h',
+        'daily_statistic_mean',
+        'daily_statistic_days',
+        'daily_statistic_expected_days',
         'station_count',
         ('is_final', _is_final),
     ]

@@ -1867,3 +1867,40 @@ class RowIsFinalTests(TestCase):
         end = pacific(2026, 11, 3)
         assert not row_is_final('day', day, 'temperature', now=end + timedelta(hours=6, minutes=59))
         assert row_is_final('day', day, 'temperature', now=end + timedelta(hours=7))
+
+
+class SummarySerializerFieldTests(TestCase):
+    fixtures = ['purple-air.yaml', 'regions.yaml']
+    FIELDS = ['daily_statistic_mean', 'daily_statistic_days', 'daily_statistic_expected_days']
+
+    def _stats(self):
+        digest = TDigest()
+        digest.batch_update([10.0])
+        return dict(
+            entry_type='pm25', count=1, expected_count=1, sum_value=10.0, sum_of_squares=100.0,
+            minimum=10.0, maximum=10.0, mean=10.0, stddev=0.0, p25=10.0, p75=10.0,
+            tdigest=tdigest_to_dict(digest),
+        )
+
+    def test_period_fields(self):
+        from camp.api.v2.summaries.serializers import MonitorSummarySerializer, RegionSummarySerializer
+        monitor = PurpleAir.objects.first()
+        region = Region.objects.first()
+        ts = timezone.make_aware(datetime(2026, 3, 1))
+        period = dict(daily_statistic_mean=12.5, daily_statistic_days=25, daily_statistic_expected_days=31)
+        m = MonitorSummary.objects.create(
+            monitor=monitor, timestamp=ts, resolution=MonitorSummary.Resolution.MONTHLY, processor='',
+            **self._stats(), **period)
+        r = RegionSummary.objects.create(
+            region=region, timestamp=ts, resolution=RegionSummary.Resolution.MONTHLY, station_count=1,
+            **self._stats(), **period)
+        hourly = MonitorSummary.objects.create(
+            monitor=monitor, timestamp=ts, resolution=MonitorSummary.Resolution.HOURLY, processor='',
+            **self._stats())
+        for row, serializer in ((m, MonitorSummarySerializer), (r, RegionSummarySerializer)):
+            data = serializer(row).serialize()
+            assert [data[f] for f in self.FIELDS] == [12.5, 25, 31]
+            keys = list(data)
+            assert keys[keys.index('mean_24h') + 1:keys.index('mean_24h') + 4] == self.FIELDS
+        data = MonitorSummarySerializer(hourly).serialize()
+        assert [data[f] for f in self.FIELDS] == [None, None, None]

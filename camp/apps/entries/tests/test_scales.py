@@ -93,3 +93,26 @@ class DailyStatisticLabelTests(TestCase):
         data = levels.O3.to_scale('o3', 'Ozone', 'ppb').to_json()
         assert data['daily_statistic_label'] == 'Highest 1-hour average'
         assert type(data['daily_statistic_label']) is str
+
+
+class PeriodStatisticTests(TestCase):
+    def test_period_statistic(self):
+        o3 = levels.O3.to_scale('o3', 'Ozone', 'ppb').to_json()
+        assert o3['period_statistic'] == 'daily_statistic_mean'
+        assert o3['period_statistic_label'] == 'Average of daily highest 1-hour averages'
+        co = levels.CO.to_scale('co', 'CO', 'ppm').to_json()
+        assert co['period_statistic_label'] == 'Average of daily highest 8-hour averages'
+        pm = levels.PM25.to_scale('pm25', 'PM2.5', 'µg/m³').to_json()
+        assert pm['period_statistic_label'] == 'Average of 24-hour averages'
+        assert type(pm['period_statistic_label']) is str
+
+    def test_none_without_daily_statistic(self):
+        from camp.apps.calheatscore.scales import get_heat_scale
+        for data in (get_heat_scale().to_json(), levels.AQI.to_scale('aqi', 'AQI', 'AQI').to_json()):
+            assert data['period_statistic'] is None
+            assert data['period_statistic_label'] is None
+
+    def test_key_order(self):
+        keys = list(levels.O3.to_scale('o3', 'Ozone', 'ppb').to_json())
+        i = keys.index('daily_statistic_label')
+        assert keys[i + 1:i + 3] == ['period_statistic', 'period_statistic_label']

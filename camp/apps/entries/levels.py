@@ -166,6 +166,15 @@ DAILY_STATISTIC_LABELS = {
     'max_8h': _('Highest 8-hour average'),
 }
 
+# The average of a period's daily figures, on monthly-and-coarser summaries.
+PERIOD_STATISTIC_FIELD = 'daily_statistic_mean'
+
+PERIOD_STATISTIC_LABELS = {
+    'max_1h': _('Average of daily highest 1-hour averages'),
+    'max_8h': _('Average of daily highest 8-hour averages'),
+    'mean_24h': _('Average of 24-hour averages'),
+}
+
 
 class LevelSet:
     def __init__(self, *args: Level, averaging_hours: Optional[int] = None, **kwargs: Level):
@@ -247,6 +256,8 @@ class LevelSet:
             averaging_hours=self.averaging_hours,
             daily_statistic=self.daily_statistic,
             daily_statistic_label=self.daily_statistic_label,
+            period_statistic=PERIOD_STATISTIC_FIELD if self.daily_statistic else None,
+            period_statistic_label=PERIOD_STATISTIC_LABELS.get(self.daily_statistic),
             levels=tuple(
                 ScaleLevel(
                     key=level.key,

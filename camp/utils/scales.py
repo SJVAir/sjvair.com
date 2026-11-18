@@ -27,6 +27,8 @@ class Scale:
     averaging_hours: int | None = None
     daily_statistic: str | None = None
     daily_statistic_label: str | None = None
+    period_statistic: str | None = None
+    period_statistic_label: str | None = None
 
     def to_json(self) -> dict:
         return {
@@ -38,5 +40,7 @@ class Scale:
             'averaging_hours': self.averaging_hours,
             'daily_statistic': self.daily_statistic,
             'daily_statistic_label': None if self.daily_statistic_label is None else str(self.daily_statistic_label),
+            'period_statistic': self.period_statistic,
+            'period_statistic_label': None if self.period_statistic_label is None else str(self.period_statistic_label),
             'levels': [asdict(level) for level in self.levels],
         }
