@@ -48,6 +48,7 @@ def _daily_statistic(entry_model):
 
 def build_open_rows(
     kind: str, owner_ids: list, entry_model, now: datetime, processor_q: Q | None = None,
+    with_tdigest: bool = False,
 ) -> dict:
     """
     Unsaved DAILY rows (MonitorSummary or RegionSummary) for each series of
@@ -58,6 +59,8 @@ def build_open_rows(
     region hour with a mean above SENTINEL_MAX: so far for today, strict for an
     earlier day (its max_8h windows may reach into the next day's first hours).
     `processor_q` filters monitor series; None means every processor.
+    `with_tdigest` keeps each row's merged t-digest (the open periods roll
+    these rows up further); the open-day endpoints leave it off.
 
     Returns {owner_id: [rows]} ordered by series then day; owners with no rows
     are absent. Runs one hourly query, plus one stored-daily query when
@@ -118,11 +121,11 @@ def build_open_rows(
                 continue
             day_end = period_end('day', day)
             day_rows = [r for r in rows if day <= r['timestamp'] < day_end]
-            # Open rows are never saved, so the merged t-digest isn't built.
+            # Open rows are never saved, so the merged t-digest is only built on request.
             if kind == 'monitor':
-                stats = rollup_summaries(day_rows, with_tdigest=False)
+                stats = rollup_summaries(day_rows, with_tdigest=with_tdigest)
             else:
-                stats = rollup_region_stats(day_rows, with_tdigest=False)
+                stats = rollup_region_stats(day_rows, with_tdigest=with_tdigest)
             if stats is None:
                 continue
 
