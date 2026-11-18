@@ -1,8 +1,11 @@
+from io import StringIO
 from datetime import datetime
 from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.gis.geos import Point
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 from tdigest import TDigest
 
@@ -305,3 +308,67 @@ class CORefreshTests(TestCase):
         }
         for c in fill.call_args_list:
             assert [m.entry_type for m in c.kwargs['entry_models']] == ['co']
+
+
+class FillPeriodStatisticsCommandTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        ts = pacific(2026, 11)
+        for _ in range(30):
+            MonitorSummary.objects.create(
+                monitor=self.monitor, timestamp=ts, resolution=R.DAILY, entry_type='o3',
+                processor='', max_1h=50.0, **_stats(1.0))
+            ts = period_end('day', ts)
+        self.row = MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 11), resolution=R.MONTHLY,
+            entry_type='o3', processor='', **_stats(1.0))
+        self.args = ('2026-11-01', '2026-12-01', '--monitor', str(self.monitor.pk))
+
+    def run_command(self, *args):
+        out = StringIO()
+        call_command('fill_period_statistics', *args, stdout=out)
+        return out.getvalue()
+
+    def test_requires_scope(self):
+        with self.assertRaises(CommandError) as ctx:
+            self.run_command('2026-11-01', '2026-12-01')
+        message = str(ctx.exception)
+        for flag in ('--monitor', '--monitor-type', '--region', '--region-type'):
+            assert flag in message
+
+    def test_rejects_day_resolution(self):
+        with self.assertRaises(CommandError):
+            self.run_command(*self.args, '--resolution', 'day')
+
+    def test_rejects_non_peak_entry_type(self):
+        with self.assertRaises(CommandError) as ctx:
+            self.run_command(*self.args, '--entry-type', 'temperature')
+        assert 'o3' in str(ctx.exception)
+
+    def test_fills_and_is_idempotent(self):
+        out = self.run_command(*self.args)
+        assert out.startswith('Range:')
+        assert 'monitor o3: 1 row changed' in out
+        assert out.rstrip().endswith('Done.')
+        self.row.refresh_from_db()
+        assert (self.row.daily_statistic_mean, self.row.daily_statistic_days,
+                self.row.daily_statistic_expected_days) == (50.0, 30, 30)
+
+        out = self.run_command(*self.args)
+        assert 'monitor period statistics: nothing to do' in out
+
+    def test_dry_run_writes_nothing(self):
+        out = self.run_command(*self.args, '--dry-run')
+        assert 'monitor o3: 1 row would change' in out
+        assert out.rstrip().endswith('Dry run done.')
+        self.row.refresh_from_db()
+        assert self.row.daily_statistic_mean is None
+        assert self.row.daily_statistic_days is None
+
+    def test_resolution_filter(self):
+        out = self.run_command(*self.args, '--resolution', 'year')
+        assert 'nothing to do' in out
+        self.row.refresh_from_db()
+        assert self.row.daily_statistic_mean is None
