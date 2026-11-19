@@ -1,7 +1,8 @@
 """
 The rows of the month, quarter, season and year holding yesterday, through
 yesterday, written each night (`current_monitor_periods`,
-`current_region_periods`) and by rebuilds whose range reaches yesterday.
+`current_region_periods`) and by backfills, rebuilds and repairs whose range
+reaches into them.
 """
 import logging
 import math
@@ -30,10 +31,14 @@ CURRENT_PERIODS = (
 )
 
 
-def reaches_yesterday(end: datetime, now: datetime) -> bool:
-    """Whether a rebuild range ending at `end` includes yesterday (Pacific) as of `now`."""
-    today = period_start('day', now)
-    return end > period_start('day', today - timedelta(microseconds=1))
+def touches_current_periods(end: datetime, now: datetime) -> bool:
+    """
+    Whether a range ending at `end` rewrote days in any period holding
+    yesterday (Pacific) as of `now`: the earliest of them (the year, or a
+    season starting in December) starts before `end`.
+    """
+    yesterday = period_start('day', period_start('day', now) - timedelta(microseconds=1))
+    return any(end > period_start(resolution, yesterday) for resolution, _, _ in CURRENT_PERIODS)
 
 
 def _kind(kind):
@@ -48,6 +53,7 @@ def _kind(kind):
 
 def roll_current_periods(
     kind: str, ids: list | None = None, now: datetime | None = None, *, clock=timezone.now,
+    rewritten_until: datetime | None = None,
 ) -> dict:
     """
     Write, for each resolution, the row of the one period holding yesterday,
@@ -62,6 +68,12 @@ def roll_current_periods(
     or a backfill); the others' inputs haven't changed, so their partial rows
     get their expected days moved by one UPDATE per resolution. An ended
     period rolls every owner.
+
+    `rewritten_until` is for a caller that has just rewritten the days before
+    it (a backfill, rebuild or repair range's end): a period starting at or
+    after it is left alone (nothing in it changed), and one starting before it
+    rolls `ids`, or with no `ids` every owner, not the nightly set, so an
+    owner that didn't report yesterday still gets its rewritten days.
 
     Start of today is checked again before every write (and by the rollups
     before their upsert and fills): once midnight has passed since `now`, the
@@ -93,10 +105,13 @@ def roll_current_periods(
         full_end = period_end(resolution, start)
         end = min(full_end, today)
         partial = full_end > today
+        if rewritten_until is not None and rewritten_until <= start:
+            continue
+        nightly = ids is None and rewritten_until is None and partial
 
         if ids is not None:
             owners = ids
-        elif partial:
+        elif nightly:
             owners = _nightly_owners(model, owner, target, source, start, today, yesterday)
         else:
             owners = None
@@ -105,18 +120,27 @@ def roll_current_periods(
             # Counted before the write: the nightly owners without a row leave
             # the sub-select once the rollup gives them one.
             owners_rolled = None if owners is None else _count(owners)
-            if not guard():
-                return stop(resolution)
-            if not rollup(target, source, start, end, owners, is_partial=partial, guard=guard, now=now):
-                return stop(resolution)
-            if ids is None and partial:
-                # The rollup's fill re-reads `owners` after its upsert, so it
-                # skips the rows it just wrote for owners that had none.
+            # One transaction per resolution, so a reader (the integrity check,
+            # which with several workers can overlap this run) never sees a
+            # row the upsert wrote before its fill gave it the period figure.
+            # A stop inside it rolls the whole resolution back: an upsert the
+            # rollup's own guard stopped before its fill must not commit
+            # (on a period's first night it would replace final rows).
+            with transaction.atomic():
                 if not guard():
                     return stop(resolution)
-                fill_period_statistics(
-                    kind, _unfilled(model, owner, target, start), start, full_end,
-                    resolutions=[target], now=now)
+                if not rollup(target, source, start, end, owners, is_partial=partial, guard=guard, now=now):
+                    transaction.set_rollback(True)
+                    return stop(resolution)
+                if nightly:
+                    # The rollup's fill re-reads `owners` after its upsert, so it
+                    # skips the rows it just wrote for owners that had none.
+                    if not guard():
+                        transaction.set_rollback(True)
+                        return stop(resolution)
+                    fill_period_statistics(
+                        kind, _unfilled(model, owner, target, start), start, full_end,
+                        resolutions=[target], now=now)
             if owners_rolled is None:
                 owners_rolled = (
                     model.objects.filter(resolution=target, timestamp=start)
@@ -124,7 +148,7 @@ def roll_current_periods(
                 )
             result['rolled'][resolution] = owners_rolled
 
-        if ids is None and partial:
+        if nightly:
             # `owners` no longer holds the owners just given a first row, but
             # their rows already have today's expected days, so the UPDATE skips them.
             refreshed = _refresh(model, owner, target, start, today, owners, guard)

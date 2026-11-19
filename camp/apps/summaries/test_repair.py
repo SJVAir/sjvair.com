@@ -550,7 +550,7 @@ class RepairSummariesTests(TestCase):
         # The clock check inside the roll reads the real time; hold it at NOW.
         with patch(
             'camp.apps.summaries.management.commands.repair_summaries.roll_current_periods',
-            side_effect=lambda kind, ids, now: roll_current_periods(kind, ids, now, clock=lambda: now),
+            side_effect=lambda kind, ids, now, **kw: roll_current_periods(kind, ids, now, clock=lambda: now, **kw),
         ):
             out = self._repair(start='2026-10-25', end='2026-11-04')
         assert 'current periods: 2 owners' in out
@@ -585,11 +585,46 @@ class RepairSummariesTests(TestCase):
         assert not MonitorSummary.objects.filter(is_partial=True).exists()
         assert not RegionSummary.objects.filter(is_partial=True).exists()
 
-    def test_repair_before_yesterday_prints_no_current_periods(self):
+    def test_repair_inside_the_current_month_writes_current_periods(self):
+        # Ends before yesterday (Nov 3) but rewrote Nov 1: November is re-rolled too.
         self._seed_through_yesterday()
-        out = self._repair(start='2026-10-25', end='2026-11-02')
+        with patch(
+            'camp.apps.summaries.management.commands.repair_summaries.roll_current_periods',
+            side_effect=lambda kind, ids, now, **kw: roll_current_periods(kind, ids, now, clock=lambda: now, **kw),
+        ) as roll:
+            out = self._repair(start='2026-10-25', end='2026-11-02')
+        assert 'current periods: 2 owners' in out
+        assert all(c.kwargs == {'rewritten_until': _pacific(2026, 11, 2)} for c in roll.call_args_list)
+        assert MonitorSummary.objects.filter(
+            monitor=self.monitor, resolution=R.MONTHLY, timestamp=_pacific(2026, 11, 1), is_partial=True,
+        ).exists()
+
+    def test_repair_current_periods_read_the_clock_after_the_re_rolls(self):
+        from camp.apps.summaries.management.commands.repair_summaries import Command
+        self._seed_through_yesterday()
+        later = self.NOW + timedelta(hours=13)  # past midnight, Nov 5
+        clock = [self.NOW]
+
+        def re_roll(*args, **kwargs):
+            clock[0] = later
+
+        done = {'rolled': {}, 'refreshed': {}, 'stopped': False}
+        with patch('django.utils.timezone.now', side_effect=lambda: clock[0]), \
+                patch.object(Command, '_repair_resolution', side_effect=re_roll), \
+                patch('camp.apps.summaries.management.commands.repair_summaries.roll_current_periods',
+                      return_value=done) as roll:
+            call_command(
+                'repair_summaries', '2026-10-25', '2026-11-04',
+                '--monitor', str(self.monitor.pk), '--region', str(self.region.pk), stdout=StringIO(),
+            )
+        assert [c.args[2] for c in roll.call_args_list] == [later, later]
+
+    def test_repair_before_the_current_periods_prints_no_current_periods(self):
+        self._seed_through_yesterday()
+        out = self._repair(start='2025-10-25', end='2025-11-02')
         assert 'current periods' not in out
         assert not MonitorSummary.objects.filter(is_partial=True).exists()
+
 
 class FindMisalignedTests(TestCase):
     fixtures = ['purple-air.yaml']

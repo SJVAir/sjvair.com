@@ -17,7 +17,7 @@ from camp.apps.regions.models import Region
 from camp.apps.summaries.periods import iter_hours, period_end, period_start
 from camp.apps.summaries.schedule import HOURLY_FIRE_MINUTE, LATE_RUN_WARNING, hour_for_run, pacific_crontab
 from camp.apps.summaries.aggregators import compute_monitor_summary, compute_region_summary, rollup_summaries, rollup_region_stats
-from camp.apps.summaries.current_periods import reaches_yesterday, roll_current_periods
+from camp.apps.summaries.current_periods import roll_current_periods, touches_current_periods
 from camp.apps.summaries.backfill import (
     backfill_monitor_hours,
     backfill_region_hours,
@@ -236,6 +236,40 @@ def _log_skipped(result):
         logger.warning('Daily peaks skipped %d sentinel hourly value(s)', result.skipped)
 
 
+def _upsert_and_fill(
+    kind, model, rows, ids, target_resolution, window_start, window_end,
+    *, guard, now, unique_fields, update_fields,
+):
+    """
+    Upsert a rollup's rows and fill their daily peaks or period daily statistic
+    in one transaction, so a reader (the integrity check, the API) never sees a
+    new row before its fill. `guard` is checked before the upsert and again
+    before the fills; a stop after the upsert rolls it back, so a stopped
+    rollup writes nothing. Returns False when the guard stopped it.
+    """
+    if not rows:
+        return True
+    with transaction.atomic():
+        if guard is not None and not guard():
+            return False
+        model.objects.bulk_create(
+            rows, update_conflicts=True,
+            unique_fields=unique_fields, update_fields=update_fields,
+        )
+        if guard is not None and not guard():
+            transaction.set_rollback(True)
+            return False
+        # The peaks aren't in update_fields, so the upsert keeps them; the fill rewrites them.
+        if target_resolution == BaseSummary.Resolution.DAILY:
+            _log_skipped(fill_daily_peaks(kind, ids, window_start, window_end))
+        # Same for the period daily statistic on coarse rows.
+        if target_resolution in COARSE_RESOLUTIONS:
+            fill_period_statistics(
+                kind, ids, window_start, window_end,
+                resolutions=[target_resolution], now=now)
+    return True
+
+
 def rollup_monitor_summaries(
     target_resolution, source_resolution, window_start, window_end, monitor_ids=None,
     *, is_partial=False, guard=None, now=None,
@@ -254,11 +288,10 @@ def rollup_monitor_summaries(
     Optionally scoped to a list of monitor_ids (for targeted backfill/recalculation).
 
     Every row written gets `is_partial`, so a full write clears the flag. `guard`
-    is called right before the upsert and again before the fills; when it
-    returns False nothing more is written. Returns True when it wrote (or had
-    nothing to write), False when the guard stopped it. False is "stop now",
-    not "nothing was written": the second check can stop it after the upsert,
-    with the rows written and their fills skipped. `now` is passed to
+    is called right before the upsert and again before the fills; the upsert
+    and the fills share one transaction, so when it returns False nothing is
+    written. Returns True when it wrote (or had nothing to write), False when
+    the guard stopped it. `now` is passed to
     `fill_period_statistics` (a current period expects the days through the
     day before it).
     """
@@ -293,30 +326,16 @@ def rollup_monitor_summaries(
             **stats,
         ))
 
-    if to_upsert:
-        if guard is not None and not guard():
-            return False
-        MonitorSummary.objects.bulk_create(
-            to_upsert,
-            update_conflicts=True,
-            unique_fields=['monitor', 'entry_type', 'processor', 'resolution', 'timestamp'],
-            update_fields=[
-                'count', 'expected_count', 'sum_value', 'sum_of_squares',
-                'minimum', 'maximum', 'mean', 'stddev', 'p25', 'p75',
-                'tdigest', 'is_complete', 'is_partial',
-            ],
-        )
-        if guard is not None and not guard():
-            return False
-        # The peaks aren't in update_fields, so the upsert keeps them; the fill rewrites them.
-        if target_resolution == BaseSummary.Resolution.DAILY:
-            _log_skipped(fill_daily_peaks('monitor', monitor_ids, window_start, window_end))
-        # Same for the period daily statistic on coarse rows.
-        if target_resolution in COARSE_RESOLUTIONS:
-            fill_period_statistics(
-                'monitor', monitor_ids, window_start, window_end,
-                resolutions=[target_resolution], now=now)
-    return True
+    return _upsert_and_fill(
+        'monitor', MonitorSummary, to_upsert, monitor_ids,
+        target_resolution, window_start, window_end, guard=guard, now=now,
+        unique_fields=['monitor', 'entry_type', 'processor', 'resolution', 'timestamp'],
+        update_fields=[
+            'count', 'expected_count', 'sum_value', 'sum_of_squares',
+            'minimum', 'maximum', 'mean', 'stddev', 'p25', 'p75',
+            'tdigest', 'is_complete', 'is_partial',
+        ],
+    )
 
 
 def rollup_region_summaries(
@@ -325,8 +344,7 @@ def rollup_region_summaries(
 ):
     """
     Same as rollup_monitor_summaries but for RegionSummary, including
-    `is_partial`, `guard` (False means stop now, possibly after the upsert)
-    and `now`.
+    `is_partial`, `guard` (False means stopped, nothing written) and `now`.
     """
     qs = RegionSummary.objects.filter(
         resolution=source_resolution,
@@ -360,30 +378,16 @@ def rollup_region_summaries(
             **stats,
         ))
 
-    if to_upsert:
-        if guard is not None and not guard():
-            return False
-        RegionSummary.objects.bulk_create(
-            to_upsert,
-            update_conflicts=True,
-            unique_fields=['region', 'entry_type', 'resolution', 'timestamp'],
-            update_fields=[
-                'count', 'weight', 'expected_count', 'sum_value', 'sum_of_squares',
-                'minimum', 'maximum', 'mean', 'stddev', 'p25', 'p75',
-                'tdigest', 'station_count', 'is_partial',
-            ],
-        )
-        if guard is not None and not guard():
-            return False
-        # The peaks aren't in update_fields, so the upsert keeps them; the fill rewrites them.
-        if target_resolution == BaseSummary.Resolution.DAILY:
-            _log_skipped(fill_daily_peaks('region', region_ids, window_start, window_end))
-        # Same for the period daily statistic on coarse rows.
-        if target_resolution in COARSE_RESOLUTIONS:
-            fill_period_statistics(
-                'region', region_ids, window_start, window_end,
-                resolutions=[target_resolution], now=now)
-    return True
+    return _upsert_and_fill(
+        'region', RegionSummary, to_upsert, region_ids,
+        target_resolution, window_start, window_end, guard=guard, now=now,
+        unique_fields=['region', 'entry_type', 'resolution', 'timestamp'],
+        update_fields=[
+            'count', 'weight', 'expected_count', 'sum_value', 'sum_of_squares',
+            'minimum', 'maximum', 'mean', 'stddev', 'p25', 'p75',
+            'tdigest', 'station_count', 'is_partial',
+        ],
+    )
 
 
 # ---- Rollup periodic tasks ----
@@ -500,19 +504,20 @@ def yearly_region_summaries(year_start=None):
 # ---- Current periods ----
 
 @db_periodic_task(pacific_crontab(2, '15'), priority=4, queue='summaries')
-def current_monitor_periods(monitor_ids=None):
+def current_monitor_periods(monitor_ids=None, rewritten_until=None):
     """
     Write each monitor's month, quarter, season and year rows holding
     yesterday, through yesterday (`current_periods.roll_current_periods`).
     After the last regular rollup (02:05) and before the integrity check.
+    `rewritten_until`: see `roll_current_periods` (rebuilds pass their range end).
     """
-    return roll_current_periods('monitor', monitor_ids)
+    return roll_current_periods('monitor', monitor_ids, rewritten_until=rewritten_until)
 
 
 @db_periodic_task(pacific_crontab(2, '20'), priority=3, queue='summaries')
-def current_region_periods(region_ids=None):
+def current_region_periods(region_ids=None, rewritten_until=None):
     """The region twin of current_monitor_periods."""
-    return roll_current_periods('region', region_ids)
+    return roll_current_periods('region', region_ids, rewritten_until=rewritten_until)
 
 
 # ---- Backfill ----
@@ -658,11 +663,39 @@ def _backfill_complete_chunk(job):
     job.consecutive_failures = 0
     job.last_error = ''
     if job.cursor <= job.range_start:
-        if reaches_yesterday(job.range_end, now):
-            roll_current_periods('monitor', None, now)
-            roll_current_periods('region', None, now)
+        if not _backfill_current_periods(job):
+            job.last_error = BACKFILL_CURRENT_PERIODS_STOPPED
         job.state = SummaryBackfillJob.State.DONE
     job.save()
+
+
+BACKFILL_CURRENT_PERIODS_STOPPED = (
+    'Current periods stopped at midnight twice; run rebuild_summaries over the '
+    'current periods, or wait for the nightly run.'
+)
+
+
+def _backfill_current_periods(job):
+    """
+    Re-roll the periods holding yesterday that the job's range rewrote, for
+    every owner (`rewritten_until`), not only the nightly set. The clock is
+    read here, after the cascade, never before it. When midnight passes during
+    the run it stops, so it runs once more from the new day. Returns False if
+    it was stopped both times.
+    """
+    for _ in range(2):
+        now = timezone.now()
+        if not touches_current_periods(job.range_end, now):
+            return True
+        stopped = False
+        for kind in ('monitor', 'region'):
+            if roll_current_periods(kind, None, now, rewritten_until=job.range_end)['stopped']:
+                stopped = True
+                break
+        if not stopped:
+            return True
+    logger.error('Backfill job %s: %s', job.pk, BACKFILL_CURRENT_PERIODS_STOPPED)
+    return False
 
 
 def _backfill_restart_batch(job):
@@ -710,8 +743,10 @@ def check_summary_integrity(now=None):
     - hours of the previous Pacific day with monitor hourly summaries but no
       region hourly summaries at all;
     - coarse rows of a peak type whose period daily statistic was never filled;
-    - series with a day row for yesterday and no row for the month holding it
-      (`missing_current_periods`: the nightly current-period run missed them);
+    - series with a day row for the day before yesterday and no row for the
+      month holding it (`missing_current_periods`: last night's current-period
+      run missed them; a day back, so it never races tonight's run, which with
+      several `summaries` workers may still be writing);
     - rows still `is_partial` whose period ended before the one holding
       yesterday (`stale_partial_periods`).
 
@@ -762,9 +797,12 @@ def check_summary_integrity(now=None):
         for model in (MonitorSummary, RegionSummary)
     )
 
-    # Series with yesterday's day row and no row for the month holding it: the
-    # nightly current-period run missed them.
-    month_start = period_start('month', yesterday)
+    # Series with a day row for the day before yesterday and no row for the
+    # month holding it: last night's current-period run missed them. Tonight's
+    # run may still be writing (it can overlap this check with several
+    # workers), but it never deletes a row last night's run wrote.
+    day_before = period_start('day', yesterday - timedelta(hours=1))
+    month_start = period_start('month', day_before)
     missing_current = 0
     for model, owner in ((MonitorSummary, 'monitor_id'), (RegionSummary, 'region_id')):
         covered = model.objects.filter(
@@ -775,7 +813,7 @@ def check_summary_integrity(now=None):
             **({'processor': OuterRef('processor')} if model is MonitorSummary else {}),
         )
         missing_current += (
-            model.objects.filter(resolution=BaseSummary.Resolution.DAILY, timestamp=yesterday)
+            model.objects.filter(resolution=BaseSummary.Resolution.DAILY, timestamp=day_before)
             .exclude(Exists(covered)).order_by().count()
         )
 

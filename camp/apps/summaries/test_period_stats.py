@@ -7,6 +7,7 @@ from django.contrib.gis.geos import Point
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
+import pytest
 from tdigest import TDigest
 
 from camp.apps.monitors.airnow.models import AirNow
@@ -286,6 +287,20 @@ class RollupFillsTests(TestCase):
         assert period_values(RegionSummary.objects.get(
             region=self.region, resolution=R.QUARTERLY, entry_type='o3', timestamp=oct_)) == (50.0, 92, 92)
 
+    def test_upsert_and_fill_commit_together(self):
+        # A fill that fails takes the upsert with it: no coarse row is ever
+        # visible without its period figure (the integrity check reads them).
+        nov = pacific(2026, 11)
+        self.daily(nov, pacific(2026, 12))
+        for task, kind, model in (
+            (monthly_monitor_summaries, 'monitor', MonitorSummary),
+            (monthly_region_summaries, 'region', RegionSummary),
+        ):
+            with patch('camp.apps.summaries.tasks.fill_period_statistics', side_effect=RuntimeError), \
+                    self.assertRaises(RuntimeError):
+                task.call_local(month_start=nov)
+            assert not model.objects.filter(resolution=R.MONTHLY).exists(), kind
+
     def test_reroll_keeps_then_rewrites(self):
         nov = pacific(2026, 11)
         self.daily(nov, pacific(2026, 12))
@@ -335,14 +350,12 @@ class CORefreshTests(TestCase):
         last = MonitorSummary.objects.get(
             monitor=self.monitor, resolution=R.DAILY, entry_type='co', timestamp=nov30)
         assert last.max_8h == 17.625
-        figures = [v for v in MonitorSummary.objects.filter(
-            monitor=self.monitor, resolution=R.DAILY, entry_type='co',
-            timestamp__gte=nov, timestamp__lt=dec1,
-        ).values_list('max_8h', flat=True) if v is not None]
+        # Nov 1-28 at 1.0 and Nov 30's refreshed 17.625. Nov 29 has no figure:
+        # the Nov 30 rollup refreshed its max_8h from hours, and this test
+        # stores none for it.
         mean, days, expected = period_values(month)
-        assert (days, expected) == (len(figures), 30)
-        assert mean == sum(figures) / len(figures)
-        assert mean > 1.0
+        assert (days, expected) == (29, 30)
+        assert mean == pytest.approx((28 * 1.0 + 17.625) / 29)
 
     def test_refresh_fills_only_periods_ending_with_the_day(self):
         with patch('camp.apps.summaries.tasks.fill_period_statistics', return_value={}) as fill:
