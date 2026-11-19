@@ -193,15 +193,25 @@ a night; today's figure stays on `daily/open/`.
   the new day count, and its `daily_statistic_mean` set to null when
   `daily_statistic_days` falls below 75% of it: one UPDATE per resolution, no reads of
   daily figures.
-- **Which periods (the guard):** the periods are worked out from the clock when the
-  task runs, never from its scheduled date. A period is written only when
-  `P.start < start of today < P.end`. An ended period belongs to its regular rollup,
-  and a period that starts today has no finished days. The check is repeated right
-  before each write batch, so a run that started on the last night of a period and is
-  still going after midnight stops instead of writing over the final row the 01:15
-  rollup wrote. On the 1st the new month has no row until the night of the 2nd. Between
-  midnight and the regular rollup, the ended period's partial row (through its
-  second-to-last day) stays until the rollup replaces it.
+- **Which periods (the guard):** for each resolution, the one period that holds
+  yesterday, through yesterday. Worked out from the clock when the task runs, never from
+  its scheduled date. On most nights that is the current period. On the first night of
+  a new period (the 1st for months), it is the period that just ended, through its last
+  day: the same inputs, and so the same row, the regular rollup wrote at 01:15–02:05.
+  The task re-writes it idempotently, and it covers a missed regular rollup. The new
+  period gets its first row the next night. "Start of today" is checked again right
+  before each write batch, and the run stops if midnight has passed since it started.
+  So a run still going after midnight can't write a partial row over the final one.
+- **Every ended period always has a row (develop and later):** the regular rollups
+  run at 01:15–02:05 Pacific on the period's first day (`pacific_crontab`), so an
+  ended period is without its final row only from midnight to that rollup. In that gap
+  it shows the partial row from the night before (through its second-to-last day,
+  `is_final: false`). The rollups landing about a period late is the UTC-crontab
+  behaviour on `main` (no `schedule.py` there), fixed on `develop` and shipping with this.
+  Clients don't need to fill a missing ended or current period from finer rows: each
+  past period has a stored row, final or not final yet. The exceptions are a period
+  that starts today, which has no row until tomorrow's run (use `daily/open/` for
+  today), and a night the task itself doesn't run.
 - **When the period ends:** the regular monthly, quarterly, seasonal or yearly rollup
   upserts the final row over the partial one, as it already would. `is_final` is the
   settle rule per row, so a partial row reads `false`, and the summary cache rule gives
@@ -216,7 +226,7 @@ a night; today's figure stays on `daily/open/`.
   are "left for the scheduled rollup" change to say the current ones are written
   through yesterday.
 - **Integrity check:** `check_summary_integrity` also counts series with a DAILY row for
-  yesterday and no current-month row (`missing_current_periods`), in its result and
+  yesterday and no row for the month holding yesterday (`missing_current_periods`), in its result and
   Sentry error. The old message is verbatim when both new counts are 0.
 
 Removed from the branch, with the open-period design: `open_periods.py`, the 16
@@ -258,8 +268,9 @@ range, one Pacific year at a time. Prints the counts per entry type. Idempotent.
    mean is null.
 3. **Current periods, tested:** a full `rebuild_summaries` through yesterday leaves a
    current month, quarter, season and year row for every series with a daily row
-   yesterday; a run of the task started late (after the period ended) writes nothing and
-   leaves the final row byte-for-byte; a period that starts today gets no row.
+   yesterday; on the 1st the task's row for the ended month equals the regular rollup's,
+   field for field; a run still going after midnight writes nothing more and leaves the
+   final row byte-for-byte; a period that starts today gets no row.
 4. **Integrity check:** `missing_current_periods` (see "Current periods").
 
 ## Production at deploy
