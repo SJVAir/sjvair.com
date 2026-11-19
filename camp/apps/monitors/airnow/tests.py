@@ -1,3 +1,4 @@
+import io
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
@@ -7,6 +8,7 @@ from datetime import datetime, timedelta, timezone as dt_timezone
 
 from django.contrib.gis.geos import GEOSGeometry, Point
 from django.db import connection
+from django.core.management import call_command
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
@@ -16,7 +18,7 @@ import requests
 
 from camp.apps.calibrations import processors
 from camp.apps.entries import models as entry_models
-from camp.apps.monitors.airnow import backfill
+from camp.apps.monitors.airnow import backfill, relabel
 from camp.apps.monitors.airnow.api import AirNowAPI
 from camp.apps.monitors.airnow.models import AirNow
 from camp.apps.monitors.models import Entry, LatestEntry
@@ -546,3 +548,104 @@ class BackfillTests(TestCase):
         raw = self.get_entry(PM25, PM25.Stage.RAW)
         assert self.get_entry(PM25, PM25.Stage.CLEANED).origin_id == raw.pk
         assert self.get_entry(PM25, PM25.Stage.CALIBRATED).origin_id == raw.pk
+
+
+class RelabelNowCastTests(TestCase):
+    def setUp(self):
+        self.monitor = AirNow.objects.create(
+            name='Visalia - N. Church Street',
+            position=Point(-119.2910, 36.3325, srid=4326),
+            location=AirNow.LOCATION.outside,
+        )
+        self.timestamp = make_aware(parse_datetime('2021-06-01T12:00'))
+
+    def import_nowcast_era_entry(self, value, timestamp=None, monitor=None):
+        """Store RAW + CLEANED PM2.5 the way the import did before the fix: from the NowCast."""
+        monitor = monitor or self.monitor
+        raw = monitor.create_entry(entry_models.PM25, timestamp=timestamp or self.timestamp, value=value)
+        return raw, monitor.process_entry_ng(raw)[0]
+
+    def test_raw_becomes_the_nowcast(self):
+        raw, cleaned = self.import_nowcast_era_entry(18.2)
+
+        relabel.relabel_nowcast()
+
+        PM25 = entry_models.PM25
+        entry = PM25.objects.get(pk=raw.pk)
+        assert entry.stage == PM25.Stage.CALIBRATED
+        assert entry.processor == 'PM25_AirNow_NowCast'
+        assert entry.value == Decimal('18.2')
+        assert not PM25.objects.filter(pk=cleaned.pk).exists()
+        assert not PM25.objects.filter(monitor=self.monitor, stage=PM25.Stage.RAW).exists()
+
+    def test_ozone_relabeled(self):
+        raw = self.monitor.create_entry(entry_models.O3, timestamp=self.timestamp, value=41)
+
+        relabel.relabel_nowcast()
+
+        entry = entry_models.O3.objects.get(pk=raw.pk)
+        assert entry.stage == entry_models.O3.Stage.CALIBRATED
+        assert entry.processor == 'O3_AirNow_NowCast'
+
+    def test_series_with_a_nowcast_untouched(self):
+        raw, cleaned = self.import_nowcast_era_entry(18.2)
+        self.monitor.create_entry(entry_models.PM25, timestamp=self.timestamp + timedelta(hours=1),
+            stage=entry_models.PM25.Stage.CALIBRATED, processor='PM25_AirNow_NowCast', value=17)
+
+        relabel.relabel_nowcast()
+
+        assert entry_models.PM25.objects.get(pk=raw.pk).stage == entry_models.PM25.Stage.RAW
+        assert entry_models.PM25.objects.filter(pk=cleaned.pk).exists()
+
+    def test_site_still_reporting_after_the_fix_untouched(self):
+        # Backfilled, but AirNow never sent it a NowCast: its RAW is already RawConcentration.
+        raw, cleaned = self.import_nowcast_era_entry(18.2)
+        later, _ = self.import_nowcast_era_entry(14.0, timestamp=relabel.FIXED_AT + timedelta(hours=1))
+
+        relabel.relabel_nowcast()
+
+        assert entry_models.PM25.objects.get(pk=raw.pk).stage == entry_models.PM25.Stage.RAW
+        assert entry_models.PM25.objects.get(pk=later.pk).stage == entry_models.PM25.Stage.RAW
+        assert entry_models.PM25.objects.filter(pk=cleaned.pk).exists()
+
+    def test_other_parameters_untouched(self):
+        raw = self.monitor.create_entry(entry_models.NO2, timestamp=self.timestamp, value=12)
+
+        relabel.relabel_nowcast()
+
+        assert entry_models.NO2.objects.get(pk=raw.pk).stage == entry_models.NO2.Stage.RAW
+
+    def test_latest_entries_for_moved_rows_removed(self):
+        self.import_nowcast_era_entry(18.2)
+        assert LatestEntry.objects.filter(monitor=self.monitor, stage=entry_models.PM25.Stage.CLEANED).exists()
+
+        relabel.relabel_nowcast()
+
+        PM25 = entry_models.PM25
+        for latest in LatestEntry.objects.filter(monitor=self.monitor, entry_type=PM25.entry_type):
+            entry = PM25.objects.get(pk=latest.entry_id)
+            assert (entry.stage, entry.processor) == (latest.stage, latest.processor)
+        assert not LatestEntry.objects.filter(monitor=self.monitor, stage=PM25.Stage.CLEANED).exists()
+
+    def test_idempotent(self):
+        self.import_nowcast_era_entry(18.2)
+
+        assert relabel.relabel_nowcast()['relabeled'] == 1
+        assert relabel.relabel_nowcast() == {'series': 0, 'relabeled': 0, 'removed': 0}
+
+    def test_dry_run_writes_nothing(self):
+        raw, cleaned = self.import_nowcast_era_entry(18.2)
+        stdout = io.StringIO()
+
+        call_command('relabel_airnow_nowcast', '--dry-run', stdout=stdout)
+
+        assert entry_models.PM25.objects.get(pk=raw.pk).stage == entry_models.PM25.Stage.RAW
+        assert entry_models.PM25.objects.filter(pk=cleaned.pk).exists()
+        assert 'Visalia - N. Church Street PM25: 1 RAW' in stdout.getvalue()
+
+    def test_command_relabels(self):
+        raw, _ = self.import_nowcast_era_entry(18.2)
+
+        call_command('relabel_airnow_nowcast', stdout=io.StringIO())
+
+        assert entry_models.PM25.objects.get(pk=raw.pk).stage == entry_models.PM25.Stage.CALIBRATED
