@@ -17,6 +17,7 @@ from camp.apps.regions.models import Region
 from camp.apps.summaries.periods import iter_hours, period_end, period_start
 from camp.apps.summaries.schedule import HOURLY_FIRE_MINUTE, LATE_RUN_WARNING, hour_for_run, pacific_crontab
 from camp.apps.summaries.aggregators import compute_monitor_summary, compute_region_summary, rollup_summaries, rollup_region_stats
+from camp.apps.summaries.current_periods import roll_current_periods
 from camp.apps.summaries.backfill import (
     backfill_monitor_hours,
     backfill_region_hours,
@@ -237,7 +238,7 @@ def _log_skipped(result):
 
 def rollup_monitor_summaries(
     target_resolution, source_resolution, window_start, window_end, monitor_ids=None,
-    *, is_partial=False, guard=None,
+    *, is_partial=False, guard=None, now=None,
 ):
     """
     Roll up MonitorSummary records from source_resolution into target_resolution
@@ -255,7 +256,11 @@ def rollup_monitor_summaries(
     Every row written gets `is_partial`, so a full write clears the flag. `guard`
     is called right before the upsert and again before the fills; when it
     returns False nothing more is written. Returns True when it wrote (or had
-    nothing to write), False when the guard stopped it.
+    nothing to write), False when the guard stopped it. False is "stop now",
+    not "nothing was written": the second check can stop it after the upsert,
+    with the rows written and their fills skipped. `now` is passed to
+    `fill_period_statistics` (a current period expects the days through the
+    day before it).
     """
     qs = MonitorSummary.objects.filter(
         resolution=source_resolution,
@@ -309,15 +314,20 @@ def rollup_monitor_summaries(
         # Same for the period daily statistic on coarse rows.
         if target_resolution in COARSE_RESOLUTIONS:
             fill_period_statistics(
-                'monitor', monitor_ids, window_start, window_end, resolutions=[target_resolution])
+                'monitor', monitor_ids, window_start, window_end,
+                resolutions=[target_resolution], now=now)
     return True
 
 
 def rollup_region_summaries(
     target_resolution, source_resolution, window_start, window_end, region_ids=None,
-    *, is_partial=False, guard=None,
+    *, is_partial=False, guard=None, now=None,
 ):
-    """Same as rollup_monitor_summaries but for RegionSummary."""
+    """
+    Same as rollup_monitor_summaries but for RegionSummary, including
+    `is_partial`, `guard` (False means stop now, possibly after the upsert)
+    and `now`.
+    """
     qs = RegionSummary.objects.filter(
         resolution=source_resolution,
         timestamp__gte=window_start,
@@ -371,7 +381,8 @@ def rollup_region_summaries(
         # Same for the period daily statistic on coarse rows.
         if target_resolution in COARSE_RESOLUTIONS:
             fill_period_statistics(
-                'region', region_ids, window_start, window_end, resolutions=[target_resolution])
+                'region', region_ids, window_start, window_end,
+                resolutions=[target_resolution], now=now)
     return True
 
 
@@ -484,6 +495,24 @@ def yearly_monitor_summaries(year_start=None):
 def yearly_region_summaries(year_start=None):
     """Roll up last year's monthly RegionSummary records into yearly ones."""
     _rollup_regions(R.YEARLY, R.MONTHLY, 'year', year_start)
+
+
+# ---- Current periods ----
+
+@db_periodic_task(pacific_crontab(2, '15'), priority=4, queue='summaries')
+def current_monitor_periods(monitor_ids=None):
+    """
+    Write each monitor's month, quarter, season and year rows holding
+    yesterday, through yesterday (`current_periods.roll_current_periods`).
+    After the last regular rollup (02:05) and before the integrity check.
+    """
+    return roll_current_periods('monitor', monitor_ids)
+
+
+@db_periodic_task(pacific_crontab(2, '20'), priority=3, queue='summaries')
+def current_region_periods(region_ids=None):
+    """The region twin of current_monitor_periods."""
+    return roll_current_periods('region', region_ids)
 
 
 # ---- Backfill ----
