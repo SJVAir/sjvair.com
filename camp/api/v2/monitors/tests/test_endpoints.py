@@ -982,6 +982,17 @@ class PublishedLatestEntryTests(TestCase):
             assert latest['processor'] == 'PM25_LCS_Cleaning', name
             assert Decimal(str(latest['value'])) == Decimal('1077.00'), name
 
+    def test_at_skips_the_default_stage_query_when_published_is_fresh(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        with CaptureQueriesContext(connection) as ctx:
+            [monitor] = PurpleAir.objects.filter(pk=self.monitor.pk).with_entry_as_of(
+                entry_models.PM25, self.now, seconds=3600)
+        assert monitor.latest_entry.pk == self.calibrated.pk
+        pm25_queries = [q for q in ctx.captured_queries if 'entries_pm25' in q['sql']]
+        assert len(pm25_queries) == 1
+
     def test_falls_back_to_the_default_stage_without_a_calibrated_entry(self):
         from camp.apps.monitors.models import LatestEntry
         LatestEntry.objects.filter(processor='PM25_EPA_Oct2021').delete()

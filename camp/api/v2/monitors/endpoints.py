@@ -40,7 +40,6 @@ class MonitorMixin:
         queryset = (super()
             .get_queryset()
             .select_related('health', 'airgradient__place')
-            .prefetch_related('latest_entries')
             .with_last_entry_timestamp()
         )
 
@@ -359,11 +358,8 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
     streaming = True
 
     def get_queryset(self, *args, **kwargs):
-        # No latest_entries prefetch: nothing here reads it (is_active uses
-        # the last_entry_timestamp annotation).
         queryset = (super()
             .get_queryset(*args, **kwargs)
-            .prefetch_related(None)
             .get_public()
             .published_for(self.entry_model)
             .filter(position__isnull=False)

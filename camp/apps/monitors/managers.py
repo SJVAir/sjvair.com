@@ -352,11 +352,17 @@ class MonitorQuerySet(InheritanceQuerySet):
             )
             lookup = monitor.get_published_lookup(entry_model, calibrations.get(monitor.monitor_type, ''))
             default_stage = monitor.get_default_stage(entry_model)
+            tolerance = monitor.get_published_tolerance()
             published = window.filter(**lookup).first()
+            # Nothing in the window is newer than `timestamp`, so a published
+            # entry within the tolerance of it wins whatever the default
+            # stage holds; only look that up when it could matter.
             default = None
-            if lookup != {'stage': default_stage}:
+            if lookup != {'stage': default_stage} and (
+                published is None or published.timestamp < timestamp - tolerance
+            ):
                 default = window.filter(stage=default_stage).exclude(**lookup).first()
-            entry = choose_published(published, default, monitor.get_published_tolerance())
+            entry = choose_published(published, default, tolerance)
 
             if entry is not None:
                 setattr(monitor, f'latest_{entry_type}', entry)

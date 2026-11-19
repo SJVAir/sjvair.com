@@ -33,6 +33,7 @@ from camp.apps.qaqc.models import HealthCheck
 from camp.apps.regions.counties import county_name
 from camp.utils import classproperty
 from camp.utils.datetime import make_aware
+from camp.utils.db import is_unique_violation
 from camp.utils.fields import MACAddressField
 
 logger = logging.getLogger(__name__)
@@ -487,9 +488,13 @@ class Monitor(models.Model):
             try:
                 with transaction.atomic():
                     entry.save()
-            except IntegrityError:
+            except IntegrityError as err:
                 # Lost a race with a concurrent writer of the same entry
-                # (check-then-insert); fall through to the upsert below.
+                # (check-then-insert): fall through to the upsert below.
+                # Any other integrity error (NOT NULL, FK, check) is a real
+                # failure, not a race.
+                if not is_unique_violation(err):
+                    raise
                 created = False
             else:
                 entry.refresh_from_db()
@@ -589,17 +594,13 @@ class Monitor(models.Model):
         return processed
 
     def update_latest_entry(self, entry):
-        allowed_stages = (
-            self.get_default_stage(entry.__class__),
-            entry.Stage.CALIBRATED
-        )
-        if entry.stage not in allowed_stages:
+        # Track what choose_latest_entry picks from: the default stage, and
+        # the published reading (get_published_lookup) when that's another
+        # stage or processor.
+        lookup = self.get_published_lookup(entry.__class__)
+        is_published = all(getattr(entry, field) == value for field, value in lookup.items())
+        if entry.stage != self.get_default_stage(entry.__class__) and not is_published:
             return
-
-        # Skip if not the default calibration
-        if entry.stage == entry.Stage.CALIBRATED:
-            if entry.processor != self.get_default_calibration(entry.__class__):
-                return
 
         lookup = {
             'monitor_id': self.pk,
