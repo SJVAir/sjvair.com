@@ -1132,6 +1132,79 @@ class CurrentDataActiveTests(TestCase):
         assert 'DISTINCT' not in main
 
 
+@override_settings(MONITOR_ENABLED_TYPES=[], MONITOR_HEALTHY_THRESHOLD=0)
+class EntryTypeIsActiveTests(TestCase):
+    '''
+    is_active on current/ and closest/ is for the requested entry type. The
+    Ash Mountain case: AirNow stopped sending the site's PM2.5 but kept
+    sending O3, so the PM2.5 map showed a months-old reading as active.
+    Monitor list/detail keep is_active across every entry type.
+    '''
+    fixtures = ['default-calibrations.yaml']
+
+    def setUp(self):
+        from django.contrib.gis.geos import Point
+        cache.clear()
+        self.factory = RequestFactory()
+        now = timezone.now()
+        self.monitor = PurpleAir.objects.create(
+            name='Stopped PM2.5', sensor_id=97001,
+            position=Point(-119.78, 36.73, srid=4326), location=PurpleAir.LOCATION.outside,
+        )
+        self.monitor.create_entry(entry_models.PM25, timestamp=now - timedelta(days=2),
+            value=10.0, sensor='a', stage=entry_models.PM25.Stage.CLEANED)
+        self.monitor.create_entry(entry_models.Temperature, timestamp=now - timedelta(minutes=1),
+            value=Decimal('50.0'))
+
+    def tearDown(self):
+        cache.clear()
+
+    def _row(self, view, name, params=None, entry_type='pm25'):
+        kwargs = {'entry_type': entry_type}
+        url = reverse(f'api:v2:monitors:{name}', kwargs=kwargs)
+        response = view(self.factory.get(url, params or {'_cc': '1'}), **kwargs)
+        assert response.status_code == 200
+        rows = [m for m in get_response_data(response)['data'] if m['id'] == str(self.monitor.pk)]
+        assert len(rows) == 1
+        return rows[0]
+
+    def test_current_data_inactive_when_the_entry_type_stopped(self):
+        assert self._row(current_data, 'current-data')['is_active'] is False
+
+    def test_current_data_active_when_the_entry_type_is_recent(self):
+        self.monitor.create_entry(entry_models.PM25, timestamp=timezone.now(),
+            value=10.0, sensor='a', stage=entry_models.PM25.Stage.CLEANED)
+        assert self._row(current_data, 'current-data')['is_active'] is True
+
+    def test_closest_inactive_when_the_entry_type_stopped(self):
+        params = {'latitude': self.monitor.position.y, 'longitude': self.monitor.position.x}
+        assert self._row(closest_monitor, 'monitor-closest', params)['is_active'] is False
+
+    def test_monitor_detail_still_counts_every_entry_type(self):
+        url = reverse('api:v2:monitors:monitor-detail', kwargs={'monitor_id': self.monitor.pk})
+        request = self.factory.get(url)
+        request.monitor = self.monitor
+        response = monitor_detail(request, monitor_id=self.monitor.pk)
+        assert get_response_data(response)['data']['is_active'] is True
+
+    def test_latest_entry_has_the_loaded_monitor(self):
+        # entry.is_recent reads entry.monitor: the loaded subclass, so no
+        # query per entry and the subclass's LAST_ACTIVE_LIMIT.
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from camp.apps.monitors.models import Monitor
+
+        monitor, = Monitor.objects.filter(pk=self.monitor.pk).with_latest_entry(entry_models.PM25)
+        with CaptureQueriesContext(connection) as ctx:
+            assert monitor.latest_entry.monitor is monitor
+            assert monitor.latest_entry.is_recent is False
+        assert len(ctx.captured_queries) == 0
+
+    def test_is_active_keeps_its_place_in_the_response(self):
+        keys = list(self._row(current_data, 'current-data'))
+        assert keys.index('is_active') == keys.index('grade') + 1
+
+
 @override_settings(MONITOR_ENABLED_TYPES=[])
 class PublishedOutsidePipelineTests(TestCase):
     '''

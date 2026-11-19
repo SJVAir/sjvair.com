@@ -260,6 +260,11 @@ class MonitorQuerySet(InheritanceQuerySet):
                 continue
             # A LatestEntry can outlive its entry; the monitor still lists.
             entry = entries.get(latest.entry_id)
+            if entry is not None:
+                # For entry.is_recent: the lazy FK would query once per
+                # entry, and select_related would load the base Monitor
+                # (wrong LAST_ACTIVE_LIMIT) instead of the subclass.
+                entry.monitor = monitor
             setattr(monitor, f'latest_{entry_type}', entry)
             monitor.latest_entry = entry
             results.append(monitor)

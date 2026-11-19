@@ -337,6 +337,9 @@ class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
     def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
         entry_type = self.entry_model.entry_type
         include = [
+            # Active for this entry type: a monitor whose PM2.5 stopped while
+            # its O3 keeps arriving is inactive for PM2.5.
+            ('is_active', lambda monitor: monitor.latest_entry is not None and monitor.latest_entry.is_recent),
             ('distance', lambda monitor: monitor.distance.ft),
             ('latest', lambda monitor: EntrySerializer(getattr(monitor, f'latest_{entry_type}')).serialize()),
         ]
@@ -395,7 +398,11 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
         return queryset
 
     def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
-        include = [('latest', lambda monitor: EntrySerializer(monitor.latest_entry).serialize())]
+        include = [
+            # Active for this entry type (see ClosestMonitor.serialize).
+            ('is_active', lambda monitor: monitor.latest_entry is not None and monitor.latest_entry.is_recent),
+            ('latest', lambda monitor: EntrySerializer(monitor.latest_entry).serialize()),
+        ]
         return super().serialize(source, fields, include, exclude, fixup)
 
 

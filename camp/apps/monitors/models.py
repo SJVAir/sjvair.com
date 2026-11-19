@@ -297,11 +297,13 @@ class Monitor(models.Model):
     def is_regulatory(self):
         return self.GRADE in {self.Grade.FEM, self.Grade.FRM}
 
+    def is_recent(self, timestamp):
+        '''Whether `timestamp` is within this monitor's LAST_ACTIVE_LIMIT.'''
+        cutoff = timezone.now() - timedelta(seconds=self.LAST_ACTIVE_LIMIT)
+        return timestamp is not None and timestamp >= cutoff
+
     @cached_property
     def is_active(self):
-        now = timezone.now()
-        cutoff = now - timedelta(seconds=self.LAST_ACTIVE_LIMIT)
-
         # Without the with_last_entry_timestamp() annotation, query. With it,
         # None means the monitor has no latest entries, so don't query again.
         timestamp = getattr(self, 'last_entry_timestamp', NOT_ANNOTATED)
@@ -312,7 +314,7 @@ class Monitor(models.Model):
                 .first()
             )
 
-        return timestamp is not None and timestamp >= cutoff
+        return self.is_recent(timestamp)
 
     @cached_property
     def health_grade(self):
