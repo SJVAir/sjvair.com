@@ -16,8 +16,9 @@ fields itself.
 - Every `MonitorSummary` and `RegionSummary` row coarser than a day (month, quarter,
   season, year) of a pollutant with a daily figure carries the average of that period's
   daily figures, the number of days that had one, and the number of days expected.
-- The current, unfinished month, quarter, season and year get open-period rows built on
-  request, like today's open days, so the dashboard never computes the figure itself.
+- The current, unfinished month, quarter, season and year get stored rows, written each
+  night by the summarizer through yesterday, so the dashboard never computes the figure
+  itself and no request builds one (see "Current periods").
 - `monitors/meta/` names the field per scale, next to `daily_statistic`.
 - Every path that builds coarse rows fills the figure; a gap is caught by a test and by
   the nightly integrity check.
@@ -28,10 +29,16 @@ fields itself.
   `count`, `expected_count`, `sum`, `max_1h`/`max_8h`/`mean_24h`, `is_complete`,
   `is_final`, `station_count` and every existing endpoint keep their values and output;
   the only exception is `is_final` on CO coarse rows (see "CO and the last day").
-- No new periodic task. No change to hourly or daily rows' values.
+  Adding is allowed (the user, 2026-11-18): the rule protects values and shapes that
+  something already relies on, above all the explorers, not new rows. So the coarse
+  lists gain a current-period row, and no existing row or value changes.
+- No change to hourly or daily rows' values. Today is not in any stored row: today's
+  daily figure stays on `daily/open/`, unchanged by this work. Replacing `daily/open/`
+  with daily rows the hourly summarizer writes is a separate follow-up, not this branch.
 - Weather (CIMIS) types and others without a `daily_statistic` get nothing: their new
   fields are null.
-- The Pesticides and Facility Emissions explorers don't change behaviour.
+- The Pesticides and Facility Emissions explorers don't change behaviour. Neither reads
+  `MonitorSummary` or `RegionSummary` (checked 2026-11-18).
 
 ## Names
 
@@ -44,7 +51,7 @@ Row fields (model columns and API fields, on every monitor and region summary ro
 |---|---|
 | `daily_statistic_mean` | Mean of the period's daily figures (the field the scale's `daily_statistic` names). `null` when fewer than 75% of the expected days have a figure. |
 | `daily_statistic_days` | Days in the period whose daily figure is not null. |
-| `daily_statistic_expected_days` | Pacific calendar days in the period; for an open period, the days from its start through today, today included. |
+| `daily_statistic_expected_days` | Pacific calendar days in the period; for the current period, the days from its start through yesterday. |
 
 All three are `null` on hourly and daily rows, and on rows of entry types without a
 `daily_statistic`. On a coarse row of a type with one, after a fill, `days` and
@@ -68,8 +75,10 @@ endpoints is behind `CachedEndpointMixin`, so no cache version moves.
 For one series (monitor + entry type + processor, or region + entry type) and one
 period P:
 
-- `expected = number of Pacific days in P` (28 to 366; built from calendar dates via
-  `periods.py`, never a timedelta of days).
+- `expected = number of Pacific days from P.start to the earlier of P.end and the start
+  of today` (28 to 366 for a finished period, fewer for the current one; built from
+  calendar dates via `periods.py`, never a timedelta of days). One rule for every row,
+  so the fill needs no flag for current periods.
 - `figures` = the daily figure (the column `daily_statistic` names) of each stored DAILY
   row of the series with `P.start <= timestamp < P.end` whose value is not null. Daily
   figures already skip sentinel hours and apply the 75% hour rule (`peaks.py`).
@@ -89,13 +98,14 @@ matching the hour rule within a day), and the day count is shown.
 2. **A separate fill that reads the daily rows (picked).** Like `fill_daily_peaks` for
    daily rows: for each coarse row, read the period's daily figures (one float per day,
    at most 366 per series), apply the rule, write the three fields. Called from inside
-   the two rollup functions, it is also the deploy backfill and, with the open days
-   added, the open-period builder. One rule in one place; a quarter can never drift
+   the two rollup functions, it is also the deploy backfill and fills the nightly
+   current-period rows. One rule in one place; a quarter can never drift
    from its months. Costs re-reading one float per daily row per coarse row, which is
    small against the rollups' t-digest reads.
 
 The user picked 2 (2026-11-18), after a comparison that showed the efficiency gap is only
-real on open quarter/season/year requests.
+real on open quarter/season/year requests. With current periods written nightly instead
+of built on request (below), that gap is a nightly cost, not a request's.
 
 ## Design
 
@@ -120,8 +130,9 @@ dry_run=False, batch_size=1000, progress=None) -> dict[str, int]`
   the group's coarse periods, then the rule per row. Only changed rows are written
   (`bulk_update` of the three fields, batched, one transaction per batch).
 - Returns rows updated (or that would be) per entry type.
-- A pure helper `period_figure(figures, expected) -> (mean, days)` holds the rule, so the
-  open-period builder uses the same code.
+- A pure helper `period_figure(figures, expected) -> (mean, days)` holds the rule.
+- `expected` follows the rule's "earlier of P.end and the start of today", so the same
+  call fills finished and current rows.
 
 ### Hooked into the rollups
 
@@ -157,56 +168,67 @@ final for a day. The change is in `is_settled` (`schedule.py`), so `row_is_final
 `SummaryMixin` max-age rule follow it; tests that pin CO coarse `is_final` or max-age
 move with it.
 
-### Open periods (`camp/apps/summaries/open_periods.py`)
+### Current periods (written nightly)
 
-Rows for months, quarters, seasons and years the scheduled rollups haven't written,
-built on request and never saved.
+Decided with the user (2026-11-18), replacing the open-period endpoints this branch first
+built: the production server is slower than the dev machine, and a row computed once a
+night is ready when people ask for it. Today is left out, so the row only changes once
+a night; today's figure stays on `daily/open/`.
 
-- **Which periods:** the period holding today, plus the previous period while it is
-  not settled (`is_settled(resolution, prev.end)`, plain margins) and the series has no
-  stored row for it. At most 2 rows per series.
-- **Inputs:** the stored DAILY rows of the series in the period, plus the open-day rows
-  (`build_open_rows`) for the days that have no stored daily row. For quarter, season
-  and year the stored MONTHLY rows of finished months stand in for those months' days in
-  the ordinary stats; the daily figures are read from the daily rows in all cases.
-- **Stats:** `count`, `expected_count`, `sum`, `minimum`, `maximum`, `mean`, `stddev`,
-  `p25`/`p75` roll up over those inputs (`rollup_summaries` / `rollup_region_stats`),
-  as a stored row would. The open-day rows need their t-digests for that, so the open
-  builder asks `build_open_rows` to keep them (a new keyword; the daily open endpoints
-  keep `with_tdigest=False`). `is_complete` (monitor) is relative to the hours so far;
-  `station_count` is the max over the inputs; `max_1h`/`max_8h`/`mean_24h` are null, as
-  on stored coarse rows; `is_final` is `false`.
-- **Percentiles (decided with the user, 2026-11-18, after timing):** open-period rows take
-  `p25`/`p75` from the inputs' combined t-digest centroids in one weighted-percentile
-  pass (`aggregators.centroid_percentiles`, `rollup_*(..., percentiles='centroids')`)
-  instead of merging t-digests. They are an approximation and can differ slightly from
-  the stored row the rollup writes once the period ends. Stored rows and the daily open
-  rows keep the t-digest merge, unchanged. Timing on the dev DB (read-only,
-  `build_open_period_rows` called directly, no cache, PM2.5, 100 owners; local data from
-  2026-10-19): PurpleAir month 2.17 s → 0.22 s, year 2.23 s → 0.30 s; regions month
-  2.41 s → 0.28 s, year 2.76 s → 0.29 s; 3–4 queries each. O3 builds (33 monitors, 52
-  regions) were 0.06–0.09 s before the change.
-- **The figure:** `period_figure` over the stored daily figures plus the open days'
-  figures (today's is its "so far" figure, yesterday's the strict one), with
-  `expected` = days from the period's start through today. For the previous period,
-  `expected` is its full length.
-- **Cache:** `cached_open_period_rows`, the `cached_open_rows` pattern: 60 s, keyed by
-  kind, resolution, entry type, series filter, hashed owner set and open-period set.
+- **What is written:** for each owner, the rows of the month, quarter, season and year
+  that hold yesterday, through yesterday, in the existing `MonitorSummary` and
+  `RegionSummary` tables, for every summarized entry type (my call: the row is an
+  ordinary partial summary row, so a consumer finds one for every type, not only the six
+  with a daily figure). The existing rollup functions build them: the month from its
+  stored DAILY rows, then quarter, season and year from their stored MONTHLY rows,
+  including the partial month just written. Real t-digest merge, so `p25`/`p75` match
+  what the stored rows use. `fill_period_statistics` runs after the upsert as for every
+  coarse row, with `expected` through yesterday by the rule.
+- **The task:** `current_monitor_periods` at 02:15 Pacific and `current_region_periods` at
+  02:20 (`pacific_crontab`), after the last nightly rollup (yearly regions, 02:05) and
+  before `check_summary_integrity` (02:30), at a lower priority than the rollups.
+- **Only what changed is re-rolled:** the stats re-roll only owners with a DAILY row
+  for yesterday (an owner that sent nothing has the same inputs as last night). Every
+  other current-period row only needs its `daily_statistic_expected_days` moved to
+  the new day count, and its `daily_statistic_mean` set to null when
+  `daily_statistic_days` falls below 75% of it: one UPDATE per resolution, no reads of
+  daily figures.
+- **Which periods (the guard):** the periods are worked out from the clock when the
+  task runs, never from its scheduled date. A period is written only when
+  `P.start < start of today < P.end`. An ended period belongs to its regular rollup,
+  and a period that starts today has no finished days. The check is repeated right
+  before each write batch, so a run that started on the last night of a period and is
+  still going after midnight stops instead of writing over the final row the 01:15
+  rollup wrote. On the 1st the new month has no row until the night of the 2nd. Between
+  midnight and the regular rollup, the ended period's partial row (through its
+  second-to-last day) stays until the rollup replaces it.
+- **When the period ends:** the regular monthly, quarterly, seasonal or yearly rollup
+  upserts the final row over the partial one, as it already would. `is_final` is the
+  settle rule per row, so a partial row reads `false`, and the summary cache rule gives
+  its responses `max-age=60`.
+- **Late data:** the CO `max_8h` refresh (01:00 / 01:10) runs before the task, so the
+  current rows pick it up the same night. `finalize_cimis_data` (04:00–05:00) re-rolls
+  the current periods of the stations it re-pulled, after the finished ones.
+- **Rebuilds leave nothing missing:** `rebuild_summaries`, `repair_summaries` and the
+  backfill job's completion write the current periods for their scope when their range
+  reaches yesterday, through the same function the task uses (`roll_current_periods(kind,
+  ids, now)`). `rebuild_summaries`' and `repair_summaries`' notes that unfinished periods
+  are "left for the scheduled rollup" change to say the current ones are written
+  through yesterday.
+- **Integrity check:** `check_summary_integrity` also counts series with a DAILY row for
+  yesterday and no current-month row (`missing_current_periods`), in its result and
+  Sentry error. The old message is verbatim when both new counts are 0.
 
-Endpoints, mirroring the daily open ones (same params, scope forms, pagination by owner,
-100 per page, `private, max-age=60` with ETag, errors `no-cache`):
+Removed from the branch, with the open-period design: `open_periods.py`, the 16
+`.../{monthly,quarterly,seasonal,yearly}/open/` routes and their OpenAPI entries,
+`BulkMonitorScopeFilter`, `aggregators.centroid_percentiles` and the `percentiles=`
+keyword, and the changes made for them to `open_days.py` and the daily open views
+(`with_tdigest=`, the public `daily_statistic`, the `open_rows`/`open_since`/
+`open_owner_q` hooks). `daily/open/` is then byte-for-byte as on `develop`.
 
-- `monitors/<id>/summaries/<entry_type>/{monthly,quarterly,seasonal,yearly}/open/`
-  (`?processor=`, default `''`)
-- `regions/<id>/summaries/<entry_type>/{monthly,quarterly,seasonal,yearly}/open/`
-- `monitors/<entry_type>/summaries/{monthly,...}/open/` (bulk; scoped like
-  `daily/open/`)
-- `regions/<entry_type>/summaries/{monthly,...}/open/` (bulk; `region` or `type`
-  required)
-
-The bulk ones list owners with a DAILY row of the series in use in the open period(s)
-or an HOURLY row since the first open day (an EXISTS in the owner query, as the daily
-open ones do with hourly rows).
+Earlier timing, kept as the reason for this change (dev DB, read-only, PM2.5, 100 owners,
+on-request open-period build): t-digest merge 2.2–2.8 s, centroids 0.22–0.30 s. The
+nightly task's own run time on the dev DB goes in the PR.
 
 ### Serializers
 
@@ -234,6 +256,11 @@ range, one Pacific year at a time. Prints the counts per entry type. Idempotent.
    includes the count in its result and its Sentry error (`missing_period_statistics`).
    A CO coarse row is never null for this reason: the fill writes `days` even when the
    mean is null.
+3. **Current periods, tested:** a full `rebuild_summaries` through yesterday leaves a
+   current month, quarter, season and year row for every series with a daily row
+   yesterday; a run of the task started late (after the period ended) writes nothing and
+   leaves the final row byte-for-byte; a period that starts today gets no row.
+4. **Integrity check:** `missing_current_periods` (see "Current periods").
 
 ## Production at deploy
 
@@ -258,18 +285,23 @@ range, one Pacific year at a time. Prints the counts per entry type. Idempotent.
    2026-10-19) that is 37 coarse rows and ~15 000 daily rows; production is larger by
    its years of history and its monitor count, still a read of one column per daily row,
    batched by owner group.
+4. Current-period rows appear on their own the first night after the deploy (02:15 /
+   02:20 Pacific). Announce the feature after that night and after step 2. The nightly
+   task's cost on production is about one monthly rollup plus three small ones per
+   night, for the owners that reported yesterday; the dev-DB timing is in the PR.
 
 Consumers react to: three new fields on every summary row, two new keys on every scale,
-and eight new open endpoints. Nothing existing changes, except `is_final` on CO coarse
-rows (step "CO and the last day").
+and, in the existing monthly, quarterly, seasonal and yearly lists, one row for the
+current period (through yesterday, `is_final: false`, `max-age=60`) that wasn't there
+before. No existing value changes, except `is_final` on CO coarse rows (step "CO and the
+last day"). `daily/open/` is unchanged. No new endpoints.
 
 ## Left to the builder
 
-- Module layout inside `camp/apps/summaries/`, owner-group sizing, and whether the open
-  builder reuses `build_open_rows` directly or shares its internals.
+- Module layout inside `camp/apps/summaries/` and owner-group sizing.
 - Test fixtures (bulk-created `RegionSummary` rows need a non-empty t-digest).
-- Performance: time a bulk open-month and open-year page (100 owners) against the dev
-  database in a throwaway container mounting the worktree; report the numbers in the PR.
-- OpenAPI declarations for the new endpoints, like the daily open ones.
+- Performance: time the nightly task against the dev database (it writes, so only with
+  the coordinator's OK and in the agreed window); report the numbers in the PR.
+- Whether the "only what changed" UPDATE shares code with the fill or is its own query.
 - CLAUDE.md: a "Period daily statistic" note under Metadata Endpoints, and the
   `fill_period_statistics` step in the deploy order.
