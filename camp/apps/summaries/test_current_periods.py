@@ -361,6 +361,119 @@ class CurrentPeriodsTests(TestCase):
             assert coarse.is_partial is True, resolution
             assert coarse.station_count == 3, resolution
 
+    def test_rewritten_until_rolls_owners_that_did_not_report_yesterday(self):
+        nov, now = pacific(2026, 11), pacific(2026, 11, 18, 2, 15)
+        quiet = self.other_monitor()
+        self.daily(nov, pacific(2026, 11, 18))  # reported yesterday
+        self.daily(nov, pacific(2026, 11, 11), monitor=quiet)  # stopped on Nov 10
+        self.run_at(now)
+        assert self.row(R.MONTHLY, nov, monitor=quiet).count == 10
+
+        # A backfill rewrites the quiet monitor's Nov 5.
+        MonitorSummary.objects.filter(
+            monitor=quiet, resolution=R.DAILY, timestamp=pacific(2026, 11, 5)).update(count=6)
+        self.run_at(now)  # nightly: the quiet monitor isn't re-rolled
+        assert self.row(R.MONTHLY, nov, monitor=quiet).count == 10
+
+        result = self.run_at(now, rewritten_until=pacific(2026, 11, 11))
+        for resolution, start in ((R.MONTHLY, nov), (R.QUARTERLY, pacific(2026, 10)),
+                                  (R.SEASONAL, pacific(2026, 9)), (R.YEARLY, pacific(2026, 1))):
+            row = self.row(resolution, start, monitor=quiet)
+            assert row.count == 15, resolution
+            assert row.is_partial is True, resolution
+        assert self.row(R.MONTHLY, nov).is_partial is True
+        assert result['rolled']['month'] == 2
+        assert result['refreshed'] == {}
+
+    def test_rewritten_until_leaves_periods_starting_after_it(self):
+        sep, oct_, nov = pacific(2026, 9), pacific(2026, 10), pacific(2026, 11)
+        self.daily(sep, pacific(2026, 11, 18))
+        rollup_monitor_summaries(R.MONTHLY, R.DAILY, sep, oct_)
+        rollup_monitor_summaries(R.MONTHLY, R.DAILY, oct_, nov)
+        result = self.run_at(pacific(2026, 11, 18, 2, 15), rewritten_until=pacific(2026, 10, 15))
+        assert set(result['rolled']) == {'quarter', 'season', 'year'}
+        assert not MonitorSummary.objects.filter(resolution=R.MONTHLY, timestamp=nov).exists()
+
+    def test_rewritten_until_with_ids_rolls_only_them(self):
+        nov, now = pacific(2026, 11), pacific(2026, 11, 18, 2, 15)
+        other = self.other_monitor()
+        self.daily(nov, pacific(2026, 11, 11))
+        self.daily(nov, pacific(2026, 11, 11), monitor=other)
+        self.run_at(now, ids=[self.monitor.pk], rewritten_until=pacific(2026, 11, 11))
+        assert self.row(R.MONTHLY, nov).count == 10
+        assert not MonitorSummary.objects.filter(monitor=other, resolution=R.MONTHLY).exists()
+
+    def test_rewritten_until_regions(self):
+        nov, now = pacific(2026, 11), pacific(2026, 11, 18, 2, 15)
+        self.region_daily(nov, pacific(2026, 11, 11))
+        result = roll_current_periods('region', now=now, clock=lambda: now, rewritten_until=pacific(2026, 11, 11))
+        row = RegionSummary.objects.get(
+            region=self.region, resolution=R.MONTHLY, timestamp=nov, entry_type='o3')
+        assert row.count == 10
+        assert row.is_partial is True
+        assert result['rolled']['month'] == 1
+
+    def test_rollup_and_fill_share_one_transaction(self):
+        # A new owner's first row and its period figure commit together, so the
+        # integrity check, running alongside, never sees the row unfilled.
+        from django.db import transaction
+        from camp.apps.summaries import current_periods
+        nov, now = pacific(2026, 11), pacific(2026, 11, 18, 2, 15)
+        self.daily(nov, pacific(2026, 11, 18))
+        state = {'depth': 0}
+        seen = []
+        real_atomic = transaction.atomic
+
+        class Tracking:
+            def __init__(self, *args, **kwargs):
+                self.block = real_atomic(*args, **kwargs)
+
+            def __enter__(self):
+                self.block.__enter__()
+                state['depth'] += 1
+
+            def __exit__(self, *exc):
+                state['depth'] -= 1
+                return self.block.__exit__(*exc)
+
+        real_rollup, real_fill = rollup_monitor_summaries, current_periods.fill_period_statistics
+
+        def rollup(*args, **kwargs):
+            seen.append(('rollup', state['depth'] > 0))
+            return real_rollup(*args, **kwargs)
+
+        def fill(*args, **kwargs):
+            seen.append(('fill', state['depth'] > 0))
+            return real_fill(*args, **kwargs)
+
+        with patch.object(current_periods.transaction, 'atomic', side_effect=Tracking), \
+                patch('camp.apps.summaries.tasks.rollup_monitor_summaries', side_effect=rollup), \
+                patch.object(current_periods, 'fill_period_statistics', side_effect=fill):
+            self.run_at(now)
+        assert {name for name, _ in seen} == {'rollup', 'fill'}
+        assert all(inside for _, inside in seen), seen
+
+    def test_stop_after_the_upsert_rolls_the_resolution_back(self):
+        # First night of December: the regular rollup wrote November in full.
+        nov, dec = pacific(2026, 11), pacific(2026, 12)
+        self.daily(nov, dec)
+        rollup_monitor_summaries(R.MONTHLY, R.DAILY, nov, dec)
+        month = self.row(R.MONTHLY, nov)
+        final = values_of(month)
+        assert final['is_partial'] is False
+        # A run from Nov 30's clock, stopped by midnight after the upsert, before its fill.
+        real_rollup = rollup_monitor_summaries
+
+        def stopped_after_upsert(*args, **kwargs):
+            kwargs['guard'] = lambda: True
+            real_rollup(*args, **kwargs)
+            return False
+
+        with patch('camp.apps.summaries.tasks.rollup_monitor_summaries', side_effect=stopped_after_upsert):
+            result = self.run_at(pacific(2026, 11, 30, 23, 59))
+        assert result['stopped'] is True
+        assert values_of(month) == final
+
     def test_kind_must_be_known(self):
         with self.assertRaises(ValueError):
             roll_current_periods('station', now=pacific(2026, 11, 18, 2, 15))
@@ -392,3 +505,11 @@ class CurrentPeriodTaskScheduleTests(TestCase):
             summary_tasks.current_region_periods.call_local(region_ids=[1])
         assert roll.call_args_list[0].args == ('monitor', None)
         assert roll.call_args_list[1].args == ('region', [1])
+        assert [c.kwargs for c in roll.call_args_list] == [{'rewritten_until': None}] * 2
+
+    def test_tasks_pass_rewritten_until(self):
+        until = pacific(2026, 11, 11)
+        with patch('camp.apps.summaries.tasks.roll_current_periods') as roll:
+            summary_tasks.current_monitor_periods.call_local(monitor_ids=['m'], rewritten_until=until)
+            summary_tasks.current_region_periods.call_local(region_ids=[1], rewritten_until=until)
+        assert [c.kwargs for c in roll.call_args_list] == [{'rewritten_until': until}] * 2

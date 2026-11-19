@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from camp.apps.summaries import repair
 from camp.apps.summaries.management.commands._scope import ScopeMixin
-from camp.apps.summaries.current_periods import reaches_yesterday, roll_current_periods
+from camp.apps.summaries.current_periods import roll_current_periods, touches_current_periods
 from camp.apps.summaries.periods import period_end
 
 
@@ -112,12 +112,14 @@ class Command(ScopeMixin, BaseCommand):
                 self._repair_resolution(kind, ids, resolution, decision, beyond, held,
                                         start, end, now, dry_run, progress)
 
-        # 3. The current periods, when the range reaches yesterday.
-        if reaches_yesterday(end, now):
+        # 3. The current periods, when the range reaches into them. The clock is
+        # read again: a repair that ran past midnight writes the new day's periods.
+        now = timezone.now()
+        if touches_current_periods(end, now):
             stopped = False
             if not dry_run:
                 for kind, ids in scopes:
-                    if roll_current_periods(kind, ids, now)['stopped']:
+                    if roll_current_periods(kind, ids, now, rewritten_until=end)['stopped']:
                         stopped = True
                         break
             if stopped:

@@ -719,12 +719,90 @@ class BackfillSummariesTickCompleteChunkTests(TestCase):
         self.job.range_end = now
         self.job.save()
         with patch('camp.apps.summaries.tasks.roll_current_periods') as mock_roll:
+            mock_roll.return_value = {'rolled': {}, 'refreshed': {}, 'stopped': False}
             backfill_summaries_tick()
         self.job.refresh_from_db()
         assert self.job.state == SummaryBackfillJob.State.DONE
         assert [c.args[:2] for c in mock_roll.call_args_list] == [('monitor', None), ('region', None)]
+        # Every owner of the periods the range rewrote, not only the nightly set.
+        assert all(c.kwargs == {'rewritten_until': now} for c in mock_roll.call_args_list)
 
-    def test_backfill_done_before_yesterday_writes_no_current_periods(self):
+    def test_backfill_done_inside_current_year_writes_current_periods(self):
+        # The range ends before yesterday but inside the year holding it: the
+        # year (and any other period it reaches) was rewritten.
+        now = make_aware(datetime(2026, 11, 18, 10), LA)
+        self.job.range_start = self.month_start
+        self.job.range_end = _day(2026, 2, 1)
+        self.job.save()
+        with patch('django.utils.timezone.now', return_value=now), \
+                patch('camp.apps.summaries.tasks.roll_current_periods') as mock_roll:
+            mock_roll.return_value = {'rolled': {}, 'refreshed': {}, 'stopped': False}
+            backfill_summaries_tick()
+        assert [c.args for c in mock_roll.call_args_list] == [('monitor', None, now), ('region', None, now)]
+        assert all(c.kwargs == {'rewritten_until': _day(2026, 2, 1)} for c in mock_roll.call_args_list)
+
+    def test_current_periods_read_the_clock_after_the_cascade(self):
+        # The cascade runs past midnight: the current periods use the new day.
+        before, after = make_aware(datetime(2026, 11, 18, 23, 59), LA), make_aware(datetime(2026, 11, 19, 0, 5), LA)
+        clock = [before]
+        self.job.range_start = self.month_start
+        self.job.range_end = before
+        self.job.save()
+
+        def cascade(*args, **kwargs):
+            clock[0] = after
+            return True
+
+        with patch('django.utils.timezone.now', side_effect=lambda: clock[0]), \
+                patch('camp.apps.summaries.tasks.rollup_monitor_summaries', side_effect=cascade), \
+                patch('camp.apps.summaries.tasks.rollup_region_summaries', return_value=True), \
+                patch('camp.apps.summaries.tasks.roll_current_periods') as mock_roll:
+            mock_roll.return_value = {'rolled': {}, 'refreshed': {}, 'stopped': False}
+            backfill_summaries_tick()
+        assert [c.args[2] for c in mock_roll.call_args_list] == [after, after]
+
+    def test_stopped_at_midnight_runs_again_from_the_new_day(self):
+        before = make_aware(datetime(2026, 11, 18, 23, 59), LA)
+        after = make_aware(datetime(2026, 11, 19, 0, 1), LA)
+        clock = [before]
+        self.job.range_start = self.month_start
+        self.job.range_end = before
+        self.job.save()
+        stopped = {'rolled': {}, 'refreshed': {}, 'stopped': True}
+        done = {'rolled': {}, 'refreshed': {}, 'stopped': False}
+        answers = iter([stopped, done, done])
+
+        def roll(*args, **kwargs):
+            clock[0] = after  # midnight passed during the first pass
+            return next(answers)
+
+        with patch('django.utils.timezone.now', side_effect=lambda: clock[0]), \
+                patch('camp.apps.summaries.tasks.roll_current_periods', side_effect=roll) as mock_roll:
+            backfill_summaries_tick()
+        self.job.refresh_from_db()
+        assert [c.args[0] for c in mock_roll.call_args_list] == ['monitor', 'monitor', 'region']
+        assert [c.args[2] for c in mock_roll.call_args_list] == [before, after, after]
+        assert self.job.state == SummaryBackfillJob.State.DONE
+        assert self.job.last_error == ''
+
+    def test_stopped_twice_is_recorded_on_the_job(self):
+        from camp.apps.summaries.tasks import BACKFILL_CURRENT_PERIODS_STOPPED
+        now = timezone.now()
+        self.job.range_start = self.month_start
+        self.job.range_end = now
+        self.job.save()
+        stopped = {'rolled': {}, 'refreshed': {}, 'stopped': True}
+        with patch('camp.apps.summaries.tasks.roll_current_periods', return_value=stopped) as mock_roll, \
+                self.assertLogs('camp.apps.summaries', level='WARNING') as logs:
+            backfill_summaries_tick()
+        self.job.refresh_from_db()
+        assert [c.args[0] for c in mock_roll.call_args_list] == ['monitor', 'monitor']
+        assert self.job.state == SummaryBackfillJob.State.DONE
+        assert self.job.last_error == BACKFILL_CURRENT_PERIODS_STOPPED
+        assert any(
+            r.levelname == 'ERROR' and 'stopped at midnight' in r.getMessage() for r in logs.records)
+
+    def test_backfill_done_before_the_current_periods_writes_none(self):
         self.job.range_start = self.month_start
         self.job.save()
         with patch('camp.apps.summaries.tasks.roll_current_periods') as mock_roll:

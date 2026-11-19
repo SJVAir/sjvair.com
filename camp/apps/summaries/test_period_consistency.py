@@ -159,7 +159,7 @@ class PeriodConsistencyTests(TestCase):
         now = make_aware(datetime(2026, 12, 1, 10), LA)
         with patch('django.utils.timezone.now', return_value=now), patch(
             'camp.apps.summaries.management.commands.rebuild_summaries.roll_current_periods',
-            side_effect=lambda kind, ids, at: roll_current_periods(kind, ids, at, clock=lambda: now),
+            side_effect=lambda kind, ids, at, **kw: roll_current_periods(kind, ids, at, clock=lambda: now, **kw),
         ):
             november = self._rebuild_current_periods(now)
         for model in (MonitorSummary, RegionSummary):

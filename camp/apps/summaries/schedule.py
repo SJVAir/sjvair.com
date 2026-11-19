@@ -1,7 +1,8 @@
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import datetime, time, timedelta, timezone as dt_timezone
 from functools import lru_cache
 
+from django.conf import settings
 from django.utils import timezone
 from huey import crontab
 
@@ -24,6 +25,16 @@ def is_pacific_hour(hour, now=None):
     return local.hour == hour and local.fold == 0
 
 
+def skipped_pacific_hour(hour, day) -> bool:
+    """
+    True when the Pacific wall-clock hour doesn't exist on the Pacific date
+    `day` (02:00-03:00 on the spring-forward Sunday).
+    """
+    tz = settings.DEFAULT_TIMEZONE
+    wall = datetime.combine(day, time(hour), tzinfo=tz)
+    return wall.astimezone(dt_timezone.utc).astimezone(tz).replace(tzinfo=None) != wall.replace(tzinfo=None)
+
+
 def pacific_crontab(hour: int, minute: str, **crontab_kwargs) -> Callable[[datetime], bool]:
     """
     A Huey periodic-task schedule for a Pacific wall-clock hour. Huey's
@@ -32,6 +43,10 @@ def pacific_crontab(hour: int, minute: str, **crontab_kwargs) -> Callable[[datet
     task is enqueued, not when a worker gets to it: a run that starts late
     still runs. Other crontab fields (`day`, `month`, ...) are UTC, which is
     the same date as Pacific at these early-morning hours.
+
+    On the spring-forward Sunday the 02:00 hour doesn't exist, so a 02:MM
+    task runs at 03:MM that day instead (the UTC hour matched is the one
+    holding 02:MM in PST), rather than skipping the night.
     """
     matches = crontab(hour=ROLLUP_UTC_HOURS[hour], minute=minute, **crontab_kwargs)
 
@@ -39,7 +54,12 @@ def pacific_crontab(hour: int, minute: str, **crontab_kwargs) -> Callable[[datet
         if timezone.is_naive(timestamp):
             timestamp = timestamp.replace(tzinfo=dt_timezone.utc)
         timestamp = timestamp.astimezone(dt_timezone.utc)
-        return matches(timestamp.replace(tzinfo=None)) and is_pacific_hour(hour, timestamp)
+        if not matches(timestamp.replace(tzinfo=None)):
+            return False
+        if is_pacific_hour(hour, timestamp):
+            return True
+        local = localtime(timestamp)
+        return local.hour == hour + 1 and skipped_pacific_hour(hour, local.date())
 
     return validate
 

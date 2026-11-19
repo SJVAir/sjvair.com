@@ -525,8 +525,9 @@ zones are missing there; see SJVAPCD Forecast Setup).
   mean only when `days >= ceil(0.75 * expected_days)`, else `null` (`days` may be 0, never `null`
   after a fill). Each series (monitor + processor, or region) averages only its own daily rows. Meta
   names the field per scale (`period_statistic`, see Scale shape). `rollup_monitor_summaries` and
-  `rollup_region_summaries` call `fill_period_statistics` after their coarse upsert (the upserts'
-  `update_fields` leave the three columns alone), so the nightly rollups, backfill jobs,
+  `rollup_region_summaries` call `fill_period_statistics` after their coarse upsert, in the same
+  transaction (`_upsert_and_fill`: a reader never sees a new row before its fill, and a guard stop
+  after the upsert rolls it back; the upserts' `update_fields` leave the three columns alone), so the nightly rollups, backfill jobs,
   `repair_summaries`, `rebuild_summaries` and the CIMIS re-roll all go through them (CIMIS types have
   no figure). CO: the month and coarser rollups read the last day's provisional `max_8h`, so
   `_refresh_previous_max_8h` refills the coarse CO periods ending at the refreshed day, and
@@ -546,23 +547,31 @@ zones are missing there; see SJVAPCD Forecast Setup).
     backfill; a sub-select with `NOT EXISTS`, owner-level); the other owners' partial rows get their
     expected days (and the 75% rule) moved by one UPDATE per resolution. The start of today is
     re-checked before every write: once midnight passes the run stops, so it never writes a partial
-    row over a final one. `finalize_cimis_data` calls `current_monitor_periods` every time (its
+    row over a final one. Each resolution's upsert and period-figure fills commit in one transaction
+    (a stop inside it rolls that resolution back). `finalize_cimis_data` calls `current_monitor_periods` every time (its
     range is always yesterday). `rebuild_summaries` (sync and `--async`), `repair_summaries`
-    (prints `current periods: <n> owners`) and the backfill job's completion write them only when
-    their range reaches yesterday (`reaches_yesterday`); a rebuild or repair stopped by midnight
-    prints `current periods: stopped at midnight; re-run to write them`. The backfill job's
-    month-start cascade writes a month, quarter, season or year still running with
-    `is_partial=True`. With `rebuild_summaries --async` and more than one worker on
-    the `summaries` queue, priority orders dequeueing, not completion, so a current-period task can
+    (prints `current periods: <n> owners`) and the backfill job's completion write them when their
+    range reaches into a period holding yesterday (`touches_current_periods`: its end is after the
+    earliest of those periods' starts), passing `rewritten_until=<range end>`: each such period
+    starting before the end is re-rolled for the command's owners (the backfill job: every owner, not
+    the nightly set, so an owner that didn't report yesterday still gets its rewritten days); one
+    starting at or after the end is left alone. Rebuild and repair read the clock again just before
+    this step, so one that ran past midnight writes the new day's periods; one stopped by midnight
+    during the step prints `current periods: stopped at midnight; re-run to write them`. The backfill job reads the clock
+    after its cascade; if midnight stops the run it runs once more from the new day, and if that
+    stops too it logs an error (Sentry) and leaves `BACKFILL_CURRENT_PERIODS_STOPPED` in the job's
+    `last_error`. The backfill job's month-start cascade writes a month, quarter, season or year
+    still running with `is_partial=True`. With `rebuild_summaries --async` and more than one worker
+    on the `summaries` queue, priority orders dequeueing, not completion, so a current-period task can
     start before a slow rollup finishes; the next nightly run corrects it. On spring-forward Sunday
-    Pacific 02:xx doesn't exist, so the 02:15 and 02:20 tasks (like the 02:30 integrity check) don't
-    run that night. With more than one `summaries` worker, the 02:30 integrity check can start
-    before `current_region_periods` finishes and report `missing_current_periods` falsely. After a
-    missed nightly run, an owner that reported only on the missed day keeps a stale partial row until
+    Pacific 02:xx doesn't exist, so `pacific_crontab` runs the 02:xx tasks (current periods and the
+    integrity check) at 03:xx that day, in the same order (`skipped_pacific_hour` in `schedule.py`).
+    After a missed nightly run, an owner that reported only on the missed day keeps a stale partial row until
     it reports again, the period ends, or a rebuild/repair for its scope runs.
   - **Integrity**: `check_summary_integrity` result keys `missing_period_statistics` (coarse rows the
-    fill missed), `missing_current_periods` (series with a DAILY row for yesterday and no MONTHLY
-    row for the month holding it) and `stale_partial_periods` (`is_partial` rows of a period that
+    fill missed), `missing_current_periods` (series with a DAILY row for the day before yesterday and no
+    MONTHLY row for the month holding it: last night's run missed them; checked a day back so it never
+    races tonight's run, which with several `summaries` workers can still be writing) and `stale_partial_periods` (`is_partial` rows of a period that
     ended before the one holding yesterday).
   - **Backfill and deploy**: backfill existing coarse rows with `fill_period_statistics` (Pacific
     dates, end exclusive, scoped like `fill_daily_peaks`, one Pacific year at a time, idempotent,
@@ -625,12 +634,12 @@ zones are missing there; see SJVAPCD Forecast Setup).
   docker compose run --rm web python manage.py repair_summaries 2026-10-01 2026-11-04 \
     --monitor <monitor-id> --region <region-pk> --region-hours --dry-run
   ```
-- **`check_summary_integrity`** (02:30 Pacific, read-only): logs an error (Sentry) when summary
+- **`check_summary_integrity`** (02:30 Pacific, 03:30 on spring-forward Sunday; read-only): logs an error (Sentry) when summary
   rows in the last 400 days are off a Pacific period start, or when hours of the previous
   Pacific day have monitor hourly rows but no region hourly rows, or when coarse rows of a peak
   type in the last 400 days have `daily_statistic_days` null (`missing_period_statistics` in its
-  result), or when a series has a DAILY row for yesterday and no row for the month holding it
-  (`missing_current_periods`), or when `is_partial` rows remain for a period that ended before the
+  result), or when a series has a DAILY row for the day before yesterday and no row for the month
+  holding it (`missing_current_periods`), or when `is_partial` rows remain for a period that ended before the
   one holding yesterday (`stale_partial_periods`). Logs its run time at info.
 - **Burn status** (`camp/apps/forecasts/scales.py`): the feed's `status` string is stored as
   received; unknown values are stored and logged by the ingest task. When a new value
