@@ -6,6 +6,7 @@ from unittest.mock import patch
 from django.conf import settings
 from django.core.management import call_command
 from django.test import TestCase
+from django.utils import timezone
 
 from camp.apps.entries.models import PM25
 from camp.apps.monitors.purpleair.models import PurpleAir
@@ -13,7 +14,7 @@ from camp.apps.regions.models import Region
 from camp.apps.summaries.peaks import peak_entry_models
 from camp.apps.summaries.period_stats import COARSE_RESOLUTIONS
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary, SummaryBackfillJob
-from camp.apps.summaries.periods import is_period_start, iter_hours, iter_period_starts
+from camp.apps.summaries.periods import is_period_start, iter_hours, iter_period_starts, period_start
 from camp.apps.summaries.tasks import (
     _previous_period_start,
     backfill_summaries_tick,
@@ -110,6 +111,43 @@ class PeriodConsistencyTests(TestCase):
         assert results[0] == results[1] == results[2]
         for _, resolution, ts, _, _ in results[0]:
             assert is_period_start(resolution, ts), _iso(ts)
+
+    def test_full_rebuild_leaves_the_current_periods(self):
+        now = timezone.now()
+        today = period_start('day', now)
+        yesterday = period_start('day', today - timedelta(microseconds=1))
+        first = period_start('month', yesterday)
+        ts, entries, n = first.astimezone(dt_timezone.utc), [], 0
+        while ts < today:
+            entries.append(PM25(
+                monitor=self.monitor, timestamp=ts, stage=PM25.Stage.RAW,
+                processor='', value=float(5 + n % 17), location=self.monitor.location,
+            ))
+            ts += timedelta(hours=1)
+            n += 1
+        PM25.objects.bulk_create(entries)
+
+        start = (first + timedelta(hours=12)).astimezone(LA).strftime('%Y-%m-%d')
+        for scope in (f'--monitor={self.monitor.pk}', f'--region={self.region.pk}'):
+            call_command('rebuild_summaries', start, scope, stdout=StringIO())
+
+        for model in (MonitorSummary, RegionSummary):
+            owners = model.objects.filter(
+                resolution=R.DAILY, timestamp=yesterday, entry_type='pm25',
+            )
+            assert owners.exists(), model
+            for resolution, unit in (
+                (R.MONTHLY, 'month'), (R.QUARTERLY, 'quarter'), (R.SEASONAL, 'season'), (R.YEARLY, 'year'),
+            ):
+                for day_row in owners:
+                    owner = {'monitor_id': day_row.monitor_id} if model is MonitorSummary else {'region_id': day_row.region_id}
+                    if model is MonitorSummary:
+                        owner['processor'] = day_row.processor
+                    row = model.objects.get(
+                        resolution=resolution, entry_type='pm25',
+                        timestamp=period_start(unit, yesterday), **owner,
+                    )
+                    assert row.is_partial, (model, resolution)
 
     def test_rebuild_includes_the_repeated_fall_back_hour(self):
         self._seed_entries()

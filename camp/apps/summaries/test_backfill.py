@@ -713,6 +713,26 @@ class BackfillSummariesTickCompleteChunkTests(TestCase):
         self.job.refresh_from_db()
         assert self.job.state == SummaryBackfillJob.State.DONE
 
+    def test_backfill_done_writes_current_periods(self):
+        now = timezone.now()
+        self.job.range_start = self.month_start
+        self.job.range_end = now
+        self.job.save()
+        with patch('camp.apps.summaries.tasks.roll_current_periods') as mock_roll:
+            backfill_summaries_tick()
+        self.job.refresh_from_db()
+        assert self.job.state == SummaryBackfillJob.State.DONE
+        assert [c.args[:2] for c in mock_roll.call_args_list] == [('monitor', None), ('region', None)]
+
+    def test_backfill_done_before_yesterday_writes_no_current_periods(self):
+        self.job.range_start = self.month_start
+        self.job.save()
+        with patch('camp.apps.summaries.tasks.roll_current_periods') as mock_roll:
+            backfill_summaries_tick()
+        self.job.refresh_from_db()
+        assert self.job.state == SummaryBackfillJob.State.DONE
+        mock_roll.assert_not_called()
+
     def test_july_first_cascades_monthly_and_quarterly_rollups(self):
         # July is a quarter-start month (Jul/Aug/Sep = Q3) — crossing Jul 1
         # while walking backward should trigger a monthly AND a quarterly

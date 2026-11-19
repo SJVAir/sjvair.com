@@ -17,7 +17,7 @@ from camp.apps.regions.models import Region
 from camp.apps.summaries.periods import iter_hours, period_end, period_start
 from camp.apps.summaries.schedule import HOURLY_FIRE_MINUTE, LATE_RUN_WARNING, hour_for_run, pacific_crontab
 from camp.apps.summaries.aggregators import compute_monitor_summary, compute_region_summary, rollup_summaries, rollup_region_stats
-from camp.apps.summaries.current_periods import roll_current_periods
+from camp.apps.summaries.current_periods import reaches_yesterday, roll_current_periods
 from camp.apps.summaries.backfill import (
     backfill_monitor_hours,
     backfill_region_hours,
@@ -654,6 +654,10 @@ def _backfill_complete_chunk(job):
     job.consecutive_failures = 0
     job.last_error = ''
     if job.cursor <= job.range_start:
+        now = timezone.now()
+        if reaches_yesterday(job.range_end, now):
+            roll_current_periods('monitor', None, now)
+            roll_current_periods('region', None, now)
         job.state = SummaryBackfillJob.State.DONE
     job.save()
 

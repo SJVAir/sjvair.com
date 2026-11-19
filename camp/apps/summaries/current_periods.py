@@ -30,6 +30,12 @@ CURRENT_PERIODS = (
 )
 
 
+def reaches_yesterday(end: datetime, now: datetime) -> bool:
+    """Whether a rebuild range ending at `end` includes yesterday (Pacific) as of `now`."""
+    today = period_start('day', now)
+    return end > period_start('day', today - timedelta(microseconds=1))
+
+
 def _kind(kind):
     # tasks imports this module, so the rollups are imported here.
     from camp.apps.summaries.tasks import rollup_monitor_summaries, rollup_region_summaries

@@ -16,6 +16,7 @@ from camp.apps.regions.models import Region
 from camp.apps.summaries import repair
 from camp.apps.summaries.aggregators import compute_stats
 from camp.apps.summaries.backfill import backfill_region_hours
+from camp.apps.summaries.current_periods import roll_current_periods
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.periods import is_period_start, iter_hours
 from camp.apps.summaries.tasks import rollup_monitor_summaries, rollup_region_summaries
@@ -537,6 +538,39 @@ class RepairSummariesTests(TestCase):
         assert 'monitor day: 29 misaligned to delete' in out.getvalue()
         assert 'region day: 29 misaligned to delete' in out.getvalue()
 
+    def _seed_through_yesterday(self):
+        self._seed_hours(_pacific(2026, 10, 25), _pacific(2026, 11, 4))
+        for day in range(25, 34):
+            d = _pacific(2026, 10, 25) + timedelta(days=day - 25)
+            d = make_aware(datetime(2026, 10, 25) + timedelta(days=day - 25), LA)
+            self._old_rollup(R.DAILY, R.HOURLY, d, make_aware(datetime(2026, 10, 26) + timedelta(days=day - 25), LA))
+
+    def test_repair_writes_current_periods(self):
+        self._seed_through_yesterday()
+        # The clock check inside the roll reads the real time; hold it at NOW.
+        with patch(
+            'camp.apps.summaries.management.commands.repair_summaries.roll_current_periods',
+            side_effect=lambda kind, ids, now: roll_current_periods(kind, ids, now, clock=lambda: now),
+        ):
+            out = self._repair(start='2026-10-25', end='2026-11-04')
+        assert 'current periods: 2 owners' in out
+        for model, key in ((MonitorSummary, {'monitor': self.monitor}), (RegionSummary, {'region': self.region})):
+            for resolution in (R.MONTHLY, R.QUARTERLY, R.SEASONAL, R.YEARLY):
+                rows = model.objects.filter(resolution=resolution, entry_type='pm25', is_partial=True, **key)
+                assert rows.exists(), (model, resolution)
+
+    def test_repair_dry_run_writes_no_current_periods(self):
+        self._seed_through_yesterday()
+        out = self._repair('--dry-run', start='2026-10-25', end='2026-11-04')
+        assert 'current periods: 2 owners' in out
+        assert not MonitorSummary.objects.filter(is_partial=True).exists()
+        assert not RegionSummary.objects.filter(is_partial=True).exists()
+
+    def test_repair_before_yesterday_prints_no_current_periods(self):
+        self._seed_through_yesterday()
+        out = self._repair(start='2026-10-25', end='2026-11-02')
+        assert 'current periods' not in out
+        assert not MonitorSummary.objects.filter(is_partial=True).exists()
 
 class FindMisalignedTests(TestCase):
     fixtures = ['purple-air.yaml']
