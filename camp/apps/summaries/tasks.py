@@ -700,13 +700,17 @@ INTEGRITY_LOOKBACK = timedelta(days=400)
 @db_periodic_task(pacific_crontab(2, '30'), priority=1, queue='summaries')
 def check_summary_integrity(now=None):
     """
-    Count, and log as an error (Sentry captures it), three kinds of damage:
+    Count, and log as an error (Sentry captures it), five kinds of damage:
 
     - summary rows whose timestamp isn't a Pacific period start, in either
       table, over the last 400 days;
     - hours of the previous Pacific day with monitor hourly summaries but no
       region hourly summaries at all;
-    - coarse rows of a peak type whose period daily statistic was never filled.
+    - coarse rows of a peak type whose period daily statistic was never filled;
+    - series with a day row for yesterday and no row for the month holding it
+      (`missing_current_periods`: the nightly current-period run missed them);
+    - rows still `is_partial` whose period ended before the one holding
+      yesterday (`stale_partial_periods`).
 
     Read-only. The hour check is two bounded distinct-timestamp queries, not
     a per-region geo check. Logs how long the run took at info level, so the
@@ -755,28 +759,63 @@ def check_summary_integrity(now=None):
         for model in (MonitorSummary, RegionSummary)
     )
 
+    # Series with yesterday's day row and no row for the month holding it: the
+    # nightly current-period run missed them.
+    month_start = period_start('month', yesterday)
+    missing_current = 0
+    for model, owner in ((MonitorSummary, 'monitor_id'), (RegionSummary, 'region_id')):
+        covered = model.objects.filter(
+            resolution=BaseSummary.Resolution.MONTHLY,
+            timestamp=month_start,
+            entry_type=OuterRef('entry_type'),
+            **{owner: OuterRef(owner)},
+            **({'processor': OuterRef('processor')} if model is MonitorSummary else {}),
+        )
+        missing_current += (
+            model.objects.filter(resolution=BaseSummary.Resolution.DAILY, timestamp=yesterday)
+            .exclude(Exists(covered)).order_by().count()
+        )
+
+    # Partial rows of a period that ended before the one holding yesterday: the
+    # night after the period ended never replaced them.
+    stale_partial = 0
+    for resolution in COARSE_RESOLUTIONS:
+        cutoff = period_start(resolution, now - timedelta(days=1))
+        stale_partial += sum(
+            model.objects.filter(resolution=resolution, is_partial=True, timestamp__lt=cutoff).count()
+            for model in (MonitorSummary, RegionSummary)
+        )
+
     result = {
         'misaligned': misaligned,
         'missing_region_hours': len(missing),
         'missing_period_statistics': missing_statistics,
+        'missing_current_periods': missing_current,
+        'stale_partial_periods': stale_partial,
     }
     logger.info(
         'Summary integrity check took %.1fs (misaligned scan %.1fs, region hours %.1fs, period statistics %.1fs)',
         time.monotonic() - began, scanned - began, hours_done - scanned, time.monotonic() - hours_done,
     )
+    extras = [
+        (missing_statistics, 'coarse row(s) missing the period daily statistic'),
+        (missing_current, 'series missing their current period row'),
+        (stale_partial, 'stale partial row(s) of a finished period'),
+    ]
+    extras = [(count, label) for count, label in extras if count]
     message = (
         'Summary integrity check found %d misaligned row timestamp(s) and %d hour(s) '
         'with monitor but no region summaries (%s): %s'
     )
     args = [misaligned, len(missing), yesterday.date(), ', '.join(h.isoformat() for h in missing)]
     if misaligned or missing:
-        if missing_statistics:
-            message += '; %d coarse row(s) missing the period daily statistic'
-            args.append(missing_statistics)
+        for count, label in extras:
+            message += '; %d ' + label
+            args.append(count)
         logger.error(message, *args)
-    elif missing_statistics:
+    elif extras:
         logger.error(
-            'Summary integrity check found %d coarse row(s) missing the period daily statistic',
-            missing_statistics,
+            'Summary integrity check found ' + '; '.join('%d ' + label for _, label in extras),
+            *[count for count, _ in extras],
         )
     return result

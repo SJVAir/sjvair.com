@@ -1721,7 +1721,10 @@ class SummaryIntegrityCheckTests(TestCase):
     def test_clean_data_returns_zeros_and_logs_nothing(self):
         self._fill_day()
         with self.assertNoLogs('camp.apps.summaries', level='ERROR'):
-            assert self._run() == {'misaligned': 0, 'missing_region_hours': 0, 'missing_period_statistics': 0}
+            assert self._run() == {
+                'misaligned': 0, 'missing_region_hours': 0, 'missing_period_statistics': 0,
+                'missing_current_periods': 0, 'stale_partial_periods': 0,
+            }
 
     def test_logs_how_long_the_run_took(self):
         self._fill_day()
@@ -1793,6 +1796,56 @@ class SummaryIntegrityCheckTests(TestCase):
         assert len(logs.records) == 1
         assert 'missing the period daily statistic' in logs.records[0].getMessage()
 
+    def test_counts_missing_current_periods(self):
+        D, M = BaseSummary.Resolution.DAILY, BaseSummary.Resolution.MONTHLY
+        stats = compute_stats([10.0], 1)
+        # Monitor series with yesterday's day row and no month row: missed.
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=self.day_start, resolution=D,
+            entry_type='pm25', processor='', **stats)
+        # Same, with its month row: fine.
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=self.day_start, resolution=D,
+            entry_type='pm10', processor='', **stats)
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=self.day_start, resolution=M,
+            entry_type='pm10', processor='', **stats)
+        # A different processor's month row doesn't cover the raw series.
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=self.day_start, resolution=M,
+            entry_type='pm25', processor='x', **stats)
+        stats.pop('is_complete', None)
+        RegionSummary.objects.create(
+            region=self.region, timestamp=self.day_start, resolution=D,
+            entry_type='pm25', station_count=1, **stats)
+        with self.assertLogs('camp.apps.summaries', level='ERROR') as logs:
+            result = self._run()
+        assert result['missing_current_periods'] == 2
+        assert len(logs.records) == 1
+        assert 'current period' in logs.records[0].getMessage()
+
+    def test_counts_stale_partial_periods(self):
+        M = BaseSummary.Resolution.MONTHLY
+        stats = compute_stats([10.0], 1)
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 10, 1), resolution=M,
+            entry_type='pm25', processor='', daily_statistic_days=0,
+            daily_statistic_expected_days=31, is_partial=True, **stats)
+        # The current month's partial row is not stale.
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 11, 1), resolution=M,
+            entry_type='pm25', processor='', daily_statistic_days=0,
+            daily_statistic_expected_days=1, is_partial=True, **stats)
+        # A final October row is not partial.
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 10, 1), resolution=M,
+            entry_type='pm10', processor='', daily_statistic_days=0,
+            daily_statistic_expected_days=31, **stats)
+        with self.assertLogs('camp.apps.summaries', level='ERROR') as logs:
+            result = self._run()
+        assert result['stale_partial_periods'] == 1
+        assert 'stale partial' in logs.records[0].getMessage()
+
     def test_misaligned_rows_older_than_400_days_are_ignored(self):
         MonitorSummary.objects.create(
             monitor=self.monitor, timestamp=pacific(2024, 2, 28, 23),
@@ -1820,7 +1873,10 @@ class SummaryIntegrityCheckTests(TestCase):
         assert self._run()['missing_region_hours'] == 0
 
     def test_hour_with_no_monitor_rows_is_not_missing(self):
-        assert self._run() == {'misaligned': 0, 'missing_region_hours': 0, 'missing_period_statistics': 0}
+        assert self._run() == {
+                'misaligned': 0, 'missing_region_hours': 0, 'missing_period_statistics': 0,
+                'missing_current_periods': 0, 'stale_partial_periods': 0,
+            }
 
     def test_fires_once_on_fall_back_day_at_0230_pacific(self):
         validate = summary_tasks.check_summary_integrity.task_class().validate_datetime

@@ -527,25 +527,50 @@ zones are missing there; see SJVAPCD Forecast Setup).
   names the field per scale (`period_statistic`, see Scale shape). `rollup_monitor_summaries` and
   `rollup_region_summaries` call `fill_period_statistics` after their coarse upsert (the upserts'
   `update_fields` leave the three columns alone), so the nightly rollups, backfill jobs,
-  `repair_summaries`, `rebuild_summaries` and the CIMIS re-roll all go through them (CIMIS types have no figure). CO: the month and
-  coarser rollups read the last day's provisional `max_8h`, so `_refresh_previous_max_8h` refills
-  the coarse CO periods ending at the refreshed day, and `is_settled(..., peak_8h=True)` uses the
-  28 h `PEAK_8H_SETTLE_MARGIN` for them (`is_final` false and `max-age=60` for 28 h after the end).
-  `check_summary_integrity` counts coarse
-  rows the fill missed. Backfill existing coarse rows with `fill_period_statistics` (Pacific dates,
-  end exclusive, scoped like `fill_daily_peaks`, one Pacific year at a time, idempotent,
-  `--resolution`, `--entry-type`, `--dry-run`). Deploy order: (1) deploy (the release phase
-  migrates; migration 0008 sets a 10 s `lock_timeout`) away from :40-:50 and with no
-  `SummaryBackfillJob` running; (2) after the Daily peaks deploy steps (the AirNow -999 monitor
-  and region rebuilds, the AQLite rebuilds and the scoped `fill_daily_peaks`), scoped
-  `fill_period_statistics`, `--dry-run` first, then for real, for the same monitor types and region
-  types. It must follow them because it averages the daily figures they write. Rows those
-  rebuilds re-roll fill themselves, so it only matters for coarse rows that already exist.
+  `repair_summaries`, `rebuild_summaries` and the CIMIS re-roll all go through them (CIMIS types have
+  no figure). CO: the month and coarser rollups read the last day's provisional `max_8h`, so
+  `_refresh_previous_max_8h` refills the coarse CO periods ending at the refreshed day, and
+  `is_settled(..., peak_8h=True)` uses the 28 h `PEAK_8H_SETTLE_MARGIN` for them (`is_final` false
+  and `max-age=60` for 28 h after the end).
+  - **Current periods (written nightly)**: the period still running has a stored row too, through
+    yesterday. `current_monitor_periods` (02:15 Pacific, priority 4) and `current_region_periods`
+    (02:20, priority 3), queue `summaries`, write the month, quarter, season and year holding
+    yesterday (`camp/apps/summaries/current_periods.py`, `roll_current_periods`). Periods come from
+    the clock when the task runs, never a scheduled date. A period still running is written with
+    `is_partial=True` (a model column on `BaseSummary`, never serialized); a period that just ended
+    is written in full (`is_partial=False`) on its first night, the same row the regular rollup
+    writes. For a partial period `fill_period_statistics` takes the days through yesterday as
+    `expected_days`, so the 75% rule judges the days so far, and a partial row is never `is_final`
+    (`row_is_final(..., is_partial=True)`). Only owners with a DAILY row for yesterday are re-rolled;
+    the other owners' partial rows get their expected days (and the 75% rule) moved by one UPDATE
+    per resolution. The start of today is re-checked before every write: once midnight passes the
+    run stops, so it never writes a partial row over a final one. `rebuild_summaries` (sync and
+    `--async`), `repair_summaries` (prints `current periods: <n> owners`), the backfill job's
+    completion and `finalize_cimis_data` write the current periods too when their range reaches
+    yesterday (`reaches_yesterday`). With `rebuild_summaries --async` and more than one worker on
+    the `summaries` queue, priority orders dequeueing, not completion, so a current-period task can
+    start before a slow rollup finishes; the next nightly run corrects it. After a missed nightly
+    run, an owner that reported only on the missed day keeps a stale partial row until it reports
+    again, the period ends, or a rebuild/repair for its scope runs.
+  - **Integrity**: `check_summary_integrity` result keys `missing_period_statistics` (coarse rows the
+    fill missed), `missing_current_periods` (series with a DAILY row for yesterday and no MONTHLY
+    row for the month holding it) and `stale_partial_periods` (`is_partial` rows of a period that
+    ended before the one holding yesterday).
+  - **Backfill and deploy**: backfill existing coarse rows with `fill_period_statistics` (Pacific
+    dates, end exclusive, scoped like `fill_daily_peaks`, one Pacific year at a time, idempotent,
+    `--resolution`, `--entry-type`, `--dry-run`). Deploy order: (1) deploy (the release phase
+    migrates; migrations 0008 and 0009 each set a 10 s `lock_timeout`) away from :40-:50 and with no
+    `SummaryBackfillJob` running; (2) after the Daily peaks deploy steps (the AirNow -999 monitor
+    and region rebuilds, the AQLite rebuilds and the scoped `fill_daily_peaks`), scoped
+    `fill_period_statistics`, `--dry-run` first, then for real, for the same monitor types and region
+    types. It must follow them because it averages the daily figures they write. Rows those
+    rebuilds re-roll fill themselves, so it only matters for coarse rows that already exist.
+    Current-period rows appear the first night (02:15 / 02:20 Pacific); announce after that night.
 
-  ```bash
-  docker compose run --rm web python manage.py fill_period_statistics 2026-01-01 2026-11-19 \
-    --monitor-type airnow --dry-run
-  ```
+    ```bash
+    docker compose run --rm web python manage.py fill_period_statistics 2026-01-01 2026-11-19 \
+      --monitor-type airnow --dry-run
+    ```
 - **Summary cache rule** (`camp/api/v2/summaries/endpoints.py`): a 200 for a settled period is
   `private, max-age=86400`, any other 200 is `private, max-age=60`; both carry an `ETag` and
   answer `If-None-Match` with a 304 (which keeps the 200's headers). Errors are `no-cache`.
@@ -554,7 +579,8 @@ zones are missing there; see SJVAPCD Forecast Setup).
   the margins against the real crontabs, so moving a rollup past its settle time fails it.
   Monitor summary rows (and the bulk rows) carry `sum`; region rows don't.
   Every row carries `is_final`: the settled rule per row and resolution (CO, a `max_8h` type, uses
-  the 28 h margin on day and coarser rows; CIMIS switch types `LATE_SETTLE_MARGIN`); open-day rows are always `false`. One
+  the 28 h margin on day and coarser rows; CIMIS switch types `LATE_SETTLE_MARGIN`); open-day rows
+  and `is_partial` rows are always `false`, and a response holding a partial row is `max-age=60`. One
   instant per request: `SummaryMixin.dispatch` reads the time once and the cache rule, every
   row's `is_final` (`serializing_at` in the serializers) and the open days use it.
 - **Rollup timing**: Huey crontabs are UTC (its `utc=True` default; `DJANGO_HUEY` doesn't
@@ -595,7 +621,9 @@ zones are missing there; see SJVAPCD Forecast Setup).
   rows in the last 400 days are off a Pacific period start, or when hours of the previous
   Pacific day have monitor hourly rows but no region hourly rows, or when coarse rows of a peak
   type in the last 400 days have `daily_statistic_days` null (`missing_period_statistics` in its
-  result). Logs its run time at info.
+  result), or when a series has a DAILY row for yesterday and no row for the month holding it
+  (`missing_current_periods`), or when `is_partial` rows remain for a period that ended before the
+  one holding yesterday (`stale_partial_periods`). Logs its run time at info.
 - **Burn status** (`camp/apps/forecasts/scales.py`): the feed's `status` string is stored as
   received; unknown values are stored and logged by the ingest task. When a new value
   appears, add a level there. The "No Burning For All" string is still unconfirmed.
