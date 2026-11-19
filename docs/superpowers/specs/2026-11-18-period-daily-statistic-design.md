@@ -117,6 +117,12 @@ blank=True`. Migration `0008` adds them to both tables with `SET LOCAL lock_time
 '10s'` first, as `0007` does (nullable, no default: metadata-only in Postgres, but each
 ALTER takes a brief ACCESS EXCLUSIVE lock).
 
+`BaseSummary` also gains `is_partial` (BooleanField, `default=False`), in a new migration
+`0009` (decided with the user, 2026-11-18), so `0008`, already applied to the local dev DB,
+stays as it is. `0009` uses the same `SET LOCAL lock_timeout = '10s'`. A constant default is
+metadata-only in Postgres 11+, so existing rows read `false` without a rewrite. It is
+not serialized: clients see it only through `is_final`.
+
 ### The fill (`camp/apps/summaries/period_stats.py`)
 
 `fill_period_statistics(kind, ids, start, end, *, resolutions=COARSE, entry_models=None,
@@ -212,10 +218,18 @@ a night; today's figure stays on `daily/open/`.
   past period has a stored row, final or not final yet. The exceptions are a period
   that starts today, which has no row until tomorrow's run (use `daily/open/` for
   today), and a night the task itself doesn't run.
+- **`is_partial`:** a row the task writes for a period that hasn't ended at write time
+  has `is_partial = true`. Every write of a period that has ended, whether the regular
+  rollup, the task's full write on the period's first night, a rebuild, a repair or the
+  backfill job, sets it to `false`. Both rollup functions take the flag and put it in
+  their upserts' `update_fields`, so the full write always clears it.
 - **When the period ends:** the regular monthly, quarterly, seasonal or yearly rollup
-  upserts the final row over the partial one, as it already would. `is_final` is the
-  settle rule per row, so a partial row reads `false`, and the summary cache rule gives
-  its responses `max-age=60`.
+  upserts the final row over the partial one, as it already would, clearing
+  `is_partial`. A row is final when it is settled and not partial:
+  `row_is_final` and the summary cache rule both check `is_partial`. A partial row
+  reads `is_final: false` and gets `max-age=60`, even after its settle time if both the
+  rollup and the task missed the night. It then stays visibly not final instead of
+  passing as final.
 - **Late data:** the CO `max_8h` refresh (01:00 / 01:10) runs before the task, so the
   current rows pick it up the same night. `finalize_cimis_data` (04:00–05:00) re-rolls
   the current periods of the stations it re-pulled, after the finished ones.
@@ -226,8 +240,11 @@ a night; today's figure stays on `daily/open/`.
   are "left for the scheduled rollup" change to say the current ones are written
   through yesterday.
 - **Integrity check:** `check_summary_integrity` also counts series with a DAILY row for
-  yesterday and no row for the month holding yesterday (`missing_current_periods`), in its result and
-  Sentry error. The old message is verbatim when both new counts are 0.
+  yesterday and no row for the month holding yesterday (`missing_current_periods`), and
+  coarse rows whose period ended over a day ago that still have `is_partial` set
+  (`stale_partial_periods`: a missed rollup and a missed task run; the fix is
+  `repair_summaries` or `rebuild_summaries` for that scope), in its result and Sentry
+  error. The old message is verbatim when all three new counts are 0.
 
 Removed from the branch, with the open-period design: `open_periods.py`, the 16
 `.../{monthly,quarterly,seasonal,yearly}/open/` routes and their OpenAPI entries,
@@ -270,14 +287,19 @@ range, one Pacific year at a time. Prints the counts per entry type. Idempotent.
    current month, quarter, season and year row for every series with a daily row
    yesterday; on the 1st the task's row for the ended month equals the regular rollup's,
    field for field; a run still going after midnight writes nothing more and leaves the
-   final row byte-for-byte; a period that starts today gets no row.
+   final row byte-for-byte; a period that starts today gets no row; a current row has
+   `is_partial` true and `is_final` false, and the regular rollup clears the flag; a
+   partial row past its settle time still reads `is_final: false` and is counted as
+   `stale_partial_periods`.
 4. **Integrity check:** `missing_current_periods` (see "Current periods").
 
 ## Production at deploy
 
 1. Deploy. The release phase runs migration `0008` (two tables, three nullable columns
    each, 10 s lock timeout): away from :40–:50 and with no `SummaryBackfillJob` running.
-   From then on every coarse row written fills itself.
+   From then on every coarse row written fills itself. The release also runs `0009`
+   (`is_partial` on both tables, constant default, same lock timeout), under the same
+   conditions.
 2. Existing coarse rows: after the daily-peaks steps in the existing deploy entry (step
    2's AirNow backfill and rebuilds, the AQLite rebuilds and the scoped
    `fill_daily_peaks`), run, `--dry-run` first:
