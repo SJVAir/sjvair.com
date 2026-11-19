@@ -637,6 +637,43 @@ class RollupMonitorSummariesTests(TestCase):
         assert daily.count() == 1
         assert daily.first().mean == pytest.approx(20.0)  # mean of (10, 20, 30)
 
+    def test_full_rollup_clears_is_partial(self):
+        self._make_hourly_summary(self.yesterday)
+        end = self.yesterday + timedelta(days=1)
+        D, H = MonitorSummary.Resolution.DAILY, MonitorSummary.Resolution.HOURLY
+        rollup_monitor_summaries(D, H, self.yesterday, end, is_partial=True)
+        assert MonitorSummary.objects.get(resolution=D).is_partial is True
+        assert rollup_monitor_summaries(D, H, self.yesterday, end) is True
+        assert MonitorSummary.objects.get(resolution=D).is_partial is False
+
+    def test_rollup_partial_flag(self):
+        self._make_hourly_summary(self.yesterday)
+        D, H = MonitorSummary.Resolution.DAILY, MonitorSummary.Resolution.HOURLY
+        rollup_monitor_summaries(D, H, self.yesterday, self.yesterday + timedelta(days=1), is_partial=True)
+        assert MonitorSummary.objects.get(resolution=D).is_partial is True
+
+    def test_rollup_guard_false_writes_nothing(self):
+        self._make_hourly_summary(self.yesterday)
+        D, H = MonitorSummary.Resolution.DAILY, MonitorSummary.Resolution.HOURLY
+        end = self.yesterday + timedelta(days=1)
+        assert rollup_monitor_summaries(D, H, self.yesterday, end, guard=lambda: False) is False
+        assert not MonitorSummary.objects.filter(resolution=D).exists()
+        rollup_monitor_summaries(D, H, self.yesterday, end)
+        before = MonitorSummary.objects.values().get(resolution=D)
+        self._make_hourly_summary(self.yesterday + timedelta(hours=1), mean=50.0)
+        assert rollup_monitor_summaries(D, H, self.yesterday, end, is_partial=True, guard=lambda: False) is False
+        assert MonitorSummary.objects.values().get(resolution=D) == before
+
+    def test_guard_checked_again_before_fills(self):
+        self._make_hourly_summary(self.yesterday)
+        D, H = MonitorSummary.Resolution.DAILY, MonitorSummary.Resolution.HOURLY
+        answers = iter([True, False])
+        with patch.object(summary_tasks, 'fill_daily_peaks') as fill:
+            result = rollup_monitor_summaries(
+                D, H, self.yesterday, self.yesterday + timedelta(days=1), guard=lambda: next(answers))
+        assert result is False
+        fill.assert_not_called()
+
     def test_daily_rollup_is_idempotent(self):
         for h in range(3):
             self._make_hourly_summary(self.yesterday + timedelta(hours=h))
@@ -719,6 +756,22 @@ class RollupRegionSummariesTests(TestCase):
             tdigest=tdigest_to_dict(digest),
             station_count=station_count,
         )
+
+    def test_rollup_partial_flag_and_clear(self):
+        self._make_hourly_region_summary(self.yesterday)
+        D, H = RegionSummary.Resolution.DAILY, RegionSummary.Resolution.HOURLY
+        end = self.yesterday + timedelta(days=1)
+        rollup_region_summaries(D, H, self.yesterday, end, is_partial=True)
+        assert RegionSummary.objects.get(resolution=D).is_partial is True
+        assert rollup_region_summaries(D, H, self.yesterday, end) is True
+        assert RegionSummary.objects.get(resolution=D).is_partial is False
+
+    def test_rollup_guard_false_writes_nothing(self):
+        self._make_hourly_region_summary(self.yesterday)
+        D, H = RegionSummary.Resolution.DAILY, RegionSummary.Resolution.HOURLY
+        end = self.yesterday + timedelta(days=1)
+        assert rollup_region_summaries(D, H, self.yesterday, end, guard=lambda: False) is False
+        assert not RegionSummary.objects.filter(resolution=D).exists()
 
     def test_daily_rollup_aggregates_hourly_region_records(self):
         for h in range(3):
@@ -878,6 +931,46 @@ class RebuildSummariesCommandTests(TestCase):
     def test_invalid_date_raises_error(self):
         with pytest.raises((CommandError, SystemExit)):
             self._run('not-a-date')
+
+    def _output(self, *args):
+        from io import StringIO
+        out = StringIO()
+        call_command('rebuild_summaries', *args, stdout=out)
+        return out.getvalue()
+
+    def test_current_periods_stopped_at_midnight_is_printed(self):
+        stopped = {'rolled': {}, 'refreshed': {}, 'stopped': True}
+        with patch(
+            'camp.apps.summaries.management.commands.rebuild_summaries.roll_current_periods',
+            return_value=stopped,
+        ) as roll:
+            out = self._output(self.start, f'--monitor={self.monitor.pk}')
+        assert roll.call_count == 2
+        assert out.count('current periods: stopped at midnight; re-run to write them') == 2
+
+    def test_current_periods_not_stopped_prints_no_warning(self):
+        done = {'rolled': {}, 'refreshed': {}, 'stopped': False}
+        with patch(
+            'camp.apps.summaries.management.commands.rebuild_summaries.roll_current_periods',
+            return_value=done,
+        ):
+            out = self._output(self.start, f'--monitor={self.monitor.pk}')
+        assert 'stopped at midnight' not in out
+
+    def test_async_enqueues_current_periods_when_range_reaches_yesterday(self):
+        region_ids = list(self.monitor.regions.values_list('pk', flat=True))
+        with patch('camp.apps.summaries.tasks.current_monitor_periods') as monitors, \
+                patch('camp.apps.summaries.tasks.current_region_periods') as regions:
+            self._run(self.start, f'--monitor={self.monitor.pk}', '--async')
+        monitors.assert_called_once_with(monitor_ids=[self.monitor.pk])
+        regions.assert_called_once_with(region_ids=region_ids)
+
+    def test_async_before_yesterday_enqueues_no_current_periods(self):
+        with patch('camp.apps.summaries.tasks.current_monitor_periods') as monitors, \
+                patch('camp.apps.summaries.tasks.current_region_periods') as regions:
+            self._run('2026-01-01', '2026-01-02', f'--monitor={self.monitor.pk}', '--async')
+        monitors.assert_not_called()
+        regions.assert_not_called()
 
     def test_rolls_only_finished_periods(self):
         # Now is mid-August: today, August, Q3, summer and 2026 haven't ended.
@@ -1494,10 +1587,11 @@ class SettleTimeTests(TestCase):
         assert not is_settled('day', end, now=pacific(2026, 11, 3, 3), peak_8h=True)
         assert is_settled('day', end, now=pacific(2026, 11, 3, 3))
         assert is_settled('day', end, now=pacific(2026, 11, 3, 4), peak_8h=True)
-        # Only the day resolution is affected.
+        # Coarse rows wait for the last day's refresh too.
         month_end = pacific(2026, 11, 1)
-        now = pacific(2026, 11, 1, 4)
-        assert is_settled('month', month_end, now=now, peak_8h=True) == is_settled('month', month_end, now=now)
+        assert not is_settled('month', month_end, now=month_end + timedelta(hours=27), peak_8h=True)
+        assert is_settled('month', month_end, now=month_end + timedelta(hours=28), peak_8h=True)
+        assert is_settled('month', month_end, now=month_end + timedelta(hours=4))
 
     def test_peak_8h_margin_covers_refresh_crontab(self):
         # The refresh is the next day's rollup. On fall-back day the following day
@@ -1667,7 +1761,10 @@ class SummaryIntegrityCheckTests(TestCase):
     def test_clean_data_returns_zeros_and_logs_nothing(self):
         self._fill_day()
         with self.assertNoLogs('camp.apps.summaries', level='ERROR'):
-            assert self._run() == {'misaligned': 0, 'missing_region_hours': 0}
+            assert self._run() == {
+            'misaligned': 0, 'missing_region_hours': 0, 'missing_period_statistics': 0,
+            'missing_current_periods': 0, 'stale_partial_periods': 0,
+        }
 
     def test_logs_how_long_the_run_took(self):
         self._fill_day()
@@ -1700,6 +1797,127 @@ class SummaryIntegrityCheckTests(TestCase):
         with self.assertLogs('camp.apps.summaries', level='ERROR'):
             assert self._run()['misaligned'] == 2
 
+    def test_old_log_message_is_unchanged_when_only_misaligned_fires(self):
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 2, 28, 23),
+            resolution=BaseSummary.Resolution.MONTHLY,
+            entry_type='temperature', processor='', **compute_stats([10.0], 1),
+        )
+        with self.assertLogs('camp.apps.summaries', level='ERROR') as logs:
+            self._run()
+        assert len(logs.records) == 1
+        assert logs.records[0].getMessage() == (
+            'Summary integrity check found 1 misaligned row timestamp(s) and 0 hour(s) '
+            'with monitor but no region summaries (2026-11-01): '
+        )
+
+    def test_counts_missing_period_statistics(self):
+        M = BaseSummary.Resolution.MONTHLY
+        stats = compute_stats([10.0], 1)
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 10, 1), resolution=M,
+            entry_type='pm25', processor='', **stats)
+        # Days all null: filled, so not a miss.
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 9, 1), resolution=M,
+            entry_type='pm25', processor='', daily_statistic_days=0,
+            daily_statistic_expected_days=30, **stats)
+        # No daily statistic for this type.
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 10, 1), resolution=M,
+            entry_type='temperature', processor='', **stats)
+        stats.pop('is_complete', None)
+        RegionSummary.objects.create(
+            region=self.region, timestamp=pacific(2026, 10, 1), resolution=M,
+            entry_type='pm25', station_count=1, **stats)
+        with self.assertLogs('camp.apps.summaries', level='ERROR') as logs:
+            result = self._run()
+        assert result['missing_period_statistics'] == 2
+        assert len(logs.records) == 1
+        assert 'missing the period daily statistic' in logs.records[0].getMessage()
+
+    def test_counts_missing_current_periods(self):
+        D, M = BaseSummary.Resolution.DAILY, BaseSummary.Resolution.MONTHLY
+        stats = compute_stats([10.0], 1)
+        # Monitor series with yesterday's day row and no month row: missed.
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=self.day_start, resolution=D,
+            entry_type='pm25', processor='', **stats)
+        # Same, with its month row: fine.
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=self.day_start, resolution=D,
+            entry_type='pm10', processor='', **stats)
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=self.day_start, resolution=M,
+            entry_type='pm10', processor='', **stats)
+        # A different processor's month row doesn't cover the raw series.
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=self.day_start, resolution=M,
+            entry_type='pm25', processor='x', **stats)
+        stats.pop('is_complete', None)
+        RegionSummary.objects.create(
+            region=self.region, timestamp=self.day_start, resolution=D,
+            entry_type='pm25', station_count=1, **stats)
+        with self.assertLogs('camp.apps.summaries', level='ERROR') as logs:
+            result = self._run()
+        assert result['missing_current_periods'] == 2
+        assert len(logs.records) == 1
+        assert 'current period' in logs.records[0].getMessage()
+
+    def test_counts_stale_partial_periods(self):
+        M = BaseSummary.Resolution.MONTHLY
+        stats = compute_stats([10.0], 1)
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 10, 1), resolution=M,
+            entry_type='pm25', processor='', daily_statistic_days=0,
+            daily_statistic_expected_days=31, is_partial=True, **stats)
+        # The current month's partial row is not stale.
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 11, 1), resolution=M,
+            entry_type='pm25', processor='', daily_statistic_days=0,
+            daily_statistic_expected_days=1, is_partial=True, **stats)
+        # A final October row is not partial.
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 10, 1), resolution=M,
+            entry_type='pm10', processor='', daily_statistic_days=0,
+            daily_statistic_expected_days=31, **stats)
+        with self.assertLogs('camp.apps.summaries', level='ERROR') as logs:
+            result = self._run()
+        assert result['stale_partial_periods'] == 1
+        assert 'stale partial' in logs.records[0].getMessage()
+
+    def test_counts_stale_partial_quarters(self):
+        Q = BaseSummary.Resolution.QUARTERLY
+        stats = compute_stats([10.0], 1)
+
+        def quarter(ts):
+            return MonitorSummary.objects.create(
+                monitor=self.monitor, timestamp=ts, resolution=Q, entry_type='pm25',
+                processor='', daily_statistic_days=0, daily_statistic_expected_days=92,
+                is_partial=True, **stats)
+
+        # Q3 ended before Q4, the quarter holding yesterday (Nov 1): stale.
+        quarter(pacific(2026, 7, 1))
+        # Q4 is still running: its partial row is not stale.
+        quarter(pacific(2026, 10, 1))
+        # Nor is the partial year holding yesterday.
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 1, 1), resolution=BaseSummary.Resolution.YEARLY,
+            entry_type='pm25', processor='', daily_statistic_days=0,
+            daily_statistic_expected_days=305, is_partial=True, **stats)
+        with self.assertLogs('camp.apps.summaries', level='ERROR') as logs:
+            result = self._run()
+        assert result['stale_partial_periods'] == 1
+        assert 'stale partial' in logs.records[0].getMessage()
+
+    def test_partial_quarter_holding_yesterday_is_not_stale(self):
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 10, 1),
+            resolution=BaseSummary.Resolution.QUARTERLY, entry_type='pm25', processor='',
+            daily_statistic_days=0, daily_statistic_expected_days=32, is_partial=True,
+            **compute_stats([10.0], 1))
+        assert self._run()['stale_partial_periods'] == 0
+
     def test_misaligned_rows_older_than_400_days_are_ignored(self):
         MonitorSummary.objects.create(
             monitor=self.monitor, timestamp=pacific(2024, 2, 28, 23),
@@ -1727,7 +1945,10 @@ class SummaryIntegrityCheckTests(TestCase):
         assert self._run()['missing_region_hours'] == 0
 
     def test_hour_with_no_monitor_rows_is_not_missing(self):
-        assert self._run() == {'misaligned': 0, 'missing_region_hours': 0}
+        assert self._run() == {
+            'misaligned': 0, 'missing_region_hours': 0, 'missing_period_statistics': 0,
+            'missing_current_periods': 0, 'stale_partial_periods': 0,
+        }
 
     def test_fires_once_on_fall_back_day_at_0230_pacific(self):
         validate = summary_tasks.check_summary_integrity.task_class().validate_datetime
@@ -1857,6 +2078,12 @@ class RowIsFinalTests(TestCase):
         assert not row_is_final('day', day, 'co', now=end + timedelta(hours=28) - timedelta(minutes=1))
         assert row_is_final('day', day, 'co', now=end + timedelta(hours=28))
 
+    def test_co_monthly_row_not_final(self):
+        month = pacific(2026, 11, 1)
+        now = pacific(2026, 12, 1, 5)
+        assert row_is_final('month', month, 'co', now=now) is False
+        assert row_is_final('month', month, 'o3', now=now) is True
+
     def test_hour_waits_2h(self):
         hour = pacific(2026, 11, 2, 10)
         assert not row_is_final('hour', hour, 'pm25', now=pacific(2026, 11, 2, 12, 59))
@@ -1867,3 +2094,48 @@ class RowIsFinalTests(TestCase):
         end = pacific(2026, 11, 3)
         assert not row_is_final('day', day, 'temperature', now=end + timedelta(hours=6, minutes=59))
         assert row_is_final('day', day, 'temperature', now=end + timedelta(hours=7))
+
+
+class PartialRowIsFinalTests(TestCase):
+    def test_partial_row_not_final(self):
+        month = pacific(2026, 10, 1)
+        now = pacific(2026, 11, 8)
+        assert row_is_final('month', month, 'pm25', now=now, is_partial=True) is False
+        assert row_is_final('month', month, 'pm25', now=now, is_partial=False) is True
+
+
+class SummarySerializerFieldTests(TestCase):
+    fixtures = ['purple-air.yaml', 'regions.yaml']
+    FIELDS = ['daily_statistic_mean', 'daily_statistic_days', 'daily_statistic_expected_days']
+
+    def _stats(self):
+        digest = TDigest()
+        digest.batch_update([10.0])
+        return dict(
+            entry_type='pm25', count=1, expected_count=1, sum_value=10.0, sum_of_squares=100.0,
+            minimum=10.0, maximum=10.0, mean=10.0, stddev=0.0, p25=10.0, p75=10.0,
+            tdigest=tdigest_to_dict(digest),
+        )
+
+    def test_period_fields(self):
+        from camp.api.v2.summaries.serializers import MonitorSummarySerializer, RegionSummarySerializer
+        monitor = PurpleAir.objects.first()
+        region = Region.objects.first()
+        ts = timezone.make_aware(datetime(2026, 3, 1))
+        period = dict(daily_statistic_mean=12.5, daily_statistic_days=25, daily_statistic_expected_days=31)
+        m = MonitorSummary.objects.create(
+            monitor=monitor, timestamp=ts, resolution=MonitorSummary.Resolution.MONTHLY, processor='',
+            **self._stats(), **period)
+        r = RegionSummary.objects.create(
+            region=region, timestamp=ts, resolution=RegionSummary.Resolution.MONTHLY, station_count=1,
+            **self._stats(), **period)
+        hourly = MonitorSummary.objects.create(
+            monitor=monitor, timestamp=ts, resolution=MonitorSummary.Resolution.HOURLY, processor='',
+            **self._stats())
+        for row, serializer in ((m, MonitorSummarySerializer), (r, RegionSummarySerializer)):
+            data = serializer(row).serialize()
+            assert [data[f] for f in self.FIELDS] == [12.5, 25, 31]
+            keys = list(data)
+            assert keys[keys.index('mean_24h') + 1:keys.index('mean_24h') + 4] == self.FIELDS
+        data = MonitorSummarySerializer(hourly).serialize()
+        assert [data[f] for f in self.FIELDS] == [None, None, None]

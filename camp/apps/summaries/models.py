@@ -49,6 +49,15 @@ class BaseSummary(models.Model):
     max_8h = models.FloatField(_('highest 8-hour average'), null=True, blank=True)
     mean_24h = models.FloatField(_('24-hour average'), null=True, blank=True)
 
+    # Average of the daily figures (coarse rows of peak entry types only; null everywhere else)
+    daily_statistic_mean = models.FloatField(_('average of daily figures'), null=True, blank=True)
+    daily_statistic_days = models.PositiveSmallIntegerField(_('days with a daily figure'), null=True, blank=True)
+    daily_statistic_expected_days = models.PositiveSmallIntegerField(_('expected days'), null=True, blank=True)
+
+    # True on a current-period row the nightly summarizer wrote before the period
+    # ended; a full rollup clears it. Never serialized.
+    is_partial = models.BooleanField(_('is partial'), default=False, db_default=False)
+
     class Meta:
         abstract = True
         indexes = [

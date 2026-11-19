@@ -15,7 +15,7 @@ from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.regions.counties import COUNTY_NAMES
 from camp.apps.summaries.periods import iter_hours, period_end, period_start
 from camp.apps.summaries.selection import is_summarized
-from camp.apps.summaries.tasks import summarize_monitor_hours
+from camp.apps.summaries.tasks import current_monitor_periods, summarize_monitor_hours
 from camp.utils.datetime import localtime
 
 
@@ -138,9 +138,13 @@ def finalize_cimis_data():
     changed = _ingest_cimis_data(yesterday)
 
     day_hours = set(iter_hours(day_start, period_end('day', day_start)))
-    for monitor_id in CIMIS.objects.values_list('pk', flat=True):
+    monitor_ids = list(CIMIS.objects.values_list('pk', flat=True))
+    for monitor_id in monitor_ids:
         hours = day_hours | changed.get(str(monitor_id), set())
         summarize_monitor_hours(str(monitor_id), sorted(hours))
+
+    # The stations' current month, quarter, season and year rows, through yesterday.
+    current_monitor_periods(monitor_ids=monitor_ids)
 
 
 @db_task(priority=50)

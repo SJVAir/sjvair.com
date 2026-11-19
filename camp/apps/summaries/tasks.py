@@ -17,6 +17,7 @@ from camp.apps.regions.models import Region
 from camp.apps.summaries.periods import iter_hours, period_end, period_start
 from camp.apps.summaries.schedule import HOURLY_FIRE_MINUTE, LATE_RUN_WARNING, hour_for_run, pacific_crontab
 from camp.apps.summaries.aggregators import compute_monitor_summary, compute_region_summary, rollup_summaries, rollup_region_stats
+from camp.apps.summaries.current_periods import reaches_yesterday, roll_current_periods
 from camp.apps.summaries.backfill import (
     backfill_monitor_hours,
     backfill_region_hours,
@@ -30,6 +31,7 @@ from camp.apps.summaries.backfill import (
 )
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary, SummaryBackfillJob
 from camp.apps.summaries.peaks import fill_daily_peaks, peak_entry_models
+from camp.apps.summaries.period_stats import COARSE_RESOLUTIONS, fill_period_statistics
 from camp.apps.summaries.selection import (
     monitor_summary_entry_models,
     monitor_types_summarizing,
@@ -234,7 +236,10 @@ def _log_skipped(result):
         logger.warning('Daily peaks skipped %d sentinel hourly value(s)', result.skipped)
 
 
-def rollup_monitor_summaries(target_resolution, source_resolution, window_start, window_end, monitor_ids=None):
+def rollup_monitor_summaries(
+    target_resolution, source_resolution, window_start, window_end, monitor_ids=None,
+    *, is_partial=False, guard=None, now=None,
+):
     """
     Roll up MonitorSummary records from source_resolution into target_resolution
     for the given time window.
@@ -247,6 +252,15 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
     the whole window (monitors × entry_types × processors × periods).
 
     Optionally scoped to a list of monitor_ids (for targeted backfill/recalculation).
+
+    Every row written gets `is_partial`, so a full write clears the flag. `guard`
+    is called right before the upsert and again before the fills; when it
+    returns False nothing more is written. Returns True when it wrote (or had
+    nothing to write), False when the guard stopped it. False is "stop now",
+    not "nothing was written": the second check can stop it after the upsert,
+    with the rows written and their fills skipped. `now` is passed to
+    `fill_period_statistics` (a current period expects the days through the
+    day before it).
     """
     qs = MonitorSummary.objects.filter(
         resolution=source_resolution,
@@ -275,10 +289,13 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
             resolution=target_resolution,
             entry_type=entry_type,
             processor=processor,
+            is_partial=is_partial,
             **stats,
         ))
 
     if to_upsert:
+        if guard is not None and not guard():
+            return False
         MonitorSummary.objects.bulk_create(
             to_upsert,
             update_conflicts=True,
@@ -286,16 +303,31 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
             update_fields=[
                 'count', 'expected_count', 'sum_value', 'sum_of_squares',
                 'minimum', 'maximum', 'mean', 'stddev', 'p25', 'p75',
-                'tdigest', 'is_complete',
+                'tdigest', 'is_complete', 'is_partial',
             ],
         )
+        if guard is not None and not guard():
+            return False
         # The peaks aren't in update_fields, so the upsert keeps them; the fill rewrites them.
         if target_resolution == BaseSummary.Resolution.DAILY:
             _log_skipped(fill_daily_peaks('monitor', monitor_ids, window_start, window_end))
+        # Same for the period daily statistic on coarse rows.
+        if target_resolution in COARSE_RESOLUTIONS:
+            fill_period_statistics(
+                'monitor', monitor_ids, window_start, window_end,
+                resolutions=[target_resolution], now=now)
+    return True
 
 
-def rollup_region_summaries(target_resolution, source_resolution, window_start, window_end, region_ids=None):
-    """Same as rollup_monitor_summaries but for RegionSummary."""
+def rollup_region_summaries(
+    target_resolution, source_resolution, window_start, window_end, region_ids=None,
+    *, is_partial=False, guard=None, now=None,
+):
+    """
+    Same as rollup_monitor_summaries but for RegionSummary, including
+    `is_partial`, `guard` (False means stop now, possibly after the upsert)
+    and `now`.
+    """
     qs = RegionSummary.objects.filter(
         resolution=source_resolution,
         timestamp__gte=window_start,
@@ -324,10 +356,13 @@ def rollup_region_summaries(target_resolution, source_resolution, window_start, 
             resolution=target_resolution,
             entry_type=entry_type,
             station_count=station_count,
+            is_partial=is_partial,
             **stats,
         ))
 
     if to_upsert:
+        if guard is not None and not guard():
+            return False
         RegionSummary.objects.bulk_create(
             to_upsert,
             update_conflicts=True,
@@ -335,12 +370,20 @@ def rollup_region_summaries(target_resolution, source_resolution, window_start, 
             update_fields=[
                 'count', 'weight', 'expected_count', 'sum_value', 'sum_of_squares',
                 'minimum', 'maximum', 'mean', 'stddev', 'p25', 'p75',
-                'tdigest', 'station_count',
+                'tdigest', 'station_count', 'is_partial',
             ],
         )
+        if guard is not None and not guard():
+            return False
         # The peaks aren't in update_fields, so the upsert keeps them; the fill rewrites them.
         if target_resolution == BaseSummary.Resolution.DAILY:
             _log_skipped(fill_daily_peaks('region', region_ids, window_start, window_end))
+        # Same for the period daily statistic on coarse rows.
+        if target_resolution in COARSE_RESOLUTIONS:
+            fill_period_statistics(
+                'region', region_ids, window_start, window_end,
+                resolutions=[target_resolution], now=now)
+    return True
 
 
 # ---- Rollup periodic tasks ----
@@ -369,14 +412,22 @@ def _refresh_previous_max_8h(kind, start):
     The 8-hour windows starting late in a day reach into the next morning, so
     that day's daily rollup stores a provisional `max_8h`. Run with the next
     day's rollup, this recomputes the previous day's, now that the hours exist.
-    `start` is the day just rolled up.
+    `start` is the day just rolled up. When the refreshed day is the last day
+    of a coarse period, that period's daily statistic is refilled too.
     """
     models = [model for model, field in peak_entry_models().items() if field == 'max_8h']
+    day = _previous_period_start('day', start)
     result = fill_daily_peaks(
-        kind, None, _previous_period_start('day', start), start,
+        kind, None, day, start,
         entry_models=models, fields=('max_8h',),
     )
     _log_skipped(result)
+    for resolution in COARSE_RESOLUTIONS:
+        if period_end(resolution, day) == start:
+            fill_period_statistics(
+                kind, None, period_start(resolution, day), start,
+                resolutions=[resolution], entry_models=models,
+            )
 
 
 @db_periodic_task(pacific_crontab(1, '0'), priority=80, queue='summaries')
@@ -444,6 +495,24 @@ def yearly_monitor_summaries(year_start=None):
 def yearly_region_summaries(year_start=None):
     """Roll up last year's monthly RegionSummary records into yearly ones."""
     _rollup_regions(R.YEARLY, R.MONTHLY, 'year', year_start)
+
+
+# ---- Current periods ----
+
+@db_periodic_task(pacific_crontab(2, '15'), priority=4, queue='summaries')
+def current_monitor_periods(monitor_ids=None):
+    """
+    Write each monitor's month, quarter, season and year rows holding
+    yesterday, through yesterday (`current_periods.roll_current_periods`).
+    After the last regular rollup (02:05) and before the integrity check.
+    """
+    return roll_current_periods('monitor', monitor_ids)
+
+
+@db_periodic_task(pacific_crontab(2, '20'), priority=3, queue='summaries')
+def current_region_periods(region_ids=None):
+    """The region twin of current_monitor_periods."""
+    return roll_current_periods('region', region_ids)
 
 
 # ---- Backfill ----
@@ -573,10 +642,14 @@ def _backfill_complete_chunk(job):
         rollup_monitor_summaries(target, source, window_start, window_end)
         rollup_region_summaries(target, source, window_start, window_end)
 
+    now = timezone.now()
     for day in days:
         for target, source, window_start, window_end in higher_rollup_windows(day):
-            rollup_monitor_summaries(target, source, window_start, window_end)
-            rollup_region_summaries(target, source, window_start, window_end)
+            # The newest chunk can reach a period still running (the current month,
+            # quarter, season or year): its row is partial until the period ends.
+            partial = window_end > now
+            rollup_monitor_summaries(target, source, window_start, window_end, is_partial=partial, now=now)
+            rollup_region_summaries(target, source, window_start, window_end, is_partial=partial, now=now)
 
     job.cursor = job.chunk_start
     job.chunk_start = None
@@ -585,6 +658,9 @@ def _backfill_complete_chunk(job):
     job.consecutive_failures = 0
     job.last_error = ''
     if job.cursor <= job.range_start:
+        if reaches_yesterday(job.range_end, now):
+            roll_current_periods('monitor', None, now)
+            roll_current_periods('region', None, now)
         job.state = SummaryBackfillJob.State.DONE
     job.save()
 
@@ -627,12 +703,17 @@ INTEGRITY_LOOKBACK = timedelta(days=400)
 @db_periodic_task(pacific_crontab(2, '30'), priority=1, queue='summaries')
 def check_summary_integrity(now=None):
     """
-    Count, and log as an error (Sentry captures it), two kinds of damage:
+    Count, and log as an error (Sentry captures it), five kinds of damage:
 
     - summary rows whose timestamp isn't a Pacific period start, in either
       table, over the last 400 days;
     - hours of the previous Pacific day with monitor hourly summaries but no
-      region hourly summaries at all.
+      region hourly summaries at all;
+    - coarse rows of a peak type whose period daily statistic was never filled;
+    - series with a day row for yesterday and no row for the month holding it
+      (`missing_current_periods`: the nightly current-period run missed them);
+    - rows still `is_partial` whose period ended before the one holding
+      yesterday (`stale_partial_periods`).
 
     Read-only. The hour check is two bounded distinct-timestamp queries, not
     a per-region geo check. Logs how long the run took at info level, so the
@@ -668,15 +749,76 @@ def check_summary_integrity(now=None):
     region_hours = hour_timestamps(RegionSummary.objects.all())
     missing = [hour for hour in iter_hours(yesterday, today) if hour in monitor_hours and hour not in region_hours]
 
-    result = {'misaligned': misaligned, 'missing_region_hours': len(missing)}
-    logger.info(
-        'Summary integrity check took %.1fs (misaligned scan %.1fs, region hours %.1fs)',
-        time.monotonic() - began, scanned - began, time.monotonic() - scanned,
+    hours_done = time.monotonic()
+
+    peak_types = [model.entry_type for model in peak_entry_models()]
+    missing_statistics = sum(
+        model.objects.filter(
+            resolution__in=COARSE_RESOLUTIONS,
+            entry_type__in=peak_types,
+            timestamp__gte=start,
+            daily_statistic_days__isnull=True,
+        ).count()
+        for model in (MonitorSummary, RegionSummary)
     )
+
+    # Series with yesterday's day row and no row for the month holding it: the
+    # nightly current-period run missed them.
+    month_start = period_start('month', yesterday)
+    missing_current = 0
+    for model, owner in ((MonitorSummary, 'monitor_id'), (RegionSummary, 'region_id')):
+        covered = model.objects.filter(
+            resolution=BaseSummary.Resolution.MONTHLY,
+            timestamp=month_start,
+            entry_type=OuterRef('entry_type'),
+            **{owner: OuterRef(owner)},
+            **({'processor': OuterRef('processor')} if model is MonitorSummary else {}),
+        )
+        missing_current += (
+            model.objects.filter(resolution=BaseSummary.Resolution.DAILY, timestamp=yesterday)
+            .exclude(Exists(covered)).order_by().count()
+        )
+
+    # Partial rows of a period that ended before the one holding yesterday: the
+    # night after the period ended never replaced them.
+    stale_partial = 0
+    for resolution in COARSE_RESOLUTIONS:
+        cutoff = period_start(resolution, yesterday)
+        stale_partial += sum(
+            model.objects.filter(resolution=resolution, is_partial=True, timestamp__lt=cutoff).count()
+            for model in (MonitorSummary, RegionSummary)
+        )
+
+    result = {
+        'misaligned': misaligned,
+        'missing_region_hours': len(missing),
+        'missing_period_statistics': missing_statistics,
+        'missing_current_periods': missing_current,
+        'stale_partial_periods': stale_partial,
+    }
+    logger.info(
+        'Summary integrity check took %.1fs (misaligned scan %.1fs, region hours %.1fs, period statistics %.1fs)',
+        time.monotonic() - began, scanned - began, hours_done - scanned, time.monotonic() - hours_done,
+    )
+    extras = [
+        (missing_statistics, 'coarse row(s) missing the period daily statistic'),
+        (missing_current, 'series missing their current period row'),
+        (stale_partial, 'stale partial row(s) of a finished period'),
+    ]
+    extras = [(count, label) for count, label in extras if count]
+    message = (
+        'Summary integrity check found %d misaligned row timestamp(s) and %d hour(s) '
+        'with monitor but no region summaries (%s): %s'
+    )
+    args = [misaligned, len(missing), yesterday.date(), ', '.join(h.isoformat() for h in missing)]
     if misaligned or missing:
+        for count, label in extras:
+            message += '; %d ' + label
+            args.append(count)
+        logger.error(message, *args)
+    elif extras:
         logger.error(
-            'Summary integrity check found %d misaligned row timestamp(s) and %d hour(s) '
-            'with monitor but no region summaries (%s): %s',
-            misaligned, len(missing), yesterday.date(), ', '.join(h.isoformat() for h in missing),
+            'Summary integrity check found ' + '; '.join('%d ' + label for _, label in extras),
+            *[count for count, _ in extras],
         )
     return result

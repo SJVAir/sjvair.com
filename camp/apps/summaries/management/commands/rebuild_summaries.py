@@ -12,6 +12,7 @@ from django.db.models import Q
 from camp.utils.datetime import make_aware
 from camp.apps.entries.stages import Stage
 from camp.apps.summaries.backfill import backfill_monitor_hours, backfill_region_hours
+from camp.apps.summaries.current_periods import reaches_yesterday, roll_current_periods
 from camp.apps.summaries.periods import iter_hours, iter_period_starts, period_end
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.selection import (
@@ -31,12 +32,16 @@ def finished_period_starts(resolution, start, end, now):
     ended by `now`. An unfinished period (today, this month, ...) is left for
     its scheduled rollup, as repair does: a row written now would hold a
     partial period, and nothing updates month-and-longer rows before the
-    period ends.
+    period ends. The current periods are written through yesterday by
+    `roll_current_periods`, which a rebuild reaching yesterday calls.
     '''
     return [
         ws for ws in iter_period_starts(resolution, start, end)
         if period_end(resolution, ws) <= now
     ]
+
+
+STOPPED = 'current periods: stopped at midnight; re-run to write them'
 
 
 class Command(BaseCommand):
@@ -120,18 +125,26 @@ class Command(BaseCommand):
             if enqueue:
                 self._enqueue_monitor_summaries(monitors, hours)
                 self._enqueue_monitor_rollups(start, end, now)
+                if reaches_yesterday(end, now):
+                    from camp.apps.summaries.tasks import current_monitor_periods
+                    current_monitor_periods(monitor_ids=monitor_ids)
             else:
                 self._backfill_monitor_summaries(monitors, start, end)
                 self._rollup(rollup_monitor_summaries, 'monitor', monitor_ids, start, end, now)
+                self._current_periods('monitor', monitor_ids, end, now)
 
         # Region summaries
         if not monitors_only:
             if enqueue:
                 self._enqueue_region_summaries(region_ids, hours, region_summary_entry_models())
                 self._enqueue_region_rollups(start, end, now)
+                if reaches_yesterday(end, now):
+                    from camp.apps.summaries.tasks import current_region_periods
+                    current_region_periods(region_ids=region_ids)
             else:
                 self._backfill_region_summaries(list(regions), hours)
                 self._rollup(rollup_region_summaries, 'region', region_ids, start, end, now)
+                self._current_periods('region', region_ids, end, now)
 
         self.stdout.write(self.style.SUCCESS('Done.'))
 
@@ -175,6 +188,14 @@ class Command(BaseCommand):
             for window_start in tqdm.tqdm(windows, file=self.stdout, dynamic_ncols=True):
                 window_end = period_end(target, window_start)
                 rollup_fn(target, source, window_start, window_end, **{f'{label}_ids': ids})
+
+    def _current_periods(self, label, ids, end, now):
+        if not reaches_yesterday(end, now):
+            return
+        self.stdout.write(f'\nWriting current {label} periods...')
+        self.stdout.flush()
+        if roll_current_periods(label, ids, now)['stopped']:
+            self.stdout.write(STOPPED)
 
     # ---- Async enqueue methods ----
 

@@ -620,6 +620,22 @@ class FinalizeCimisDataTests(TestCase):
         assert called_kwargs['end_date'] == yesterday
         assert sorted(called_kwargs['data_items']) == sorted(CIMIS.ENTRY_MAP.keys())
 
+    @patch('camp.apps.monitors.cimis.tasks.current_monitor_periods')
+    @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
+    def test_finalize_cimis_rolls_current_periods(self, MockAPI, mock_current):
+        station = CIMIS.objects.create(
+            name='Station A',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+        MockAPI.return_value.get_hourly_data.return_value = []
+
+        from camp.apps.monitors.cimis.tasks import finalize_cimis_data
+        finalize_cimis_data()
+
+        mock_current.assert_called_once_with(monitor_ids=[station.pk])
+
     @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
     def test_queries_the_pacific_yesterday(self, MockAPI):
         CIMIS.objects.create(

@@ -6,12 +6,16 @@ from unittest.mock import patch
 from django.conf import settings
 from django.core.management import call_command
 from django.test import TestCase
+from django.utils import timezone
 
 from camp.apps.entries.models import PM25
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.regions.models import Region
+from camp.apps.summaries.peaks import peak_entry_models
+from camp.apps.summaries.period_stats import COARSE_RESOLUTIONS
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary, SummaryBackfillJob
-from camp.apps.summaries.periods import is_period_start, iter_hours, iter_period_starts
+from camp.apps.summaries.current_periods import roll_current_periods
+from camp.apps.summaries.periods import is_period_start, iter_hours, iter_period_starts, period_end, period_start
 from camp.apps.summaries.tasks import (
     _previous_period_start,
     backfill_summaries_tick,
@@ -109,6 +113,61 @@ class PeriodConsistencyTests(TestCase):
         for _, resolution, ts, _, _ in results[0]:
             assert is_period_start(resolution, ts), _iso(ts)
 
+    def _rebuild_current_periods(self, now):
+        """Seed the month holding yesterday, rebuild both scopes, check every current row."""
+        today = period_start('day', now)
+        yesterday = period_start('day', today - timedelta(microseconds=1))
+        first = period_start('month', yesterday)
+        ts, entries, n = first.astimezone(dt_timezone.utc), [], 0
+        while ts < today:
+            entries.append(PM25(
+                monitor=self.monitor, timestamp=ts, stage=PM25.Stage.RAW,
+                processor='', value=float(5 + n % 17), location=self.monitor.location,
+            ))
+            ts += timedelta(hours=1)
+            n += 1
+        PM25.objects.bulk_create(entries)
+
+        start = (first + timedelta(hours=12)).astimezone(LA).strftime('%Y-%m-%d')
+        for scope in (f'--monitor={self.monitor.pk}', f'--region={self.region.pk}'):
+            call_command('rebuild_summaries', start, scope, stdout=StringIO())
+
+        for model in (MonitorSummary, RegionSummary):
+            owners = model.objects.filter(
+                resolution=R.DAILY, timestamp=yesterday, entry_type='pm25',
+            )
+            assert owners.exists(), model
+            for resolution, unit in (
+                (R.MONTHLY, 'month'), (R.QUARTERLY, 'quarter'), (R.SEASONAL, 'season'), (R.YEARLY, 'year'),
+            ):
+                for day_row in owners:
+                    owner = {'monitor_id': day_row.monitor_id} if model is MonitorSummary else {'region_id': day_row.region_id}
+                    if model is MonitorSummary:
+                        owner['processor'] = day_row.processor
+                    period = period_start(unit, yesterday)
+                    row = model.objects.get(
+                        resolution=resolution, entry_type='pm25', timestamp=period, **owner,
+                    )
+                    # A period ending today (e.g. the month, on the 1st) is written in full.
+                    assert row.is_partial == (period_end(unit, period) > today), (model, resolution)
+        return first
+
+    def test_full_rebuild_leaves_the_current_periods(self):
+        self._rebuild_current_periods(timezone.now())
+
+    def test_full_rebuild_on_a_period_first_day_writes_the_ended_month_in_full(self):
+        now = make_aware(datetime(2026, 12, 1, 10), LA)
+        with patch('django.utils.timezone.now', return_value=now), patch(
+            'camp.apps.summaries.management.commands.rebuild_summaries.roll_current_periods',
+            side_effect=lambda kind, ids, at: roll_current_periods(kind, ids, at, clock=lambda: now),
+        ):
+            november = self._rebuild_current_periods(now)
+        for model in (MonitorSummary, RegionSummary):
+            months = model.objects.filter(resolution=R.MONTHLY, timestamp=november, entry_type='pm25')
+            assert months.exists(), model
+            assert not months.filter(is_partial=True).exists(), model
+            assert model.objects.filter(resolution=R.QUARTERLY, is_partial=True).exists(), model
+
     def test_rebuild_includes_the_repeated_fall_back_hour(self):
         self._seed_entries()
         call_command('rebuild_summaries', '2026-11-01', '2026-11-02', '--region', str(self.region.pk), stdout=StringIO())
@@ -117,6 +176,31 @@ class PeriodConsistencyTests(TestCase):
         assert datetime(2026, 11, 1, 9, tzinfo=dt_timezone.utc) in stamps
         day_start = _pacific(2026, 11, 1)
         assert hourly.filter(timestamp__gte=day_start, timestamp__lt=_pacific(2026, 11, 2)).count() == 25
+
+    def test_rebuild_fills_every_coarse_row(self):
+        start = _pacific(2026, 6, 25).astimezone(dt_timezone.utc)
+        end = _pacific(2026, 10, 5).astimezone(dt_timezone.utc)
+        entries, ts, n = [], start, 0
+        while ts < end:
+            entries.append(PM25(
+                monitor=self.monitor, timestamp=ts, stage=PM25.Stage.RAW,
+                processor='', value=float(5 + n % 17), location=self.monitor.location,
+            ))
+            ts += timedelta(hours=1)
+            n += 1
+        PM25.objects.bulk_create(entries)
+
+        for scope in (f'--monitor={self.monitor.pk}', f'--region={self.region.pk}'):
+            call_command('rebuild_summaries', '2026-07-01', '2026-10-01', scope, stdout=StringIO())
+
+        peak_types = [m.entry_type for m in peak_entry_models()]
+        for model in (MonitorSummary, RegionSummary):
+            coarse = model.objects.filter(resolution__in=COARSE_RESOLUTIONS, entry_type__in=peak_types)
+            assert coarse.filter(resolution=R.MONTHLY).exists(), model
+            assert coarse.filter(resolution=R.QUARTERLY).exists(), model
+            for row in coarse:
+                assert row.daily_statistic_days is not None, (model, row.resolution, row.timestamp)
+                assert row.daily_statistic_expected_days is not None, (model, row.resolution, row.timestamp)
 
     def test_default_periods(self):
         def previous(resolution, now):

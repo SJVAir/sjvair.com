@@ -958,6 +958,54 @@ class MonitorSummaryFallBackDayTests(TestCase):
         assert len(data['data']) == 25
 
 
+class PartialRowTests(TestCase):
+    fixtures = ['purple-air.yaml', 'regions.yaml', 'default-calibrations.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        self.region = Region.objects.get(name='Fresno County')
+        self.month = timezone.make_aware(datetime(2025, 1, 1))
+
+    def _monitor_list(self):
+        return self.client.get(
+            f'/api/2.0/monitors/{self.monitor.pk}/summaries/pm25/monthly/2025/')
+
+    def _region_list(self):
+        return self.client.get(f'/api/2.0/regions/{self.region.sqid}/summaries/pm25/monthly/2025/')
+
+    def test_stale_partial_row_not_cached_long(self):
+        make_monitor_summary(self.monitor, self.month, resolution='month')
+        response = self._monitor_list()
+        assert 'max-age=86400' in response['Cache-Control']
+        assert get_response_data(response)['data'][0]['is_final'] is True
+        MonitorSummary.objects.update(is_partial=True)
+        response = self._monitor_list()
+        assert 'max-age=60' in response['Cache-Control']
+        assert get_response_data(response)['data'][0]['is_final'] is False
+
+    def test_bulk_partial_row_not_final(self):
+        make_monitor_summary(
+            self.monitor, self.month, resolution='month', processor='PM25_EPA_Oct2021')
+        make_region_summary(self.region, self.month, resolution='month')
+        MonitorSummary.objects.update(is_partial=True)
+        RegionSummary.objects.update(is_partial=True)
+        query = {'start': '2025-01-01', 'end': '2025-01-31'}
+        for view, extra in (
+            (bulk_monitor_summary_list, {}), (bulk_region_summary_list, {'region': self.region.sqid}),
+        ):
+            response = view(
+                RequestFactory().get('/', {**query, **extra}), entry_type='pm25', resolution='month')
+            rows = [r for g in get_response_data(response)['data'] for r in g['summaries']]
+            assert rows and all(r['is_final'] is False for r in rows)
+            assert 'max-age=60' in response['Cache-Control']
+
+    def test_is_partial_not_serialized(self):
+        make_monitor_summary(self.monitor, self.month, resolution='month')
+        make_region_summary(self.region, self.month, resolution='month')
+        for response in (self._monitor_list(), self._region_list()):
+            assert 'is_partial' not in get_response_data(response)['data'][0]
+
+
 class IsFinalFieldTests(TestCase):
     fixtures = ['purple-air.yaml', 'regions.yaml', 'default-calibrations.yaml']
 
