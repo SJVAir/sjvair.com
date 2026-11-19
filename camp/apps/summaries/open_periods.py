@@ -221,8 +221,9 @@ def build_open_period_rows(
             if (key, period) in stored_coarse:
                 continue
             records = stats_inputs.get((key, period))
-            # Open rows are never saved, so the merged t-digest isn't kept.
-            stats = rollup(records, with_tdigest=False) if records else None
+            # Open rows are never saved: no merged digest, and p25/p75 come straight
+            # from the inputs' centroids (merging digests is the slow part).
+            stats = rollup(records, with_tdigest=False, percentiles='centroids') if records else None
             if stats is None:
                 continue
 

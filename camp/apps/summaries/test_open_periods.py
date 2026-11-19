@@ -2,6 +2,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from unittest import mock
 
+import numpy as np
 from django.conf import settings
 from django.core.cache import cache
 from django.db import connection
@@ -17,7 +18,9 @@ from camp.apps.entries import models as entries
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.regions.models import Region
 from camp.apps.summaries import open_periods as open_periods_module
-from camp.apps.summaries.aggregators import rollup_region_stats, rollup_summaries, tdigest_to_dict
+from camp.apps.summaries.aggregators import (
+    centroid_percentiles, merge_tdigests, rollup_region_stats, rollup_summaries, tdigest_to_dict,
+)
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.open_days import STATS_COLUMNS, build_open_rows
 from camp.apps.summaries.open_periods import (
@@ -562,3 +565,88 @@ class CachedOpenPeriodRowsTests(OpenPeriodRowsMixin, TestCase):
             result = cached_open_period_rows('region', [self.region.pk], entries.O3, 'month', self.midday)
         assert len(ctx.captured_queries) >= 1
         assert result == {}
+
+
+def _digest(values):
+    digest = TDigest()
+    digest.batch_update(list(values))
+    return tdigest_to_dict(digest)
+
+
+class CentroidPercentilesTests(TestCase):
+    def close(self, dicts):
+        merged = merge_tdigests(dicts)
+        got = centroid_percentiles(dicts, (25, 75))
+        values = [mean for d in dicts for mean, _ in d['C']]
+        tolerance = 0.02 * ((max(values) - min(values)) or 1.0)
+        for p, value in zip((25, 75), got):
+            assert abs(value - merged.percentile(p)) <= tolerance, (p, value, merged.percentile(p))
+        return got
+
+    def test_skewed_daily_digests(self):
+        # 30 days of 24 hourly PM2.5-like values: lognormal, with a smoky week.
+        rng = np.random.default_rng(7)
+        dicts = []
+        for day in range(30):
+            scale = 40.0 if 10 <= day < 17 else 8.0
+            dicts.append(_digest(rng.lognormal(np.log(scale), 0.6, 24)))
+        p25, p75 = self.close(dicts)
+        assert p25 < p75
+
+    def test_one_centroid(self):
+        assert centroid_percentiles([_digest([12.5])], (25, 75)) == (12.5, 12.5)
+        self.close([_digest([12.5])])
+
+    def test_all_equal(self):
+        dicts = [_digest([7.0] * 24) for _ in range(5)]
+        assert centroid_percentiles(dicts, (25, 75)) == (7.0, 7.0)
+
+    def test_empty_centroids_mixed_in(self):
+        dicts = [_digest([1.0, 2.0, 3.0, 4.0]), {'C': [], 'n': 0}, _digest([5.0, 6.0])]
+        self.close([d for d in dicts if d['C']])
+        assert centroid_percentiles(dicts, (25, 75)) == centroid_percentiles(
+            [dicts[0], dicts[2]], (25, 75),
+        )
+        assert centroid_percentiles([{'C': [], 'n': 0}], (25, 75)) == (None, None)
+
+    def test_rollup_keyword(self):
+        records = [dict(_stats(10.0), weight=1.0), dict(_stats(20.0), weight=1.0)]
+        for rollup in (rollup_summaries, rollup_region_stats):
+            default = rollup(records)
+            assert 'tdigest' in default
+            fast = rollup(records, with_tdigest=False, percentiles='centroids')
+            assert 'tdigest' not in fast
+            assert {k: v for k, v in fast.items() if k not in ('p25', 'p75')} == {
+                k: v for k, v in default.items() if k not in ('p25', 'p75', 'tdigest')
+            }
+            with self.assertRaises(ValueError):
+                rollup(records, percentiles='centroids')
+            with self.assertRaises(ValueError):
+                rollup(records, with_tdigest=False, percentiles='other')
+
+
+class OpenPeriodPercentilesTests(OpenPeriodRowsMixin, TestCase):
+    def test_no_digest_merge(self):
+        # Stored rows only (open days merge their hours' digests the usual way).
+        rng = np.random.default_rng(3)
+        dailies = []
+        for d in days_between(pacific(2026, 11, 1), self.today):
+            values = rng.lognormal(np.log(10.0), 0.5, 24)
+            dailies.append(MonitorSummary.objects.create(
+                monitor=self.monitor, timestamp=d, resolution=R.DAILY, entry_type='pm25',
+                processor='', is_complete=True, mean_24h=float(values.mean()),
+                count=24, expected_count=24, sum_value=float(values.sum()),
+                sum_of_squares=float((values ** 2).sum()), minimum=float(values.min()),
+                maximum=float(values.max()), mean=float(values.mean()), stddev=0.0,
+                p25=0.0, p75=0.0, tdigest=_digest(values),
+            ))
+        digests = [d.tdigest for d in dailies]
+        with mock.patch(
+            'camp.apps.summaries.aggregators.merge_tdigests', side_effect=AssertionError('merged'),
+        ):
+            [row] = self.rows('monitor', entries.PM25, 'month')
+        assert (row.p25, row.p75) == centroid_percentiles(digests, (25, 75))
+        merged = merge_tdigests(digests)
+        spread = row.maximum - row.minimum
+        assert abs(row.p25 - merged.percentile(25)) <= 0.02 * spread
+        assert abs(row.p75 - merged.percentile(75)) <= 0.02 * spread
