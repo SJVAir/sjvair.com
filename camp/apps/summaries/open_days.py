@@ -41,14 +41,13 @@ def open_days(now: datetime) -> list[datetime]:
     return [period_start('day', today - timedelta(hours=1)), today]
 
 
-def daily_statistic(entry_model):
+def _daily_statistic(entry_model):
     statistic = getattr(getattr(entry_model, 'Levels', None), 'daily_statistic', None)
     return statistic if statistic in DAILY_FIGURES else None
 
 
 def build_open_rows(
     kind: str, owner_ids: list, entry_model, now: datetime, processor_q: Q | None = None,
-    with_tdigest: bool = False,
 ) -> dict:
     """
     Unsaved DAILY rows (MonitorSummary or RegionSummary) for each series of
@@ -59,8 +58,6 @@ def build_open_rows(
     region hour with a mean above SENTINEL_MAX: so far for today, strict for an
     earlier day (its max_8h windows may reach into the next day's first hours).
     `processor_q` filters monitor series; None means every processor.
-    `with_tdigest` keeps each row's merged t-digest (the open periods roll
-    these rows up further); the open-day endpoints leave it off.
 
     Returns {owner_id: [rows]} ordered by series then day; owners with no rows
     are absent. Runs one hourly query, plus one stored-daily query when
@@ -106,7 +103,7 @@ def build_open_rows(
         fields = (owner, 'processor') if kind == 'monitor' else (owner,)
         stored = set(stored_qs.values_list(*fields))
 
-    statistic = daily_statistic(entry_model)
+    statistic = _daily_statistic(entry_model)
     standard = standard_for(entry_model) if statistic else None
 
     result = defaultdict(list)
@@ -121,11 +118,11 @@ def build_open_rows(
                 continue
             day_end = period_end('day', day)
             day_rows = [r for r in rows if day <= r['timestamp'] < day_end]
-            # Open rows are never saved, so the merged t-digest is only built on request.
+            # Open rows are never saved, so the merged t-digest isn't built.
             if kind == 'monitor':
-                stats = rollup_summaries(day_rows, with_tdigest=with_tdigest)
+                stats = rollup_summaries(day_rows, with_tdigest=False)
             else:
-                stats = rollup_region_stats(day_rows, with_tdigest=with_tdigest)
+                stats = rollup_region_stats(day_rows, with_tdigest=False)
             if stats is None:
                 continue
 

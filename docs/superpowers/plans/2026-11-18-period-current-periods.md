@@ -18,9 +18,11 @@ periods (written nightly)", "Model and migration", "Guards", "Production at depl
 
 ## Global Constraints
 
-- Tests run in podman, inline (no shell variable for the command):
-  `podman-compose --profile test run --rm test pytest <path> -v` (full suite:
-  `podman-compose --profile test run --rm test pytest -n 4 --dist loadscope`).
+- Tests run in podman, inline from the worktree root (no shell variable for the command), with the
+  test env file only:
+  `podman run --rm --network sjvaircom_sjvair-net --env-file .env.test -e BAM_MIRROR_ENABLED=0 -e TWILIO_AUTH_TOKEN=test-token -v $PWD:/app:z -w /app sjvair-com-test:latest pytest <path> -v`
+  (full suite: the same with `pytest -n 4 --dist loadscope -q`). Never the dev `.env`, never the
+  `sjvaircom_*` containers, never `podman-compose`.
 - Never start, restart, rebuild or migrate the shared containers, never run a management command
   against the shared database, never write to it. Tests only (they use the test database).
 - Never write subscriptions or alerts (the local stack sends real SMS).

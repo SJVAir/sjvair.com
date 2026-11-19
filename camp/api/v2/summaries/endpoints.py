@@ -16,18 +16,12 @@ from camp.apps.entries.utils import get_entry_model_by_name
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
 from camp.apps.summaries.open_days import cached_open_rows, open_days
-from camp.apps.summaries.open_periods import cached_open_period_rows, open_periods
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.periods import period_end
 from camp.apps.summaries.schedule import is_settled, settle_flags
 from camp.utils.datetime import make_aware
 
-from .filters import (
-    BulkMonitorScopeFilter,
-    BulkMonitorSummaryFilter,
-    BulkRegionOpenDaysFilter,
-    BulkRegionSummaryFilter,
-)
+from .filters import BulkMonitorSummaryFilter, BulkRegionOpenDaysFilter, BulkRegionSummaryFilter
 from .forms import (
     BulkMonitorScopeForm,
     BulkMonitorSummaryForm,
@@ -154,48 +148,7 @@ def _get_region(region_id):
         raise Http404('Region not found')
 
 
-class OpenRowsMixin:
-    """
-    What the open endpoints build. The daily ones build open days; the
-    open-period views override these hooks (OpenPeriodsMixin).
-    """
-
-    def open_rows(self, kind, ids, processor_q=None):
-        """{owner pk: unsaved rows} for the owners `ids` (a bounded id list)."""
-        return cached_open_rows(kind, ids, self.entry_model, self.now, processor_q=processor_q)
-
-    def open_since(self):
-        """Start of the HOURLY rows that list an owner on the bulk endpoints."""
-        return open_days(self.now)[0]
-
-    def open_owner_q(self, model, **series):
-        """Owners (OuterRef('pk')) with a recent row of the series: an HOURLY row
-        since open_since(). `series` are the unique index's equality columns."""
-        return Q(Exists(model.objects.filter(
-            **series,
-            resolution=BaseSummary.Resolution.HOURLY,
-            timestamp__gte=self.open_since(),
-        )))
-
-
-class OpenPeriodsMixin(OpenRowsMixin):
-    """Open-period rows (monthly, quarterly, seasonal, yearly) instead of open days."""
-
-    def open_rows(self, kind, ids, processor_q=None):
-        return cached_open_period_rows(
-            kind, ids, self.entry_model, self.resolution, self.now, processor_q=processor_q,
-        )
-
-    def open_owner_q(self, model, **series):
-        """Also owners with a DAILY row of the series in the open period(s)."""
-        return super().open_owner_q(model, **series) | Q(Exists(model.objects.filter(
-            **series,
-            resolution=BaseSummary.Resolution.DAILY,
-            timestamp__gte=open_periods(self.resolution, self.now)[0],
-        )))
-
-
-class MonitorOpenDays(OpenRowsMixin, SummaryMixin, generics.GenericEndpoint):
+class MonitorOpenDays(SummaryMixin, generics.GenericEndpoint):
     """Today's (and, until its rollup settles, yesterday's) daily rows for one monitor,
     built on request from the hourly rows and never stored. Not paginated; `?processor=`
     picks the series (default raw)."""
@@ -209,13 +162,14 @@ class MonitorOpenDays(OpenRowsMixin, SummaryMixin, generics.GenericEndpoint):
         monitor = getattr(request, 'monitor', None)
         if monitor is None:
             raise Http404('Monitor not found')
-        rows = self.open_rows(
-            'monitor', [monitor.pk], processor_q=Q(processor=request.GET.get('processor', '')),
+        rows = cached_open_rows(
+            'monitor', [monitor.pk], self.entry_model, self.now,
+            processor_q=Q(processor=request.GET.get('processor', '')),
         ).get(monitor.pk, [])
         return {'data': self.serialize(rows)}
 
 
-class RegionOpenDays(OpenRowsMixin, SummaryMixin, generics.GenericEndpoint):
+class RegionOpenDays(SummaryMixin, generics.GenericEndpoint):
     """Today's (and, until its rollup settles, yesterday's) daily rows for one region."""
 
     model = RegionSummary
@@ -225,7 +179,7 @@ class RegionOpenDays(OpenRowsMixin, SummaryMixin, generics.GenericEndpoint):
 
     def get(self, request, *args, **kwargs):
         region = _get_region(kwargs.get('region_id'))
-        rows = self.open_rows('region', [region.pk]).get(region.pk, [])
+        rows = cached_open_rows('region', [region.pk], self.entry_model, self.now).get(region.pk, [])
         return {'data': self.serialize(rows)}
 
 
@@ -433,7 +387,7 @@ class BulkRegionSummaryList(BulkFormMixin, SummaryMixin, generics.ListEndpoint):
         return super().serialize(regions, fields, include, exclude, fixup)
 
 
-class BulkOpenDaysMixin(OpenRowsMixin, BulkFormMixin, SummaryMixin):
+class BulkOpenDaysMixin(BulkFormMixin, SummaryMixin):
     """
     Open-day rows (see MonitorOpenDays) for many owners at once. Paginated by
     owner, ordered by pk, 100 per page, with the usual page keys (`page`, `count`,
@@ -474,27 +428,32 @@ class BulkMonitorOpenDays(BulkOpenDaysMixin, BulkMonitorScopeMixin, generics.Lis
         )
 
     def open_series_filter(self):
-        """Monitors with a recent row of their series (open_owner_q)."""
+        """Monitors with an hourly row of their series since the first open day."""
+        since = open_days(self.now)[0]
         lookup = Q()
         for monitor_type, processor in self.series:
             # Every column of the (monitor, entry_type, processor, resolution,
             # timestamp) unique index is an equality or the range's start.
-            exists = self.open_owner_q(
-                MonitorSummary,
+            exists = Exists(MonitorSummary.objects.filter(
                 monitor_id=OuterRef('pk'),
                 entry_type=self.entry_model.entry_type,
                 processor=processor,
-            )
+                resolution=BaseSummary.Resolution.HOURLY,
+                timestamp__gte=since,
+            ))
             if monitor_type is None:
-                lookup |= exists
+                lookup |= Q(exists)
             else:
-                lookup |= exists & Q(**{f'{monitor_type}__isnull': False})
+                lookup |= Q(exists, **{f'{monitor_type}__isnull': False})
         return lookup
 
     def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
         ids = list(source)
         monitors_by_id = self.load_monitors(ids)
-        rows = self.open_rows('monitor', ids, processor_q=self.get_processor_filter())
+        rows = cached_open_rows(
+            'monitor', ids, self.entry_model, self.now,
+            processor_q=self.get_processor_filter(),
+        )
         monitors = []
         for pk in ids:
             monitor = monitors_by_id.get(pk)
@@ -515,53 +474,19 @@ class BulkRegionOpenDays(BulkOpenDaysMixin, generics.ListEndpoint):
     filter_class = BulkRegionOpenDaysFilter
 
     def get_queryset(self):
-        # Only regions with a recent row (open_owner_q); the EXISTS is served
-        # by the (region, entry_type, resolution, timestamp) unique index.
-        recent = self.open_owner_q(
-            RegionSummary, region_id=OuterRef('pk'), entry_type=self.entry_model.entry_type,
+        # Only regions with an hourly row since the first open day; the EXISTS
+        # is served by the (region, entry_type, resolution, timestamp) unique index.
+        recent = RegionSummary.objects.filter(
+            region_id=OuterRef('pk'),
+            entry_type=self.entry_model.entry_type,
+            resolution=BaseSummary.Resolution.HOURLY,
+            timestamp__gte=open_days(self.now)[0],
         )
-        return Region.all_objects.filter(recent, pk__in=self.form.cleaned_data['regions']).order_by('pk')
+        return Region.all_objects.filter(Exists(recent), pk__in=self.form.cleaned_data['regions']).order_by('pk')
 
     def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
         regions = list(source)
-        rows = self.open_rows('region', [r.pk for r in regions])
+        rows = cached_open_rows('region', [r.pk for r in regions], self.entry_model, self.now)
         for region in regions:
             region.summary_rows = rows.get(region.pk, [])
         return super().serialize(regions, fields, include, exclude, fixup)
-
-
-class MonitorOpenPeriods(OpenPeriodsMixin, MonitorOpenDays):
-    """The current month, quarter, season or year (and, until its rollup settles, the
-    previous one, if it isn't stored) for one monitor, built on request from the stored
-    monthly and daily rows plus the open days, and never stored. Not paginated;
-    `?processor=` picks the series (default raw). `daily_statistic_expected_days` counts
-    the days from the period's start through today."""
-
-
-class RegionOpenPeriods(OpenPeriodsMixin, RegionOpenDays):
-    """The current month, quarter, season or year (and, until its rollup settles, the
-    previous one, if it isn't stored) for one region, built on request and never stored."""
-
-
-class BulkMonitorOpenPeriods(OpenPeriodsMixin, BulkMonitorOpenDays):
-    """Open-period rows (see MonitorOpenPeriods) for every published monitor, with no
-    `start`/`end`: `region` (repeatable) and `bbox` (`west,south,east,north`) scope the
-    monitors, and each monitor's published series is returned unless `processor` picks
-    one exact processor (blank for raw). The monitor list's filter parameters (e.g.
-    `device`) also narrow it. Paginated by monitor, ordered by id, 100 per page; `count`
-    counts monitors. Only monitors with a DAILY row of the series in the open period(s)
-    or an HOURLY row since the first open day are listed, so a listed monitor can still
-    have `summaries: []` (e.g. its only daily rows are in the previous period, which is
-    now stored). A monitor's rows are never split across pages."""
-
-    filter_class = BulkMonitorScopeFilter
-
-
-class BulkRegionOpenPeriods(OpenPeriodsMixin, BulkRegionOpenDays):
-    """Open-period rows (see RegionOpenPeriods) for one or more regions (exactly one of
-    `region` or `type`, as in BulkRegionSummaryList), with no `start`/`end`. Paginated by
-    region, ordered by id, 100 per page; `count` counts regions. Only regions with a
-    DAILY row in the open period(s) or an HOURLY row since the first open day are
-    listed, so a listed region can still have `summaries: []` (e.g. its only daily rows
-    are in the previous period, which is now stored). A region's rows are never split
-    across pages."""

@@ -34,48 +34,6 @@ def merge_tdigests(dicts: list) -> TDigest:
     return merged
 
 
-def centroid_percentiles(dicts: list, percentiles: tuple = (25, 75)) -> tuple:
-    """
-    Weighted percentiles straight from the centroids of serialized t-digests,
-    in one vectorized pass with no TDigest objects (merging digests calls
-    TDigest.update once per centroid, which dominates large on-request
-    rollups). Centroids are sorted by mean; each sits at the midpoint of its
-    cumulative weight, and a percentile interpolates linearly between them
-    (clamped to the first and last centroid mean). All None with no centroids.
-    """
-    pairs = [pair for d in dicts for pair in (d or {}).get('C', [])]
-    if not pairs:
-        return tuple(None for _ in percentiles)
-    arr = np.asarray(pairs, dtype=float)
-    order = np.argsort(arr[:, 0], kind='stable')
-    means, weights = arr[order, 0], arr[order, 1]
-    cumulative = np.cumsum(weights)
-    midpoints = cumulative - weights / 2
-    targets = np.asarray(percentiles, dtype=float) / 100 * cumulative[-1]
-    return tuple(float(v) for v in np.interp(targets, midpoints, means))
-
-
-def _check_percentiles(percentiles, with_tdigest):
-    if percentiles not in ('tdigest', 'centroids'):
-        raise ValueError(f'Unknown percentiles method: {percentiles}')
-    if percentiles == 'centroids' and with_tdigest:
-        raise ValueError("percentiles='centroids' builds no digest; pass with_tdigest=False")
-
-
-def _percentile_stats(records, percentiles, with_tdigest):
-    """p25/p75 (and the merged digest when kept) for a rollup."""
-    digests = [r['tdigest'] for r in records]
-    if percentiles == 'centroids':
-        p25, p75 = centroid_percentiles(digests, (25, 75))
-        return {'p25': p25, 'p75': p75}
-    merged = merge_tdigests(digests)
-    return {
-        'p25': merged.percentile(25),
-        'p75': merged.percentile(75),
-        **({'tdigest': tdigest_to_dict(merged)} if with_tdigest else {}),
-    }
-
-
 def _stage_for_processor(processor):
     """Derive entry stage from processor: blank → RAW, non-blank → CALIBRATED."""
     from camp.apps.entries.stages import Stage
@@ -170,7 +128,7 @@ def compute_monitor_summary(monitor, timestamp, EntryModel, processor):
     return compute_stats(values, monitor.expected_hourly_entries or 1)
 
 
-def rollup_summaries(records, with_tdigest=True, percentiles='tdigest'):
+def rollup_summaries(records, with_tdigest=True):
     """
     Aggregate a list of MonitorSummary value dicts into one stats dict.
     Used to roll up hourly → daily → monthly etc.
@@ -178,12 +136,9 @@ def rollup_summaries(records, with_tdigest=True, percentiles='tdigest'):
     Each dict must have: count, expected_count, sum_value, sum_of_squares,
     minimum, maximum, tdigest. `with_tdigest=False` leaves the merged digest
     out of the result (rows that are never saved, like open days, don't need it).
-    `percentiles='centroids'` takes p25/p75 from the inputs' centroids
-    (centroid_percentiles) without merging digests; it needs with_tdigest=False.
 
     Returns None if records is empty or total count is zero.
     """
-    _check_percentiles(percentiles, with_tdigest)
     if not records:
         return None
 
@@ -201,7 +156,7 @@ def rollup_summaries(records, with_tdigest=True, percentiles='tdigest'):
     variance = max((sum_of_squares / count) - (mean ** 2), 0)
     stddev = variance ** 0.5
 
-    quantiles = _percentile_stats(records, percentiles, with_tdigest)
+    merged = merge_tdigests([r['tdigest'] for r in records])
 
     return {
         'count': count,
@@ -212,12 +167,14 @@ def rollup_summaries(records, with_tdigest=True, percentiles='tdigest'):
         'maximum': maximum,
         'mean': mean,
         'stddev': stddev,
-        **quantiles,
+        'p25': merged.percentile(25),
+        'p75': merged.percentile(75),
+        **({'tdigest': tdigest_to_dict(merged)} if with_tdigest else {}),
         'is_complete': count >= 0.8 * expected_count,
     }
 
 
-def rollup_region_stats(records, with_tdigest=True, percentiles='tdigest'):
+def rollup_region_stats(records, with_tdigest=True):
     """
     Aggregate a list of RegionSummary value dicts into one stats dict.
 
@@ -227,12 +184,11 @@ def rollup_region_stats(records, with_tdigest=True, percentiles='tdigest'):
     weights whose rounded sum diverges from the true total.
 
     Each dict must have: count, weight, expected_count, sum_value,
-    sum_of_squares, minimum, maximum, tdigest. `with_tdigest` and
-    `percentiles` as in rollup_summaries.
+    sum_of_squares, minimum, maximum, tdigest. `with_tdigest` as in
+    rollup_summaries.
 
     Returns None if records is empty or total weight is zero.
     """
-    _check_percentiles(percentiles, with_tdigest)
     if not records:
         return None
 
@@ -251,7 +207,7 @@ def rollup_region_stats(records, with_tdigest=True, percentiles='tdigest'):
     variance = max((sum_of_squares / weight) - (mean ** 2), 0)
     stddev = variance ** 0.5
 
-    quantiles = _percentile_stats(records, percentiles, with_tdigest)
+    merged = merge_tdigests([r['tdigest'] for r in records])
 
     return {
         'count': count,
@@ -263,7 +219,9 @@ def rollup_region_stats(records, with_tdigest=True, percentiles='tdigest'):
         'maximum': maximum,
         'mean': mean,
         'stddev': stddev,
-        **quantiles,
+        'p25': merged.percentile(25),
+        'p75': merged.percentile(75),
+        **({'tdigest': tdigest_to_dict(merged)} if with_tdigest else {}),
     }
 
 

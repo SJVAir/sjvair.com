@@ -61,21 +61,6 @@ class OpenAPISchemaTests(TestCase):
             param_names = {p['name'] for p in self.paths[path]['get']['parameters']}
             assert {'region', 'type'} <= param_names, path
 
-    def test_bulk_open_period_paths_documented(self):
-        for resolution in ('monthly', 'quarterly', 'seasonal', 'yearly'):
-            regions = self.paths[f'/regions/{{entry_type}}/summaries/{resolution}/open/']['get']
-            assert {'region', 'type'} <= {p['name'] for p in regions['parameters']}, resolution
-            monitors = self.paths[f'/monitors/{{entry_type}}/summaries/{resolution}/open/']['get']
-            assert {'region', 'bbox', 'processor'} <= {p['name'] for p in monitors['parameters']}, resolution
-            assert 'open' in monitors['description'].lower()
-
-    def test_open_period_paths_documented(self):
-        for resolution in ('monthly', 'quarterly', 'seasonal', 'yearly'):
-            assert any(p.endswith(f'/summaries/{{entry_type}}/{resolution}/open/') and '{monitor_id}' in p
-                       for p in self.paths), resolution
-            assert any(p.endswith(f'/summaries/{{entry_type}}/{resolution}/open/') and '{region_id}' in p
-                       for p in self.paths), resolution
-
     def test_task_status_is_not_documented(self):
         assert not any('task' in p for p in self.paths)
 

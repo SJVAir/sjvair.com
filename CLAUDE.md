@@ -531,24 +531,7 @@ zones are missing there; see SJVAPCD Forecast Setup).
   coarser rollups read the last day's provisional `max_8h`, so `_refresh_previous_max_8h` refills
   the coarse CO periods ending at the refreshed day, and `is_settled(..., peak_8h=True)` uses the
   28 h `PEAK_8H_SETTLE_MARGIN` for them (`is_final` false and `max-age=60` for 28 h after the end).
-  Open periods (`camp/apps/summaries/open_periods.py`): `monitors/<id>/summaries/<entry_type>/
-  {monthly,quarterly,seasonal,yearly}/open/` (`?processor=`, default `''`),
-  `regions/<id>/summaries/<entry_type>/{...}/open/`, and the bulk
-  `monitors/<entry_type>/summaries/{...}/open/` and `regions/<entry_type>/summaries/{...}/open/`
-  (scoped, paged and cached like `daily/open/`) return unsaved rows for the period holding today
-  and the previous one while it isn't settled (plain margins) and the series has no stored row for
-  it: at most 2 rows per series. Stats roll up the stored MONTHLY rows of finished months (not for
-  `month`), the stored DAILY rows of the other days and the open-day rows of days with no stored
-  daily row (built with their t-digests). Their `p25`/`p75` come from the inputs' combined
-  centroids in one weighted-percentile pass (`aggregators.centroid_percentiles`,
-  `percentiles='centroids'`), not a t-digest merge (10x faster on a 100-owner PM2.5 page): an
-  approximation that can differ slightly from the stored row written after the period ends.
-  Stored rows and `daily/open/` keep the merge. The figure averages the stored daily figures plus the
-  open days' (today's "so far"), against the days from the period's start through today (the
-  previous period: its full length). Peaks are `null` and `is_final` is `false`. The bulk ones
-  list owners with an HOURLY row since the first open day or a DAILY row in the open period(s).
-  Built rows are cached 60 s (`cached_open_period_rows`; kind, resolution, entry type, series
-  filter, hashed owner set, open periods and open days). `check_summary_integrity` counts coarse
+  `check_summary_integrity` counts coarse
   rows the fill missed. Backfill existing coarse rows with `fill_period_statistics` (Pacific dates,
   end exclusive, scoped like `fill_daily_peaks`, one Pacific year at a time, idempotent,
   `--resolution`, `--entry-type`, `--dry-run`). Deploy order: (1) deploy (the release phase
@@ -571,8 +554,7 @@ zones are missing there; see SJVAPCD Forecast Setup).
   the margins against the real crontabs, so moving a rollup past its settle time fails it.
   Monitor summary rows (and the bulk rows) carry `sum`; region rows don't.
   Every row carries `is_final`: the settled rule per row and resolution (CO, a `max_8h` type, uses
-  the 28 h margin on day and coarser rows; CIMIS switch types `LATE_SETTLE_MARGIN`); open-day and
-  open-period rows are always `false`. One
+  the 28 h margin on day and coarser rows; CIMIS switch types `LATE_SETTLE_MARGIN`); open-day rows are always `false`. One
   instant per request: `SummaryMixin.dispatch` reads the time once and the cache rule, every
   row's `is_final` (`serializing_at` in the serializers) and the open days use it.
 - **Rollup timing**: Huey crontabs are UTC (its `utc=True` default; `DJANGO_HUEY` doesn't

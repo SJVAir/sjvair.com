@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .endpoints import RegionOpenDays, RegionOpenPeriods, RegionSummaryList
+from .endpoints import RegionOpenDays, RegionSummaryList
 
 view = RegionSummaryList.as_view()
 
@@ -16,12 +16,8 @@ urlpatterns = [
     path('<entry_type>/daily/<int:year>/<int:month>/', view, {'resolution': 'day'}, name='region-summary-daily-month'),
 
     # coarser resolutions
-    path('<entry_type>/monthly/open/', RegionOpenPeriods.as_view(), {'resolution': 'month'}, name='region-summary-monthly-open'),
     path('<entry_type>/monthly/<int:year>/', view, {'resolution': 'month'}, name='region-summary-monthly'),
-    path('<entry_type>/quarterly/open/', RegionOpenPeriods.as_view(), {'resolution': 'quarter'}, name='region-summary-quarterly-open'),
     path('<entry_type>/quarterly/<int:year>/', view, {'resolution': 'quarter'}, name='region-summary-quarterly'),
-    path('<entry_type>/seasonal/open/', RegionOpenPeriods.as_view(), {'resolution': 'season'}, name='region-summary-seasonal-open'),
     path('<entry_type>/seasonal/<int:year>/', view, {'resolution': 'season'}, name='region-summary-seasonal'),
-    path('<entry_type>/yearly/open/', RegionOpenPeriods.as_view(), {'resolution': 'year'}, name='region-summary-yearly-open'),
     path('<entry_type>/yearly/', view, {'resolution': 'year'}, name='region-summary-yearly'),
 ]
