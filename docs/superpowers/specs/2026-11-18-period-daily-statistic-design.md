@@ -176,6 +176,16 @@ built on request and never saved.
   keep `with_tdigest=False`). `is_complete` (monitor) is relative to the hours so far;
   `station_count` is the max over the inputs; `max_1h`/`max_8h`/`mean_24h` are null, as
   on stored coarse rows; `is_final` is `false`.
+- **Percentiles (decided with the user, 2026-11-18, after timing):** open-period rows take
+  `p25`/`p75` from the inputs' combined t-digest centroids in one weighted-percentile
+  pass (`aggregators.centroid_percentiles`, `rollup_*(..., percentiles='centroids')`)
+  instead of merging t-digests. They are an approximation and can differ slightly from
+  the stored row the rollup writes once the period ends. Stored rows and the daily open
+  rows keep the t-digest merge, unchanged. Timing on the dev DB (read-only,
+  `build_open_period_rows` called directly, no cache, PM2.5, 100 owners; local data from
+  2026-10-19): PurpleAir month 2.17 s → 0.22 s, year 2.23 s → 0.30 s; regions month
+  2.41 s → 0.28 s, year 2.76 s → 0.29 s; 3–4 queries each. O3 builds (33 monitors, 52
+  regions) were 0.06–0.09 s before the change.
 - **The figure:** `period_figure` over the stored daily figures plus the open days'
   figures (today's is its "so far" figure, yesterday's the strict one), with
   `expected` = days from the period's start through today. For the previous period,

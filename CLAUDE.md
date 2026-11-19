@@ -539,7 +539,11 @@ zones are missing there; see SJVAPCD Forecast Setup).
   and the previous one while it isn't settled (plain margins) and the series has no stored row for
   it: at most 2 rows per series. Stats roll up the stored MONTHLY rows of finished months (not for
   `month`), the stored DAILY rows of the other days and the open-day rows of days with no stored
-  daily row (built with their t-digests). The figure averages the stored daily figures plus the
+  daily row (built with their t-digests). Their `p25`/`p75` come from the inputs' combined
+  centroids in one weighted-percentile pass (`aggregators.centroid_percentiles`,
+  `percentiles='centroids'`), not a t-digest merge (10x faster on a 100-owner PM2.5 page): an
+  approximation that can differ slightly from the stored row written after the period ends.
+  Stored rows and `daily/open/` keep the merge. The figure averages the stored daily figures plus the
   open days' (today's "so far"), against the days from the period's start through today (the
   previous period: its full length). Peaks are `null` and `is_final` is `false`. The bulk ones
   list owners with an HOURLY row since the first open day or a DAILY row in the open period(s).
