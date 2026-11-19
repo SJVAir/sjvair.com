@@ -141,6 +141,36 @@ class AuthFailureStopsSyncTests(TestCase):
         assert mock_capture.call_count == 1
 
 
+class ForbiddenProductTests(TestCase):
+    '''
+    A 403 can apply to one collection only, so it drops that product for the
+    rest of the run (reported once) and the other products keep syncing.
+    '''
+
+    @patch('camp.apps.tempo.tasks.sentry_sdk.capture_exception')
+    @patch('camp.apps.tempo.tasks.sync_granule')
+    def test_forbidden_product_is_skipped_and_the_rest_sync(self, mock_sync, mock_capture):
+        from camp.apps.tempo.tasks import PRODUCTS, sync_granules
+        forbidden = PRODUCTS[0]
+        response = requests.Response()
+        response.status_code = 403
+
+        def sync(product, timestamp):
+            if product == forbidden:
+                raise requests.HTTPError('403', response=response)
+
+        mock_sync.side_effect = sync
+        hours = [localtime().replace(minute=0, second=0, microsecond=0) - timedelta(hours=h) for h in range(3)]
+
+        sync_granules(hours)
+
+        calls = [call.args for call in mock_sync.call_args_list]
+        assert [c for c in calls if c[0] == forbidden] == [(forbidden, hours[0])]
+        for product in PRODUCTS[1:]:
+            assert [c[1] for c in calls if c[0] == product] == hours
+        assert mock_capture.call_count == 1
+
+
 class CheckEarthdataTokenExpiryTests(TestCase):
     @override_config(EARTHDATA_TOKEN_EXPIRES_AT=EARTHDATA_TOKEN_NOT_SET)
     def test_sends_no_email_when_renewal_has_never_run(self):

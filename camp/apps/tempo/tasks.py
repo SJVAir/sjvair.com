@@ -21,18 +21,28 @@ PRODUCTS = [choice[0] for choice in Granule.Product.choices]
 def sync_granules(timestamps):
     '''
     Syncs every product for each timestamp, reporting individual failures to
-    Sentry and moving on. An auth failure (401/403: an expired or revoked
-    Earthdata token) fails every remaining request the same way, so it stops
-    the run after one report instead of one per product-hour.
+    Sentry and moving on.
+
+    A 401 (an expired or revoked Earthdata token) fails every remaining
+    request the same way, so it stops the run after one report instead of one
+    per product-hour. A 403 can be one collection only (e.g. a new version
+    whose EULA hasn't been accepted), so it drops just that product for the
+    rest of the run, also reported once.
     '''
+    forbidden = set()
     for timestamp in timestamps:
         for product in PRODUCTS:
+            if product in forbidden:
+                continue
             try:
                 sync_granule(product, timestamp)
             except requests.HTTPError as exc:
                 sentry_sdk.capture_exception(exc)
-                if getattr(exc.response, 'status_code', None) in (401, 403):
+                status = getattr(exc.response, 'status_code', None)
+                if status == 401:
                     return
+                if status == 403:
+                    forbidden.add(product)
             except Exception as exc:
                 sentry_sdk.capture_exception(exc)
 
