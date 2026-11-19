@@ -109,18 +109,26 @@ class LatestEntry(models.Model):
 NOT_ANNOTATED = object()
 
 
-def published_rank(latest, lookup, default_stage):
+# How many of a monitor's reporting intervals its published reading may lag
+# its default-stage reading before the default stage is shown instead. The
+# pipeline saves the default stage (e.g. cleaned) a moment before the
+# published calibration (e.g. EPA), so a smaller gap is that race, not a
+# stale calibration; a larger one means the calibration stopped (e.g. EPA
+# with a dead humidity sensor).
+PUBLISHED_STALE_INTERVALS = 3
+
+
+def choose_published(published, default, tolerance):
     '''
-    How well a LatestEntry matches the published reading, lowest first:
-    0 matches `lookup` (Monitor.get_published_lookup), 1 is at the default
-    stage, 2 is anything else. MonitorQuerySet.with_latest_entry ranks the
-    same way in SQL.
+    Of a monitor's newest published entry and newest default-stage entry
+    (either may be None), the one to show: the published one, unless it is
+    more than `tolerance` older than the default-stage one.
     '''
-    if all(getattr(latest, field) == value for field, value in lookup.items()):
-        return 0
-    if latest.stage == default_stage:
-        return 1
-    return 2
+    if published is None:
+        return default
+    if default is None or published.timestamp >= default.timestamp - tolerance:
+        return published
+    return default
 
 
 class Monitor(models.Model):
@@ -352,12 +360,23 @@ class Monitor(models.Model):
 
         if calibration:
             config = cls.ENTRY_CONFIG.get(EntryModel, {})
-            for stage_processors in config.get('processors', {}).values():
-                for processor in stage_processors:
-                    if processor.name == calibration:
-                        return {'stage': processor.next_stage, 'processor': calibration}
+            # Per-entry pipeline processors, plus those that write calibrated
+            # entries outside it (upstream calibrations, hourly aggregators),
+            # as DefaultCalibration.allowed_processors lists them.
+            candidates = [
+                *(p for stage_processors in config.get('processors', {}).values() for p in stage_processors),
+                *config.get('calibrations', []),
+            ]
+            for processor in candidates:
+                if processor.name == calibration:
+                    return {'stage': processor.next_stage, 'processor': calibration}
 
         return {'stage': cls.get_default_stage(EntryModel)}
+
+    @classmethod
+    def get_published_tolerance(cls):
+        '''How far the published reading may lag the default stage; see PUBLISHED_STALE_INTERVALS.'''
+        return PUBLISHED_STALE_INTERVALS * pd.to_timedelta(cls.EXPECTED_INTERVAL).to_pytimedelta()
 
     def get_device(self):
         return self.device or self.DEVICE or self._meta.verbose_name
@@ -609,6 +628,26 @@ class Monitor(models.Model):
                 pass
 
 
+    def choose_latest_entry(self, rows, entry_model, calibration=None):
+        '''
+        Of this monitor's LatestEntry `rows` for `entry_model`, the one to
+        show: the published one (get_published_lookup) unless it's stale
+        (choose_published), else the default stage, else the newest. Monitor
+        detail and the map endpoints all choose through here.
+        '''
+        lookup = self.get_published_lookup(entry_model, calibration)
+        default_stage = self.get_default_stage(entry_model)
+
+        def matches(row):
+            return all(getattr(row, field) == value for field, value in lookup.items())
+
+        def newest(candidates):
+            return max(candidates, key=lambda row: row.timestamp, default=None)
+
+        published = newest([row for row in rows if matches(row)])
+        default = newest([row for row in rows if row.stage == default_stage and not matches(row)])
+        return choose_published(published, default, self.get_published_tolerance()) or newest(rows)
+
     def get_latest_data(self):
         '''
         Returns a dictionary of the most recent entry for each entry type on
@@ -631,12 +670,7 @@ class Monitor(models.Model):
             entry_model = rows[0].entry_model
             if entry_model is None:
                 continue
-            lookup = self.get_published_lookup(entry_model, calibrations.get(entry_type, ''))
-            default_stage = self.get_default_stage(entry_model)
-            chosen.append(min(rows, key=lambda row: (
-                published_rank(row, lookup, default_stage),
-                -row.timestamp.timestamp(),
-            )))
+            chosen.append(self.choose_latest_entry(rows, entry_model, calibrations.get(entry_type, '')))
 
         # One query per entry table, not one per LatestEntry row.
         entry_map = {}

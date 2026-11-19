@@ -962,6 +962,26 @@ class PublishedLatestEntryTests(TestCase):
             assert latest['processor'] == 'PM25_LCS_Cleaning', name
             assert Decimal(str(latest['value'])) == Decimal('1077.00'), name
 
+    def _age_calibrated(self, age):
+        from camp.apps.monitors.models import LatestEntry
+        timestamp = self.now - age
+        entry_models.PM25.objects.filter(pk=self.calibrated.pk).update(timestamp=timestamp)
+        LatestEntry.objects.filter(processor='PM25_EPA_Oct2021').update(timestamp=timestamp)
+
+    def test_published_calibration_a_little_behind_is_still_shown(self):
+        # The pipeline saves cleaned a moment before EPA; within 3 PurpleAir
+        # intervals (6 min) that's the race, not a stale calibration.
+        self._age_calibrated(timedelta(minutes=4))
+        for name, latest in self._all().items():
+            assert latest['processor'] == 'PM25_EPA_Oct2021', name
+
+    def test_stale_published_calibration_gives_way_to_the_default_stage(self):
+        # EPA stopped (e.g. a dead humidity sensor) while cleaning carried on.
+        self._age_calibrated(timedelta(minutes=10))
+        for name, latest in self._all().items():
+            assert latest['processor'] == 'PM25_LCS_Cleaning', name
+            assert Decimal(str(latest['value'])) == Decimal('1077.00'), name
+
     def test_falls_back_to_the_default_stage_without_a_calibrated_entry(self):
         from camp.apps.monitors.models import LatestEntry
         LatestEntry.objects.filter(processor='PM25_EPA_Oct2021').delete()
@@ -1095,7 +1115,60 @@ class CurrentDataActiveTests(TestCase):
         many = run()
 
         # DefaultCalibration lookups (published types, published
-        # calibrations), monitors, latest entries.
-        assert len(few) == len(many) == 4
+        # calibrations), monitors, their LatestEntry rows, latest entries.
+        assert len(few) == len(many) == 5
         main = max(many, key=lambda q: len(q['sql']))['sql']
         assert 'DISTINCT' not in main
+
+
+@override_settings(MONITOR_ENABLED_TYPES=[])
+class PublishedOutsidePipelineTests(TestCase):
+    '''
+    VOZbox and AQLite publish O3 from a processor listed under
+    ENTRY_CONFIG['calibrations'] (written outside the per-entry pipeline),
+    not under 'processors'. The published lookup has to find it there, or
+    at/ falls back to whichever calibrated O3 is newest (e.g. O3_VOZBox).
+    '''
+    fixtures = ['default-calibrations.yaml']
+
+    def setUp(self):
+        from django.contrib.gis.geos import Point
+        from camp.apps.monitors.vozbox.models import VOZBox
+
+        cache.clear()
+        self.factory = RequestFactory()
+        self.now = timezone.now().replace(microsecond=0)
+        self.vozbox = VOZBox.objects.create(
+            sensor_id='published-outside-pipeline', name='VOZbox',
+            position=Point(-119.7871, 36.7378, srid=4326), location=VOZBox.LOCATION.outside,
+        )
+        # The published QuinnCal reading is older than the regression one.
+        self.quinn = self._calibrated('VOZBox_QuinnCal', Decimal('35.0'), self.now - timedelta(minutes=10))
+        self._calibrated('O3_VOZBox', Decimal('80.0'), self.now - timedelta(minutes=1))
+
+    def _calibrated(self, processor, value, timestamp):
+        return entry_models.O3.objects.create(
+            monitor=self.vozbox, timestamp=timestamp, sensor='1', processor=processor,
+            stage=entry_models.O3.Stage.CALIBRATED, value=value,
+            location=self.vozbox.location, position=self.vozbox.position,
+        )
+
+    def test_lookup_finds_calibrations_outside_the_pipeline(self):
+        from camp.apps.monitors.aqlite.models import AQLite
+        from camp.apps.monitors.vozbox.models import VOZBox
+
+        calibrated = entry_models.O3.Stage.CALIBRATED
+        assert VOZBox.get_published_lookup(entry_models.O3) == {
+            'stage': calibrated, 'processor': 'VOZBox_QuinnCal'}
+        assert AQLite.get_published_lookup(entry_models.O3) == {
+            'stage': calibrated, 'processor': 'AQLiteHourlyAggregator'}
+
+    def test_at_shows_the_published_calibration_not_the_newest(self):
+        kwargs = {'entry_type': 'o3'}
+        url = reverse('api:v2:monitors:monitor-at', kwargs=kwargs)
+        request = self.factory.get(url, {'timestamp': self.now.isoformat()})
+        response = monitors_at(request, **kwargs)
+        assert response.status_code == 200
+        [monitor] = [m for m in get_response_data(response)['data'] if m['id'] == str(self.vozbox.pk)]
+        assert monitor['latest']['processor'] == 'VOZBox_QuinnCal'
+        assert Decimal(str(monitor['latest']['value'])) == Decimal('35.0')

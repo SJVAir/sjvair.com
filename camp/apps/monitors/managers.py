@@ -208,93 +208,62 @@ class MonitorQuerySet(InheritanceQuerySet):
     def with_latest_entry(self, entry_model, stage=None, processor=None):
         '''
         Evaluate the queryset, keep monitors with a latest entry of
-        `entry_model`, and attach it as `latest_<entry_type>`.
+        `entry_model`, and attach it as `latest_<entry_type>` (and
+        `latest_entry`). Returns a list.
 
         A monitor keeps one LatestEntry per processor (e.g. the cleaned and
         the calibrated PM2.5). Without `stage`/`processor`, each monitor gets
-        its type's published one (Monitor.get_published_lookup), falling back
-        to its default stage and then the newest, as monitor detail does.
+        the one Monitor.choose_latest_entry picks, as monitor detail does.
         '''
+        from camp.apps.calibrations.models import DefaultCalibration
         from camp.apps.monitors.models import LatestEntry
 
         entry_type = entry_model.entry_type
-        field_id = f'latest_{entry_type}_id'
+        monitors = list(self)
 
-        if stage is None and processor is None:
-            subquery = self._published_latest_entry(entry_model)
-        else:
-            lookup = {
-                'monitor_id': OuterRef('pk'),
-                'entry_type': entry_type,
-            }
-            if stage is not None:
-                lookup['stage'] = stage
-                if stage == entry_model.Stage.CALIBRATED:
-                    lookup['processor'] = processor or ''
-            else:
-                lookup['stage'] = entry_model.Stage.CALIBRATED
-                lookup['processor'] = processor or ''
-
-            subquery = Subquery(LatestEntry.objects
-                .filter(**lookup)
-                .values('entry_id')[:1]
-            )
-
-        monitors = (self
-            .annotate(**{field_id: subquery})
-            .exclude(**{f'{field_id}__isnull': True})
+        rows = LatestEntry.objects.filter(
+            monitor_id__in=[monitor.pk for monitor in monitors],
+            entry_type=entry_type,
         )
+        if stage is not None:
+            rows = rows.filter(stage=stage)
+            if stage == entry_model.Stage.CALIBRATED:
+                rows = rows.filter(processor=processor or '')
+        elif processor is not None:
+            rows = rows.filter(stage=entry_model.Stage.CALIBRATED, processor=processor or '')
 
-        entries = entry_model.objects.filter(pk__in=[getattr(m, field_id) for m in monitors])
-        entry_map = {e.pk: e for e in entries}
-
-        for monitor in monitors:
-            entry = entry_map.get(getattr(monitor, field_id))
-            setattr(monitor, f'latest_{entry_type}', entry)
-            monitor.latest_entry = entry
-
-        return monitors
-
-    def _published_latest_entry(self, entry_model):
-        '''
-        Expression for the entry_id of each monitor's published LatestEntry
-        of `entry_model`. Monitor types publish different processors, so on
-        the base Monitor queryset it's a CASE over the types.
-        '''
-        from django_smalluuid.models import SmallUUIDField
-        from camp.apps.calibrations.models import DefaultCalibration
-        from camp.apps.monitors.models import LatestEntry, Monitor
+        by_monitor = {}
+        for row in rows:
+            by_monitor.setdefault(row.monitor_id, []).append(row)
 
         calibrations = dict(DefaultCalibration.objects
-            .filter(entry_type=entry_model.entry_type)
+            .filter(entry_type=entry_type)
             .values_list('monitor_type', 'calibration'))
 
-        def ranked(monitor_class):
-            lookup = monitor_class.get_published_lookup(
-                entry_model, calibrations.get(monitor_class.monitor_type, ''))
-            # Ranked as models.published_rank does.
-            return Subquery(LatestEntry.objects
-                .filter(monitor_id=OuterRef('pk'), entry_type=entry_model.entry_type)
-                .annotate(published_rank=Case(
-                    When(Q(**lookup), then=Value(0)),
-                    When(stage=monitor_class.get_default_stage(entry_model), then=Value(1)),
-                    default=Value(2),
-                    output_field=IntegerField(),
-                ))
-                .order_by('published_rank', '-timestamp')
-                .values('entry_id')[:1]
-            )
+        chosen = {}
+        for monitor in monitors:
+            candidates = by_monitor.get(monitor.pk)
+            if not candidates:
+                continue
+            if stage is None and processor is None:
+                chosen[monitor.pk] = monitor.choose_latest_entry(
+                    candidates, entry_model, calibrations.get(monitor.monitor_type, ''))
+            else:
+                chosen[monitor.pk] = candidates[0]
 
-        if self.model is not Monitor:
-            return ranked(self.model)
+        entries = entry_model.objects.in_bulk([latest.entry_id for latest in chosen.values()])
 
-        return Case(
-            *[When(**subclass.type_queryset_filter(), then=ranked(subclass))
-              for subclass in Monitor.get_subclasses()
-              if entry_model in subclass.ENTRY_CONFIG],
-            default=Value(None),
-            output_field=SmallUUIDField(),
-        )
+        results = []
+        for monitor in monitors:
+            latest = chosen.get(monitor.pk)
+            if latest is None:
+                continue
+            # A LatestEntry can outlive its entry; the monitor still lists.
+            entry = entries.get(latest.entry_id)
+            setattr(monitor, f'latest_{entry_type}', entry)
+            monitor.latest_entry = entry
+            results.append(monitor)
+        return results
 
     def select_health(self, hours: int = 24, min_score: int = 1, threshold: float = 0.8, as_of: Optional[datetime] = None):
         from camp.apps.monitors.models import Monitor
@@ -365,6 +334,7 @@ class MonitorQuerySet(InheritanceQuerySet):
         falling back to its default stage, as current/ does.
         '''
         from camp.apps.calibrations.models import DefaultCalibration
+        from camp.apps.monitors.models import choose_published
 
         entry_type = entry_model.entry_type
         calibrations = dict(DefaultCalibration.objects
@@ -380,11 +350,13 @@ class MonitorQuerySet(InheritanceQuerySet):
                 .filter(monitor_id=monitor.pk, timestamp__lte=timestamp, timestamp__gte=cutoff)
                 .order_by('-timestamp')
             )
-            published = monitor.get_published_lookup(entry_model, calibrations.get(monitor.monitor_type, ''))
-            entry = window.filter(**published).first()
-            default_stage = {'stage': monitor.get_default_stage(entry_model)}
-            if entry is None and published != default_stage:
-                entry = window.filter(**default_stage).first()
+            lookup = monitor.get_published_lookup(entry_model, calibrations.get(monitor.monitor_type, ''))
+            default_stage = monitor.get_default_stage(entry_model)
+            published = window.filter(**lookup).first()
+            default = None
+            if lookup != {'stage': default_stage}:
+                default = window.filter(stage=default_stage).exclude(**lookup).first()
+            entry = choose_published(published, default, monitor.get_published_tolerance())
 
             if entry is not None:
                 setattr(monitor, f'latest_{entry_type}', entry)
