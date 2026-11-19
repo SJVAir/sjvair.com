@@ -888,3 +888,32 @@ class BackfillSummariesTickRegionsStalenessRecoveryTests(TestCase):
         assert self.job.batch_id == 6
         assert self.job.consecutive_failures == 1
         assert 'restarting the regions phase' in self.job.last_error
+
+
+class BackfillCompleteChunkCurrentPeriodTests(TestCase):
+    """The month-start cascade marks a period still running as partial."""
+    fixtures = ['purple-air.yaml']
+
+    def test_cascade_writes_the_running_period_partial(self):
+        from unittest.mock import patch
+        monitor = PurpleAir.objects.first()
+        oct_1, nov_1 = _day(2026, 10, 1), _day(2026, 11, 1)
+        for day in (oct_1, nov_1):
+            MonitorSummary.objects.create(
+                monitor=monitor, timestamp=day, resolution=R.DAILY, entry_type='pm25',
+                processor='', **compute_stats([10.0], 1))
+        # Walking backward, the chunk reaches Oct 1: the October month and the
+        # Q4 quarter cascade. Q4 is still running on Nov 18.
+        SummaryBackfillJob.objects.create(
+            cursor=_day(2026, 10, 3), chunk_start=oct_1,
+            range_start=oct_1, range_end=_day(2026, 10, 3),
+            phase=SummaryBackfillJob.Phase.REGIONS, pending_tasks=0, batch_id=1,
+        )
+        now = make_aware(datetime(2026, 11, 18, 10), LA)
+        with patch('django.utils.timezone.now', return_value=now):
+            backfill_summaries_tick()
+
+        month = MonitorSummary.objects.get(monitor=monitor, resolution=R.MONTHLY, timestamp=oct_1)
+        quarter = MonitorSummary.objects.get(monitor=monitor, resolution=R.QUARTERLY, timestamp=oct_1)
+        assert month.is_partial is False
+        assert quarter.is_partial is True

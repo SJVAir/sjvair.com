@@ -541,17 +541,25 @@ zones are missing there; see SJVAPCD Forecast Setup).
     is written in full (`is_partial=False`) on its first night, the same row the regular rollup
     writes. For a partial period `fill_period_statistics` takes the days through yesterday as
     `expected_days`, so the 75% rule judges the days so far, and a partial row is never `is_final`
-    (`row_is_final(..., is_partial=True)`). Only owners with a DAILY row for yesterday are re-rolled;
-    the other owners' partial rows get their expected days (and the 75% rule) moved by one UPDATE
-    per resolution. The start of today is re-checked before every write: once midnight passes the
-    run stops, so it never writes a partial row over a final one. `rebuild_summaries` (sync and
-    `--async`), `repair_summaries` (prints `current periods: <n> owners`), the backfill job's
-    completion and `finalize_cimis_data` write the current periods too when their range reaches
-    yesterday (`reaches_yesterday`). With `rebuild_summaries --async` and more than one worker on
+    (`row_is_final(..., is_partial=True)`). Re-rolled are the owners with a DAILY row for yesterday
+    and the owners with rows in the period so far but no row for it yet (e.g. after the deploy or a
+    backfill; a sub-select with `NOT EXISTS`, owner-level); the other owners' partial rows get their
+    expected days (and the 75% rule) moved by one UPDATE per resolution. The start of today is
+    re-checked before every write: once midnight passes the run stops, so it never writes a partial
+    row over a final one. `finalize_cimis_data` calls `current_monitor_periods` every time (its
+    range is always yesterday). `rebuild_summaries` (sync and `--async`), `repair_summaries`
+    (prints `current periods: <n> owners`) and the backfill job's completion write them only when
+    their range reaches yesterday (`reaches_yesterday`); a rebuild or repair stopped by midnight
+    prints `current periods: stopped at midnight; re-run to write them`. The backfill job's
+    month-start cascade writes a month, quarter, season or year still running with
+    `is_partial=True`. With `rebuild_summaries --async` and more than one worker on
     the `summaries` queue, priority orders dequeueing, not completion, so a current-period task can
-    start before a slow rollup finishes; the next nightly run corrects it. After a missed nightly
-    run, an owner that reported only on the missed day keeps a stale partial row until it reports
-    again, the period ends, or a rebuild/repair for its scope runs.
+    start before a slow rollup finishes; the next nightly run corrects it. On spring-forward Sunday
+    Pacific 02:xx doesn't exist, so the 02:15 and 02:20 tasks (like the 02:30 integrity check) don't
+    run that night. With more than one `summaries` worker, the 02:30 integrity check can start
+    before `current_region_periods` finishes and report `missing_current_periods` falsely. After a
+    missed nightly run, an owner that reported only on the missed day keeps a stale partial row until
+    it reports again, the period ends, or a rebuild/repair for its scope runs.
   - **Integrity**: `check_summary_integrity` result keys `missing_period_statistics` (coarse rows the
     fill missed), `missing_current_periods` (series with a DAILY row for yesterday and no MONTHLY
     row for the month holding it) and `stale_partial_periods` (`is_partial` rows of a period that

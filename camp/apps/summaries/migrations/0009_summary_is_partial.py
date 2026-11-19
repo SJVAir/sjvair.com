@@ -5,7 +5,7 @@ def _field(model_name):
     return migrations.AddField(
         model_name=model_name,
         name='is_partial',
-        field=models.BooleanField(default=False, verbose_name='is partial'),
+        field=models.BooleanField(db_default=False, default=False, verbose_name='is partial'),
     )
 
 

@@ -56,7 +56,7 @@ class BaseSummary(models.Model):
 
     # True on a current-period row the nightly summarizer wrote before the period
     # ended; a full rollup clears it. Never serialized.
-    is_partial = models.BooleanField(_('is partial'), default=False)
+    is_partial = models.BooleanField(_('is partial'), default=False, db_default=False)
 
     class Meta:
         abstract = True

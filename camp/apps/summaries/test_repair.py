@@ -559,6 +559,25 @@ class RepairSummariesTests(TestCase):
                 rows = model.objects.filter(resolution=resolution, entry_type='pm25', is_partial=True, **key)
                 assert rows.exists(), (model, resolution)
 
+    def test_repair_current_periods_stopped_at_midnight_is_printed(self):
+        self._seed_through_yesterday()
+        with patch(
+            'camp.apps.summaries.management.commands.repair_summaries.roll_current_periods',
+            return_value={'rolled': {}, 'refreshed': {}, 'stopped': True},
+        ):
+            out = self._repair(start='2026-10-25', end='2026-11-04')
+        assert 'current periods: stopped at midnight; re-run to write them' in out
+
+    def test_repair_current_periods_not_stopped_prints_no_warning(self):
+        self._seed_through_yesterday()
+        with patch(
+            'camp.apps.summaries.management.commands.repair_summaries.roll_current_periods',
+            return_value={'rolled': {}, 'refreshed': {}, 'stopped': False},
+        ):
+            out = self._repair(start='2026-10-25', end='2026-11-04')
+        assert 'stopped at midnight' not in out
+        assert 'current periods: 2 owners' in out
+
     def test_repair_dry_run_writes_no_current_periods(self):
         self._seed_through_yesterday()
         out = self._repair('--dry-run', start='2026-10-25', end='2026-11-04')

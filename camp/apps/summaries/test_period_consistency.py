@@ -14,7 +14,8 @@ from camp.apps.regions.models import Region
 from camp.apps.summaries.peaks import peak_entry_models
 from camp.apps.summaries.period_stats import COARSE_RESOLUTIONS
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary, SummaryBackfillJob
-from camp.apps.summaries.periods import is_period_start, iter_hours, iter_period_starts, period_start
+from camp.apps.summaries.current_periods import roll_current_periods
+from camp.apps.summaries.periods import is_period_start, iter_hours, iter_period_starts, period_end, period_start
 from camp.apps.summaries.tasks import (
     _previous_period_start,
     backfill_summaries_tick,
@@ -112,8 +113,8 @@ class PeriodConsistencyTests(TestCase):
         for _, resolution, ts, _, _ in results[0]:
             assert is_period_start(resolution, ts), _iso(ts)
 
-    def test_full_rebuild_leaves_the_current_periods(self):
-        now = timezone.now()
+    def _rebuild_current_periods(self, now):
+        """Seed the month holding yesterday, rebuild both scopes, check every current row."""
         today = period_start('day', now)
         yesterday = period_start('day', today - timedelta(microseconds=1))
         first = period_start('month', yesterday)
@@ -143,11 +144,29 @@ class PeriodConsistencyTests(TestCase):
                     owner = {'monitor_id': day_row.monitor_id} if model is MonitorSummary else {'region_id': day_row.region_id}
                     if model is MonitorSummary:
                         owner['processor'] = day_row.processor
+                    period = period_start(unit, yesterday)
                     row = model.objects.get(
-                        resolution=resolution, entry_type='pm25',
-                        timestamp=period_start(unit, yesterday), **owner,
+                        resolution=resolution, entry_type='pm25', timestamp=period, **owner,
                     )
-                    assert row.is_partial, (model, resolution)
+                    # A period ending today (e.g. the month, on the 1st) is written in full.
+                    assert row.is_partial == (period_end(unit, period) > today), (model, resolution)
+        return first
+
+    def test_full_rebuild_leaves_the_current_periods(self):
+        self._rebuild_current_periods(timezone.now())
+
+    def test_full_rebuild_on_a_period_first_day_writes_the_ended_month_in_full(self):
+        now = make_aware(datetime(2026, 12, 1, 10), LA)
+        with patch('django.utils.timezone.now', return_value=now), patch(
+            'camp.apps.summaries.management.commands.rebuild_summaries.roll_current_periods',
+            side_effect=lambda kind, ids, at: roll_current_periods(kind, ids, at, clock=lambda: now),
+        ):
+            november = self._rebuild_current_periods(now)
+        for model in (MonitorSummary, RegionSummary):
+            months = model.objects.filter(resolution=R.MONTHLY, timestamp=november, entry_type='pm25')
+            assert months.exists(), model
+            assert not months.filter(is_partial=True).exists(), model
+            assert model.objects.filter(resolution=R.QUARTERLY, is_partial=True).exists(), model
 
     def test_rebuild_includes_the_repeated_fall_back_hour(self):
         self._seed_entries()

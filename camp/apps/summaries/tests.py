@@ -932,6 +932,46 @@ class RebuildSummariesCommandTests(TestCase):
         with pytest.raises((CommandError, SystemExit)):
             self._run('not-a-date')
 
+    def _output(self, *args):
+        from io import StringIO
+        out = StringIO()
+        call_command('rebuild_summaries', *args, stdout=out)
+        return out.getvalue()
+
+    def test_current_periods_stopped_at_midnight_is_printed(self):
+        stopped = {'rolled': {}, 'refreshed': {}, 'stopped': True}
+        with patch(
+            'camp.apps.summaries.management.commands.rebuild_summaries.roll_current_periods',
+            return_value=stopped,
+        ) as roll:
+            out = self._output(self.start, f'--monitor={self.monitor.pk}')
+        assert roll.call_count == 2
+        assert out.count('current periods: stopped at midnight; re-run to write them') == 2
+
+    def test_current_periods_not_stopped_prints_no_warning(self):
+        done = {'rolled': {}, 'refreshed': {}, 'stopped': False}
+        with patch(
+            'camp.apps.summaries.management.commands.rebuild_summaries.roll_current_periods',
+            return_value=done,
+        ):
+            out = self._output(self.start, f'--monitor={self.monitor.pk}')
+        assert 'stopped at midnight' not in out
+
+    def test_async_enqueues_current_periods_when_range_reaches_yesterday(self):
+        region_ids = list(self.monitor.regions.values_list('pk', flat=True))
+        with patch('camp.apps.summaries.tasks.current_monitor_periods') as monitors, \
+                patch('camp.apps.summaries.tasks.current_region_periods') as regions:
+            self._run(self.start, f'--monitor={self.monitor.pk}', '--async')
+        monitors.assert_called_once_with(monitor_ids=[self.monitor.pk])
+        regions.assert_called_once_with(region_ids=region_ids)
+
+    def test_async_before_yesterday_enqueues_no_current_periods(self):
+        with patch('camp.apps.summaries.tasks.current_monitor_periods') as monitors, \
+                patch('camp.apps.summaries.tasks.current_region_periods') as regions:
+            self._run('2026-01-01', '2026-01-02', f'--monitor={self.monitor.pk}', '--async')
+        monitors.assert_not_called()
+        regions.assert_not_called()
+
     def test_rolls_only_finished_periods(self):
         # Now is mid-August: today, August, Q3, summer and 2026 haven't ended.
         LA = settings.DEFAULT_TIMEZONE
@@ -1722,9 +1762,9 @@ class SummaryIntegrityCheckTests(TestCase):
         self._fill_day()
         with self.assertNoLogs('camp.apps.summaries', level='ERROR'):
             assert self._run() == {
-                'misaligned': 0, 'missing_region_hours': 0, 'missing_period_statistics': 0,
-                'missing_current_periods': 0, 'stale_partial_periods': 0,
-            }
+            'misaligned': 0, 'missing_region_hours': 0, 'missing_period_statistics': 0,
+            'missing_current_periods': 0, 'stale_partial_periods': 0,
+        }
 
     def test_logs_how_long_the_run_took(self):
         self._fill_day()
@@ -1846,6 +1886,38 @@ class SummaryIntegrityCheckTests(TestCase):
         assert result['stale_partial_periods'] == 1
         assert 'stale partial' in logs.records[0].getMessage()
 
+    def test_counts_stale_partial_quarters(self):
+        Q = BaseSummary.Resolution.QUARTERLY
+        stats = compute_stats([10.0], 1)
+
+        def quarter(ts):
+            return MonitorSummary.objects.create(
+                monitor=self.monitor, timestamp=ts, resolution=Q, entry_type='pm25',
+                processor='', daily_statistic_days=0, daily_statistic_expected_days=92,
+                is_partial=True, **stats)
+
+        # Q3 ended before Q4, the quarter holding yesterday (Nov 1): stale.
+        quarter(pacific(2026, 7, 1))
+        # Q4 is still running: its partial row is not stale.
+        quarter(pacific(2026, 10, 1))
+        # Nor is the partial year holding yesterday.
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 1, 1), resolution=BaseSummary.Resolution.YEARLY,
+            entry_type='pm25', processor='', daily_statistic_days=0,
+            daily_statistic_expected_days=305, is_partial=True, **stats)
+        with self.assertLogs('camp.apps.summaries', level='ERROR') as logs:
+            result = self._run()
+        assert result['stale_partial_periods'] == 1
+        assert 'stale partial' in logs.records[0].getMessage()
+
+    def test_partial_quarter_holding_yesterday_is_not_stale(self):
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=pacific(2026, 10, 1),
+            resolution=BaseSummary.Resolution.QUARTERLY, entry_type='pm25', processor='',
+            daily_statistic_days=0, daily_statistic_expected_days=32, is_partial=True,
+            **compute_stats([10.0], 1))
+        assert self._run()['stale_partial_periods'] == 0
+
     def test_misaligned_rows_older_than_400_days_are_ignored(self):
         MonitorSummary.objects.create(
             monitor=self.monitor, timestamp=pacific(2024, 2, 28, 23),
@@ -1874,9 +1946,9 @@ class SummaryIntegrityCheckTests(TestCase):
 
     def test_hour_with_no_monitor_rows_is_not_missing(self):
         assert self._run() == {
-                'misaligned': 0, 'missing_region_hours': 0, 'missing_period_statistics': 0,
-                'missing_current_periods': 0, 'stale_partial_periods': 0,
-            }
+            'misaligned': 0, 'missing_region_hours': 0, 'missing_period_statistics': 0,
+            'missing_current_periods': 0, 'stale_partial_periods': 0,
+        }
 
     def test_fires_once_on_fall_back_day_at_0230_pacific(self):
         validate = summary_tasks.check_summary_integrity.task_class().validate_datetime

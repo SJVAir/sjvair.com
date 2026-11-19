@@ -41,6 +41,9 @@ def finished_period_starts(resolution, start, end, now):
     ]
 
 
+STOPPED = 'current periods: stopped at midnight; re-run to write them'
+
+
 class Command(BaseCommand):
     help = 'Backfill or recalculate summaries for a date range.'
 
@@ -191,7 +194,8 @@ class Command(BaseCommand):
             return
         self.stdout.write(f'\nWriting current {label} periods...')
         self.stdout.flush()
-        roll_current_periods(label, ids, now)
+        if roll_current_periods(label, ids, now)['stopped']:
+            self.stdout.write(STOPPED)
 
     # ---- Async enqueue methods ----
 

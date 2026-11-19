@@ -642,10 +642,14 @@ def _backfill_complete_chunk(job):
         rollup_monitor_summaries(target, source, window_start, window_end)
         rollup_region_summaries(target, source, window_start, window_end)
 
+    now = timezone.now()
     for day in days:
         for target, source, window_start, window_end in higher_rollup_windows(day):
-            rollup_monitor_summaries(target, source, window_start, window_end)
-            rollup_region_summaries(target, source, window_start, window_end)
+            # The newest chunk can reach a period still running (the current month,
+            # quarter, season or year): its row is partial until the period ends.
+            partial = window_end > now
+            rollup_monitor_summaries(target, source, window_start, window_end, is_partial=partial, now=now)
+            rollup_region_summaries(target, source, window_start, window_end, is_partial=partial, now=now)
 
     job.cursor = job.chunk_start
     job.chunk_start = None
@@ -654,7 +658,6 @@ def _backfill_complete_chunk(job):
     job.consecutive_failures = 0
     job.last_error = ''
     if job.cursor <= job.range_start:
-        now = timezone.now()
         if reaches_yesterday(job.range_end, now):
             roll_current_periods('monitor', None, now)
             roll_current_periods('region', None, now)
@@ -780,7 +783,7 @@ def check_summary_integrity(now=None):
     # night after the period ended never replaced them.
     stale_partial = 0
     for resolution in COARSE_RESOLUTIONS:
-        cutoff = period_start(resolution, now - timedelta(days=1))
+        cutoff = period_start(resolution, yesterday)
         stale_partial += sum(
             model.objects.filter(resolution=resolution, is_partial=True, timestamp__lt=cutoff).count()
             for model in (MonitorSummary, RegionSummary)

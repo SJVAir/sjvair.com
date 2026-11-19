@@ -114,11 +114,17 @@ class Command(ScopeMixin, BaseCommand):
 
         # 3. The current periods, when the range reaches yesterday.
         if reaches_yesterday(end, now):
+            stopped = False
             if not dry_run:
                 for kind, ids in scopes:
-                    roll_current_periods(kind, ids, now)
-            owners = sum(len(ids) for _, ids in scopes)
-            self.stdout.write(f'current periods: {owners:,} owners')
+                    if roll_current_periods(kind, ids, now)['stopped']:
+                        stopped = True
+                        break
+            if stopped:
+                self.stdout.write('current periods: stopped at midnight; re-run to write them')
+            else:
+                owners = sum(len(ids) for _, ids in scopes)
+                self.stdout.write(f'current periods: {owners:,} owners')
 
         self.stdout.write(self.style.SUCCESS('Dry run done.' if dry_run else 'Done.'))
 
