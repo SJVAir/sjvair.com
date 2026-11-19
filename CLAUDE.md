@@ -527,7 +527,7 @@ zones are missing there; see SJVAPCD Forecast Setup).
   names the field per scale (`period_statistic`, see Scale shape). `rollup_monitor_summaries` and
   `rollup_region_summaries` call `fill_period_statistics` after their coarse upsert (the upserts'
   `update_fields` leave the three columns alone), so the nightly rollups, backfill jobs,
-  `repair_summaries`, `rebuild_summaries` and the CIMIS re-roll all fill them. CO: the month and
+  `repair_summaries`, `rebuild_summaries` and the CIMIS re-roll all go through them (CIMIS types have no figure). CO: the month and
   coarser rollups read the last day's provisional `max_8h`, so `_refresh_previous_max_8h` refills
   the coarse CO periods ending at the refreshed day, and `is_settled(..., peak_8h=True)` uses the
   28 h `PEAK_8H_SETTLE_MARGIN` for them (`is_final` false and `max-age=60` for 28 h after the end).
