@@ -1,6 +1,6 @@
 import logging
 
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from django.utils.functional import cached_property
 
@@ -23,8 +23,11 @@ class LinearExpressionProcessor(BaseProcessor):
 
     def process(self):
         value = self.get_correction()
+        if value is None:
+            return
 
-        if value is not None and not self.is_plausible(value):
+        bounded = self.bound(value)
+        if bounded is None:
             logger.warning(
                 '%s: discarding out-of-range value %s for %s %s (calibration=%s)',
                 self.name, value, self.entry.__class__.__name__, self.entry.pk,
@@ -32,11 +35,10 @@ class LinearExpressionProcessor(BaseProcessor):
             )
             return
 
-        if value is not None:
-            return self.build_entry(
-                value=value,
-                calibration_id=getattr(self.calibration, 'pk', None),
-            )
+        return self.build_entry(
+            value=bounded,
+            calibration_id=getattr(self.calibration, 'pk', None),
+        )
 
     def get_correction(self):
         if self.calibration is None:
@@ -48,24 +50,31 @@ class LinearExpressionProcessor(BaseProcessor):
         if self.calibration:
             return evaluate_formula(self.calibration.formula, self.context)
 
-    def is_plausible(self, value):
+    def bound(self, value):
         '''
-        True if `value` is within the entry model's plausible_range and fits
-        the `value` column, so a bad regression can't raise a DB overflow.
+        `value` fitted to the entry model's plausible_range, or None if it
+        can't be stored. Below the minimum is clamped to it (a regression
+        can dip under 0 in clean air, and every other PM2.5 step clamps
+        negatives to 0 too). Above the maximum, not a finite number, or too
+        large for the `value` column once rounded to its decimal places is
+        discarded, so a bad regression can't raise a DB overflow.
         '''
         try:
             value = Decimal(str(value))
         except InvalidOperation:
-            return False
+            return None
         if not value.is_finite():
-            return False
+            return None
 
         low, high = self.entry.plausible_range or (None, None)
         if low is not None and value < low:
-            return False
+            value = low
         if high is not None and value > high:
-            return False
+            return None
 
+        # Postgres rounds to the column's scale before checking precision.
         field = self.entry._meta.get_field('value')
-        limit = Decimal(10) ** (field.max_digits - field.decimal_places)
-        return abs(value) < limit
+        rounded = value.quantize(Decimal(1).scaleb(-field.decimal_places), rounding=ROUND_HALF_UP)
+        if abs(rounded) >= Decimal(10) ** (field.max_digits - field.decimal_places):
+            return None
+        return value
