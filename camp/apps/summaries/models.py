@@ -54,6 +54,10 @@ class BaseSummary(models.Model):
     daily_statistic_days = models.PositiveSmallIntegerField(_('days with a daily figure'), null=True, blank=True)
     daily_statistic_expected_days = models.PositiveSmallIntegerField(_('expected days'), null=True, blank=True)
 
+    # True on a current-period row the nightly summarizer wrote before the period
+    # ended; a full rollup clears it. Never serialized.
+    is_partial = models.BooleanField(_('is partial'), default=False)
+
     class Meta:
         abstract = True
         indexes = [

@@ -132,11 +132,14 @@ def _flags_for_entry_type(entry_type):
     return settle_flags(model)
 
 
-def row_is_final(resolution, timestamp, entry_type, now=None):
+def row_is_final(resolution, timestamp, entry_type, now=None, is_partial=False):
     """
     Whether a summary row (saved or not) has settled. Computed from the row's
-    resolution, timestamp and entry type alone, with no database query.
+    resolution, timestamp and entry type alone, with no database query. A
+    partial row (a current period written before it ended) is never final.
     """
+    if is_partial:
+        return False
     return is_settled(
         resolution, period_end(resolution, timestamp), now=now,
         **_flags_for_entry_type(entry_type),

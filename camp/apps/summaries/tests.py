@@ -637,6 +637,43 @@ class RollupMonitorSummariesTests(TestCase):
         assert daily.count() == 1
         assert daily.first().mean == pytest.approx(20.0)  # mean of (10, 20, 30)
 
+    def test_full_rollup_clears_is_partial(self):
+        self._make_hourly_summary(self.yesterday)
+        end = self.yesterday + timedelta(days=1)
+        D, H = MonitorSummary.Resolution.DAILY, MonitorSummary.Resolution.HOURLY
+        rollup_monitor_summaries(D, H, self.yesterday, end, is_partial=True)
+        assert MonitorSummary.objects.get(resolution=D).is_partial is True
+        assert rollup_monitor_summaries(D, H, self.yesterday, end) is True
+        assert MonitorSummary.objects.get(resolution=D).is_partial is False
+
+    def test_rollup_partial_flag(self):
+        self._make_hourly_summary(self.yesterday)
+        D, H = MonitorSummary.Resolution.DAILY, MonitorSummary.Resolution.HOURLY
+        rollup_monitor_summaries(D, H, self.yesterday, self.yesterday + timedelta(days=1), is_partial=True)
+        assert MonitorSummary.objects.get(resolution=D).is_partial is True
+
+    def test_rollup_guard_false_writes_nothing(self):
+        self._make_hourly_summary(self.yesterday)
+        D, H = MonitorSummary.Resolution.DAILY, MonitorSummary.Resolution.HOURLY
+        end = self.yesterday + timedelta(days=1)
+        assert rollup_monitor_summaries(D, H, self.yesterday, end, guard=lambda: False) is False
+        assert not MonitorSummary.objects.filter(resolution=D).exists()
+        rollup_monitor_summaries(D, H, self.yesterday, end)
+        before = MonitorSummary.objects.values().get(resolution=D)
+        self._make_hourly_summary(self.yesterday + timedelta(hours=1), mean=50.0)
+        assert rollup_monitor_summaries(D, H, self.yesterday, end, is_partial=True, guard=lambda: False) is False
+        assert MonitorSummary.objects.values().get(resolution=D) == before
+
+    def test_guard_checked_again_before_fills(self):
+        self._make_hourly_summary(self.yesterday)
+        D, H = MonitorSummary.Resolution.DAILY, MonitorSummary.Resolution.HOURLY
+        answers = iter([True, False])
+        with patch.object(summary_tasks, 'fill_daily_peaks') as fill:
+            result = rollup_monitor_summaries(
+                D, H, self.yesterday, self.yesterday + timedelta(days=1), guard=lambda: next(answers))
+        assert result is False
+        fill.assert_not_called()
+
     def test_daily_rollup_is_idempotent(self):
         for h in range(3):
             self._make_hourly_summary(self.yesterday + timedelta(hours=h))
@@ -719,6 +756,22 @@ class RollupRegionSummariesTests(TestCase):
             tdigest=tdigest_to_dict(digest),
             station_count=station_count,
         )
+
+    def test_rollup_partial_flag_and_clear(self):
+        self._make_hourly_region_summary(self.yesterday)
+        D, H = RegionSummary.Resolution.DAILY, RegionSummary.Resolution.HOURLY
+        end = self.yesterday + timedelta(days=1)
+        rollup_region_summaries(D, H, self.yesterday, end, is_partial=True)
+        assert RegionSummary.objects.get(resolution=D).is_partial is True
+        assert rollup_region_summaries(D, H, self.yesterday, end) is True
+        assert RegionSummary.objects.get(resolution=D).is_partial is False
+
+    def test_rollup_guard_false_writes_nothing(self):
+        self._make_hourly_region_summary(self.yesterday)
+        D, H = RegionSummary.Resolution.DAILY, RegionSummary.Resolution.HOURLY
+        end = self.yesterday + timedelta(days=1)
+        assert rollup_region_summaries(D, H, self.yesterday, end, guard=lambda: False) is False
+        assert not RegionSummary.objects.filter(resolution=D).exists()
 
     def test_daily_rollup_aggregates_hourly_region_records(self):
         for h in range(3):
@@ -1913,6 +1966,14 @@ class RowIsFinalTests(TestCase):
         end = pacific(2026, 11, 3)
         assert not row_is_final('day', day, 'temperature', now=end + timedelta(hours=6, minutes=59))
         assert row_is_final('day', day, 'temperature', now=end + timedelta(hours=7))
+
+
+class PartialRowIsFinalTests(TestCase):
+    def test_partial_row_not_final(self):
+        month = pacific(2026, 10, 1)
+        now = pacific(2026, 11, 8)
+        assert row_is_final('month', month, 'pm25', now=now, is_partial=True) is False
+        assert row_is_final('month', month, 'pm25', now=now, is_partial=False) is True
 
 
 class SummarySerializerFieldTests(TestCase):

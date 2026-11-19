@@ -235,7 +235,10 @@ def _log_skipped(result):
         logger.warning('Daily peaks skipped %d sentinel hourly value(s)', result.skipped)
 
 
-def rollup_monitor_summaries(target_resolution, source_resolution, window_start, window_end, monitor_ids=None):
+def rollup_monitor_summaries(
+    target_resolution, source_resolution, window_start, window_end, monitor_ids=None,
+    *, is_partial=False, guard=None,
+):
     """
     Roll up MonitorSummary records from source_resolution into target_resolution
     for the given time window.
@@ -248,6 +251,11 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
     the whole window (monitors × entry_types × processors × periods).
 
     Optionally scoped to a list of monitor_ids (for targeted backfill/recalculation).
+
+    Every row written gets `is_partial`, so a full write clears the flag. `guard`
+    is called right before the upsert and again before the fills; when it
+    returns False nothing more is written. Returns True when it wrote (or had
+    nothing to write), False when the guard stopped it.
     """
     qs = MonitorSummary.objects.filter(
         resolution=source_resolution,
@@ -276,10 +284,13 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
             resolution=target_resolution,
             entry_type=entry_type,
             processor=processor,
+            is_partial=is_partial,
             **stats,
         ))
 
     if to_upsert:
+        if guard is not None and not guard():
+            return False
         MonitorSummary.objects.bulk_create(
             to_upsert,
             update_conflicts=True,
@@ -287,9 +298,11 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
             update_fields=[
                 'count', 'expected_count', 'sum_value', 'sum_of_squares',
                 'minimum', 'maximum', 'mean', 'stddev', 'p25', 'p75',
-                'tdigest', 'is_complete',
+                'tdigest', 'is_complete', 'is_partial',
             ],
         )
+        if guard is not None and not guard():
+            return False
         # The peaks aren't in update_fields, so the upsert keeps them; the fill rewrites them.
         if target_resolution == BaseSummary.Resolution.DAILY:
             _log_skipped(fill_daily_peaks('monitor', monitor_ids, window_start, window_end))
@@ -297,9 +310,13 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
         if target_resolution in COARSE_RESOLUTIONS:
             fill_period_statistics(
                 'monitor', monitor_ids, window_start, window_end, resolutions=[target_resolution])
+    return True
 
 
-def rollup_region_summaries(target_resolution, source_resolution, window_start, window_end, region_ids=None):
+def rollup_region_summaries(
+    target_resolution, source_resolution, window_start, window_end, region_ids=None,
+    *, is_partial=False, guard=None,
+):
     """Same as rollup_monitor_summaries but for RegionSummary."""
     qs = RegionSummary.objects.filter(
         resolution=source_resolution,
@@ -329,10 +346,13 @@ def rollup_region_summaries(target_resolution, source_resolution, window_start, 
             resolution=target_resolution,
             entry_type=entry_type,
             station_count=station_count,
+            is_partial=is_partial,
             **stats,
         ))
 
     if to_upsert:
+        if guard is not None and not guard():
+            return False
         RegionSummary.objects.bulk_create(
             to_upsert,
             update_conflicts=True,
@@ -340,9 +360,11 @@ def rollup_region_summaries(target_resolution, source_resolution, window_start, 
             update_fields=[
                 'count', 'weight', 'expected_count', 'sum_value', 'sum_of_squares',
                 'minimum', 'maximum', 'mean', 'stddev', 'p25', 'p75',
-                'tdigest', 'station_count',
+                'tdigest', 'station_count', 'is_partial',
             ],
         )
+        if guard is not None and not guard():
+            return False
         # The peaks aren't in update_fields, so the upsert keeps them; the fill rewrites them.
         if target_resolution == BaseSummary.Resolution.DAILY:
             _log_skipped(fill_daily_peaks('region', region_ids, window_start, window_end))
@@ -350,6 +372,7 @@ def rollup_region_summaries(target_resolution, source_resolution, window_start, 
         if target_resolution in COARSE_RESOLUTIONS:
             fill_period_statistics(
                 'region', region_ids, window_start, window_end, resolutions=[target_resolution])
+    return True
 
 
 # ---- Rollup periodic tasks ----

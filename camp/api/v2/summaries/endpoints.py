@@ -54,7 +54,7 @@ class SummaryMixin:
         # One instant per request: the cache rule below, every row's is_final
         # and the open days all read it.
         self.now = timezone.now()
-        with serializing_at(self.now):
+        with serializing_at(self.now) as serialized:
             response = super().dispatch(request, *args, **kwargs)
         if response.status_code != 200:
             patch_cache_control(response, no_cache=True)
@@ -62,7 +62,7 @@ class SummaryMixin:
 
         # Summaries in a settled range no longer change, so they can be cached
         # for a day; anything still being rolled up (or open-ended) for a minute.
-        settled = not self.serves_open_days and is_settled(
+        settled = not self.serves_open_days and not serialized['partial'] and is_settled(
             self.resolution, self.get_date_filter().get('timestamp__lt'), now=self.now,
             **settle_flags(self.entry_model),
         )

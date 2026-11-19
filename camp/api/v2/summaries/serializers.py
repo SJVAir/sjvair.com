@@ -14,12 +14,22 @@ from camp.apps.summaries.schedule import row_is_final
 _serialize_now = ContextVar('summary_serialize_now', default=None)
 
 
+# Set to a mutable {'partial': bool} holder by serializing_at; `_is_final` marks
+# it when it serializes a partial row, so the endpoint can keep that response
+# off the long cache.
+_serialized = ContextVar('summary_serialized', default=None)
+
+
 @contextmanager
 def serializing_at(now):
+    """Bind the instant; yields a holder whose 'partial' is True once a partial row was serialized."""
+    holder = {'partial': False}
     token = _serialize_now.set(now)
+    token_holder = _serialized.set(holder)
     try:
-        yield
+        yield holder
     finally:
+        _serialized.reset(token_holder)
         _serialize_now.reset(token)
 
 
@@ -28,7 +38,13 @@ def _timestamp(s):
 
 
 def _is_final(s):
-    return row_is_final(s.resolution, s.timestamp, s.entry_type, now=_serialize_now.get())
+    is_partial = bool(s.is_partial)
+    if is_partial:
+        holder = _serialized.get()
+        if holder is not None:
+            holder['partial'] = True
+    return row_is_final(
+        s.resolution, s.timestamp, s.entry_type, now=_serialize_now.get(), is_partial=is_partial)
 
 
 class MonitorSummarySerializer(serializers.Serializer):
