@@ -40,6 +40,14 @@ def _stats(mean):
     )
 
 
+def freeze_fill_clock(case, now=None):
+    """Fixtures here are Oct-Dec 2026 periods; give the fill a clock after they end."""
+    clock = patch('camp.apps.summaries.period_stats.timezone')
+    mocked = clock.start()
+    mocked.now.return_value = now or make_aware(datetime(2027, 6, 1, 3), settings.DEFAULT_TIMEZONE)
+    case.addCleanup(clock.stop)
+
+
 class PeriodFigureTests(TestCase):
     def test_threshold(self):
         assert period_figure([10.0] * 23, 30) == (10.0, 23)
@@ -59,6 +67,7 @@ class FillPeriodStatisticsTests(TestCase):
     fixtures = ['purple-air.yaml', 'regions.yaml']
 
     def setUp(self):
+        freeze_fill_clock(self)
         self.monitor = PurpleAir.objects.first()
         self.region = Region.objects.filter(boundary__isnull=False).first()
 
@@ -184,6 +193,44 @@ class FillPeriodStatisticsTests(TestCase):
         assert (season.daily_statistic_expected_days, season.daily_statistic_days) == (90, 70)
         assert season.daily_statistic_mean == 34.5
 
+    def at(self, y, m, d, hour):
+        return make_aware(datetime(y, m, d, hour), settings.DEFAULT_TIMEZONE)
+
+    def test_current_period_expected_days_through_yesterday(self):
+        self.days('o3', 'max_1h', list(range(40, 57)), pacific(2026, 11))
+        row = self.coarse(R.MONTHLY, pacific(2026, 11), 'o3')
+        self.fill(pacific(2026, 11), pacific(2026, 12), now=self.at(2026, 11, 18, 3))
+        row.refresh_from_db()
+        assert row.daily_statistic_expected_days == 17
+        assert row.daily_statistic_days == 17
+        assert row.daily_statistic_mean == sum(range(40, 57)) / 17
+
+    def test_current_period_below_75_percent_is_null(self):
+        values = list(range(40, 52)) + [None] * 5
+        self.days('o3', 'max_1h', values, pacific(2026, 11))
+        row = self.coarse(R.MONTHLY, pacific(2026, 11), 'o3')
+        self.fill(pacific(2026, 11), pacific(2026, 12), now=self.at(2026, 11, 18, 3))
+        row.refresh_from_db()
+        assert row.daily_statistic_expected_days == 17
+        assert row.daily_statistic_days == 12
+        assert row.daily_statistic_mean is None
+
+    def test_current_period_expected_days_across_fall_back(self):
+        self.days('o3', 'max_1h', [40, 41], pacific(2026, 11))
+        row = self.coarse(R.MONTHLY, pacific(2026, 11), 'o3')
+        self.fill(pacific(2026, 11), pacific(2026, 12), now=self.at(2026, 11, 3, 3))
+        row.refresh_from_db()
+        assert row.daily_statistic_expected_days == 2
+        assert row.daily_statistic_days == 2
+
+    def test_ended_period_unchanged_by_now(self):
+        self.days('o3', 'max_1h', [40] * 31, pacific(2026, 10))
+        row = self.coarse(R.MONTHLY, pacific(2026, 10), 'o3')
+        self.fill(pacific(2026, 10), pacific(2026, 11), now=self.at(2026, 11, 18, 3))
+        row.refresh_from_db()
+        assert row.daily_statistic_expected_days == 31
+        assert row.daily_statistic_days == 31
+
 
 PERIOD = ('daily_statistic_mean', 'daily_statistic_days', 'daily_statistic_expected_days')
 
@@ -198,6 +245,7 @@ class RollupFillsTests(TestCase):
     fixtures = ['purple-air.yaml', 'regions.yaml']
 
     def setUp(self):
+        freeze_fill_clock(self)
         self.monitor = PurpleAir.objects.first()
         self.region = Region.objects.filter(boundary__isnull=False).first()
 
@@ -256,6 +304,7 @@ class CORefreshTests(TestCase):
     fixtures = ['purple-air.yaml', 'regions.yaml']
 
     def setUp(self):
+        freeze_fill_clock(self)
         self.monitor = PurpleAir.objects.first()
 
     def hourly(self, hours, value):
@@ -314,6 +363,7 @@ class FillPeriodStatisticsCommandTests(TestCase):
     fixtures = ['purple-air.yaml']
 
     def setUp(self):
+        freeze_fill_clock(self)
         self.monitor = PurpleAir.objects.first()
         ts = pacific(2026, 11)
         for _ in range(30):

@@ -4,6 +4,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 
 from django.db import transaction
+from django.utils import timezone
 
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.peaks import (
@@ -39,13 +40,15 @@ def fill_period_statistics(
     kind: str, ids: list | None, start: datetime, end: datetime, *,
     resolutions=COARSE_RESOLUTIONS, entry_models: list | None = None,
     dry_run: bool = False, batch_size: int = 1000, progress=None,
+    now: datetime | None = None,
 ) -> dict[str, int]:
     """
     Write the average of the daily figures on coarse rows (`resolutions`) with
     `start <= timestamp < end` of the peak entry types (or the given subset).
     `kind` is 'monitor' or 'region'; `ids=None` means all. Only rows whose
-    values change are written. Returns the rows updated (or that would be) per
-    entry type.
+    values change are written. A period still running at `now` (default the
+    clock) expects only the days through yesterday. Returns the rows updated
+    (or that would be) per entry type.
     """
     if kind == 'monitor':
         model, owner = MonitorSummary, 'monitor_id'
@@ -92,6 +95,7 @@ def fill_period_statistics(
 
     if not owner_ids:
         return {}
+    today = period_start('day', now if now is not None else timezone.now())
     span_start = min(period_start(r, start) for r in resolutions)
     span_end = max(period_end(r, end - timedelta(microseconds=1)) for r in resolutions)
     group_size = _group_size(span_start, span_end)
@@ -102,7 +106,7 @@ def fill_period_statistics(
         figures = _daily_figures(model, owner, group, rows, by_type, kind)
 
         for row in rows:
-            until = period_end(row.resolution, row.timestamp)
+            until = min(period_end(row.resolution, row.timestamp), today)
             key = _series_key(kind, getattr(row, owner), row.entry_type, getattr(row, 'processor', None))
             series = figures.get(key, ([], []))
             times, values = series
