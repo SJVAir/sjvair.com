@@ -8,12 +8,12 @@ import math
 from datetime import datetime, timedelta
 
 from django.db import transaction
-from django.db.models import QuerySet
+from django.db.models import Exists, OuterRef, Q, QuerySet
 from django.utils import timezone
 
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.peaks import peak_entry_models
-from camp.apps.summaries.period_stats import expected_days
+from camp.apps.summaries.period_stats import expected_days, fill_period_statistics
 from camp.apps.summaries.periods import period_end, period_start
 
 logger = logging.getLogger('camp.apps.summaries')
@@ -57,9 +57,11 @@ def roll_current_periods(
     in full (`is_partial=False`), the same row the regular rollup writes.
 
     With `ids`, exactly those owners are rolled. Without, a partial period
-    rolls only the owners with a DAILY row for yesterday (the others' inputs
-    haven't changed) and the others' partial rows get their expected days
-    moved by one UPDATE per resolution; an ended period rolls every owner.
+    rolls the owners with a DAILY row for yesterday, plus the owners with
+    source rows in the period so far and no row for it yet (after a deploy
+    or a backfill); the others' inputs haven't changed, so their partial rows
+    get their expected days moved by one UPDATE per resolution. An ended
+    period rolls every owner.
 
     Start of today is checked again before every write (and by the rollups
     before their upsert and fills): once midnight has passed since `now`, the
@@ -86,15 +88,6 @@ def roll_current_periods(
         result['stopped'] = True
         return result
 
-    # Left unevaluated: every `__in` it reaches is a sub-select, never a list of
-    # every region's id inlined into the query.
-    reported = None
-    if ids is None:
-        reported = (
-            model.objects.filter(resolution=R.DAILY, timestamp=yesterday)
-            .order_by().values_list(owner, flat=True).distinct()
-        )
-
     for resolution, target, source in CURRENT_PERIODS:
         start = period_start(resolution, yesterday)
         full_end = period_end(resolution, start)
@@ -104,31 +97,73 @@ def roll_current_periods(
         if ids is not None:
             owners = ids
         elif partial:
-            owners = reported
+            owners = _nightly_owners(model, owner, target, source, start, today, yesterday)
         else:
             owners = None
 
         if owners is None or _any(owners):
+            # Counted before the write: the nightly owners without a row leave
+            # the sub-select once the rollup gives them one.
+            owners_rolled = None if owners is None else _count(owners)
             if not guard():
                 return stop(resolution)
             if not rollup(target, source, start, end, owners, is_partial=partial, guard=guard, now=now):
                 return stop(resolution)
-            if owners is None:
+            if ids is None and partial:
+                # The rollup's fill re-reads `owners` after its upsert, so it
+                # skips the rows it just wrote for owners that had none.
+                if not guard():
+                    return stop(resolution)
+                fill_period_statistics(
+                    kind, _unfilled(model, owner, target, start), start, full_end,
+                    resolutions=[target], now=now)
+            if owners_rolled is None:
                 owners_rolled = (
                     model.objects.filter(resolution=target, timestamp=start)
                     .order_by().values_list(owner, flat=True).distinct().count()
                 )
-            else:
-                owners_rolled = _count(owners)
             result['rolled'][resolution] = owners_rolled
 
         if ids is None and partial:
-            refreshed = _refresh(model, owner, target, start, today, reported, guard)
+            # `owners` no longer holds the owners just given a first row, but
+            # their rows already have today's expected days, so the UPDATE skips them.
+            refreshed = _refresh(model, owner, target, start, today, owners, guard)
             if refreshed is None:
                 return stop(resolution)
             result['refreshed'][resolution] = refreshed
 
     return result
+
+
+def _nightly_owners(model, owner, target, source, start, today, yesterday):
+    """
+    The owners a nightly run rolls for a partial period: those with a DAILY
+    row for yesterday, and those with source rows in [start, today) but no
+    target row at `start` (owner-level: the rollup re-rolls all of an owner's
+    series). Left unevaluated: every `__in` it reaches is a sub-select, never
+    a list of every region's id inlined into the query.
+    """
+    has_row = model.objects.filter(
+        resolution=target, timestamp=start, **{owner: OuterRef(owner)})
+    return (
+        model.objects.filter(
+            Q(resolution=R.DAILY, timestamp=yesterday)
+            | (Q(resolution=source, timestamp__gte=start, timestamp__lt=today) & ~Exists(has_row))
+        )
+        .order_by().values_list(owner, flat=True).distinct()
+    )
+
+
+def _unfilled(model, owner, target, start):
+    """Owners with a partial row at `start` of a peak type the fill hasn't reached."""
+    return (
+        model.objects.filter(
+            resolution=target, timestamp=start, is_partial=True,
+            entry_type__in=[m.entry_type for m in peak_entry_models()],
+            daily_statistic_days__isnull=True,
+        )
+        .order_by().values_list(owner, flat=True).distinct()
+    )
 
 
 def _any(owners):

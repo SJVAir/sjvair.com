@@ -218,6 +218,62 @@ class CurrentPeriodsTests(TestCase):
         assert rollup_reads
         assert refreshes and all('IN (SELECT' in q for q in refreshes)
 
+    def test_owner_with_earlier_data_and_no_row_is_rolled(self):
+        # After deploy (or a backfill) an owner may have days earlier in the
+        # period, none yesterday, and no current row yet: it is rolled too.
+        nov = pacific(2026, 11)
+        other = self.other_monitor()
+        self.daily(nov, pacific(2026, 11, 18))
+        self.daily(pacific(2026, 11, 3), pacific(2026, 11, 4), monitor=other)
+        result = self.run_at(pacific(2026, 11, 18, 2, 15))
+
+        month = self.row(R.MONTHLY, nov, monitor=other)
+        assert month.is_partial is True
+        assert month.count == 1
+        assert month.daily_statistic_days == 1
+        assert month.daily_statistic_expected_days == 17
+        assert result['rolled']['month'] == 2
+        for name, resolution, start in (('quarter', R.QUARTERLY, pacific(2026, 10)),
+                                        ('season', R.SEASONAL, pacific(2026, 9)),
+                                        ('year', R.YEARLY, pacific(2026, 1))):
+            assert self.row(resolution, start, monitor=other).is_partial is True, resolution
+            assert result['rolled'][name] == 2, resolution
+
+    def test_owner_with_a_row_and_no_new_data_is_only_refreshed(self):
+        nov = pacific(2026, 11)
+        other = self.other_monitor()
+        self.daily(nov, pacific(2026, 11, 19))
+        self.daily(pacific(2026, 11, 3), pacific(2026, 11, 4), monitor=other)
+        self.run_at(pacific(2026, 11, 18, 2, 15))
+        before = values_of(self.row(R.MONTHLY, nov, monitor=other))
+
+        # Change its input: a re-roll would show it.
+        MonitorSummary.objects.filter(
+            monitor=other, resolution=R.DAILY, timestamp=pacific(2026, 11, 3)).update(count=99)
+        result = self.run_at(pacific(2026, 11, 19, 2, 15))
+
+        after = values_of(self.row(R.MONTHLY, nov, monitor=other))
+        assert result['rolled']['month'] == 1
+        assert after['count'] == before['count']
+        assert after['daily_statistic_expected_days'] == 18
+        assert result['refreshed']['month'] == 1
+
+    def test_owners_without_a_row_are_a_sub_select(self):
+        nov = pacific(2026, 11)
+        other = self.other_monitor()
+        self.daily(nov, pacific(2026, 11, 18))
+        self.daily(pacific(2026, 11, 3), pacific(2026, 11, 4), monitor=other)
+        with CaptureQueriesContext(connection) as queries:
+            self.run_at(pacific(2026, 11, 18, 2, 15))
+        sql = [q['sql'] for q in queries.captured_queries]
+        rollup_reads = [q for q in sql if 'ORDER BY' in q and '"resolution" = \'day\'' in q
+                        and 'IN (SELECT' in q]
+        assert rollup_reads
+        assert all('NOT EXISTS' in q for q in rollup_reads)
+        assert all(f"'{other.pk}'" not in q for q in rollup_reads)
+        refreshes = [q for q in sql if q.startswith('UPDATE') and 'CASE WHEN' not in q]
+        assert refreshes and all('IN (SELECT' in q and 'NOT EXISTS' in q for q in refreshes)
+
     def test_stops_when_midnight_passes(self):
         nov, dec = pacific(2026, 11), pacific(2026, 12)
         self.daily(nov, dec)
