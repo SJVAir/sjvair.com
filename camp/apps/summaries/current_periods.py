@@ -8,6 +8,7 @@ import math
 from datetime import datetime, timedelta
 
 from django.db import transaction
+from django.db.models import QuerySet
 from django.utils import timezone
 
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
@@ -79,9 +80,11 @@ def roll_current_periods(
         result['stopped'] = True
         return result
 
+    # Left unevaluated: every `__in` it reaches is a sub-select, never a list of
+    # every region's id inlined into the query.
     reported = None
     if ids is None:
-        reported = list(
+        reported = (
             model.objects.filter(resolution=R.DAILY, timestamp=yesterday)
             .order_by().values_list(owner, flat=True).distinct()
         )
@@ -99,7 +102,7 @@ def roll_current_periods(
         else:
             owners = None
 
-        if owners is None or owners:
+        if owners is None or _any(owners):
             if not guard():
                 return stop(resolution)
             if not rollup(target, source, start, end, owners, is_partial=partial, guard=guard, now=now):
@@ -110,7 +113,7 @@ def roll_current_periods(
                     .order_by().values_list(owner, flat=True).distinct().count()
                 )
             else:
-                owners_rolled = len(owners)
+                owners_rolled = _count(owners)
             result['rolled'][resolution] = owners_rolled
 
         if ids is None and partial:
@@ -120,6 +123,14 @@ def roll_current_periods(
             result['refreshed'][resolution] = refreshed
 
     return result
+
+
+def _any(owners):
+    return owners.exists() if isinstance(owners, QuerySet) else bool(owners)
+
+
+def _count(owners):
+    return owners.count() if isinstance(owners, QuerySet) else len(owners)
 
 
 def _refresh(model, owner, target, start, today, rolled, guard):

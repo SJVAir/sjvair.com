@@ -3,7 +3,9 @@ from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.gis.geos import Point
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 
 from camp.apps.monitors.airnow.models import AirNow
 from camp.apps.monitors.purpleair.models import PurpleAir
@@ -168,16 +170,16 @@ class CurrentPeriodsTests(TestCase):
         other = self.other_monitor()
         self.daily(nov, pacific(2026, 11, 18))
 
-        def partial(entry_type, days, **extra):
+        def partial(entry_type, **extra):
             return MonitorSummary.objects.create(
                 monitor=other, timestamp=nov, resolution=R.MONTHLY, entry_type=entry_type,
                 processor='', is_partial=True, **_stats(1.0), **extra)
 
-        short = partial('o3', 12, daily_statistic_mean=40.0, daily_statistic_days=12,
+        short = partial('o3', daily_statistic_mean=40.0, daily_statistic_days=12,
                         daily_statistic_expected_days=16)
-        enough = partial('no2', 13, daily_statistic_mean=41.0, daily_statistic_days=13,
+        enough = partial('no2', daily_statistic_mean=41.0, daily_statistic_days=13,
                          daily_statistic_expected_days=16)
-        weather = partial('temperature', 0)
+        weather = partial('temperature')
         result = self.run_at(pacific(2026, 11, 18, 2, 15))
 
         short.refresh_from_db()
@@ -202,6 +204,19 @@ class CurrentPeriodsTests(TestCase):
         assert result['refreshed']['month'] == 1
         assert after['daily_statistic_expected_days'] == 17
         assert after['count'] == before['count']
+
+    def test_reported_owners_are_a_sub_select(self):
+        nov = pacific(2026, 11)
+        self.daily(nov, pacific(2026, 11, 18))
+        with CaptureQueriesContext(connection) as queries:
+            self.run_at(pacific(2026, 11, 18, 2, 15))
+        sql = [q['sql'] for q in queries.captured_queries]
+        rollup_reads = [q for q in sql if 'ORDER BY' in q and '"resolution" = \'day\'' in q
+                        and 'IN (SELECT' in q]
+        # The refresh's two UPDATEs (the fill's bulk_update is a CASE WHEN by id).
+        refreshes = [q for q in sql if q.startswith('UPDATE') and 'CASE WHEN' not in q]
+        assert rollup_reads
+        assert refreshes and all('IN (SELECT' in q for q in refreshes)
 
     def test_stops_when_midnight_passes(self):
         nov, dec = pacific(2026, 11), pacific(2026, 12)
