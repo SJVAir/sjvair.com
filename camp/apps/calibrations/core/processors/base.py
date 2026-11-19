@@ -1,8 +1,10 @@
 from abc import ABC, ABCMeta, abstractmethod
 
+from django.db import IntegrityError, transaction
 from django.utils.functional import cached_property
 
 from camp.utils import classproperty
+from camp.utils.db import is_unique_violation
 
 
 __all__ = ['BaseProcessor']
@@ -112,5 +114,19 @@ class BaseProcessor(ABC, metaclass=ProcessorMeta):
         processed = self.process()
         if processed is not None and processed.validation_check():
             if commit:
-                processed.save()
+                try:
+                    with transaction.atomic():
+                        processed.save()
+                except IntegrityError as err:
+                    # Lost a race with a concurrent run saving the same
+                    # entry (check-then-insert): carry on from that one.
+                    if not is_unique_violation(err):
+                        raise
+                    return processed.__class__.objects.filter(
+                        monitor_id=processed.monitor_id,
+                        timestamp=processed.timestamp,
+                        sensor=processed.sensor,
+                        stage=processed.stage,
+                        processor=processed.processor,
+                    ).first()
             return processed

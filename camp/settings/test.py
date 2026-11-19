@@ -44,6 +44,8 @@ CACHES = {
 
 # Background workers
 
+HUEY_REDIS_URLS = {}
+
 DJANGO_HUEY = {
     'default': 'primary',
     'queues': {

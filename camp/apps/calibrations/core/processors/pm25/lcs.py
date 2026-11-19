@@ -48,7 +48,7 @@ class PM25_LCS_Correction(BaseProcessor):
         return (
             value is None
             or value < -15
-            or value > 1500
+            or value > PM25.plausible_range[1]
         )
 
     def is_repeated(self, entry, max_repeat=5) -> bool:

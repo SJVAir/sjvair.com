@@ -1,4 +1,5 @@
 import copy
+import logging
 import math
 import uuid
 
@@ -11,7 +12,7 @@ from django.conf import settings
 from django.core.exceptions import FieldDoesNotExist, ObjectDoesNotExist, ValidationError
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import Avg, Q
 from django.utils import timezone
 from django.utils.functional import cached_property
@@ -32,7 +33,10 @@ from camp.apps.qaqc.models import HealthCheck
 from camp.apps.regions.counties import county_name
 from camp.utils import classproperty
 from camp.utils.datetime import make_aware
+from camp.utils.db import is_unique_violation
 from camp.utils.fields import MACAddressField
+
+logger = logging.getLogger(__name__)
 
 
 class Group(models.Model):
@@ -101,6 +105,31 @@ class LatestEntry(models.Model):
 
         # Update the cache
         self._entry = value
+
+
+NOT_ANNOTATED = object()
+
+
+# How many of a monitor's reporting intervals its published reading may lag
+# its default-stage reading before the default stage is shown instead. The
+# pipeline saves the default stage (e.g. cleaned) a moment before the
+# published calibration (e.g. EPA), so a smaller gap is that race, not a
+# stale calibration; a larger one means the calibration stopped (e.g. EPA
+# with a dead humidity sensor).
+PUBLISHED_STALE_INTERVALS = 3
+
+
+def choose_published(published, default, tolerance):
+    '''
+    Of a monitor's newest published entry and newest default-stage entry
+    (either may be None), the one to show: the published one, unless it is
+    more than `tolerance` older than the default-stage one.
+    '''
+    if published is None:
+        return default
+    if default is None or published.timestamp >= default.timestamp - tolerance:
+        return published
+    return default
 
 
 class Monitor(models.Model):
@@ -268,21 +297,24 @@ class Monitor(models.Model):
     def is_regulatory(self):
         return self.GRADE in {self.Grade.FEM, self.Grade.FRM}
 
+    def is_recent(self, timestamp):
+        '''Whether `timestamp` is within this monitor's LAST_ACTIVE_LIMIT.'''
+        cutoff = timezone.now() - timedelta(seconds=self.LAST_ACTIVE_LIMIT)
+        return timestamp is not None and timestamp >= cutoff
+
     @cached_property
     def is_active(self):
-        now = timezone.now()
-        cutoff = now - timedelta(seconds=self.LAST_ACTIVE_LIMIT)
-
-        # If annotation is missing or None, fall back to query
-        timestamp = getattr(self, 'last_entry_timestamp', None)
-        if timestamp is None:
+        # Without the with_last_entry_timestamp() annotation, query. With it,
+        # None means the monitor has no latest entries, so don't query again.
+        timestamp = getattr(self, 'last_entry_timestamp', NOT_ANNOTATED)
+        if timestamp is NOT_ANNOTATED:
             timestamp = (self.latest_entries
                 .order_by('-timestamp')
                 .values_list('timestamp', flat=True)
                 .first()
             )
 
-        return timestamp is not None and timestamp >= cutoff
+        return self.is_recent(timestamp)
 
     @cached_property
     def health_grade(self):
@@ -308,6 +340,46 @@ class Monitor(models.Model):
     @classmethod
     def get_default_calibration(cls, EntryModel):
         return get_default_calibration(cls, EntryModel)
+
+    @classmethod
+    def get_published_lookup(cls, EntryModel, calibration=None):
+        '''
+        Field lookup (stage, and processor when there is one) for the
+        reading published for this monitor type and entry type: the
+        processor named by its DefaultCalibration row, or the default stage
+        when the row is blank or missing. Pass `calibration` to skip the
+        query when the caller already has it.
+
+        The map endpoints and monitor detail all use this, so they agree on
+        which of a monitor's latest entries to show.
+        '''
+        from camp.apps.calibrations.models import DefaultCalibration
+
+        if calibration is None:
+            calibration = (DefaultCalibration.objects
+                .filter(monitor_type=cls.monitor_type, entry_type=EntryModel.entry_type)
+                .values_list('calibration', flat=True)
+                .first()) or ''
+
+        if calibration:
+            config = cls.ENTRY_CONFIG.get(EntryModel, {})
+            # Per-entry pipeline processors, plus those that write calibrated
+            # entries outside it (upstream calibrations, hourly aggregators),
+            # as DefaultCalibration.allowed_processors lists them.
+            candidates = [
+                *(p for stage_processors in config.get('processors', {}).values() for p in stage_processors),
+                *config.get('calibrations', []),
+            ]
+            for processor in candidates:
+                if processor.name == calibration:
+                    return {'stage': processor.next_stage, 'processor': calibration}
+
+        return {'stage': cls.get_default_stage(EntryModel)}
+
+    @classmethod
+    def get_published_tolerance(cls):
+        '''How far the published reading may lag the default stage; see PUBLISHED_STALE_INTERVALS.'''
+        return PUBLISHED_STALE_INTERVALS * pd.to_timedelta(cls.EXPECTED_INTERVAL).to_pytimedelta()
 
     def get_device(self):
         return self.device or self.DEVICE or self._meta.verbose_name
@@ -413,11 +485,24 @@ class Monitor(models.Model):
         for key, value in data.items():
             setattr(entry, key, value)
 
-        if entry.validation_check():
-            if save:
-                entry.save()
+        created = entry.validation_check()
+        if created and save:
+            try:
+                with transaction.atomic():
+                    entry.save()
+            except IntegrityError as err:
+                # Lost a race with a concurrent writer of the same entry
+                # (check-then-insert): fall through to the upsert below.
+                # Any other integrity error (NOT NULL, FK, check) is a real
+                # failure, not a race.
+                if not is_unique_violation(err):
+                    raise
+                created = False
+            else:
                 entry.refresh_from_db()
                 self.update_latest_entry(entry)
+
+        if created:
             return entry
 
         if save:
@@ -473,8 +558,20 @@ class Monitor(models.Model):
             if cutoff_stage and processor.next_stage == cutoff_stage:
                 continue
 
-            if (result := processor(entry).run()):
-                self.update_latest_entry(result)
+            # One failing processor must not stop the ones after it.
+            try:
+                with transaction.atomic():
+                    result = processor(entry).run()
+                    if result:
+                        self.update_latest_entry(result)
+            except Exception:
+                logger.exception(
+                    'Processor %s failed for %s %s (monitor=%s)',
+                    processor.name, entry.__class__.__name__, entry.pk, self.pk,
+                )
+                continue
+
+            if result:
                 processed_entries.append(result)
 
         return processed_entries
@@ -499,17 +596,13 @@ class Monitor(models.Model):
         return processed
 
     def update_latest_entry(self, entry):
-        allowed_stages = (
-            self.get_default_stage(entry.__class__),
-            entry.Stage.CALIBRATED
-        )
-        if entry.stage not in allowed_stages:
+        # Track what choose_latest_entry picks from: the default stage, and
+        # the published reading (get_published_lookup) when that's another
+        # stage or processor.
+        lookup = self.get_published_lookup(entry.__class__)
+        is_published = all(getattr(entry, field) == value for field, value in lookup.items())
+        if entry.stage != self.get_default_stage(entry.__class__) and not is_published:
             return
-
-        # Skip if not the default calibration
-        if entry.stage == entry.Stage.CALIBRATED:
-            if entry.processor != self.get_default_calibration(entry.__class__):
-                return
 
         lookup = {
             'monitor_id': self.pk,
@@ -538,31 +631,61 @@ class Monitor(models.Model):
                 pass
 
 
+    def choose_latest_entry(self, rows, entry_model, calibration=None):
+        '''
+        Of this monitor's LatestEntry `rows` for `entry_model`, the one to
+        show: the published one (get_published_lookup) unless it's stale
+        (choose_published), else the default stage, else the newest. Monitor
+        detail and the map endpoints all choose through here.
+        '''
+        lookup = self.get_published_lookup(entry_model, calibration)
+        default_stage = self.get_default_stage(entry_model)
+
+        def matches(row):
+            return all(getattr(row, field) == value for field, value in lookup.items())
+
+        def newest(candidates):
+            return max(candidates, key=lambda row: row.timestamp, default=None)
+
+        published = newest([row for row in rows if matches(row)])
+        default = newest([row for row in rows if row.stage == default_stage and not matches(row)])
+        return choose_published(published, default, self.get_published_tolerance()) or newest(rows)
+
     def get_latest_data(self):
         '''
-        Returns a dictionary of the most recent entries for each supported
-        entry type on this monitor. Assumes latest_entries are already filtered
-        by calibration (via .with_latest_entries()).
+        Returns a dictionary of the most recent entry for each entry type on
+        this monitor. A monitor keeps one LatestEntry per processor (e.g. the
+        cleaned and the calibrated PM2.5), so each type shows the published
+        one (see get_published_lookup), the same one the map endpoints show.
         '''
-        from itertools import groupby
+        from camp.apps.calibrations.models import DefaultCalibration
 
-        latests = list(self.latest_entries.all())
+        calibrations = dict(DefaultCalibration.objects
+            .filter(monitor_type=self.monitor_type)
+            .values_list('entry_type', 'calibration'))
 
-        # Batch-fetch actual entry objects grouped by entry type — one query per table
-        # instead of one query per LatestEntry row.
+        by_type = {}
+        for latest in self.latest_entries.all():
+            by_type.setdefault(latest.entry_type, []).append(latest)
+
+        chosen = []
+        for entry_type, rows in by_type.items():
+            entry_model = rows[0].entry_model
+            if entry_model is None:
+                continue
+            chosen.append(self.choose_latest_entry(rows, entry_model, calibrations.get(entry_type, '')))
+
+        # One query per entry table, not one per LatestEntry row.
         entry_map = {}
-        for entry_type, group in groupby(
-            sorted(latests, key=lambda l: l.entry_type),
-            key=lambda l: l.entry_type
-        ):
-            group = list(group)
-            entry_model = group[0].entry_model
-            for entry in entry_model.objects.filter(pk__in=[l.entry_id for l in group]):
-                entry_map[entry.pk] = entry
+        for latest in chosen:
+            entry_map.setdefault(latest.entry_model, []).append(latest.entry_id)
+        entries = {}
+        for entry_model, ids in entry_map.items():
+            entries.update({entry.pk: entry for entry in entry_model.objects.filter(pk__in=ids)})
 
         data = {}
-        for latest in latests:
-            entry = entry_map.get(latest.entry_id)
+        for latest in chosen:
+            entry = entries.get(latest.entry_id)
             if entry is None:
                 continue
             payload = entry.declared_data()

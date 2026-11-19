@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.contrib.gis.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -12,6 +14,8 @@ class PM25(BaseEntry):
     epa_aqs_code = 88101
     units = 'µg/m³'
     summarize = True
+    # Dense smoke has read in the 900s; a broken channel often pegs at 2500-3300.
+    plausible_range = (Decimal('0'), Decimal('1500'))
 
     Levels = levels.PM25
 
