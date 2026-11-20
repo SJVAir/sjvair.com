@@ -228,11 +228,16 @@ class DocumentChanges(NoStoreMixin, Endpoint):
                 'invalid', 400, 'since must be an integer of 0 or more.',
                 {'fields': {'since': ['Enter a whole number of 0 or more.']}},
             )
-        doc = owned_document(request, id)
+        # Most polls find no change: check the version without loading the body.
+        doc = owned_document(request, id, with_body=False)
         if doc is None:
             return refuse_absent(request, id)
         if since == doc.version:
             return http.Http200({'data': {'version': doc.version}})
+        # Changed: read the row again, body and version together, so they always match.
+        doc = owned_document(request, id)
+        if doc is None:
+            return refuse_absent(request, id)
         return http.Http200({'data': {
             'version': doc.version,
             'changes': save.changes_since(doc, since),
@@ -265,7 +270,7 @@ class DocumentSnapshotDetail(NoStoreMixin, Endpoint):
     login_required = True
 
     def get(self, request, id, snapshot_id):
-        doc = owned_document(request, id)
+        doc = owned_document(request, id, with_body=False)
         if doc is None:
             return refuse_absent(request, id)
         snap = doc.snapshots.filter(pk=snapshot_id).first()
@@ -295,7 +300,7 @@ class DocumentShare(NoStoreMixin, BodilessMixin, Endpoint):
     bodiless_methods = ('POST', 'DELETE')
 
     def post(self, request, id):
-        doc = owned_document(request, id)
+        doc = owned_document(request, id, with_body=False)
         if doc is None or doc.deleted_at is not None:
             return not_found()
         if serializers.sharing_blocked(doc):
@@ -311,7 +316,7 @@ class DocumentShare(NoStoreMixin, BodilessMixin, Endpoint):
         return http.Http200({'data': {'share_token': doc.share_token}})
 
     def delete(self, request, id):
-        doc = owned_document(request, id)
+        doc = owned_document(request, id, with_body=False)
         if doc is None:
             return not_found()
         # The token is dropped, not kept: sharing again makes a new one, so this link stays dead.
@@ -338,13 +343,15 @@ def not_shared():
     return refuse('not_found', 404, 'This shared dashboard is no longer available.')
 
 
-def shared_document(token):
-    """The document behind a share link, or None when the link does not open."""
-    doc = (
-        SavedDocument.objects.select_related('owner__document_profile')
-        .filter(share_token=token)
-        .first()
-    )
+def shared_document(token, with_body=True):
+    """The document behind a share link, or None when the link does not open.
+
+    `with_body=False` as in `owned_document`.
+    """
+    documents = SavedDocument.objects.select_related('owner__document_profile').filter(share_token=token)
+    if not with_body:
+        documents = documents.defer('body')
+    doc = documents.first()
     if doc is None or not serializers.shareable(doc):
         return None
     return doc
@@ -369,7 +376,7 @@ class SharedDocumentChanges(NoStoreMixin, Endpoint):
 
     def get(self, request, token):
         # The link is checked first, so a bad since never tells a known token from an unknown one.
-        doc = shared_document(token)
+        doc = shared_document(token, with_body=False)
         if doc is None:
             return not_shared()
         since = parse_since(request.params.get('since'))
@@ -380,6 +387,10 @@ class SharedDocumentChanges(NoStoreMixin, Endpoint):
             )
         if since == doc.version:
             return http.Http200({'data': {'version': doc.version}})
+        # Changed: read it again with the body (it may have stopped opening meanwhile).
+        doc = shared_document(token)
+        if doc is None:
+            return not_shared()
         return http.Http200({'data': serializers.shared(doc)})
 
 
@@ -389,7 +400,8 @@ class DocumentCredit(NoStoreMixin, Endpoint):
     login_required = False
 
     def get(self, request, id):
-        doc = SavedDocument.objects.select_related('owner__document_profile').filter(pk=id).first()
+        doc = (SavedDocument.objects.select_related('owner__document_profile')
+               .defer('body').filter(pk=id).first())
         if doc is None:
             return not_found()
         is_owner = request.user.is_authenticated and doc.owner_id == request.user.pk
