@@ -29,6 +29,10 @@ class NoStoreMixin:
 
     A request over DATA_UPLOAD_MAX_MEMORY_SIZE is refused as `too_large` (resticus reads the
     body before its own error handling, so Django would otherwise answer with an HTML 400).
+
+    This `dispatch` doesn't carry resticus's `csrf_exempt` (`as_view` reads the subclass's), so
+    the document endpoints are under Django's CsrfViewMiddleware: unsafe requests need a CSRF
+    token, session or not. Keep it that way; `test_csrf.py` checks it.
     """
 
     def dispatch(self, request, *args, **kwargs):

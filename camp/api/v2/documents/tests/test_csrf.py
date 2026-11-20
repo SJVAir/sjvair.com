@@ -1,6 +1,5 @@
 import json
 
-import pytest
 
 from django.middleware.csrf import get_token
 from django.test import Client, TestCase
@@ -11,11 +10,10 @@ from .helpers import BASE, account_id, body, make_user
 
 
 class SessionCsrfTests(TestCase):
+    # Never skipped: the document endpoints are under Django's CsrfViewMiddleware
+    # whatever resticus is installed (NoStoreMixin.dispatch doesn't carry resticus's
+    # csrf_exempt), and these tests are what keeps them there.
     def setUp(self):
-        try:
-            from resticus.auth import enforce_csrf  # noqa: F401
-        except ImportError:
-            pytest.skip('resticus without the session CSRF fix')
         self.user = make_user(1)
         self.client = Client(enforce_csrf_checks=True)
         self.client.force_login(self.user)
