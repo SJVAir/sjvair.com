@@ -16,7 +16,10 @@ from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
 from camp.apps.summaries.periods import iter_hours, period_end, period_start
 from camp.apps.summaries.schedule import HOURLY_FIRE_MINUTE, LATE_RUN_WARNING, hour_for_run, pacific_crontab
-from camp.apps.summaries.aggregators import compute_monitor_summary, compute_region_summary, rollup_summaries, rollup_region_stats
+from camp.apps.summaries.aggregators import (
+    compute_monitor_summary, compute_region_summary, hourly_output_processor,
+    rollup_summaries, rollup_region_stats,
+)
 from camp.apps.summaries.current_periods import roll_current_periods, touches_current_periods
 from camp.apps.summaries.backfill import (
     backfill_monitor_hours,
@@ -306,14 +309,15 @@ def rollup_monitor_summaries(
     rows = qs.order_by('monitor_id', 'entry_type', 'processor').values(
         'monitor_id', 'entry_type', 'processor',
         'count', 'expected_count', 'sum_value', 'sum_of_squares',
-        'minimum', 'maximum', 'tdigest',
+        'minimum', 'maximum', 'tdigest', 'is_complete',
     ).iterator()
 
     to_upsert = []
     for (monitor_id, entry_type, processor), group in groupby(
         rows, key=lambda r: (r['monitor_id'], r['entry_type'], r['processor'])
     ):
-        stats = rollup_summaries(list(group))
+        stats = rollup_summaries(
+            list(group), hourly_output=hourly_output_processor(processor) is not None)
         if stats is None:
             continue
         to_upsert.append(MonitorSummary(

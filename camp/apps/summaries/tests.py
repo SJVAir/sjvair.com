@@ -2088,6 +2088,12 @@ class SummaryIntegrityCheckTests(TestCase):
         assert (local.hour, local.minute, local.fold) == (2, 30, 0)
 
 
+def tdigest_for(values):
+    digest = TDigest()
+    digest.batch_update(values)
+    return tdigest_to_dict(digest)
+
+
 class HourlyOutputCompletenessTests(TestCase):
     """AQLite's CALIBRATED O3 is one value per hour; completeness comes from the CLEANED readings."""
 
@@ -2189,6 +2195,96 @@ class HourlyOutputCompletenessTests(TestCase):
             monitor=self.monitor, processor='AQLiteHourlyAggregator',
             resolution=MonitorSummary.Resolution.DAILY)
         assert daily.expected_count == 24
+        assert daily.is_complete is True
+
+    def _store_day(self, day, readings_per_hour):
+        """Stores the day's AQLite hourly rows, `readings_per_hour(i)` CLEANED readings in hour i."""
+        for i, hour in enumerate(iter_hours(day, day + timedelta(hours=24))):
+            self._readings(hour, readings_per_hour(i))
+            self._aggregate(hour)
+            stats = self._hourly(hour, 'AQLiteHourlyAggregator')
+            MonitorSummary.objects.create(
+                monitor=self.monitor, timestamp=hour,
+                resolution=MonitorSummary.Resolution.HOURLY,
+                entry_type='o3', processor='AQLiteHourlyAggregator', **stats)
+
+    def _roll_day(self, day):
+        from camp.apps.summaries.tasks import rollup_monitor_summaries
+        rollup_monitor_summaries(
+            MonitorSummary.Resolution.DAILY, MonitorSummary.Resolution.HOURLY,
+            day, day + timedelta(hours=24))
+        return MonitorSummary.objects.get(
+            monitor=self.monitor, processor='AQLiteHourlyAggregator',
+            resolution=MonitorSummary.Resolution.DAILY, timestamp=day)
+
+    def test_daily_rollup_incomplete_hours(self):
+        # Every hour has 9 of 12 readings, so every hour is stored incomplete,
+        # and the day must be too, though each hour carries count 1.
+        from camp.utils.datetime import make_aware
+        day = make_aware(datetime(2026, 3, 11), settings.DEFAULT_TIMEZONE)
+        self._store_day(day, lambda i: 9)
+        daily = self._roll_day(day)
+        assert daily.count == 24
+        assert daily.expected_count == 24
+        assert daily.is_complete is False
+
+    def test_daily_rollup_credits_complete_hours_only(self):
+        from camp.utils.datetime import make_aware
+        # 19 complete hours: 19 < 0.8 * 24 = 19.2, so the day is incomplete.
+        short = make_aware(datetime(2026, 3, 11), settings.DEFAULT_TIMEZONE)
+        self._store_day(short, lambda i: 10 if i < 19 else 9)
+        assert self._roll_day(short).is_complete is False
+
+        # 20 complete hours clear it.
+        enough = make_aware(datetime(2026, 3, 12), settings.DEFAULT_TIMEZONE)
+        self._store_day(enough, lambda i: 10 if i < 20 else 9)
+        assert self._roll_day(enough).is_complete is True
+
+    def test_monthly_rollup_skips_incomplete_days(self):
+        from camp.apps.summaries.tasks import rollup_monitor_summaries
+        from camp.utils.datetime import make_aware
+        month = make_aware(datetime(2026, 4, 1), settings.DEFAULT_TIMEZONE)
+        # A 30-day month: 23 complete days (23 < 0.8 * 30 = 24) and 7 days
+        # whose hours all have count 1 but are each incomplete.
+        for d in range(30):
+            day = make_aware(datetime(2026, 4, 1 + d), settings.DEFAULT_TIMEZONE)
+            MonitorSummary.objects.create(
+                monitor=self.monitor, timestamp=day, resolution=MonitorSummary.Resolution.DAILY,
+                entry_type='o3', processor='AQLiteHourlyAggregator',
+                count=24, expected_count=24, sum_value=24 * 40.0, sum_of_squares=24 * 1600.0,
+                minimum=40.0, maximum=40.0, mean=40.0, stddev=0.0, p25=40.0, p75=40.0,
+                tdigest=tdigest_for([40.0] * 24), is_complete=d < 23)
+
+        rollup_monitor_summaries(
+            MonitorSummary.Resolution.MONTHLY, MonitorSummary.Resolution.DAILY,
+            month, make_aware(datetime(2026, 5, 1), settings.DEFAULT_TIMEZONE))
+
+        monthly = MonitorSummary.objects.get(
+            monitor=self.monitor, processor='AQLiteHourlyAggregator',
+            resolution=MonitorSummary.Resolution.MONTHLY)
+        assert monthly.count == 720
+        assert monthly.is_complete is False
+
+    def test_raw_series_daily_rollup_unchanged(self):
+        # A multi-reading series still credits every reading, not its hours' flags:
+        # 24 hours of 10 readings flagged incomplete are 240 of 288, 83%, complete.
+        from camp.apps.summaries.tasks import rollup_monitor_summaries
+        from camp.utils.datetime import make_aware
+        day = make_aware(datetime(2026, 3, 11), settings.DEFAULT_TIMEZONE)
+        for hour in iter_hours(day, day + timedelta(hours=24)):
+            MonitorSummary.objects.create(
+                monitor=self.monitor, timestamp=hour, resolution=MonitorSummary.Resolution.HOURLY,
+                entry_type='o3', processor='',
+                count=10, expected_count=12, sum_value=400.0, sum_of_squares=16000.0,
+                minimum=40.0, maximum=40.0, mean=40.0, stddev=0.0, p25=40.0, p75=40.0,
+                tdigest=tdigest_for([40.0] * 10), is_complete=False)
+
+        rollup_monitor_summaries(
+            MonitorSummary.Resolution.DAILY, MonitorSummary.Resolution.HOURLY,
+            day, day + timedelta(hours=24))
+
+        daily = MonitorSummary.objects.get(
+            monitor=self.monitor, processor='', resolution=MonitorSummary.Resolution.DAILY)
         assert daily.is_complete is True
 
 
