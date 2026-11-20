@@ -67,6 +67,23 @@ class AdminTests(TestCase):
         self.assertNotEqual(self.admin.get(self.url('delete', 'doc')).status_code, 200)
         self.assertIn('Alice board', self.admin.get(self.url('changelist')).content.decode())
 
+    def test_admin_pages_never_read_body(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        for url in (self.url('changelist'), self.url('change', 'doc')):
+            with CaptureQueriesContext(connection) as captured:
+                assert self.admin.get(url).status_code == 200
+            reads = [q['sql'] for q in captured.captured_queries
+                     if '"documents_saveddocument"."body"' in q['sql']]
+            assert reads == [], url
+
+    def test_saving_change_form_keeps_body(self):
+        response = self.admin.post(self.url('change', 'doc'), {'sharing_disabled': 'on'})
+        assert response.status_code == 302
+        self.doc.refresh_from_db()
+        assert self.doc.sharing_disabled is True
+        assert self.doc.body == {'note': MARKER}
+
     def test_no_add_or_delete(self):
         self.assertEqual(self.admin.get(self.url('add')).status_code, 403)
         response = self.admin.post(

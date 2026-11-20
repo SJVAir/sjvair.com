@@ -36,6 +36,11 @@ class SavedDocumentAdmin(admin.ModelAdmin):
     # (and would list its changes and snapshots on the confirmation page), so there is no delete
     # view, action, or link. The delete permission itself stays the usual one: deleting a User
     # cascades to their dashboards, and Django's User delete page needs it to allow that.
+    def get_queryset(self, request):
+        # Nothing here shows the body (up to 1 MB each), so it's never read: a list
+        # page would otherwise pull every row's. A deferred field isn't saved either.
+        return super().get_queryset(request).defer('body')
+
     def has_add_permission(self, request):
         return False
 
