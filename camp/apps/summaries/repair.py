@@ -20,7 +20,9 @@ from camp.apps.summaries.backfill import backfill_region_hours
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.selection import region_summary_entry_models
 from camp.apps.summaries.periods import is_period_start, iter_period_starts, period_end, period_start
-from camp.apps.summaries.tasks import rollup_monitor_summaries, rollup_region_summaries
+from camp.apps.summaries.tasks import (
+    refresh_previous_max_8h, rollup_monitor_summaries, rollup_region_summaries,
+)
 
 R = BaseSummary.Resolution
 
@@ -368,4 +370,7 @@ def reroll(kind, ids, start, end, now, windows=None, resolutions=None, progress=
             counts[target] += 1
             if counts[target] % ROLL_PROGRESS_EVERY == 0 or counts[target] == total:
                 progress(f'{kind} {target} roll: {counts[target]:,}/{total:,} windows')
+        if target == R.DAILY and windows.get(target):
+            # The day before the first one read its next morning's old hours.
+            refresh_previous_max_8h(kind, min(windows[target]), ids)
     return counts

@@ -555,6 +555,44 @@ class NextNightRefreshTests(TestCase):
             assert model.objects.filter(resolution=R.DAILY, entry_type='co', timestamp=d, **owner).exists()
 
 
+    def test_scoped_daily_task_leaves_other_owners(self):
+        row, provisional = self._provisional_then_morning(
+            self.monitor_hours, MonitorSummary, monitor=self.monitor)
+        other = AirNow.objects.create(
+            name='Other', position=Point(-119.5, 36.5, srid=4326), location='outside')
+        daily_monitor_summaries(day=self.next_day, monitor_ids=[other.pk])
+        row.refresh_from_db()
+        assert row.max_8h == provisional == 1.0
+        daily_monitor_summaries(day=self.next_day, monitor_ids=[self.monitor.pk])
+        row.refresh_from_db()
+        assert row.max_8h == 17.625
+
+    def test_rebuild_refreshes_day_before_start(self):
+        # Rebuilding from D: D-1's windows read D's (rewritten) morning.
+        for flags in ([], ['--async']):
+            with self.subTest(flags=flags):
+                MonitorSummary.objects.all().delete()
+                row, provisional = self._provisional_then_morning(
+                    self.monitor_hours, MonitorSummary, monitor=self.monitor)
+                assert provisional == 1.0
+                with patch('camp.apps.summaries.management.commands.rebuild_summaries.backfill_monitor_hours'), \
+                        patch('camp.apps.summaries.management.commands.rebuild_summaries.Command._enqueue_monitor_summaries'):
+                    call_command(
+                        'rebuild_summaries', '2026-07-02', '2026-07-03',
+                        f'--monitor={self.monitor.pk}', '--monitors-only', *flags, stdout=StringIO())
+                row.refresh_from_db()
+                assert row.max_8h == 17.625
+
+    def test_repair_reroll_refreshes_day_before_first_day(self):
+        from camp.apps.summaries import repair
+        row, provisional = self._provisional_then_morning(
+            self.monitor_hours, MonitorSummary, monitor=self.monitor)
+        assert provisional == 1.0
+        repair.reroll('monitor', [self.monitor.pk], None, None, None, windows={R.DAILY: [self.next_day]})
+        row.refresh_from_db()
+        assert row.max_8h == 17.625
+
+
 class FillDailyPeaksCommandTests(TestCase):
     fixtures = ['purple-air.yaml', 'regions.yaml']
 

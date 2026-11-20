@@ -402,107 +402,109 @@ def _previous_period_start(resolution, now=None):
     return period_start(resolution, period_start(resolution, now) - timedelta(microseconds=1))
 
 
-def _rollup_monitors(target, source, resolution, start):
+def _rollup_monitors(target, source, resolution, start, monitor_ids=None):
     start = start or _previous_period_start(resolution)
-    rollup_monitor_summaries(target, source, start, period_end(resolution, start))
+    rollup_monitor_summaries(target, source, start, period_end(resolution, start), monitor_ids=monitor_ids)
 
 
-def _rollup_regions(target, source, resolution, start):
+def _rollup_regions(target, source, resolution, start, region_ids=None):
     start = start or _previous_period_start(resolution)
-    rollup_region_summaries(target, source, start, period_end(resolution, start))
+    rollup_region_summaries(target, source, start, period_end(resolution, start), region_ids=region_ids)
 
 
 R = BaseSummary.Resolution
 
 
-def _refresh_previous_max_8h(kind, start):
+def refresh_previous_max_8h(kind, start, ids=None):
     """
     The 8-hour windows starting late in a day reach into the next morning, so
     that day's daily rollup stores a provisional `max_8h`. Run with the next
     day's rollup, this recomputes the previous day's, now that the hours exist.
-    `start` is the day just rolled up. When the refreshed day is the last day
-    of a coarse period, that period's daily statistic is refilled too.
+    `start` is the day just rolled up (or the first day a rebuild or repair
+    rewrote: the day before it read the old hours). `ids` scopes it like
+    `fill_daily_peaks` (None: every owner). When the refreshed day is the last
+    day of a coarse period, that period's daily statistic is refilled too.
     """
     models = [model for model, field in peak_entry_models().items() if field == 'max_8h']
     day = _previous_period_start('day', start)
     result = fill_daily_peaks(
-        kind, None, day, start,
+        kind, ids, day, start,
         entry_models=models, fields=('max_8h',),
     )
     _log_skipped(result)
     for resolution in COARSE_RESOLUTIONS:
         if period_end(resolution, day) == start:
             fill_period_statistics(
-                kind, None, period_start(resolution, day), start,
+                kind, ids, period_start(resolution, day), start,
                 resolutions=[resolution], entry_models=models,
             )
 
 
 @db_periodic_task(pacific_crontab(1, '0'), priority=80, queue='summaries')
-def daily_monitor_summaries(day=None):
-    """Roll up yesterday's hourly MonitorSummary records into daily ones."""
+def daily_monitor_summaries(day=None, monitor_ids=None):
+    """Roll up yesterday's hourly MonitorSummary records into daily ones (`monitor_ids`: only those)."""
     day = day or _previous_period_start('day')
-    _rollup_monitors(R.DAILY, R.HOURLY, 'day', day)
-    _refresh_previous_max_8h('monitor', day)
+    _rollup_monitors(R.DAILY, R.HOURLY, 'day', day, monitor_ids)
+    refresh_previous_max_8h('monitor', day, monitor_ids)
 
 
 @db_periodic_task(pacific_crontab(1, '10'), priority=70, queue='summaries')
-def daily_region_summaries(day=None):
-    """Roll up yesterday's hourly RegionSummary records into daily ones."""
+def daily_region_summaries(day=None, region_ids=None):
+    """Roll up yesterday's hourly RegionSummary records into daily ones (`region_ids`: only those)."""
     day = day or _previous_period_start('day')
-    _rollup_regions(R.DAILY, R.HOURLY, 'day', day)
-    _refresh_previous_max_8h('region', day)
+    _rollup_regions(R.DAILY, R.HOURLY, 'day', day, region_ids)
+    refresh_previous_max_8h('region', day, region_ids)
 
 
 @db_periodic_task(pacific_crontab(1, '15', day='1'), priority=60, queue='summaries')
-def monthly_monitor_summaries(month_start=None):
+def monthly_monitor_summaries(month_start=None, monitor_ids=None):
     """Roll up last month's daily MonitorSummary records into monthly ones."""
-    _rollup_monitors(R.MONTHLY, R.DAILY, 'month', month_start)
+    _rollup_monitors(R.MONTHLY, R.DAILY, 'month', month_start, monitor_ids)
 
 
 @db_periodic_task(pacific_crontab(1, '25', day='1'), priority=50, queue='summaries')
-def monthly_region_summaries(month_start=None):
+def monthly_region_summaries(month_start=None, region_ids=None):
     """Roll up last month's daily RegionSummary records into monthly ones."""
-    _rollup_regions(R.MONTHLY, R.DAILY, 'month', month_start)
+    _rollup_regions(R.MONTHLY, R.DAILY, 'month', month_start, region_ids)
 
 
 @db_periodic_task(pacific_crontab(1, '30', month='1,4,7,10', day='1'), priority=40, queue='summaries')
-def quarterly_monitor_summaries(quarter_start=None):
+def quarterly_monitor_summaries(quarter_start=None, monitor_ids=None):
     """Roll up last quarter's monthly MonitorSummary records into quarterly ones."""
-    _rollup_monitors(R.QUARTERLY, R.MONTHLY, 'quarter', quarter_start)
+    _rollup_monitors(R.QUARTERLY, R.MONTHLY, 'quarter', quarter_start, monitor_ids)
 
 
 @db_periodic_task(pacific_crontab(1, '35', month='1,4,7,10', day='1'), priority=30, queue='summaries')
-def quarterly_region_summaries(quarter_start=None):
+def quarterly_region_summaries(quarter_start=None, region_ids=None):
     """Roll up last quarter's monthly RegionSummary records into quarterly ones."""
-    _rollup_regions(R.QUARTERLY, R.MONTHLY, 'quarter', quarter_start)
+    _rollup_regions(R.QUARTERLY, R.MONTHLY, 'quarter', quarter_start, region_ids)
 
 
 @db_periodic_task(pacific_crontab(1, '45', month='3,6,9,12', day='1'), priority=20, queue='summaries')
-def seasonal_monitor_summaries(season_start=None):
+def seasonal_monitor_summaries(season_start=None, monitor_ids=None):
     """
     Roll up the past 3 months of monthly MonitorSummary records into a seasonal one.
     Runs Mar 1, Jun 1, Sep 1, Dec 1 to summarize the just-completed season.
     """
-    _rollup_monitors(R.SEASONAL, R.MONTHLY, 'season', season_start)
+    _rollup_monitors(R.SEASONAL, R.MONTHLY, 'season', season_start, monitor_ids)
 
 
 @db_periodic_task(pacific_crontab(1, '55', month='3,6,9,12', day='1'), priority=15, queue='summaries')
-def seasonal_region_summaries(season_start=None):
+def seasonal_region_summaries(season_start=None, region_ids=None):
     """Roll up the past 3 months of monthly RegionSummary records into a seasonal one."""
-    _rollup_regions(R.SEASONAL, R.MONTHLY, 'season', season_start)
+    _rollup_regions(R.SEASONAL, R.MONTHLY, 'season', season_start, region_ids)
 
 
 @db_periodic_task(pacific_crontab(2, '0', month='1', day='1'), priority=10, queue='summaries')
-def yearly_monitor_summaries(year_start=None):
+def yearly_monitor_summaries(year_start=None, monitor_ids=None):
     """Roll up last year's monthly MonitorSummary records into yearly ones."""
-    _rollup_monitors(R.YEARLY, R.MONTHLY, 'year', year_start)
+    _rollup_monitors(R.YEARLY, R.MONTHLY, 'year', year_start, monitor_ids)
 
 
 @db_periodic_task(pacific_crontab(2, '5', month='1', day='1'), priority=5, queue='summaries')
-def yearly_region_summaries(year_start=None):
+def yearly_region_summaries(year_start=None, region_ids=None):
     """Roll up last year's monthly RegionSummary records into yearly ones."""
-    _rollup_regions(R.YEARLY, R.MONTHLY, 'year', year_start)
+    _rollup_regions(R.YEARLY, R.MONTHLY, 'year', year_start, region_ids)
 
 
 # ---- Current periods ----
@@ -667,6 +669,9 @@ def _backfill_complete_chunk(job):
     job.consecutive_failures = 0
     job.last_error = ''
     if job.cursor <= job.range_start:
+        # The day before the range read its next morning's old hours.
+        refresh_previous_max_8h('monitor', job.range_start)
+        refresh_previous_max_8h('region', job.range_start)
         if not _backfill_current_periods(job):
             job.last_error = BACKFILL_CURRENT_PERIODS_STOPPED
         job.state = SummaryBackfillJob.State.DONE
