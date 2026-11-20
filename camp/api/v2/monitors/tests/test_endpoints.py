@@ -1152,6 +1152,13 @@ class MonitorListDatasetTests(TestCase):
         assert response.status_code == 200
         assert content['data'] == []
 
+    @override_settings(MONITOR_OPT_IN_TYPES={'not-a-type': 'weather'})
+    def test_opt_in_dataset_without_a_type_lists_none(self):
+        # No subclass matches, so the type lookup is empty; it must not list every monitor.
+        response, content = self.get(dataset='weather')
+        assert response.status_code == 200
+        assert content['data'] == []
+
     def test_air_quality_dataset_matches_default(self):
         _, default = self.get()
         response, content = self.get(dataset='air-quality')

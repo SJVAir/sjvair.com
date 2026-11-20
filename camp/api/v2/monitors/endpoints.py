@@ -123,6 +123,9 @@ class MonitorList(CachedEndpointMixin, MonitorMixin, generics.ListEndpoint):
             lookup = Q()
             for subclass in Monitor.get_opt_in_subclasses(dataset):
                 lookup |= Q(**subclass.type_queryset_filter())
+            # An empty Q() filters nothing: a dataset with no registered type lists none.
+            if not lookup:
+                return queryset.none()
             queryset = queryset.filter(is_hidden=False).filter(lookup)
         else:
             queryset = queryset.get_public()
