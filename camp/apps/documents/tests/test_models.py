@@ -29,7 +29,7 @@ class DocumentModelTests(TestCase):
         return SavedDocument.objects.create(**fields)
 
     def test_id_validator_rejects(self):
-        for bad in ['a b', 'x' * 65, '']:
+        for bad in ['a b', 'x' * 65, '', 'abc\n']:
             doc = SavedDocument(
                 id=bad, owner=self.user, kind='dashboard', body={}, size=2, schema_version=1
             )
