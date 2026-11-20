@@ -77,7 +77,11 @@ class CalHeatScorePlace(generics.Endpoint):
         dates = {k: v for k, v in request.GET.items() if k in ('date', 'date__gte', 'date__lte') and v.strip()}
         if not dates:
             queryset = queryset.filter(date__gte=timezone.now().astimezone(settings.DEFAULT_TIMEZONE).date())
-        queryset = CalHeatScoreFilter(dates, queryset=queryset).qs
+        # A bad value is a 400: dropped, it would also turn off the default.
+        filterset = CalHeatScoreFilter(dates, queryset=queryset)
+        if not filterset.is_valid():
+            return http.Http400({'errors': filterset.errors.get_json_data()})
+        queryset = filterset.qs
 
         # One row per date: the highest score, ties to the lowest ZIP code.
         rows = (queryset.order_by('date', '-score', 'region__external_id')
