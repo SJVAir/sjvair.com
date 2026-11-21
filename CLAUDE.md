@@ -459,12 +459,16 @@ zones are missing there; see SJVAPCD Forecast Setup).
   day's hours (23/24/25), the peak needs `ceil(0.75 * n)` valid hours (`max_1h`) or valid
   8-hour windows (`max_8h`, each window needing >= 6 of its 8 hours); a short day reports the
   peak only if it is at least the standard, else `null`. CO windows start in the day and may run
-  into the next one, so the rollup refreshes `max_8h` the next night; the 28 h
+  into the next one, so the rollup refreshes `max_8h` the next night (`refresh_previous_max_8h`,
+  scoped to the task's ids when given), and `rebuild_summaries`, `repair_summaries` and the backfill
+  job refresh the day before their first day, for their own owners; the 28 h
   `PEAK_8H_SETTLE_MARGIN` (`schedule.py`) covers the 25-hour fall-back day and applies to CO's
   day rows and its coarser rows (see Period daily statistic). The rollup fills
   peaks through `fill_daily_peaks` after its upsert, and a re-roll never wipes them. AQLite
   hourly-output series (processor `output_interval='1h'`) have `expected_count = 1` and are
-  complete when the hour's CLEANED readings reach 80% of `expected_hourly_entries`. Backfill
+  complete when the hour's CLEANED readings reach 80% of `expected_hourly_entries`. Their day and
+  coarser rollups (and open days) credit only the records stored `is_complete`, since every hour
+  carries `count` 1 (`rollup_summaries(..., hourly_output=True)`); other series credit every reading. Backfill
   existing rows with `fill_daily_peaks` (Pacific dates, end exclusive, always scoped like
   `repair_summaries`, one Pacific month at a time, idempotent, `--entry-type`, `--dry-run`).
   `fill_daily_peaks` skips hourly means <= -900 (the -999 missing sentinel) and prints the skip

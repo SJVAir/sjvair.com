@@ -223,6 +223,12 @@ class CalHeatScorePlaceTests(TestCase):
         assert response.status_code == 404
         assert self.client.get(self.url).status_code == 400
 
+    def test_bad_date_is_400(self):
+        # A dropped value would also turn off the today-onward default.
+        response = self.get([self.zip_a], {'date': 'notadate'})
+        assert response.status_code == 400
+        assert 'date' in response.json()['errors']
+
     def test_retired_region_still_answers(self):
         self.zip_a.retired_at = timezone.now()
         self.zip_a.save()

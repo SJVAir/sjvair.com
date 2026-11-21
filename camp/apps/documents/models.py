@@ -4,7 +4,7 @@ from django.conf import settings
 from django.core.validators import RegexValidator
 from django.db import models
 
-id_validator = RegexValidator(r'^[A-Za-z0-9_-]{1,64}$', 'Enter a valid document id.')
+id_validator = RegexValidator(r'^[A-Za-z0-9_-]{1,64}\Z', 'Enter a valid document id.')
 
 
 def measure(value):

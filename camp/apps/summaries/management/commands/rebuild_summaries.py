@@ -21,6 +21,7 @@ from camp.apps.summaries.selection import (
     region_summary_entry_models,
 )
 from camp.apps.summaries.tasks import (
+    refresh_previous_max_8h,
     rollup_monitor_summaries,
     rollup_region_summaries,
 )
@@ -111,6 +112,8 @@ class Command(BaseCommand):
 
         region_ids = list(regions.values_list('pk', flat=True))
 
+        # Unscoped, the queued rollups take no id list (every owner), not thousands of ids each.
+        scoped = bool(monitor_id or region_id)
         hours = list(iter_hours(start, end))
 
         self.stdout.write(
@@ -124,7 +127,7 @@ class Command(BaseCommand):
         if not regions_only:
             if enqueue:
                 self._enqueue_monitor_summaries(monitors, hours)
-                self._enqueue_monitor_rollups(start, end, now)
+                self._enqueue_monitor_rollups(start, end, now, monitor_ids if scoped else None)
                 if touches_current_periods(end, timezone.now()):
                     from camp.apps.summaries.tasks import current_monitor_periods
                     current_monitor_periods(monitor_ids=monitor_ids, rewritten_until=end)
@@ -137,7 +140,7 @@ class Command(BaseCommand):
         if not monitors_only:
             if enqueue:
                 self._enqueue_region_summaries(region_ids, hours, region_summary_entry_models())
-                self._enqueue_region_rollups(start, end, now)
+                self._enqueue_region_rollups(start, end, now, region_ids if scoped else None)
                 if touches_current_periods(end, timezone.now()):
                     from camp.apps.summaries.tasks import current_region_periods
                     current_region_periods(region_ids=region_ids, rewritten_until=end)
@@ -188,6 +191,9 @@ class Command(BaseCommand):
             for window_start in tqdm.tqdm(windows, file=self.stdout, dynamic_ncols=True):
                 window_end = period_end(target, window_start)
                 rollup_fn(target, source, window_start, window_end, **{f'{label}_ids': ids})
+            if target == R.DAILY:
+                # The day before the first one read its next morning's old hours.
+                refresh_previous_max_8h(label, windows[0], ids)
 
     def _current_periods(self, label, ids, end):
         # The clock is read here, not at the start: a long rebuild that runs
@@ -255,7 +261,7 @@ class Command(BaseCommand):
                     count += 1
         self.stdout.write(f'  → {count:,} tasks enqueued')
 
-    def _enqueue_monitor_rollups(self, start, end, now):
+    def _enqueue_monitor_rollups(self, start, end, now, monitor_ids=None):
         from camp.apps.summaries.tasks import (
             daily_monitor_summaries, monthly_monitor_summaries,
             quarterly_monitor_summaries, seasonal_monitor_summaries,
@@ -273,11 +279,11 @@ class Command(BaseCommand):
         count = 0
         for task_fn, kwarg, window_iter in windows:
             for window in window_iter:
-                task_fn(**{kwarg: window})
+                task_fn(**{kwarg: window, 'monitor_ids': monitor_ids})
                 count += 1
         self.stdout.write(f'  → {count:,} tasks enqueued')
 
-    def _enqueue_region_rollups(self, start, end, now):
+    def _enqueue_region_rollups(self, start, end, now, region_ids=None):
         from camp.apps.summaries.tasks import (
             daily_region_summaries, monthly_region_summaries,
             quarterly_region_summaries, seasonal_region_summaries,
@@ -295,7 +301,7 @@ class Command(BaseCommand):
         count = 0
         for task_fn, kwarg, window_iter in windows:
             for window in window_iter:
-                task_fn(**{kwarg: window})
+                task_fn(**{kwarg: window, 'region_ids': region_ids})
                 count += 1
         self.stdout.write(f'  → {count:,} tasks enqueued')
 

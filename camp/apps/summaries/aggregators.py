@@ -128,7 +128,7 @@ def compute_monitor_summary(monitor, timestamp, EntryModel, processor):
     return compute_stats(values, monitor.expected_hourly_entries or 1)
 
 
-def rollup_summaries(records, with_tdigest=True):
+def rollup_summaries(records, with_tdigest=True, hourly_output=False):
     """
     Aggregate a list of MonitorSummary value dicts into one stats dict.
     Used to roll up hourly → daily → monthly etc.
@@ -136,6 +136,12 @@ def rollup_summaries(records, with_tdigest=True):
     Each dict must have: count, expected_count, sum_value, sum_of_squares,
     minimum, maximum, tdigest. `with_tdigest=False` leaves the merged digest
     out of the result (rows that are never saved, like open days, don't need it).
+
+    `hourly_output=True` is for a series whose processor publishes one value
+    per hour (`hourly_output_processor`): its hours have `count == 1` however
+    many readings went into them, so the 80% rule credits only the records
+    stored `is_complete` (each dict must then carry it). A coarser row credits
+    its complete days' counts, so an incomplete day counts for nothing.
 
     Returns None if records is empty or total count is zero.
     """
@@ -158,6 +164,11 @@ def rollup_summaries(records, with_tdigest=True):
 
     merged = merge_tdigests([r['tdigest'] for r in records])
 
+    if hourly_output:
+        credited = sum(r['count'] for r in records if r['is_complete'])
+    else:
+        credited = count
+
     return {
         'count': count,
         'expected_count': expected_count,
@@ -170,7 +181,7 @@ def rollup_summaries(records, with_tdigest=True):
         'p25': merged.percentile(25),
         'p75': merged.percentile(75),
         **({'tdigest': tdigest_to_dict(merged)} if with_tdigest else {}),
-        'is_complete': count >= 0.8 * expected_count,
+        'is_complete': credited >= 0.8 * expected_count,
     }
 
 

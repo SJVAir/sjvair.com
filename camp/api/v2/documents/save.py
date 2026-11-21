@@ -72,7 +72,7 @@ def short_string(value, limit=64):
 
 
 def check_id(id):
-    if id in RESERVED_IDS or id_validator.regex.match(id) is None:
+    if id in RESERVED_IDS or id_validator.regex.fullmatch(id) is None:
         return 'Enter a valid document id.'
     return None
 

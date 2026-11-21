@@ -70,8 +70,12 @@ class ForecastPlace(generics.Endpoint):
             if not dates:
                 today = timezone.now().astimezone(settings.DEFAULT_TIMEZONE).date()
                 queryset = queryset.filter(forecast_date__gte=today)
+            # A bad value is a 400: dropped, it would also turn off the default.
+            filterset = ForecastFilter(dates, queryset=queryset)
+            if not filterset.is_valid():
+                return http.Http400({'errors': filterset.errors.get_json_data()})
             # One row per date: the latest issue (a later publication breaks a tie).
-            queryset = (ForecastFilter(dates, queryset=queryset).qs
+            queryset = (filterset.qs
                 .order_by('forecast_date', '-issued_date', '-published_at', '-pk')
                 .distinct('forecast_date'))
             forecasts = ForecastSerializer(queryset).serialize()

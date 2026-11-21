@@ -225,6 +225,13 @@ class ForecastPlaceTests(TestCase):
         assert self.client.get(self.url, {'region_type': 'county', 'region': 'nope'}).status_code == 404
         assert self.client.get(self.url).status_code == 400
 
+    def test_bad_date_is_400(self):
+        # A dropped value would also turn off the today-onward default.
+        response = self.client.get(self.url, {
+            'region_type': 'county', 'region': self.fresno.external_id, 'forecast_date__gte': '2026-13-40'})
+        assert response.status_code == 400
+        assert 'forecast_date__gte' in response.json()['errors']
+
     def test_retired_region_still_answers(self):
         self.fresno_city.retired_at = timezone.now()
         self.fresno_city.save()

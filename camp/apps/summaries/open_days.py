@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from django.core.cache import cache
 from django.db.models import Q
 
-from camp.apps.summaries.aggregators import rollup_region_stats, rollup_summaries
+from camp.apps.summaries.aggregators import hourly_output_processor, rollup_region_stats, rollup_summaries
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.peaks import (
     DAILY_FIGURES, NEXT_DAY_HOURS, PEAK_FUNCTIONS, SENTINEL_MAX, SO_FAR_FUNCTIONS,
@@ -120,7 +120,9 @@ def build_open_rows(
             day_rows = [r for r in rows if day <= r['timestamp'] < day_end]
             # Open rows are never saved, so the merged t-digest isn't built.
             if kind == 'monitor':
-                stats = rollup_summaries(day_rows, with_tdigest=False)
+                stats = rollup_summaries(
+                    day_rows, with_tdigest=False,
+                    hourly_output=hourly_output_processor(key[1]) is not None)
             else:
                 stats = rollup_region_stats(day_rows, with_tdigest=False)
             if stats is None:
