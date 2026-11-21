@@ -13,6 +13,17 @@ from .identity import DELETED_ACCOUNT_SESSION_KEY, workspace_identity
 from .manifest import load_manifest
 
 
+def is_prefetch(request):
+    """A speculative load (link prefetch or prerender), not one the visitor asked for."""
+    headers = request.headers
+    return (
+        'prefetch' in headers.get('Sec-Purpose', '').lower()  # Chromium, Firefox; prerender too
+        or headers.get('Purpose', '').lower() == 'prefetch'
+        or headers.get('X-Moz', '').lower() == 'prefetch'
+        or headers.get('X-Purpose', '').lower() == 'preview'
+    )
+
+
 def is_shared_path(path):
     return path == '/workspace/shared' or path.startswith('/workspace/shared/')
 
@@ -27,7 +38,15 @@ class WorkspacePage(TemplateView):
     http_method_names = ['get', 'head', 'options']
 
     def get_context_data(self, **kwargs):
-        deleted_account = self.request.session.pop(DELETED_ACCOUNT_SESSION_KEY, None)
+        # The flag is used up only by a page load that renders: HEAD (routed to get())
+        # and prefetches read it but leave it, so the real load still clears the space.
+        # A prefetch that is then shown, and the load after it, both send it: clearing a
+        # deleted account's space twice is harmless; never clearing it isn't.
+        session = self.request.session
+        if self.request.method == 'HEAD' or is_prefetch(self.request):
+            deleted_account = session.get(DELETED_ACCOUNT_SESSION_KEY)
+        else:
+            deleted_account = session.pop(DELETED_ACCOUNT_SESSION_KEY, None)
         return {'workspace_identity': workspace_identity(self.request.user, deleted_account)}
 
     def get(self, request, *args, **kwargs):

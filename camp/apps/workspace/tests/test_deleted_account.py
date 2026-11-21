@@ -49,3 +49,22 @@ class DeletedAccountSignalTests(TestCase):
 
     def test_signed_in_page_has_no_signal(self):
         assert 'deletedAccount' not in identity_of(self.client.get('/workspace/'))
+
+    def test_head_request_leaves_the_signal(self):
+        # Django routes HEAD to get(); it must not use the flag up.
+        self.delete_account()
+        assert self.client.head('/workspace/').status_code == 200
+        assert identity_of(self.client.get('/workspace/'))['deletedAccount'] == self.old_id
+
+    def test_prefetch_leaves_the_signal(self):
+        self.delete_account()
+        for headers in (
+            {'HTTP_SEC_PURPOSE': 'prefetch'},
+            {'HTTP_SEC_PURPOSE': 'prefetch;prerender'},
+            {'HTTP_PURPOSE': 'prefetch'},
+            {'HTTP_X_MOZ': 'prefetch'},
+        ):
+            prefetched = identity_of(self.client.get('/workspace/', **headers))
+            assert prefetched['deletedAccount'] == self.old_id, headers
+        assert identity_of(self.client.get('/workspace/'))['deletedAccount'] == self.old_id
+        assert 'deletedAccount' not in identity_of(self.client.get('/workspace/'))
