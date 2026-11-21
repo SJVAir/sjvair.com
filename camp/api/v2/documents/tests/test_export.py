@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime
 from unittest import mock
 from zoneinfo import ZoneInfo
@@ -9,6 +10,8 @@ from django.utils import timezone
 from camp.apps.documents.models import SavedDocument
 
 from .helpers import BASE, make_user
+
+ISO_MS = re.compile(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z')
 
 
 def seed(owner, id, **extra):
@@ -28,7 +31,7 @@ class ExportTests(TestCase):
         self.client.force_login(self.alice)
 
     def test_signed_out_401(self):
-        self.assertEqual(Client().get(f'{BASE}export/').status_code, 401)
+        assert Client().get(f'{BASE}export/').status_code == 401
 
     def test_export_envelope_shape(self):
         seed(self.alice, 'a', name='Alpha')
@@ -39,35 +42,27 @@ class ExportTests(TestCase):
         now = datetime(2026, 10, 29, 5, 30, 15, 123456, tzinfo=ZoneInfo('UTC'))
         with mock.patch('camp.api.v2.documents.endpoints.timezone.now', return_value=now):
             response = self.client.get(f'{BASE}export/')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['Cache-Control'], 'no-store')
-        self.assertEqual(
-            response['Content-Disposition'],
-            'attachment; filename="sjvair-dashboards-2026-10-28.json"',
-        )
+        assert response.status_code == 200
+        assert response['Cache-Control'] == 'no-store'
+        assert response['Content-Disposition'] == 'attachment; filename="sjvair-dashboards-2026-10-28.json"'
         data = json.loads(response.content)
-        self.assertEqual(
-            set(data), {'format', 'type', 'formatVersion', 'exportedAt', 'documents'}
-        )
-        self.assertEqual(data['format'], 'sjvair-workspace')
-        self.assertEqual(data['type'], 'backup')
-        self.assertEqual(data['formatVersion'], 1)
-        self.assertEqual(data['exportedAt'], '2026-10-29T05:30:15.123Z')
+        assert set(data) == {'format', 'type', 'formatVersion', 'exportedAt', 'documents'}
+        assert data['format'] == 'sjvair-workspace'
+        assert data['type'] == 'backup'
+        assert data['formatVersion'] == 1
+        assert data['exportedAt'] == '2026-10-29T05:30:15.123Z'
         docs = {d['id']: d for d in data['documents']}
-        self.assertEqual(set(docs), {'a', 'b'})
-        self.assertEqual(
-            set(docs['a']),
-            {'kind', 'schemaVersion', 'id', 'name', 'version', 'createdAt', 'updatedAt', 'body'},
-        )
-        self.assertNotIn('copiedFrom', docs['a'])
-        self.assertEqual(docs['b']['copiedFrom'], 'a')
-        self.assertIsNone(docs['b']['name'])
-        self.assertEqual(docs['a']['version'], 0)
-        self.assertEqual(docs['a']['body'], {'a': 1})
-        self.assertEqual(docs['a']['schemaVersion'], 1)
-        self.assertRegex(docs['a']['createdAt'], r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$')
-        self.assertRegex(docs['a']['updatedAt'], r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$')
+        assert set(docs) == {'a', 'b'}
+        assert set(docs['a']) == {'kind', 'schemaVersion', 'id', 'name', 'version', 'createdAt', 'updatedAt', 'body'}
+        assert 'copiedFrom' not in docs['a']
+        assert docs['b']['copiedFrom'] == 'a'
+        assert docs['b']['name'] is None
+        assert docs['a']['version'] == 0
+        assert docs['a']['body'] == {'a': 1}
+        assert docs['a']['schemaVersion'] == 1
+        assert ISO_MS.fullmatch(docs['a']['createdAt']), docs['a']['createdAt']
+        assert ISO_MS.fullmatch(docs['a']['updatedAt']), docs['a']['updatedAt']
 
     def test_export_empty(self):
         data = json.loads(self.client.get(f'{BASE}export/').content)
-        self.assertEqual(data['documents'], [])
+        assert data['documents'] == []

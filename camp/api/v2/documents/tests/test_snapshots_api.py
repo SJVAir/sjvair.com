@@ -47,31 +47,27 @@ class SnapshotReadTests(TestCase):
         old = snap(doc, 1, 'daily', age=2)
         new = snap(doc, 2, 'conflict', age=0)
         response = self.client.get(f'{BASE}d/snapshots/')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['Cache-Control'], 'no-store')
+        assert response.status_code == 200
+        assert response['Cache-Control'] == 'no-store'
         rows = response.json()['data']
-        self.assertEqual([r['id'] for r in rows], [new.id, old.id])
-        self.assertEqual(
-            set(rows[0]), {'id', 'version', 'schema_version', 'reason', 'created_at'}
-        )
-        self.assertEqual(rows[0]['reason'], 'conflict')
+        assert [r['id'] for r in rows] == [new.id, old.id]
+        assert set(rows[0]) == {'id', 'version', 'schema_version', 'reason', 'created_at'}
+        assert rows[0]['reason'] == 'conflict'
 
     def test_snapshot_list_never_reads_bodies(self):
         doc = seed(self.alice, 'd')
         snap(doc, 1)
         with CaptureQueriesContext(connection) as captured:
-            self.assertEqual(self.client.get(f'{BASE}d/snapshots/').status_code, 200)
-        self.assertEqual(body_queries(captured), [])
+            assert self.client.get(f'{BASE}d/snapshots/').status_code == 200
+        assert body_queries(captured) == []
 
     def test_snapshot_detail(self):
         doc = seed(self.alice, 'd')
         made = snap(doc, 1)
         data = self.client.get(f'{BASE}d/snapshots/{made.id}/').json()['data']
-        self.assertEqual(
-            set(data), {'id', 'version', 'schema_version', 'name', 'body', 'created_at'}
-        )
-        self.assertEqual(data['body'], {'v': 1})
-        self.assertEqual(data['name'], 'v1')
+        assert set(data) == {'id', 'version', 'schema_version', 'name', 'body', 'created_at'}
+        assert data['body'] == {'v': 1}
+        assert data['name'] == 'v1'
 
     def test_snapshot_detail_other_owner_not_found(self):
         theirs = seed(self.bob, 'theirs')
@@ -80,19 +76,19 @@ class SnapshotReadTests(TestCase):
         mine_snap = snap(mine, 1)
         missing = self.client.get(f'{BASE}nope/snapshots/{made.id}/')
         other = self.client.get(f'{BASE}theirs/snapshots/{made.id}/')
-        self.assertEqual(other.status_code, 404)
-        self.assertEqual(other.content, missing.content)
+        assert other.status_code == 404
+        assert other.content == missing.content
         # A snapshot id that exists but belongs to a different document of mine.
         wrong_doc = self.client.get(f'{BASE}mine/snapshots/{made.id}/')
-        self.assertEqual(wrong_doc.status_code, 404)
-        self.assertEqual(wrong_doc.content, missing.content)
-        self.assertEqual(self.client.get(f'{BASE}mine/snapshots/{mine_snap.id}/').status_code, 200)
+        assert wrong_doc.status_code == 404
+        assert wrong_doc.content == missing.content
+        assert self.client.get(f'{BASE}mine/snapshots/{mine_snap.id}/').status_code == 200
         listing = self.client.get(f'{BASE}theirs/snapshots/')
-        self.assertEqual(listing.status_code, 404)
-        self.assertEqual(listing.content, self.client.get(f'{BASE}nope/snapshots/').content)
+        assert listing.status_code == 404
+        assert listing.content == self.client.get(f'{BASE}nope/snapshots/').content
 
     def test_signed_out_401(self):
-        self.assertEqual(Client().get(f'{BASE}d/snapshots/').status_code, 401)
+        assert Client().get(f'{BASE}d/snapshots/').status_code == 401
 
 
 FIVE_KEYS = {'id', 'version', 'schema_version', 'reason', 'created_at'}
