@@ -19,7 +19,7 @@ urlpatterns = [
     path('<str:id>/credit/', endpoints.DocumentCredit.as_view(), name='credit'),
     path('<str:id>/snapshots/', endpoints.DocumentSnapshotList.as_view(), name='snapshots'),
     path(
-        '<str:id>/snapshots/<int:snapshot_id>/', endpoints.DocumentSnapshotDetail.as_view(),
+        '<str:id>/snapshots/<str:snapshot_id>/', endpoints.DocumentSnapshotDetail.as_view(),
         name='snapshot',
     ),
     path('<str:id>/changes/', endpoints.DocumentChanges.as_view(), name='changes'),

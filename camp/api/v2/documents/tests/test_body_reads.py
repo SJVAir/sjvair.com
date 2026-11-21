@@ -74,7 +74,7 @@ class BodyReadTests(TestCase):
             document_id='doc', owner=self.alice, version=1, schema_version=1, name='v1',
             body={'v': 1}, size=9, reason='daily',
         )
-        response, reads = self.reads(lambda: self.client.get(f'{BASE}doc/snapshots/{snap.pk}/'))
+        response, reads = self.reads(lambda: self.client.get(f'{BASE}doc/snapshots/{snap.sqid}/'))
         assert response.json()['data']['body'] == {'v': 1}
         assert reads == []
 
