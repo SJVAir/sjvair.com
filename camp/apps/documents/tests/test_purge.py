@@ -19,11 +19,9 @@ class PurgeTests(TestCase):
         seed(self.alice, 'old', deleted_at=self.now - timedelta(days=31))
         seed(self.alice, 'recent', deleted_at=self.now - timedelta(days=29))
         seed(self.alice, 'live')
-        self.assertEqual(purge.purge_expired(self.now), 1)
-        self.assertEqual(
-            set(SavedDocument.objects.values_list('id', flat=True)), {'recent', 'live'}
-        )
-        self.assertEqual(list(PurgedDocument.objects.values_list('id', flat=True)), ['old'])
+        assert purge.purge_expired(self.now) == 1
+        assert set(SavedDocument.objects.values_list('id', flat=True)) == {'recent', 'live'}
+        assert list(PurgedDocument.objects.values_list('id', flat=True)) == ['old']
 
     def test_expire_snapshots_30_days(self):
         doc = seed(self.alice, 'doc')
@@ -37,21 +35,21 @@ class PurgeTests(TestCase):
                 created_at=self.now - timedelta(days=age)
             )
             kept.append(snap.pk)
-        self.assertEqual(purge.expire_snapshots(self.now), 1)
-        self.assertEqual(list(DocumentSnapshot.objects.values_list('pk', flat=True)), [kept[1]])
+        assert purge.expire_snapshots(self.now) == 1
+        assert list(DocumentSnapshot.objects.values_list('pk', flat=True)) == [kept[1]]
 
     def test_purge_skips_a_document_restored_after_it_was_read(self):
         doc = seed(self.alice, 'doc', deleted_at=self.now - timedelta(days=1))
         SavedDocument.objects.filter(pk='doc').update(deleted_at=None)  # restored since the read
-        self.assertFalse(purge.purge_document(doc))
-        self.assertIsNone(SavedDocument.objects.get(pk='doc').deleted_at)
-        self.assertFalse(PurgedDocument.objects.exists())
+        assert not purge.purge_document(doc)
+        assert SavedDocument.objects.get(pk='doc').deleted_at is None
+        assert not PurgedDocument.objects.exists()
 
     def test_purge_skips_a_document_already_gone(self):
         doc = seed(self.alice, 'doc', deleted_at=self.now)
         SavedDocument.objects.filter(pk='doc').delete()
-        self.assertFalse(purge.purge_document(doc))
-        self.assertFalse(PurgedDocument.objects.exists())
+        assert not purge.purge_document(doc)
+        assert not PurgedDocument.objects.exists()
 
     def test_sweep_skips_documents_restored_or_retrashed_mid_sweep(self):
         for id in ('restored', 'retrashed', 'expired'):
@@ -67,8 +65,6 @@ class PurgeTests(TestCase):
             return real(doc, **kwargs)
 
         with mock.patch.object(purge, 'purge_document', side_effect=change_then_purge):
-            self.assertEqual(purge.purge_expired(self.now), 1)
-        self.assertEqual(
-            set(SavedDocument.objects.values_list('id', flat=True)), {'restored', 'retrashed'}
-        )
-        self.assertEqual(list(PurgedDocument.objects.values_list('id', flat=True)), ['expired'])
+            assert purge.purge_expired(self.now) == 1
+        assert set(SavedDocument.objects.values_list('id', flat=True)) == {'restored', 'retrashed'}
+        assert list(PurgedDocument.objects.values_list('id', flat=True)) == ['expired']

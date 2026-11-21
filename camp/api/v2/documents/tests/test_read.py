@@ -30,24 +30,21 @@ class ReadTests(TestCase):
 
     def test_signed_out_401(self):
         response = Client().get(BASE)
-        self.assertEqual(response.status_code, 401)
-        self.assertEqual(Client().get(f'{BASE}abc/').status_code, 401)
+        assert response.status_code == 401
+        assert Client().get(f'{BASE}abc/').status_code == 401
 
     def test_list_own_only(self):
         seed(self.alice, 'mine')
         seed(self.bob, 'theirs')
         data = self.client.get(BASE).json()['data']
-        self.assertEqual([d['id'] for d in data['documents']], ['mine'])
-        self.assertEqual(data['purged'], [])
-        self.assertIn('cursor', data)
+        assert [d['id'] for d in data['documents']] == ['mine']
+        assert data['purged'] == []
+        assert 'cursor' in data
         meta = data['documents'][0]
-        self.assertEqual(meta['size'], 7)
-        self.assertNotIn('body', meta)
-        self.assertEqual(
-            set(meta),
-            {'id', 'kind', 'name', 'schema_version', 'version', 'copied_from', 'deleted_at',
-             'created_at', 'updated_at', 'visibility', 'share_token', 'size'},
-        )
+        assert meta['size'] == 7
+        assert 'body' not in meta
+        assert set(meta) == {'id', 'kind', 'name', 'schema_version', 'version', 'copied_from', 'deleted_at',
+            'created_at', 'updated_at', 'visibility', 'share_token', 'size'}
 
     def test_list_since_returns_changed_and_purged(self):
         old = seed(self.alice, 'old')
@@ -59,12 +56,12 @@ class ReadTests(TestCase):
         PurgedDocument.objects.filter(id='ancient').update(purged_at=past)
         since = (timezone.now() - timedelta(days=1)).isoformat()
         data = self.client.get(BASE, {'since': since}).json()['data']
-        self.assertEqual([d['id'] for d in data['documents']], ['new'])
-        self.assertEqual(data['purged'], ['gone'])
+        assert [d['id'] for d in data['documents']] == ['new']
+        assert data['purged'] == ['gone']
         # Without since: everything, and no purged list.
         data = self.client.get(BASE).json()['data']
-        self.assertEqual({d['id'] for d in data['documents']}, {'old', 'new'})
-        self.assertEqual(data['purged'], [])
+        assert {d['id'] for d in data['documents']} == {'old', 'new'}
+        assert data['purged'] == []
 
     def test_list_naive_since_is_treated_as_utc(self):
         old = seed(self.alice, 'old')
@@ -74,66 +71,66 @@ class ReadTests(TestCase):
         )
         since = (timezone.now() - timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%S')
         response = self.client.get(BASE, {'since': since})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual([d['id'] for d in response.json()['data']['documents']], ['new'])
+        assert response.status_code == 200
+        assert [d['id'] for d in response.json()['data']['documents']] == ['new']
 
     def test_list_never_reads_bodies(self):
         seed(self.alice, 'mine')
         with CaptureQueriesContext(connection) as captured:
-            self.assertEqual(self.client.get(BASE).status_code, 200)
-        self.assertEqual(body_queries(captured), [])
+            assert self.client.get(BASE).status_code == 200
+        assert body_queries(captured) == []
 
     def test_list_bad_since_is_invalid(self):
         # The second looks like a date and time but is no real day (Django raises on it).
         for since in ('yesterday-ish', '2026-02-30T00:00:00', '2026-13-01T25:00:00Z'):
             with self.subTest(since=since):
                 response = self.client.get(BASE, {'since': since})
-                self.assertEqual(response.status_code, 400)
+                assert response.status_code == 400
                 payload = response.json()
-                self.assertEqual(payload['errors']['detail'][0]['code'], 'invalid')
-                self.assertIn('since', payload['data']['fields'])
+                assert payload['errors']['detail'][0]['code'] == 'invalid'
+                assert 'since' in payload['data']['fields']
 
     def test_cursor_is_ten_seconds_back(self):
         before = timezone.now()
         cursor = self.client.get(BASE).json()['data']['cursor']
         delta = before - parse_datetime(cursor)
-        self.assertGreater(delta, timedelta(seconds=9))
-        self.assertLess(delta, timedelta(seconds=12))
+        assert delta > timedelta(seconds=9)
+        assert delta < timedelta(seconds=12)
 
     def test_list_includes_deleted(self):
         seed(self.alice, 'trashed', deleted_at=timezone.now())
         data = self.client.get(BASE).json()['data']
-        self.assertEqual([d['id'] for d in data['documents']], ['trashed'])
-        self.assertIsNotNone(data['documents'][0]['deleted_at'])
+        assert [d['id'] for d in data['documents']] == ['trashed']
+        assert data['documents'][0]['deleted_at'] is not None
 
     def test_detail_returns_document(self):
         seed(self.alice, 'mine', name='Mine')
         response = self.client.get(f'{BASE}mine/')
-        self.assertEqual(response.status_code, 200)
+        assert response.status_code == 200
         doc = response.json()['data']
-        self.assertEqual(doc['body'], {'a': 1})
-        self.assertEqual(doc['name'], 'Mine')
-        self.assertEqual(doc['version'], 1)
-        self.assertNotIn('size', doc)
+        assert doc['body'] == {'a': 1}
+        assert doc['name'] == 'Mine'
+        assert doc['version'] == 1
+        assert 'size' not in doc
 
     def test_detail_other_owner_same_as_missing(self):
         seed(self.bob, 'theirs')
         other = self.client.get(f'{BASE}theirs/')
         missing = self.client.get(f'{BASE}never-used/')
-        self.assertEqual(other.status_code, 404)
-        self.assertEqual(other.status_code, missing.status_code)
-        self.assertEqual(other.content, missing.content)
-        self.assertEqual(other.json()['errors']['detail'][0]['code'], 'not_found')
+        assert other.status_code == 404
+        assert other.status_code == missing.status_code
+        assert other.content == missing.content
+        assert other.json()['errors']['detail'][0]['code'] == 'not_found'
 
     def test_detail_purged_is_gone(self):
         PurgedDocument.objects.create(id='bye', owner=self.alice)
         response = self.client.get(f'{BASE}bye/')
-        self.assertEqual(response.status_code, 410)
-        self.assertEqual(response.json()['errors']['detail'][0]['code'], 'gone')
+        assert response.status_code == 410
+        assert response.json()['errors']['detail'][0]['code'] == 'gone'
 
     def test_detail_purged_of_other_user_is_not_found(self):
         PurgedDocument.objects.create(id='bye', owner=self.bob)
-        self.assertEqual(self.client.get(f'{BASE}bye/').status_code, 404)
+        assert self.client.get(f'{BASE}bye/').status_code == 404
 
     def test_no_store_on_success_and_error(self):
         seed(self.alice, 'mine')
@@ -146,4 +143,4 @@ class ReadTests(TestCase):
             self.client.delete(f'{BASE}mine/'),  # 405 from resticus
             Client().get(BASE),  # 401 from resticus
         ]:
-            self.assertEqual(response['Cache-Control'], 'no-store', response.status_code)
+            assert response['Cache-Control'] == 'no-store', response.status_code

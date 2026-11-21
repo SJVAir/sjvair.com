@@ -38,12 +38,12 @@ class ScrubDocumentsTests(SimpleTestCase):
         ):
             with self.subTest(url=url):
                 scrubbed = scrub_documents(event(url), {})
-                self.assertNotIn(SECRET, repr(scrubbed))
-                self.assertNotIn('data', scrubbed['request'])
-                self.assertEqual(scrubbed['request']['method'], 'PUT')
-                self.assertEqual(scrubbed['request']['url'], url)
+                assert SECRET not in repr(scrubbed)
+                assert 'data' not in scrubbed['request']
+                assert scrubbed['request']['method'] == 'PUT'
+                assert scrubbed['request']['url'] == url
                 frame = scrubbed['exception']['values'][0]['stacktrace']['frames'][0]
-                self.assertEqual(frame, {'function': 'put'})
+                assert frame == {'function': 'put'}
 
     def test_other_requests_untouched(self):
         for url in (
@@ -53,8 +53,8 @@ class ScrubDocumentsTests(SimpleTestCase):
         ):
             with self.subTest(url=url):
                 original = event(url)
-                self.assertEqual(scrub_documents(copy.deepcopy(original), {}), original)
+                assert scrub_documents(copy.deepcopy(original), {}) == original
 
     def test_events_without_a_request_untouched(self):
         original = {'message': 'task failed', 'stacktrace': frames()}
-        self.assertEqual(scrub_documents(copy.deepcopy(original), {}), original)
+        assert scrub_documents(copy.deepcopy(original), {}) == original

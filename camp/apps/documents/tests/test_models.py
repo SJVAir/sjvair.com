@@ -57,7 +57,7 @@ class DocumentModelTests(TestCase):
         PurgedDocument.objects.create(id='gone', owner=self.user)
         self.user.delete()
         for model in [SavedDocument, DocumentChange, DocumentSnapshot, DocumentProfile, PurgedDocument]:
-            self.assertEqual(model.objects.count(), 0, model.__name__)
+            assert model.objects.count() == 0, model.__name__
 
     def test_measure_counts_characters(self):
-        self.assertEqual(measure({'a': 'é'}), len('{"a":"é"}'))
+        assert measure({'a': 'é'}) == len('{"a":"é"}')

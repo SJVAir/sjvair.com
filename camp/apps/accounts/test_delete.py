@@ -28,13 +28,13 @@ class DeleteAccountTests(TestCase):
 
     def make_docs(self):
         for id in ('one', 'two', 'three'):
-            self.assertEqual(save(self.client, id).status_code, 200)
+            assert save(self.client, id).status_code == 200
         token = self.client.post('/api/2.0/documents/one/share/').json()['data']['share_token']
         self.client.post('/api/2.0/documents/two/share/')
         # A deleted document still counts as a dashboard, but is not a share link.
-        self.assertEqual(save(
+        assert save(
             self.client, 'two', base_version=1, deleted_at='2026-10-28T00:00:00Z',
-        ).status_code, 200)
+        ).status_code == 200
         return token
 
     def delete(self, **data):
@@ -47,12 +47,9 @@ class DeleteAccountTests(TestCase):
         monitor = PurpleAir.objects.get(sensor_id=8892)
         Subscription.objects.create(user=self.user, monitor=monitor, level='unhealthy_sensitive')
         response = self.client.get(self.profile_url)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.context['deletion_counts'],
-            {'dashboards': 3, 'share_links': 1, 'subscriptions': 1},
-        )
-        self.assertIn('password', response.context['delete_form'].fields)
+        assert response.status_code == 200
+        assert response.context['deletion_counts'] == {'dashboards': 3, 'share_links': 1, 'subscriptions': 1}
+        assert 'password' in response.context['delete_form'].fields
         self.assertContains(response, f'action="{self.delete_url}"')
         self.assertContains(response, 'Delete my account')
 
@@ -61,15 +58,15 @@ class DeleteAccountTests(TestCase):
         user = User.objects.get(pk=self.user.pk)
         with CaptureQueriesContext(connection) as few:
             deletion_context(user)
-        self.assertEqual(body_queries(few), [])
+        assert body_queries(few) == []
         for id in ('four', 'five'):
-            self.assertEqual(save(self.client, id).status_code, 200)
+            assert save(self.client, id).status_code == 200
             self.client.post(f'/api/2.0/documents/{id}/share/')
         user = User.objects.get(pk=self.user.pk)
         with CaptureQueriesContext(connection) as more:
             counts = deletion_context(user)['deletion_counts']
-        self.assertEqual((counts['dashboards'], counts['share_links']), (5, 3))
-        self.assertEqual(len(more), len(few))
+        assert (counts['dashboards'], counts['share_links']) == (5, 3)
+        assert len(more) == len(few)
 
     def test_download_link_only_with_dashboards(self):
         export = reverse('api:v2:documents:export')
@@ -84,41 +81,39 @@ class DeleteAccountTests(TestCase):
 
     def test_wrong_password_keeps_account(self):
         response = self.delete(password='nope')
-        self.assertEqual(response.status_code, 200)
+        assert response.status_code == 200
         self.assertTemplateUsed(response, 'account/profile.html')
-        self.assertIn('password', response.context['delete_form'].errors)
-        self.assertTrue(User.objects.filter(pk=self.user.pk).exists())
+        assert 'password' in response.context['delete_form'].errors
+        assert User.objects.filter(pk=self.user.pk).exists()
 
     def test_unchecked_confirmation_keeps_account(self):
         response = self.client.post(self.delete_url, {'password': PASSWORD})
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('confirm', response.context['delete_form'].errors)
-        self.assertTrue(User.objects.filter(pk=self.user.pk).exists())
+        assert response.status_code == 200
+        assert 'confirm' in response.context['delete_form'].errors
+        assert User.objects.filter(pk=self.user.pk).exists()
 
     def test_delete_removes_documents_and_logs_out(self):
         token = self.make_docs()
         response = self.delete()
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response['Location'], reverse('account:login'))
-        self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
-        self.assertFalse(SavedDocument.objects.filter(pk__in=['one', 'two', 'three']).exists())
-        self.assertNotIn('_auth_user_id', self.client.session)
-        self.assertIn(
-            'Your account was deleted', [str(m) for m in get_messages(response.wsgi_request)]
-        )
-        self.assertEqual(Client().get(f'/api/2.0/documents/shared/{token}/').status_code, 404)
+        assert response.status_code == 302
+        assert response['Location'] == reverse('account:login')
+        assert not User.objects.filter(pk=self.user.pk).exists()
+        assert not SavedDocument.objects.filter(pk__in=['one', 'two', 'three']).exists()
+        assert '_auth_user_id' not in self.client.session
+        assert 'Your account was deleted' in [str(m) for m in get_messages(response.wsgi_request)]
+        assert Client().get(f'/api/2.0/documents/shared/{token}/').status_code == 404
 
     def test_deleted_message_is_shown_after_redirect(self):
         response = self.client.post(
             self.delete_url, {'password': PASSWORD, 'confirm': 'on'}, follow=True
         )
-        self.assertEqual(response.status_code, 200)
+        assert response.status_code == 200
         self.assertContains(response, 'Your account was deleted')
 
     def test_get_delete_url_redirects_to_profile(self):
         response = self.client.get(self.delete_url)
         self.assertRedirects(response, self.profile_url)
-        self.assertTrue(User.objects.filter(pk=self.user.pk).exists())
+        assert User.objects.filter(pk=self.user.pk).exists()
 
     def test_profile_post_never_deletes(self):
         response = self.client.post(self.profile_url, {
@@ -127,10 +122,10 @@ class DeleteAccountTests(TestCase):
         })
         self.assertRedirects(response, self.profile_url)
         self.user.refresh_from_db()
-        self.assertEqual(self.user.full_name, 'Renamed')
+        assert self.user.full_name == 'Renamed'
 
     def test_delete_requires_login(self):
         response = Client().post(self.delete_url, {'password': PASSWORD, 'confirm': 'on'})
-        self.assertEqual(response.status_code, 302)
-        self.assertIn('/account/login/', response['Location'])
-        self.assertTrue(User.objects.filter(pk=self.user.pk).exists())
+        assert response.status_code == 302
+        assert '/account/login/' in response['Location']
+        assert User.objects.filter(pk=self.user.pk).exists()
