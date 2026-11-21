@@ -3,6 +3,7 @@ import json
 from django.conf import settings
 from django.core.validators import RegexValidator
 from django.db import models
+from django_sqids import SqidsField, shuffle_alphabet
 
 id_validator = RegexValidator(r'^[A-Za-z0-9_-]{1,64}\Z', 'Enter a valid document id.')
 
@@ -56,6 +57,8 @@ class DocumentChange(models.Model):
 
 
 class DocumentSnapshot(models.Model):
+    sqid = SqidsField(alphabet=shuffle_alphabet('documents.DocumentSnapshot'))
+
     class Reason(models.TextChoices):
         SCHEMA = 'schema', 'Schema change'
         DAILY = 'daily', 'Daily'

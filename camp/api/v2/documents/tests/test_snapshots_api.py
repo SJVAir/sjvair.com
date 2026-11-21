@@ -50,7 +50,7 @@ class SnapshotReadTests(TestCase):
         assert response.status_code == 200
         assert response['Cache-Control'] == 'no-store'
         rows = response.json()['data']
-        assert [r['id'] for r in rows] == [new.id, old.id]
+        assert [r['id'] for r in rows] == [new.sqid, old.sqid]
         assert set(rows[0]) == {'id', 'version', 'schema_version', 'reason', 'created_at'}
         assert rows[0]['reason'] == 'conflict'
 
@@ -64,7 +64,7 @@ class SnapshotReadTests(TestCase):
     def test_snapshot_detail(self):
         doc = seed(self.alice, 'd')
         made = snap(doc, 1)
-        data = self.client.get(f'{BASE}d/snapshots/{made.id}/').json()['data']
+        data = self.client.get(f'{BASE}d/snapshots/{made.sqid}/').json()['data']
         assert set(data) == {'id', 'version', 'schema_version', 'name', 'body', 'created_at'}
         assert data['body'] == {'v': 1}
         assert data['name'] == 'v1'
@@ -74,18 +74,35 @@ class SnapshotReadTests(TestCase):
         made = snap(theirs, 1)
         mine = seed(self.alice, 'mine')
         mine_snap = snap(mine, 1)
-        missing = self.client.get(f'{BASE}nope/snapshots/{made.id}/')
-        other = self.client.get(f'{BASE}theirs/snapshots/{made.id}/')
+        missing = self.client.get(f'{BASE}nope/snapshots/{made.sqid}/')
+        other = self.client.get(f'{BASE}theirs/snapshots/{made.sqid}/')
         assert other.status_code == 404
         assert other.content == missing.content
         # A snapshot id that exists but belongs to a different document of mine.
-        wrong_doc = self.client.get(f'{BASE}mine/snapshots/{made.id}/')
+        wrong_doc = self.client.get(f'{BASE}mine/snapshots/{made.sqid}/')
         assert wrong_doc.status_code == 404
         assert wrong_doc.content == missing.content
-        assert self.client.get(f'{BASE}mine/snapshots/{mine_snap.id}/').status_code == 200
+        assert self.client.get(f'{BASE}mine/snapshots/{mine_snap.sqid}/').status_code == 200
         listing = self.client.get(f'{BASE}theirs/snapshots/')
         assert listing.status_code == 404
         assert listing.content == self.client.get(f'{BASE}nope/snapshots/').content
+
+    def test_snapshot_ids_are_sqids(self):
+        doc = seed(self.alice, 'd')
+        made = snap(doc, 1)
+        row = self.client.get(f'{BASE}d/snapshots/').json()['data'][0]
+        assert row['id'] == made.sqid
+        assert isinstance(row['id'], str)
+        assert self.client.get(f'{BASE}d/snapshots/{made.sqid}/').json()['data']['id'] == made.sqid
+
+    def test_integer_and_malformed_snapshot_ids_not_found(self):
+        doc = seed(self.alice, 'd')
+        made = snap(doc, 1)
+        missing = self.client.get(f'{BASE}nope/snapshots/{made.sqid}/')
+        for bad in (str(made.pk), '0', 'not-a-sqid', '!!', 'missingSnapshot', 'z' * 30, 'a' * 200):
+            response = self.client.get(f'{BASE}d/snapshots/{bad}/')
+            assert response.status_code == 404, bad
+            assert response.content == missing.content, bad
 
     def test_signed_out_401(self):
         assert Client().get(f'{BASE}d/snapshots/').status_code == 401
@@ -119,7 +136,7 @@ class SnapshotPostTests(TestCase):
         data = response.json()['data']
         assert set(data) == FIVE_KEYS
         assert (data['reason'], data['version'], data['schema_version']) == ('conflict', 1, 1)
-        stored = DocumentSnapshot.objects.get(pk=data['id'])
+        stored = DocumentSnapshot.objects.get(sqid=data['id'])
         assert (stored.name, stored.body, stored.size) == ('Mine', body(1), measure(body(1)))
         assert stored.owner == self.alice
 
@@ -228,7 +245,7 @@ class SnapshotPostTests(TestCase):
     def test_over_snapshot_cap_still_201_and_trims(self):
         with override_settings(DOCUMENTS_MAX_SNAPSHOT_STORAGE=measure(body(1)) * 2):
             ids = [self.post().json()['data']['id'] for _ in range(3)]
-        assert list(DocumentSnapshot.objects.order_by('pk').values_list('pk', flat=True)) == ids[1:]
+        assert list(DocumentSnapshot.objects.order_by('pk').values_list('sqid', flat=True)) == ids[1:]
 
     def test_success_never_reads_document_body(self):
         with CaptureQueriesContext(connection) as captured:

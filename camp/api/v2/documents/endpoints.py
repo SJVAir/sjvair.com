@@ -277,11 +277,11 @@ class DocumentSnapshotDetail(NoStoreMixin, Endpoint):
         doc = owned_document(request, id, with_body=False)
         if doc is None:
             return refuse_absent(request, id)
-        snap = doc.snapshots.filter(pk=snapshot_id).first()
+        snap = doc.snapshots.filter(sqid=snapshot_id).first()
         if snap is None:
             return not_found()
         return http.Http200({'data': {
-            'id': snap.id,
+            'id': snap.sqid,
             'version': snap.version,
             'schema_version': snap.schema_version,
             'name': snap.name,
