@@ -1416,8 +1416,10 @@ class OneNowPerRequestTests(TestCase):
 
 
 class BulkRegionTypeScopeScaleTests(TestCase):
-    """A whole type of more than 1,000 regions, which an id list can't carry
-    (DATA_UPLOAD_MAX_NUMBER_FIELDS is 1,000)."""
+    """`type` covers a whole region type, which can be more regions than a client
+    could list as `region=` ids (Django refuses over 1,000 query fields). With
+    1,100 regions, every one comes back exactly once across all pages of both
+    bulk endpoints."""
 
     def setUp(self):
         self.regions = Region.objects.bulk_create([
