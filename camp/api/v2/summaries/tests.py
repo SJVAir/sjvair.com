@@ -6,6 +6,7 @@ import pytest
 from tdigest import TDigest
 from django.contrib.gis.geos import MultiPolygon, Point, Polygon
 from django.core.cache import cache
+from django.db import connection
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
 from django.utils import timezone
@@ -1430,6 +1431,15 @@ class BulkRegionTypeScopeScaleTests(TestCase):
         for region, boundary in zip(self.regions, boundaries):
             region.boundary = boundary
         Region.objects.bulk_update(self.regions, ['boundary'])
+        self._analyze()
+
+    def _analyze(self):
+        # Refresh the planner's statistics after the bulk inserts. Without them a
+        # worker DB that autovacuum has already visited (reltuples=0 on non-empty
+        # pages) reads these tables as empty and picks nested loops: one page then
+        # takes tens of seconds, and this class stalled CI runs for 5-10 minutes.
+        with connection.cursor() as cursor:
+            cursor.execute('ANALYZE regions_region, regions_boundary, summaries_regionsummary')
 
     def _page_ids(self, url, query):
         ids, page = [], 1
@@ -1450,6 +1460,7 @@ class BulkRegionTypeScopeScaleTests(TestCase):
                           station_count=3, weight=30.0, **STATS)
             for region in regions
         ])
+        self._analyze()
 
         ids, pages = self._page_ids('/api/2.0/regions/pm25/summaries/daily/', {
             'type': 'zipcode', 'start': '2026-01-01', 'end': '2026-01-01',
@@ -1470,6 +1481,7 @@ class BulkRegionTypeScopeScaleTests(TestCase):
                           station_count=3, weight=30.0, **stats)
             for region in self.regions
         ])
+        self._analyze()
         with patch('django.utils.timezone.now', return_value=now):
             ids, pages = self._page_ids('/api/2.0/regions/pm25/summaries/daily/open/', {'type': 'zipcode'})
         assert pages == 11  # 100 regions per page
