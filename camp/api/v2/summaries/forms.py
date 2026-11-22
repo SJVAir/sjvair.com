@@ -1,8 +1,10 @@
 from datetime import timedelta
 
 from django import forms
+from django.conf import settings
 
 from camp.api.v2.forms import BboxField
+from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
 from camp.apps.summaries.models import BaseSummary
 
@@ -49,10 +51,31 @@ class BulkSummaryDateRangeForm(forms.Form):
         return cleaned_data
 
 
+def monitor_type_choices():
+    """The monitor types `type` accepts: the public ones (MONITOR_ENABLED_TYPES)
+    plus the opt-in ones (MONITOR_OPT_IN_TYPES, e.g. CIMIS), which the bulk
+    endpoints serve only when `type` names them."""
+    types = {subclass.monitor_type for subclass in Monitor.get_enabled_subclasses()}
+    types |= {
+        subclass.monitor_type for subclass in Monitor.get_subclasses()
+        if subclass.monitor_type in settings.MONITOR_OPT_IN_TYPES
+    }
+    return [(monitor_type, monitor_type) for monitor_type in sorted(types)]
+
+
+class MonitorTypeListField(forms.MultipleChoiceField):
+    """Repeatable `type=<monitor type>`; blank values are dropped and an
+    unknown type is an error, like an unknown region."""
+
+    def to_python(self, value):
+        return [v.strip() for v in super().to_python(value) if v and v.strip()]
+
+
 class BulkMonitorScopeForm(forms.Form):
     """The monitor bulk endpoints' scoping (`region`, `MonitorFilter` and
     `processor` are read straight from the query string)."""
     bbox = BboxField()
+    type = MonitorTypeListField(choices=monitor_type_choices, required=False)
 
 
 class BulkMonitorSummaryForm(BulkMonitorScopeForm, BulkSummaryDateRangeForm):

@@ -2302,12 +2302,36 @@ class PesticidePlaceTests(RollupTestMixin, TestCase):
         for params, status in (
             ({'region_type': 'land_use', 'region': '1'}, 400),
             ({'region_type': 'county', 'region': 'nope'}, 404),
-            ({}, 400),
+            ({'region_type': 'county'}, 400),
+            ({'region': '06019'}, 400),
             ({'region_type': 'county', 'region': '06019', 'monitor': '1'}, 400),
         ):
             r = self.client.get(self.url, params)
             assert r.status_code == status, params
             assert r['Cache-Control'] == 'no-cache' and 'error' in r.json()
+
+    def test_no_place_is_the_valley(self):
+        for params in ({}, {'region_type': '', 'region': ' ', 'monitor': ''}):
+            r = self.client.get(self.url, params)
+            assert r.status_code == 200 and r['Cache-Control'] == 'public, max-age=3600'
+            data = r.json()['data']
+            assert data['place'] is None
+            expected = monthly_use(PesticideUseRollup.objects.order_by(), False, False)
+            assert data['years'] == expected['years'] and data['months'] == expected['months']
+        # Every county's use, so at least each county's.
+        valley = {y['year']: y['pounds'] for y in data['years']}
+        fresno = {y['year']: y['pounds'] for y in self.get().json()['data']['years']}
+        assert fresno and all(valley[year] >= pounds for year, pounds in fresno.items())
+        assert sum(valley.values()) > sum(fresno.values())
+
+    def test_no_place_takes_the_filters(self):
+        sqid = self.sqid(Chemical, chem_code=253)
+        data = self.client.get(self.url, {'chemical': sqid, 'year__gte': 2023}).json()['data']
+        rows = PesticideUseRollup.objects.order_by().filter(chemical__chem_code=253, year__gte=2023)
+        expected = monthly_use(rows, True, False)
+        assert data['place'] is None and data['years'] == expected['years']
+        r = self.client.get(self.url, {'aerial_ground': 'X'})
+        assert r.status_code == 400 and r['Cache-Control'] == 'no-cache'
 
     def test_retired_region_answers(self):
         Region.all_objects.filter(type='county', external_id='06019').update(retired_at=timezone.now())

@@ -54,7 +54,12 @@ class OpenAPISchemaTests(TestCase):
         assert 'region' in path['description']
         assert 'bbox' in path['description']
         param_names = {p['name'] for p in path['parameters']}
-        assert {'start', 'end', 'bbox', 'region', 'processor'} <= param_names
+        assert {'start', 'end', 'bbox', 'region', 'processor', 'type'} <= param_names
+
+    def test_monitor_summary_bulk_open_days_documents_type(self):
+        path = self.paths['/monitors/{entry_type}/summaries/daily/open/']['get']
+        param_names = {p['name'] for p in path['parameters']}
+        assert {'bbox', 'region', 'processor', 'type'} <= param_names
 
     def test_region_summary_bulk_documents_type_and_region(self):
         for path in ('/regions/{entry_type}/summaries/daily/', '/regions/{entry_type}/summaries/daily/open/'):

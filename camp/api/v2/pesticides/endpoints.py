@@ -12,7 +12,7 @@ from resticus import generics, http
 from camp.apps.pesticides import stats
 from camp.apps.pesticides.places import monthly_use, rollup_rows_for
 from camp.apps.pesticides.models import (
-    Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseTotal, Product,
+    Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, PesticideUseTotal, Product,
 )
 from camp.apps.regions.models import Region
 from camp.apps.regions.resolve import CACHE_TIMEOUT, PlaceError, PlaceNotFound, _place_key, place_json, resolve_place
@@ -407,7 +407,8 @@ def counting_mode(filters):
 
 class PesticidePlace(generics.Endpoint):
     """Monthly and yearly pesticide use for a place (?region_type= & ?region=,
-    or ?monitor=; filterable by ?chemical=, ?commodity=, ?product= (our ids, as the list
+    or ?monitor=; with none of them, the whole valley: every county the import keeps,
+    and `place` is null; filterable by ?chemical=, ?commodity=, ?product= (our ids, as the list
     endpoints return them), ?category= (repeated or
     comma-separated, any of them), ?narrow=, ?iarc_group=, ?aerial_ground= (`none`: not reported), ?year__gte=, ?year__lte=)."""
 
@@ -417,13 +418,19 @@ class PesticidePlace(generics.Endpoint):
         response['Cache-Control'] = 'no-cache'
         return response
 
+    PLACE_PARAMS = ('monitor', 'region_type', 'region')
+
     def get(self, request, *args, **kwargs):
-        try:
-            place = resolve_place(request.GET)
-        except PlaceNotFound as err:
-            return self.error(http.Http404, err)
-        except PlaceError as err:
-            return self.error(http.Http400, err)
+        # No place is everywhere: the whole valley (place None). Only here;
+        # resolve_place still refuses an empty place for the other endpoints.
+        place = None
+        if any((request.GET.get(param) or '').strip() for param in self.PLACE_PARAMS):
+            try:
+                place = resolve_place(request.GET)
+            except PlaceNotFound as err:
+                return self.error(http.Http404, err)
+            except PlaceError as err:
+                return self.error(http.Http400, err)
 
         form = PesticidePlaceForm(request.GET)
         if not form.is_valid():
@@ -434,7 +441,8 @@ class PesticidePlace(generics.Endpoint):
         filters = {k: v for k, v in form.cleaned_data.items() if v not in (None, '')}
 
         def build():
-            rows = rollup_rows_for(place)
+            # The import keeps only the SJVAir counties, so every rollup row is the valley.
+            rows = rollup_rows_for(place) if place is not None else PesticideUseRollup.objects.order_by()
             if 'chemical' in filters:
                 rows = rows.filter(chemical_id=filters['chemical'].pk)
             if 'commodity' in filters:
@@ -460,9 +468,10 @@ class PesticidePlace(generics.Endpoint):
         # 'ids' marks the key format: before ids, a bare int here was a CDPR code, and an old
         # entry must never answer for the row whose pk equals that code.
         keyed = {'ids': 1, **{k: (v.pk if hasattr(v, 'pk') else v) for k, v in filters.items()}}
-        key = stats.all_years_key('place', _place_key('pesticides', place), hashlib.md5(json.dumps(sorted(keyed.items())).encode()).hexdigest())
+        place_key = _place_key('pesticides', place) if place is not None else 'pesticides:valley'
+        key = stats.all_years_key('place', place_key, hashlib.md5(json.dumps(sorted(keyed.items())).encode()).hexdigest())
         data = stats.cached(key, build, ttl=CACHE_TIMEOUT)
 
-        response = http.Http200({'data': {'place': place_json(place), **data}})
+        response = http.Http200({'data': {'place': place_json(place) if place is not None else None, **data}})
         response['Cache-Control'] = 'public, max-age=3600'
         return response

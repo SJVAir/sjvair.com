@@ -48,6 +48,18 @@ class DatasetCatalogTests(TestCase):
         assert urls['air-quality'] == f'{url}?dataset=air-quality'
         assert all(v == '' for k, v in urls.items() if k not in ('weather', 'air-quality'))
 
+    def test_monitor_types(self):
+        types = {d['id']: d['monitor_types'] for d in self.get()['datasets']}
+        assert types['weather'] == ['cimis']
+        assert types['air-quality'] == ['airgradient', 'airnow', 'aqlite', 'aqview', 'bam1022', 'purpleair', 'vozbox']
+        assert all(v is None for k, v in types.items() if k not in ('weather', 'air-quality'))
+
+    def test_monitor_types_are_accepted_by_the_bulk_type_filter(self):
+        from camp.api.v2.summaries.forms import monitor_type_choices
+        accepted = {value for value, _ in monitor_type_choices()}
+        for dataset in self.get()['datasets']:
+            assert set(dataset['monitor_types'] or []) <= accepted, dataset['id']
+
     def test_no_dataset_level_resolutions(self):
         assert all('resolutions' not in d for d in self.get()['datasets'])
 

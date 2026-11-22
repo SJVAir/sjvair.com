@@ -279,7 +279,10 @@ zones are missing there; see SJVAPCD Forecast Setup).
   (`{'cimis': 'weather'}`) holds types left out of `MONITOR_ENABLED_TYPES` that
   `monitors/?dataset=<id>` still lists (non-hidden, then `MonitorFilter`); `air-quality` is
   the default list, any other value is a 400, and responses without `dataset` are unchanged.
-  `places_url` for `weather` and `air-quality` points there.
+  `places_url` for `weather` and `air-quality` points there. Each dataset also has
+  `monitor_types`: the sorted monitor type ids producing it (`weather` from `MONITOR_OPT_IN_TYPES`,
+  `air-quality` the enabled types not opted in elsewhere; `catalog._monitor_types`), `null` for
+  datasets not made of monitors. They are the values the bulk monitor summaries' `type` takes.
 - **Place endpoints** `calheatscore/place/` and `forecasts/place/` take `?region_type=&region=`
   (code; retired regions answer, land use is refused) or `?monitor=` (hidden monitors 404). Heat returns the highest
   score per date among the ZIPs the place covers (a region's ZIPs need >=1% of their own area
@@ -383,7 +386,10 @@ zones are missing there; see SJVAPCD Forecast Setup).
   Acres and applications count each record once: per-ingredient columns with `chemical`,
   MAX per record key (product, commodity, method, section, month) with `category`/`iarc_group`,
   `records`/`acres_once` otherwise (product, commodity, method, any `narrow`; `counting_mode`
-  in the endpoint). Placeholder chemicals (UNKNOWN, AI IS CONFIDENTIAL) carry no pounds; their
+  in the endpoint). With none of `region_type`, `region` and `monitor` (blank counts as missing) it
+  answers for the whole valley: every rollup row (the import keeps only the SJVAir counties),
+  the same filters and counting, `place: null`, cached under `pesticides:valley`. Only this
+  endpoint: `resolve_place` still refuses an empty place everywhere else. Placeholder chemicals (UNKNOWN, AI IS CONFIDENTIAL) carry no pounds; their
   records count in applications and acres. Optional filters:
   - `chemical`, `commodity`, `product`: our sqids (the list endpoints' `id`), never CDPR
     codes. Sqids can be all digits, so a code can't be told from an id. A value that isn't
@@ -414,6 +420,16 @@ zones are missing there; see SJVAPCD Forecast Setup).
   geometry; the picker searches as you type) plus `county` (`{type, external_id, name}` of the
   county holding the region's point-on-surface, `null` for counties and regions outside every
   county), via `RegionQuerySet.with_county()`: one query, no per-row lookups.
+- **Bulk monitor type** `monitors/<entry_type>/summaries/<resolution>/` (every resolution) and its
+  `daily/open/` take `type`: repeatable monitor type ids (`?type=purpleair&type=airnow`, the
+  the catalog's `monitor_types`; `monitors/meta/` lists only the enabled ones, not `cimis`), combining with `region`, `bbox`, `processor` and `MonitorFilter`
+  (`device` unchanged). Only the named types are returned; an unknown type is a 400
+  (`invalid_choice`, from `BulkMonitorScopeForm`), blank values are ignored, and without `type`
+  nothing changes. It is the only way to reach an opt-in type (`settings.MONITOR_OPT_IN_TYPES`,
+  CIMIS): a named opt-in type that summarizes the entry type has no `DefaultCalibration`, so its
+  raw `''` series is added (`opt_in_types` in `BulkMonitorScopeMixin`); hidden stations stay out.
+  There is no server-side response cache; the open rows' cache key already carries the series
+  filter and the owner set.
 - **Monitor list** `monitors/?region=<sqid>` (repeatable, a union) scopes the list with
   `scope_to`, like `at/`; blank values are ignored, an unknown id is a 404 (not cached). The
   list cache key includes it.
