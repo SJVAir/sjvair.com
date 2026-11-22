@@ -19,9 +19,15 @@ from camp.apps.summaries.open_days import cached_open_rows, open_days
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.periods import period_end
 from camp.apps.summaries.schedule import is_settled, settle_flags
+from camp.apps.summaries.selection import is_summarized
 from camp.utils.datetime import make_aware
 
-from .filters import BulkMonitorSummaryFilter, BulkRegionOpenDaysFilter, BulkRegionSummaryFilter
+from .filters import (
+    BulkMonitorOpenDaysFilter,
+    BulkMonitorSummaryFilter,
+    BulkRegionOpenDaysFilter,
+    BulkRegionSummaryFilter,
+)
 from .forms import (
     BulkMonitorScopeForm,
     BulkMonitorSummaryForm,
@@ -208,14 +214,44 @@ class BulkFormMixin:
 class BulkMonitorScopeMixin:
     """Which monitors and which series the monitor bulk endpoints return."""
 
+    @cached_property
+    def monitor_types(self):
+        """The `type` values (monitor types), or [] for every public type."""
+        return self.form.cleaned_data.get('type') or []
+
+    @cached_property
+    def opt_in_types(self):
+        """Opt-in monitor types (MONITOR_OPT_IN_TYPES, e.g. CIMIS) named by `type`
+        that summarize this entry type. They have no DefaultCalibration, so their
+        raw series is served."""
+        return sorted(
+            subclass.monitor_type for subclass in Monitor.get_subclasses()
+            if subclass.monitor_type in self.monitor_types
+            and subclass.monitor_type in settings.MONITOR_OPT_IN_TYPES
+            and is_summarized(subclass, self.entry_model)
+        )
+
     def get_monitors(self):
-        monitors = (Monitor.objects.get_queryset()
-            .get_public()
-            .published_for(self.entry_model)
-            .scope_to(
-                region_ids=self.request.GET.getlist('region'),
-                bbox=self.form.cleaned_data.get('bbox'),
-            )
+        monitors = Monitor.objects.get_queryset()
+        if self.monitor_types:
+            # Only the named types. The form allows only public and opt-in
+            # types, so this keeps get_public()'s rules: not hidden, and an
+            # opt-in type only when named.
+            published = set(DefaultCalibration.objects
+                .filter(entry_type=self.entry_model.entry_type)
+                .values_list('monitor_type', flat=True)
+            ) | set(self.opt_in_types)
+            lookup = Q()
+            for subclass in Monitor.get_subclasses():
+                if subclass.monitor_type in self.monitor_types and subclass.monitor_type in published:
+                    lookup |= Q(**subclass.type_queryset_filter())
+            monitors = monitors.filter(is_hidden=False).filter(lookup) if lookup else monitors.none()
+        else:
+            monitors = monitors.get_public().published_for(self.entry_model)
+
+        monitors = monitors.scope_to(
+            region_ids=self.request.GET.getlist('region'),
+            bbox=self.form.cleaned_data.get('bbox'),
         )
         return MonitorFilter(self.request.GET, queryset=monitors).qs
 
@@ -228,6 +264,7 @@ class BulkMonitorScopeMixin:
         monitor type, use the DefaultCalibration the map publishes when it
         names a CALIBRATED processor (those are summarized), else raw -
         FEM cleaners produce CLEANED entries, which are never summarized.
+        An opt-in type named by `type` (see opt_in_types) adds its raw series.
         Ordered by type, so the filters built from it are stable.
         """
         if 'processor' in self.request.GET:
@@ -248,6 +285,8 @@ class BulkMonitorScopeMixin:
                     break
             series.append((default.monitor_type, processor))
 
+        series += [(monitor_type, '') for monitor_type in self.opt_in_types]
+        series.sort(key=lambda pair: pair[0])
         return series or [(None, '')]
 
     def get_processor_filter(self):
@@ -275,6 +314,10 @@ class BulkMonitorSummaryList(BulkFormMixin, BulkMonitorScopeMixin, SummaryMixin,
     range, optionally scoped to one or more `region` ids (covered by any of their boundaries)
     or a `bbox` (`west,south,east,north`). Each result is a monitor (same shape as the other
     monitor endpoints) with its matching rows nested under `summaries`.
+
+    `type` (repeatable monitor type ids, e.g. `purpleair`, as in monitors/meta/) keeps only
+    those types; an unknown type is a 400. It is the only way to reach an opt-in type (CIMIS),
+    whose raw series is returned. Without `type`, every public type is returned.
 
     `start` and `end` are required, and the span is capped per resolution (31 days for
     hourly, 366 days for daily); invalid parameters return a 400 with form errors.
@@ -412,12 +455,13 @@ class BulkOpenDaysMixin(BulkFormMixin, SummaryMixin):
 
 class BulkMonitorOpenDays(BulkOpenDaysMixin, BulkMonitorScopeMixin, generics.ListEndpoint):
     """Open-day rows for every published monitor, scoped like BulkMonitorSummaryList
-    (`region`, `bbox`, MonitorFilter parameters, the published series unless
+    (`region`, `bbox`, `type`, MonitorFilter parameters, the published series unless
     `processor` is given) but with no `start`/`end`."""
 
     model = Monitor
     serializer_class = BulkMonitorSummaryGroupSerializer
     form_class = BulkMonitorScopeForm
+    filter_class = BulkMonitorOpenDaysFilter
 
     def get_queryset(self):
         # Page on ids: the full monitor rows are loaded only for the page.

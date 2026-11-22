@@ -488,6 +488,108 @@ class BulkMonitorSummaryListTests(TestCase):
         assert not any(sql.strip().upper().startswith('SELECT') and 'JOIN' not in sql.upper() for sql in health_queries)
 
 
+class BulkMonitorTypeScopeTests(TestCase):
+    """`type` on the bulk monitor endpoints: repeatable monitor type ids, an
+    unknown one is a 400, and an opt-in type (CIMIS) only when named."""
+    fixtures = ['purple-air.yaml', 'bam1022.yaml', 'default-calibrations.yaml']
+
+    def setUp(self):
+        cache.clear()
+        self.purpleair = PurpleAir.objects.get(sensor_id=8892)
+        self.bam = BAM1022.objects.get(pk='gO9_akFVTVW6mYBifOtoxg')
+        self.station = CIMIS.objects.create(
+            name='Station', station_number='9', position=Point(-119.7, 36.7, srid=4326),
+            location=CIMIS.LOCATION.outside)
+        self.day = timezone.make_aware(datetime(2026, 3, 15))
+        make_monitor_summary(self.purpleair, self.day, resolution='day', processor='PM25_EPA_Oct2021')
+        make_monitor_summary(self.purpleair, self.day, resolution='day', processor='')
+        make_monitor_summary(self.bam, self.day, resolution='day')
+        make_monitor_summary(self.station, self.day, resolution='day', entry_type='temperature')
+        self.march = {'start': '2026-03-01', 'end': '2026-03-31'}
+
+    def _get(self, query, entry_type='pm25', path='daily/'):
+        return self.client.get(f'/api/2.0/monitors/{entry_type}/summaries/{path}', query)
+
+    def _ids(self, query, **kwargs):
+        response = self._get(query, **kwargs)
+        assert response.status_code == 200, response.content[:300]
+        return {g['id']: g['summaries'] for g in get_response_data(response)['data']}
+
+    def test_one_type(self):
+        rows = self._ids({**self.march, 'type': 'purpleair'})
+        assert set(rows) == {str(self.purpleair.pk)}
+        # Still the published series.
+        assert [r['processor'] for r in rows[str(self.purpleair.pk)]] == ['PM25_EPA_Oct2021']
+
+    def test_several_types(self):
+        rows = self._ids({**self.march, 'type': ['purpleair', 'bam1022']})
+        assert set(rows) == {str(self.purpleair.pk), str(self.bam.pk)}
+
+    def test_without_type_is_unchanged(self):
+        assert self._ids(self.march) == self._ids({**self.march, 'type': ''})
+        assert set(self._ids(self.march)) == {str(self.purpleair.pk), str(self.bam.pk)}
+
+    def test_unknown_type_is_400(self):
+        for path in ('daily/', 'daily/open/'):
+            response = self._get({**self.march, 'type': ['purpleair', 'galaxy']}, path=path)
+            assert response.status_code == 400, path
+            assert response['Cache-Control'] == 'no-cache'
+            assert get_response_data(response)['errors']['type'][0]['code'] == 'invalid_choice'
+
+    def test_combines_with_processor(self):
+        rows = self._ids({**self.march, 'type': 'purpleair', 'processor': ''})
+        assert set(rows) == {str(self.purpleair.pk)}
+        assert [r['processor'] for r in rows[str(self.purpleair.pk)]] == ['']
+
+    def test_combines_with_bbox(self):
+        # The fixture puts the BAM on top of the PurpleAir; move it out of the box.
+        self.bam.position = Point(self.bam.position.x + 10, self.bam.position.y + 10, srid=4326)
+        self.bam.save()
+        x, y = self.purpleair.position.x, self.purpleair.position.y
+        bbox = f'{x - 0.1},{y - 0.1},{x + 0.1},{y + 0.1}'
+        assert self._ids({**self.march, 'bbox': bbox, 'type': 'bam1022'}) == {}
+        assert set(self._ids({**self.march, 'bbox': bbox, 'type': ['bam1022', 'purpleair']})) == {str(self.purpleair.pk)}
+
+    def test_every_resolution_takes_type(self):
+        for path in ('hourly/', 'daily/', 'monthly/', 'quarterly/', 'seasonal/', 'yearly/'):
+            response = self._get({**self.march, 'type': 'galaxy'}, path=path)
+            assert response.status_code == 400, path
+
+    def test_cimis_only_when_named(self):
+        assert self._ids(self.march, entry_type='temperature') == {}
+        rows = self._ids({**self.march, 'type': 'cimis'}, entry_type='temperature')
+        assert set(rows) == {str(self.station.pk)}
+        assert [r['processor'] for r in rows[str(self.station.pk)]] == ['']
+
+    def test_cimis_with_an_air_quality_type(self):
+        # CIMIS doesn't summarize PM2.5, so naming it adds nothing there.
+        rows = self._ids({**self.march, 'type': ['cimis', 'purpleair']})
+        assert set(rows) == {str(self.purpleair.pk)}
+
+    def test_hidden_cimis_station_is_left_out(self):
+        self.station.is_hidden = True
+        self.station.save()
+        assert self._ids({**self.march, 'type': 'cimis'}, entry_type='temperature') == {}
+
+    def test_open_days(self):
+        now = timezone.make_aware(datetime(2026, 10, 5, 12, 0))
+        hour = timezone.make_aware(datetime(2026, 10, 5, 9, 0))
+        for monitor, processor, entry_type in (
+            (self.purpleair, 'PM25_EPA_Oct2021', 'pm25'), (self.bam, '', 'pm25'), (self.station, '', 'temperature'),
+        ):
+            row = make_monitor_summary(monitor, hour, entry_type=entry_type, processor=processor)
+            digest = TDigest()
+            digest.update(10.0)
+            row.tdigest = tdigest_to_dict(digest)
+            row.save(update_fields=['tdigest'])
+        with patch('django.utils.timezone.now', return_value=now):
+            assert set(self._ids({'type': 'bam1022'}, path='daily/open/')) == {str(self.bam.pk)}
+            assert set(self._ids({}, path='daily/open/')) == {str(self.purpleair.pk), str(self.bam.pk)}
+            assert self._ids({}, entry_type='temperature', path='daily/open/') == {}
+            rows = self._ids({'type': 'cimis'}, entry_type='temperature', path='daily/open/')
+        assert set(rows) == {str(self.station.pk)} and len(rows[str(self.station.pk)]) == 1
+
+
 class RegionSummaryListTests(TestCase):
     fixtures = ['regions.yaml']
 
