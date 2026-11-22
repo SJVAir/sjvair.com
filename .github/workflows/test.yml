@@ -46,7 +46,10 @@ jobs:
       - name: Run tests
         # --reuse-db only skips dropping the per-worker test DBs at the end;
         # the db container is fresh here and torn down below anyway.
-        run: docker compose --profile test run --rm test pytest -n 4 --dist loadscope --reuse-db
+        # --durations lists the slowest tests; faulthandler_timeout dumps every
+        # thread's stack for a test past 180 s (without stopping the run), so a
+        # stalled xdist worker names its test.
+        run: docker compose --profile test run --rm test pytest -n 4 --dist loadscope --reuse-db --durations=25 -o faulthandler_timeout=180
 
       - name: Tear down
         if: always()
