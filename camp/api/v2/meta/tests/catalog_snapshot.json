@@ -242,6 +242,15 @@
    "label": "Air Quality",
    "license": "",
    "meta_url": "/api/2.0/monitors/meta/",
+   "monitor_types": [
+    "airgradient",
+    "airnow",
+    "aqlite",
+    "aqview",
+    "bam1022",
+    "purpleair",
+    "vozbox"
+   ],
    "places_url": "/api/2.0/monitors/?dataset=air-quality",
    "retired": null,
    "source": "SJVAir sensors, AirNow, AQview, AQLite"
@@ -515,6 +524,9 @@
    "label": "Weather",
    "license": "",
    "meta_url": "/api/2.0/monitors/meta/",
+   "monitor_types": [
+    "cimis"
+   ],
    "places_url": "/api/2.0/monitors/?dataset=weather",
    "retired": null,
    "source": "California Irrigation Management Information System (CIMIS)"
@@ -546,6 +558,7 @@
    "label": "Wildfire Smoke",
    "license": "Public domain",
    "meta_url": "/api/2.0/hms/meta/",
+   "monitor_types": null,
    "places_url": "",
    "retired": null,
    "source": "NOAA Hazard Mapping System"
@@ -577,6 +590,7 @@
    "label": "Fire Detections",
    "license": "Public domain",
    "meta_url": "/api/2.0/hms/meta/",
+   "monitor_types": null,
    "places_url": "",
    "retired": null,
    "source": "NOAA Hazard Mapping System"
@@ -643,6 +657,7 @@
    "label": "Pesticide Use",
    "license": "",
    "meta_url": "/api/2.0/pesticides/meta/",
+   "monitor_types": null,
    "places_url": "",
    "retired": null,
    "source": "California DPR Pesticide Use Reporting (PUR)"
@@ -674,6 +689,7 @@
    "label": "Pesticide Spray Notices",
    "license": "",
    "meta_url": "/api/2.0/pesticides/meta/",
+   "monitor_types": null,
    "places_url": "",
    "retired": null,
    "source": "SprayDays (California DPR)"
@@ -721,6 +737,7 @@
    "label": "Air Quality Forecasts",
    "license": "",
    "meta_url": "/api/2.0/forecasts/meta/",
+   "monitor_types": null,
    "places_url": "",
    "retired": null,
    "source": "San Joaquin Valley Air Pollution Control District"
@@ -752,6 +769,7 @@
    "label": "CalHeatScore",
    "license": "",
    "meta_url": "/api/2.0/calheatscore/meta/",
+   "monitor_types": null,
    "places_url": "",
    "retired": null,
    "source": "OEHHA CalHeatScore"
@@ -781,6 +799,7 @@
    "label": "CalEnviroScreen",
    "license": "",
    "meta_url": "",
+   "monitor_types": null,
    "places_url": "",
    "retired": null,
    "source": "OEHHA CalEnviroScreen"
@@ -941,6 +960,7 @@
    "label": "Emissions",
    "license": "",
    "meta_url": "",
+   "monitor_types": null,
    "places_url": "",
    "retired": null,
    "source": "CARB CEIDARS facility inventory, Carbon Mapper"
@@ -1021,6 +1041,7 @@
    "label": "NASA TEMPO Satellite",
    "license": "Public domain",
    "meta_url": "",
+   "monitor_types": null,
    "places_url": "",
    "retired": null,
    "source": "NASA TEMPO"

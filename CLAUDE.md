@@ -279,7 +279,10 @@ zones are missing there; see SJVAPCD Forecast Setup).
   (`{'cimis': 'weather'}`) holds types left out of `MONITOR_ENABLED_TYPES` that
   `monitors/?dataset=<id>` still lists (non-hidden, then `MonitorFilter`); `air-quality` is
   the default list, any other value is a 400, and responses without `dataset` are unchanged.
-  `places_url` for `weather` and `air-quality` points there.
+  `places_url` for `weather` and `air-quality` points there. Each dataset also has
+  `monitor_types`: the sorted monitor type ids producing it (`weather` from `MONITOR_OPT_IN_TYPES`,
+  `air-quality` the enabled types not opted in elsewhere; `catalog._monitor_types`), `null` for
+  datasets not made of monitors. They are the values the bulk monitor summaries' `type` takes.
 - **Place endpoints** `calheatscore/place/` and `forecasts/place/` take `?region_type=&region=`
   (code; retired regions answer, land use is refused) or `?monitor=` (hidden monitors 404). Heat returns the highest
   score per date among the ZIPs the place covers (a region's ZIPs need >=1% of their own area
@@ -419,7 +422,7 @@ zones are missing there; see SJVAPCD Forecast Setup).
   county), via `RegionQuerySet.with_county()`: one query, no per-row lookups.
 - **Bulk monitor type** `monitors/<entry_type>/summaries/<resolution>/` (every resolution) and its
   `daily/open/` take `type`: repeatable monitor type ids (`?type=purpleair&type=airnow`, the
-  `monitors/meta/` type keys, plus the opt-in `cimis`, which meta doesn't list), combining with `region`, `bbox`, `processor` and `MonitorFilter`
+  the catalog's `monitor_types`; `monitors/meta/` lists only the enabled ones, not `cimis`), combining with `region`, `bbox`, `processor` and `MonitorFilter`
   (`device` unchanged). Only the named types are returned; an unknown type is a 400
   (`invalid_choice`, from `BulkMonitorScopeForm`), blank values are ignored, and without `type`
   nothing changes. It is the only way to reach an opt-in type (`settings.MONITOR_OPT_IN_TYPES`,

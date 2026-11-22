@@ -110,7 +110,8 @@ def _from_scale(scale, resolutions, aggregate):
     return _other(scale.id, scale.label, scale.units, resolutions, aggregate)
 
 
-def _dataset(id, label, description, source, license, geographies, entry_types, meta_url=None, places_url=''):
+def _dataset(id, label, description, source, license, geographies, entry_types, meta_url=None, places_url='',
+             monitor_types=None):
     return {
         'id': id,
         'label': label,
@@ -120,6 +121,7 @@ def _dataset(id, label, description, source, license, geographies, entry_types, 
         'geographies': geographies,
         'meta_url': meta_url() if callable(meta_url) else (meta_url or ''),
         'places_url': places_url,
+        'monitor_types': monitor_types,
         'entry_types': entry_types,
         'retired': None,
     }
@@ -221,6 +223,21 @@ def _kind(entry_model):
     return 'pollutant'
 
 
+def _monitor_models(weather):
+    """The monitor types producing the weather dataset (opted in to it by
+    settings.MONITOR_OPT_IN_TYPES) or the air-quality one (every enabled monitor
+    type not opted in to another dataset)."""
+    opt_in = settings.MONITOR_OPT_IN_TYPES
+    return Monitor.get_opt_in_subclasses('weather') if weather else [
+        m for m in Monitor.get_enabled_subclasses() if m.monitor_type not in opt_in
+    ]
+
+
+def _monitor_types(weather):
+    """The dataset's monitor type ids, sorted: the values the bulk monitor summaries' `type` takes."""
+    return sorted(m.monitor_type for m in _monitor_models(weather))
+
+
 def _monitor_dataset(weather):
     """
     (entry models sorted by entry_type, {entry_type: producing monitor models})
@@ -228,10 +245,7 @@ def _monitor_dataset(weather):
     settings.MONITOR_OPT_IN_TYPES) or the air-quality one (every enabled monitor
     type not opted in to another dataset).
     """
-    opt_in = settings.MONITOR_OPT_IN_TYPES
-    monitor_models = Monitor.get_opt_in_subclasses('weather') if weather else [
-        m for m in Monitor.get_enabled_subclasses() if m.monitor_type not in opt_in
-    ]
+    monitor_models = _monitor_models(weather)
     models = {}
     producers = {}
     for monitor_model in monitor_models:
@@ -278,6 +292,7 @@ def _air_quality():
         _monitor_entry_types(weather=False),
         meta_url=reverse('api:v2:monitors:monitor-meta'),
         places_url=_monitor_list_url('air-quality'),
+        monitor_types=_monitor_types(weather=False),
     )
 
 
@@ -290,6 +305,7 @@ def _weather():
         _monitor_entry_types(weather=True),
         meta_url=reverse('api:v2:monitors:monitor-meta'),
         places_url=_monitor_list_url('weather'),
+        monitor_types=_monitor_types(weather=True),
     )
 
 
