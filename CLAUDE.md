@@ -381,11 +381,12 @@ zones are missing there; see SJVAPCD Forecast Setup).
     `NOTICE_CACHE_TTL` (5 min), so `past` can lag up to 5 minutes.
 - **Pesticide locations** `pesticides/locations/` (schools and child care as GeoJSON points;
   `camp/api/v2/pesticides/locations.py`) takes `bbox` (at most 12 degrees a side), `region` (+
-  `buffer`) or `lat`/`lng`/`radius`. With none of them (a blank `bbox` counts as missing) it
-  returns every current location: the whole valley (~2,800 rows locally, ~1.5 MB uncompressed,
-  ~195 KB gzipped). `type` (comma list) and `county` (slug) always filter. Cached 24 h per query
-  string (`cache_key_version` 3). Requests with a bbox or an area are unchanged; only the no-area
-  case, a 400 before, is new.
+  `buffer`) or `lat`/`lng`/`radius`. With none of them (a blank or whitespace-only `bbox` counts
+  as missing) it returns every current location: the whole valley (~2,800 rows locally, ~1.5 MB
+  uncompressed, ~195 KB gzipped); `radius` or `buffer` given without that area is a 400.
+  `type` (comma list) and `county` (slug) always filter. Cached 24 h per query string as the
+  encoded body (`cache_encoded`, `cache_key_version` 4). Requests with a bbox or an area return
+  the same bodies as before; only the no-area cases, 400s before, are new.
 - **Pesticide place** `pesticides/place/` takes the same addressing (`?region_type=&region=` or
   `?monitor=`) and returns `months` and `years` from `PesticideUseRollup`: counties by
   `county=`, other regions by the MTRS sections they touch, monitors by their ZIP. Month 0
