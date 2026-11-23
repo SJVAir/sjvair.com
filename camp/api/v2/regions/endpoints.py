@@ -397,8 +397,19 @@ class RegionMetaEndpoint(generics.Endpoint):
                 'type': location_type,
                 'label': str(Location.SHORT_TYPES[location_type]),
                 'source': sources[location_type],
+                'group': Location.TYPE_GROUPS[location_type].value,
             }
             for location_type in Location.Type.values
+        }
+
+    def get_location_groups(self):
+        return {
+            group.value: {
+                'key': group.value,
+                'label': str(group.label),
+                'order': order,
+            }
+            for order, group in enumerate(Location.Group)
         }
 
     def get_buffers(self):
@@ -409,6 +420,7 @@ class RegionMetaEndpoint(generics.Endpoint):
         return {'data': {
             'types': self.get_types(),
             'location_types': self.get_location_types(),
+            'location_groups': self.get_location_groups(),
             'buffers': self.get_buffers(),
         }}
 

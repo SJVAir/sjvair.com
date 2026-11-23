@@ -379,6 +379,14 @@ zones are missing there; see SJVAPCD Forecast Setup).
     A `date` is settled once now is past the later of `start(D+5)` and `start(D+1)` plus
     96 hours (`stats.notice_day_settled_at`); settled answers are cached 24 h, all others
     `NOTICE_CACHE_TTL` (5 min), so `past` can lag up to 5 minutes.
+- **Pesticide locations** `pesticides/locations/` (schools and child care as GeoJSON points;
+  `camp/api/v2/pesticides/locations.py`) takes `bbox` (at most 12 degrees a side), `region` (+
+  `buffer`) or `lat`/`lng`/`radius`. With none of them (a blank or whitespace-only `bbox` counts
+  as missing) it returns every current location: the whole valley (~2,800 rows locally, ~1.5 MB
+  uncompressed, ~195 KB gzipped); `radius` or `buffer` given without that area is a 400.
+  `type` (comma list) and `county` (slug) always filter. Cached 24 h per query string as the
+  encoded body (`cache_encoded`, `cache_key_version` 4). Requests with a bbox or an area return
+  the same bodies as before; only the no-area cases, 400s before, are new.
 - **Pesticide place** `pesticides/place/` takes the same addressing (`?region_type=&region=` or
   `?monitor=`) and returns `months` and `years` from `PesticideUseRollup`: counties by
   `county=`, other regions by the MTRS sections they touch, monitors by their ZIP. Month 0
@@ -416,20 +424,25 @@ zones are missing there; see SJVAPCD Forecast Setup).
   `regions/meta/` also lists `buffers` (`[{miles, label}]` from `shapes.BUFFERS` and
   `BUFFER_LABELS`): the values every `?buffer=` accepts (`regions/<id>/`, pesticide sections,
   emissions map areas). Clients read the choices from there, so change them only in `shapes.py`.
+  `regions/meta/` `location_groups` lists the sections location types are shown in (`school`
+  "Schools", `child_care` "Child care"; `{key, label, order}`, ids permanent; `Location.Group`),
+  and each `location_types` row carries its `group` (`Location.TYPE_GROUPS`: both school types
+  `school`).
 - **Place search** `regions/places/search/?q=` returns list-shaped rows (`boundary` has `bbox`, no
   geometry; the picker searches as you type) plus `county` (`{type, external_id, name}` of the
   county holding the region's point-on-surface, `null` for counties and regions outside every
   county), via `RegionQuerySet.with_county()`: one query, no per-row lookups.
-- **Bulk monitor type** `monitors/<entry_type>/summaries/<resolution>/` (every resolution) and its
-  `daily/open/` take `type`: repeatable monitor type ids (`?type=purpleair&type=airnow`, the
-  the catalog's `monitor_types`; `monitors/meta/` lists only the enabled ones, not `cimis`), combining with `region`, `bbox`, `processor` and `MonitorFilter`
-  (`device` unchanged). Only the named types are returned; an unknown type is a 400
-  (`invalid_choice`, from `BulkMonitorScopeForm`), blank values are ignored, and without `type`
-  nothing changes. It is the only way to reach an opt-in type (`settings.MONITOR_OPT_IN_TYPES`,
-  CIMIS): a named opt-in type that summarizes the entry type has no `DefaultCalibration`, so its
-  raw `''` series is added (`opt_in_types` in `BulkMonitorScopeMixin`); hidden stations stay out.
-  There is no server-side response cache; the open rows' cache key already carries the series
-  filter and the owner set.
+- **Bulk monitor type** `monitors/<entry_type>/summaries/<resolution>/` (every resolution) and
+  its `daily/open/` take `type`: repeatable monitor type ids (`?type=purpleair&type=airnow`, the
+  catalog's `monitor_types`; `monitors/meta/` lists only the enabled ones, not `cimis`),
+  combining with `region`, `bbox`, `processor` and `MonitorFilter` (`device` unchanged). Only the
+  named types are returned; an unknown type is a 400 (`invalid_choice`, from
+  `BulkMonitorScopeForm`), blank values are ignored, and without `type` nothing changes. It is
+  the only way to reach an opt-in type (`settings.MONITOR_OPT_IN_TYPES`, CIMIS): a named opt-in
+  type that summarizes the entry type has no `DefaultCalibration`, so its raw `''` series is
+  added (`opt_in_types` in `BulkMonitorScopeMixin`); hidden stations stay out. There is no
+  server-side response cache; the open rows' cache key already carries the series filter and the
+  owner set.
 - **Monitor list** `monitors/?region=<sqid>` (repeatable, a union) scopes the list with
   `scope_to`, like `at/`; blank values are ignored, an unknown id is a 404 (not cached). The
   list cache key includes it.

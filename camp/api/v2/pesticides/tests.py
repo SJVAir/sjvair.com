@@ -1700,8 +1700,45 @@ class LocationEndpointTests(TestCase):
         assert response.status_code == 400
         assert 'type' in response.json()['error']
 
-    def test_missing_bbox_is_a_400(self):
-        assert self.client.get(self.url).status_code == 400
+    def test_no_area_and_no_bbox_is_the_whole_valley(self):
+        everyone = ['Alpha Elementary', 'Bravo Child Care', 'Charlie Academy']
+        assert [f['properties']['name'] for f in self.features()] == everyone
+        assert [f['properties']['name'] for f in self.features(bbox='')] == everyone
+
+    def test_a_whitespace_bbox_is_the_whole_valley(self):
+        names = [f['properties']['name'] for f in self.features(bbox=' ')]
+        assert names == ['Alpha Elementary', 'Bravo Child Care', 'Charlie Academy']
+
+    def test_radius_or_buffer_without_an_area_is_a_400(self):
+        # Without a region or a point there's nothing for them to widen, so
+        # the client meant an area it didn't send: not the whole valley.
+        for params in ({'radius': '3'}, {'buffer': '1'}, {'radius': '3', 'type': 'child_care'}):
+            response = self.client.get(self.url, params)
+            assert response.status_code == 400, params
+            assert 'error' in response.json()
+
+    def test_valley_answer_is_cached_as_encoded_bytes(self):
+        from django.core.cache import cache
+        from django.test import RequestFactory
+        from camp.api.v2.pesticides.locations import LocationList
+        assert len(self.features()) == 3
+        view = LocationList()
+        view.request = RequestFactory().get(self.url)
+        view.kwargs = {}
+        assert isinstance(cache.get(view.get_view_cache_key()), bytes)
+
+    def test_valley_takes_type_and_county(self):
+        assert [f['properties']['name'] for f in self.features(type='child_care')] == ['Bravo Child Care']
+        assert [f['properties']['name'] for f in self.features(county='kern')] == ['Charlie Academy']
+
+    def test_valley_leaves_out_retired_locations(self):
+        self.daycare.retire(timezone.localdate())
+        assert [f['properties']['name'] for f in self.features()] == ['Alpha Elementary', 'Charlie Academy']
+
+    def test_valley_is_cached(self):
+        assert len(self.features()) == 3
+        Location.objects.all().delete()
+        assert len(self.features()) == 3
 
     def test_bad_bbox_is_a_400(self):
         assert self.client.get(self.url, {'bbox': '-119.9,36.6'}).status_code == 400

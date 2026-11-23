@@ -109,10 +109,20 @@ class RegionMetaTests(TestCase):
     def test_location_types(self):
         response, content = self._fetch_region_meta()
         assert content['data']['location_types'] == {
-            'public_school': {'type': 'public_school', 'label': 'Public school', 'source': 'cde-public'},
-            'private_school': {'type': 'private_school', 'label': 'Private school', 'source': 'cde-private'},
-            'child_care': {'type': 'child_care', 'label': 'Child care', 'source': 'cdss-ccl'},
+            'public_school': {'type': 'public_school', 'label': 'Public school', 'source': 'cde-public', 'group': 'school'},
+            'private_school': {'type': 'private_school', 'label': 'Private school', 'source': 'cde-private', 'group': 'school'},
+            'child_care': {'type': 'child_care', 'label': 'Child care', 'source': 'cdss-ccl', 'group': 'child_care'},
         }
+
+    def test_location_groups(self):
+        response, content = self._fetch_region_meta()
+        groups = content['data']['location_groups']
+        assert groups == {
+            'school': {'key': 'school', 'label': 'Schools', 'order': 0},
+            'child_care': {'key': 'child_care', 'label': 'Child care', 'order': 1},
+        }
+        # Every type's group is a listed group.
+        assert {t['group'] for t in content['data']['location_types'].values()} == set(groups)
 
     def test_buffers(self):
         response, content = self._fetch_region_meta()
