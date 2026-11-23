@@ -362,6 +362,18 @@ class Location(TimeStampedModel):
         Type.CHILD_CARE: _('Child care'),
     }
 
+    class Group(models.TextChoices):
+        # Sections that list location types together (regions/meta/
+        # location_groups, in this order); keys are permanent.
+        SCHOOL = 'school', _('Schools')
+        CHILD_CARE = 'child_care', _('Child care')
+
+    TYPE_GROUPS = {
+        Type.PUBLIC_SCHOOL: Group.SCHOOL,
+        Type.PRIVATE_SCHOOL: Group.SCHOOL,
+        Type.CHILD_CARE: Group.CHILD_CARE,
+    }
+
     sqid = SqidsField(alphabet=shuffle_alphabet('regions.Location'))
 
     type = models.CharField(_('Type'), max_length=32, choices=Type.choices, db_index=True)
