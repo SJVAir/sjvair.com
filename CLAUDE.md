@@ -379,6 +379,13 @@ zones are missing there; see SJVAPCD Forecast Setup).
     A `date` is settled once now is past the later of `start(D+5)` and `start(D+1)` plus
     96 hours (`stats.notice_day_settled_at`); settled answers are cached 24 h, all others
     `NOTICE_CACHE_TTL` (5 min), so `past` can lag up to 5 minutes.
+- **Pesticide locations** `pesticides/locations/` (schools and child care as GeoJSON points;
+  `camp/api/v2/pesticides/locations.py`) takes `bbox` (at most 12 degrees a side), `region` (+
+  `buffer`) or `lat`/`lng`/`radius`. With none of them (a blank `bbox` counts as missing) it
+  returns every current location: the whole valley (~2,800 rows locally, ~1.5 MB uncompressed,
+  ~195 KB gzipped). `type` (comma list) and `county` (slug) always filter. Cached 24 h per query
+  string (`cache_key_version` 3). Requests with a bbox or an area are unchanged; only the no-area
+  case, a 400 before, is new.
 - **Pesticide place** `pesticides/place/` takes the same addressing (`?region_type=&region=` or
   `?monitor=`) and returns `months` and `years` from `PesticideUseRollup`: counties by
   `county=`, other regions by the MTRS sections they touch, monitors by their ZIP. Month 0

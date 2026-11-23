@@ -18,10 +18,11 @@ from .sections import bad_request, clip_shape, parse_bbox
 # The map asks for locations from zoom 9 up, and it asks for a bbox padded by
 # half a viewport on each side -- on a wide expanded map at that zoom the
 # padded box runs to several degrees a side, so a tight cap turned the whole
-# layer into a 400. There are only ~1,500 of these rows valley-wide, so the
-# cap is set to comfortably cover the valley plus that padding; it's here to
-# stop a hand-built request from serializing every school and day care in the
-# state, not to ration the map.
+# layer into a 400. The cap comfortably covers the valley plus that padding.
+# The table holds only the valley's sites (~2,800 rows, ~1.5 MB of GeoJSON),
+# and a request with no area and no bbox returns all of them, so the cap
+# doesn't bound the response size; it only refuses a bbox far bigger than
+# any map would send.
 MAX_BBOX_DEGREES = 12.0
 
 
@@ -64,10 +65,10 @@ class LocationListBase(generics.Endpoint):
         area, error = self.parse_area(params)
         if error:
             return bad_request(error)
+        # Neither an area nor a bbox is the whole valley: every location,
+        # still filtered by `type` and `county` below.
         bbox = None
-        if area is None:
-            if not params.get('bbox'):
-                return bad_request('bbox is required')
+        if area is None and params.get('bbox'):
             bbox, error = parse_bbox(params['bbox'])
             if error:
                 return bad_request(error)
@@ -89,7 +90,7 @@ class LocationListBase(generics.Endpoint):
         )
         if area is not None:
             locations = locations.filter(**area)
-        else:
+        elif bbox is not None:
             locations = locations.filter(point__bboverlaps=Polygon.from_bbox(bbox))
 
         # The explorer's county scope. A bbox always overhangs the county
@@ -158,8 +159,9 @@ class LocationList(CachedEndpointMixin, LocationListBase):
     """
     Schools and licensed child care centers as GeoJSON points.
 
-    `bbox=west,south,east,north` is required and may span at most 12 degrees
-    on a side. `type` is a comma-separated list of
+    `bbox=west,south,east,north` may span at most 12 degrees on a side.
+    With no bbox and no area (a blank `bbox` counts as none), every location
+    in the valley. `type` is a comma-separated list of
     `public_school`, `private_school`, `child_care` (default: all three).
     `county` (a county slug) keeps only the locations in that county.
     Instead of a bbox, `region` (a region's sqid) or `lat`, `lng` and

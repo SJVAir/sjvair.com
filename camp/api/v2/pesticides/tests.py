@@ -1700,8 +1700,23 @@ class LocationEndpointTests(TestCase):
         assert response.status_code == 400
         assert 'type' in response.json()['error']
 
-    def test_missing_bbox_is_a_400(self):
-        assert self.client.get(self.url).status_code == 400
+    def test_no_area_and_no_bbox_is_the_whole_valley(self):
+        everyone = ['Alpha Elementary', 'Bravo Child Care', 'Charlie Academy']
+        assert [f['properties']['name'] for f in self.features()] == everyone
+        assert [f['properties']['name'] for f in self.features(bbox='')] == everyone
+
+    def test_valley_takes_type_and_county(self):
+        assert [f['properties']['name'] for f in self.features(type='child_care')] == ['Bravo Child Care']
+        assert [f['properties']['name'] for f in self.features(county='kern')] == ['Charlie Academy']
+
+    def test_valley_leaves_out_retired_locations(self):
+        self.daycare.retire(timezone.localdate())
+        assert [f['properties']['name'] for f in self.features()] == ['Alpha Elementary', 'Charlie Academy']
+
+    def test_valley_is_cached(self):
+        assert len(self.features()) == 3
+        Location.objects.all().delete()
+        assert len(self.features()) == 3
 
     def test_bad_bbox_is_a_400(self):
         assert self.client.get(self.url, {'bbox': '-119.9,36.6'}).status_code == 400
