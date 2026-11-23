@@ -285,7 +285,9 @@ class EndpointTests(TestCase):
         content = get_response_data(response)
 
         assert response.status_code == 200
-        assert {e['stage'] for e in content['data']} == set([monitor.get_default_stage(entry_models.PM25).value])
+        published = monitor.get_published_lookup(entry_models.PM25)
+        assert content['data']
+        assert {(e['stage'], e['processor']) for e in content['data']} == {(published['stage'].value, published['processor'])}
 
     def test_entry_list_sensor(self):
         '''
@@ -370,7 +372,7 @@ class EndpointTests(TestCase):
             'entry_type': 'pm25'
         }
         url = reverse('api:v2:monitors:entry-list', kwargs=kwargs)
-        params = {'timestamp__date': '2024-07-24'}
+        params = {'timestamp__date': '2024-07-24', 'stage': monitor.get_default_stage(entry_models.PM25).value}
         request = self.factory.get(url, params)
         request.monitor = monitor
         response = entry_list(request, **kwargs)
@@ -404,7 +406,9 @@ class EndpointTests(TestCase):
         reader = csv.DictReader(csv_file)
         rows = list(reader)
 
-        assert {e['stage'] for e in rows} == set([monitor.get_default_stage(entry_models.PM25).value])
+        published = monitor.get_published_lookup(entry_models.PM25)
+        assert rows
+        assert {(e['stage'], e['processor']) for e in rows} == {(published['stage'].value, published['processor'])}
 
     def test_entry_csv_sensor(self):
         '''
@@ -961,6 +965,38 @@ class PublishedLatestEntryTests(TestCase):
         for name, latest in self._all().items():
             assert latest['processor'] == 'PM25_LCS_Cleaning', name
             assert Decimal(str(latest['value'])) == Decimal('1077.00'), name
+
+    def _entries(self, view=None, name='api:v2:monitors:entry-list', params=None):
+        kwargs = {'monitor_id': self.monitor.pk, 'entry_type': 'pm25'}
+        request = self.factory.get(reverse(name, kwargs=kwargs), params or {})
+        request.monitor = self.monitor
+        response = (view or entry_list)(request, **kwargs)
+        assert response.status_code == 200
+        return response
+
+    def _entry_processors(self, params=None):
+        return {e['processor'] for e in get_response_data(self._entries(params=params))['data']}
+
+    def test_entries_default_to_the_published_calibration(self):
+        # The detail chart asks for no stage or processor; it must plot the
+        # same series as the reading above it.
+        assert self._entry_processors() == {'PM25_EPA_Oct2021'}
+
+    def test_entries_csv_defaults_to_the_published_calibration(self):
+        response = self._entries(entry_csv, 'api:v2:monitors:entry-csv')
+        rows = list(csv.DictReader(StringIO(get_response_data(response))))
+        assert {r['processor'] for r in rows} == {'PM25_EPA_Oct2021'}
+
+    def test_entries_honor_an_explicit_stage(self):
+        assert self._entry_processors({'stage': 'cleaned'}) == {'PM25_LCS_Cleaning'}
+
+    def test_entries_honor_an_explicit_processor(self):
+        assert self._entry_processors({'processor': 'PM25_LCS_Cleaning'}) == {'PM25_LCS_Cleaning'}
+
+    def test_entries_default_to_the_default_stage_when_calibration_is_blank(self):
+        from camp.apps.calibrations.models import DefaultCalibration
+        DefaultCalibration.objects.filter(monitor_type='purpleair', entry_type='pm25').update(calibration='')
+        assert self._entry_processors() == {'PM25_LCS_Cleaning'}
 
     def _age_calibrated(self, age):
         from camp.apps.monitors.models import LatestEntry
