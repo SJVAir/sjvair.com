@@ -12,3 +12,10 @@ class SiteChromeTests(TestCase):
             assert 'class="skip-link" href="#main"' in html
             assert 'id="id_translate" aria-label="Language"' in html
             assert '<h4' not in html
+
+
+class ContactFormTests(TestCase):
+    def test_captcha_renders_once(self):
+        response = self.client.get('/contact/', follow=True)
+        assert response.status_code == 200
+        assert response.content.decode().count('class="g-recaptcha') == 1

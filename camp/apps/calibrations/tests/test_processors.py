@@ -555,3 +555,122 @@ class ProcessorTests(TestCase):
         now = timezone.now()
         assert self.clean(monitor, now).value == Decimal('12.5')
         assert self.clean(monitor, now + timedelta(hours=1), '3000') is None
+
+
+class EPAHumidityFallbackTests(TestCase):
+    '''
+    PM25_EPA_Oct2021 needs RH. When a PurpleAir's RH sensor fails (it
+    reads a stuck 100, then nothing), the correction uses the county's
+    median PurpleAir RH for the hour before, then EPA's suggested 50 %,
+    instead of leaving the monitor without a calibrated reading.
+    '''
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.now = timezone.now().replace(minute=30, second=0, microsecond=0)
+        self.hour = self.now.replace(minute=0)
+        self.monitor = self._in_county(PurpleAir.objects.get(sensor_id=8892))
+
+    def tearDown(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def _in_county(self, monitor, county='Fresno'):
+        # Monitor.save() derives county from position, and the regions
+        # aren't loaded here.
+        from camp.apps.monitors.models import Monitor
+        Monitor.objects.filter(id=monitor.id).update(county=county)
+        monitor.county = county
+        return monitor
+
+    def _neighbor(self, sensor_id, county='Fresno', location=PurpleAir.LOCATION.outside):
+        monitor = PurpleAir.objects.create(name=f'Neighbor {sensor_id}', sensor_id=sensor_id,
+            position=self.monitor.position, location=location)
+        return self._in_county(monitor, county)
+
+    def _humidity(self, monitor, value, timestamp):
+        return entry_models.Humidity.objects.create(
+            monitor=monitor, timestamp=timestamp, value=Decimal(value),
+            position=monitor.position, location=monitor.location,
+            stage=entry_models.Humidity.Stage.RAW,
+        )
+
+    def _calibrate(self, pm25='15.0'):
+        entry = entry_models.PM25.objects.create(
+            monitor=self.monitor, timestamp=self.now, sensor='', value=Decimal(pm25),
+            position=self.monitor.position, location=self.monitor.location,
+            stage=entry_models.PM25.Stage.CLEANED,
+        )
+        processor = processors.PM25_EPA_Oct2021(entry)
+        return processor, processor.run()
+
+    def _expected(self, rh, pm25='15.0'):
+        return processors.PM25_EPA_Oct2021.get_correction(None, Decimal(pm25), Decimal(rh))
+
+    def test_uses_the_monitors_own_humidity(self):
+        self._humidity(self.monitor, '30.0', self.now)
+        self._humidity(self._neighbor(90001), '80.0', self.hour - timedelta(minutes=30))
+        processor, calibrated = self._calibrate()
+        assert processor.get_humidity() == Decimal('30.0')
+        assert calibrated.value == self._expected('30.0')
+
+    def test_missing_humidity_uses_the_county_median_for_the_hour_before(self):
+        for sensor_id, value in [(90001, '60.0'), (90002, '70.0'), (90003, '80.0')]:
+            self._humidity(self._neighbor(sensor_id), value, self.hour - timedelta(minutes=30))
+        processor, calibrated = self._calibrate()
+        assert processor.get_humidity() == Decimal('70.0')
+        assert calibrated.value == self._expected('70.0')
+
+    def test_stuck_humidity_counts_as_missing(self):
+        self._humidity(self.monitor, '100.0', self.now)
+        self._humidity(self._neighbor(90001), '65.0', self.hour - timedelta(minutes=30))
+        processor, calibrated = self._calibrate()
+        assert processor.get_humidity() == Decimal('65.0')
+
+    def test_county_median_skips_stuck_indoor_and_other_hour_or_county_neighbors(self):
+        before = self.hour - timedelta(minutes=30)
+        self._humidity(self._neighbor(90001), '40.0', before)
+        self._humidity(self._neighbor(90002), '100.0', before)  # stuck
+        self._humidity(self._neighbor(90003), '90.0', self.hour - timedelta(hours=2))  # too old
+        self._humidity(self._neighbor(90004), '90.0', self.hour + timedelta(minutes=5))  # this hour
+        self._humidity(self._neighbor(90005, county='Kern'), '90.0', before)
+        self._humidity(self._neighbor(90006, location=PurpleAir.LOCATION.inside), '90.0', before)
+        processor, _ = self._calibrate()
+        assert processor.get_humidity() == Decimal('40.0')
+
+    def test_no_county_neighbors_uses_fifty_percent(self):
+        processor, calibrated = self._calibrate()
+        assert processor.get_humidity() == Decimal('50')
+        assert calibrated.value == self._expected('50')
+
+    def test_no_county_uses_fifty_percent(self):
+        self._in_county(self.monitor, county='')
+        self._humidity(self._neighbor(90001), '70.0', self.hour - timedelta(minutes=30))
+        processor, _ = self._calibrate()
+        assert processor.get_humidity() == Decimal('50')
+
+    def test_county_median_is_cached_per_hour(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from camp.apps.calibrations.core.processors.pm25.epa import county_humidity
+
+        self._humidity(self._neighbor(90001), '70.0', self.hour - timedelta(minutes=30))
+        assert county_humidity('Fresno', self.now) == Decimal('70.0')
+        assert county_humidity('Kern', self.now) is None
+        with CaptureQueriesContext(connection) as ctx:
+            assert county_humidity('Fresno', self.now + timedelta(minutes=10)) == Decimal('70.0')
+            assert county_humidity('Kern', self.now) is None
+        assert len(ctx.captured_queries) == 0
+
+    def test_county_cache_key_is_memcached_safe(self):
+        import warnings
+        from django.core.cache import CacheKeyWarning
+        from camp.apps.calibrations.core.processors.pm25.epa import county_humidity
+
+        self._humidity(self._neighbor(90001, county='San Joaquin'), '70.0', self.hour - timedelta(minutes=30))
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', CacheKeyWarning)
+            assert county_humidity('San Joaquin', self.now) == Decimal('70.0')
+            assert county_humidity('San Joaquin', self.now) == Decimal('70.0')

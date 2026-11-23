@@ -4,8 +4,9 @@ from django.core.mail import EmailMessage
 from django.template.loader import render_to_string
 
 from django_recaptcha.fields import ReCaptchaField
-from django_recaptcha.widgets import ReCaptchaV2Checkbox
 from model_utils import Choices
+
+from camp.utils.forms import VisibleReCaptchaV2Checkbox
 
 
 class ContactForm(forms.Form):
@@ -21,7 +22,7 @@ class ContactForm(forms.Form):
     topic = forms.ChoiceField(choices=TOPICS)
     subject = forms.CharField(max_length=79)
     message = forms.CharField(widget=forms.Textarea)
-    captcha = ReCaptchaField(label='')
+    captcha = ReCaptchaField(label='', widget=VisibleReCaptchaV2Checkbox)
 
     def send_email(self):
         assert self.is_valid()

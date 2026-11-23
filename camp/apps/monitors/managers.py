@@ -206,43 +206,69 @@ class MonitorQuerySet(InheritanceQuerySet):
         return self.annotate(last_entry_timestamp=Subquery(subquery, output_field=DateTimeField()))
 
     def with_latest_entry(self, entry_model, stage=None, processor=None):
+        '''
+        Evaluate the queryset, keep monitors with a latest entry of
+        `entry_model`, and attach it as `latest_<entry_type>` (and
+        `latest_entry`). Returns a list.
+
+        A monitor keeps one LatestEntry per processor (e.g. the cleaned and
+        the calibrated PM2.5). Without `stage`/`processor`, each monitor gets
+        the one Monitor.choose_latest_entry picks, as monitor detail does.
+        '''
+        from camp.apps.calibrations.models import DefaultCalibration
         from camp.apps.monitors.models import LatestEntry
 
         entry_type = entry_model.entry_type
-        field_id = f'latest_{entry_type}_id'
+        monitors = list(self)
 
-        lookup = {
-            'monitor_id': OuterRef('pk'),
-            'entry_type': entry_type,
-        }
-
+        rows = LatestEntry.objects.filter(
+            monitor_id__in=[monitor.pk for monitor in monitors],
+            entry_type=entry_type,
+        )
         if stage is not None:
-            lookup['stage'] = stage
+            rows = rows.filter(stage=stage)
             if stage == entry_model.Stage.CALIBRATED:
-                lookup['processor'] = processor or ''
+                rows = rows.filter(processor=processor or '')
         elif processor is not None:
-            lookup['stage'] = entry_model.Stage.CALIBRATED
-            lookup['processor'] = processor or ''
+            rows = rows.filter(stage=entry_model.Stage.CALIBRATED, processor=processor or '')
 
-        subquery = (LatestEntry.objects
-            .filter(**lookup)
-            .values('entry_id')[:1]
-        )
+        by_monitor = {}
+        for row in rows:
+            by_monitor.setdefault(row.monitor_id, []).append(row)
 
-        monitors = (self
-            .annotate(**{field_id: Subquery(subquery)})
-            .exclude(**{f'{field_id}__isnull': True})
-        )
+        calibrations = dict(DefaultCalibration.objects
+            .filter(entry_type=entry_type)
+            .values_list('monitor_type', 'calibration'))
 
-        entries = entry_model.objects.filter(pk__in=[getattr(m, field_id) for m in monitors])
-        entry_map = {e.pk: e for e in entries}
-
+        chosen = {}
         for monitor in monitors:
-            entry = entry_map.get(getattr(monitor, field_id))
+            candidates = by_monitor.get(monitor.pk)
+            if not candidates:
+                continue
+            if stage is None and processor is None:
+                chosen[monitor.pk] = monitor.choose_latest_entry(
+                    candidates, entry_model, calibrations.get(monitor.monitor_type, ''))
+            else:
+                chosen[monitor.pk] = candidates[0]
+
+        entries = entry_model.objects.in_bulk([latest.entry_id for latest in chosen.values()])
+
+        results = []
+        for monitor in monitors:
+            latest = chosen.get(monitor.pk)
+            if latest is None:
+                continue
+            # A LatestEntry can outlive its entry; the monitor still lists.
+            entry = entries.get(latest.entry_id)
+            if entry is not None:
+                # For entry.is_recent: the lazy FK would query once per
+                # entry, and select_related would load the base Monitor
+                # (wrong LAST_ACTIVE_LIMIT) instead of the subclass.
+                entry.monitor = monitor
             setattr(monitor, f'latest_{entry_type}', entry)
             monitor.latest_entry = entry
-
-        return monitors
+            results.append(monitor)
+        return results
 
     def select_health(self, hours: int = 24, min_score: int = 1, threshold: float = 0.8, as_of: Optional[datetime] = None):
         from camp.apps.monitors.models import Monitor
@@ -307,28 +333,41 @@ class MonitorQuerySet(InheritanceQuerySet):
         ).filter(is_healthy=True)
 
     def with_entry_as_of(self, entry_model, timestamp, seconds=None):
+        '''
+        Each monitor's newest published `entry_model` entry (see
+        Monitor.get_published_lookup) in the window before `timestamp`,
+        falling back to its default stage, as current/ does.
+        '''
+        from camp.apps.calibrations.models import DefaultCalibration
+        from camp.apps.monitors.models import choose_published
+
         entry_type = entry_model.entry_type
+        calibrations = dict(DefaultCalibration.objects
+            .filter(entry_type=entry_type)
+            .values_list('monitor_type', 'calibration'))
         results = []
 
         for monitor in self:
             window_seconds = seconds if seconds is not None else monitor.LAST_ACTIVE_LIMIT
             cutoff = timestamp - timedelta(seconds=window_seconds)
 
-            stage = monitor.get_default_stage(entry_model)
-            lookup = {
-                'monitor_id': monitor.pk,
-                'timestamp__lte': timestamp,
-                'timestamp__gte': cutoff,
-                'stage': stage,
-            }
-            if stage == entry_model.Stage.CALIBRATED:
-                lookup['processor'] = monitor.get_default_calibration(entry_model) or ''
-
-            entry = (entry_model.objects
-                .filter(**lookup)
+            window = (entry_model.objects
+                .filter(monitor_id=monitor.pk, timestamp__lte=timestamp, timestamp__gte=cutoff)
                 .order_by('-timestamp')
-                .first()
             )
+            lookup = monitor.get_published_lookup(entry_model, calibrations.get(monitor.monitor_type, ''))
+            default_stage = monitor.get_default_stage(entry_model)
+            tolerance = monitor.get_published_tolerance()
+            published = window.filter(**lookup).first()
+            # Nothing in the window is newer than `timestamp`, so a published
+            # entry within the tolerance of it wins whatever the default
+            # stage holds; only look that up when it could matter.
+            default = None
+            if lookup != {'stage': default_stage} and (
+                published is None or published.timestamp < timestamp - tolerance
+            ):
+                default = window.filter(stage=default_stage).exclude(**lookup).first()
+            entry = choose_published(published, default, tolerance)
 
             if entry is not None:
                 setattr(monitor, f'latest_{entry_type}', entry)

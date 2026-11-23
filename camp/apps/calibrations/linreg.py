@@ -87,7 +87,7 @@ class LinearRegressions:
 
         df = df.set_index('timestamp')
         df = pd.to_numeric(df.endog_pm25)
-        df = df.resample('H').mean()
+        df = df.resample('h').mean()
         # df = df.rename(columns={'pm25_reported': 'pm25'})
         return df
 
@@ -99,7 +99,7 @@ class LinearRegressions:
 
         df = df.set_index('timestamp')
         df[df.columns] = df[df.columns].apply(pd.to_numeric, errors='coerce')
-        df = df.resample('H').mean()
+        df = df.resample('h').mean()
         return df
 
     @cached_property
