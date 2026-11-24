@@ -414,7 +414,9 @@ RESTICUS = {
 #
 # Each queue in its own Redis database: /0, /1, /2 of REDIS_URL, or on Redis
 # Cloud (which serves only database 0) a separate database per queue, set in
-# REDIS_PRIMARY_URL / REDIS_SECONDARY_URL / REDIS_SUMMARIES_URL.
+# REDIS_PRIMARY_URL / REDIS_SECONDARY_URL / REDIS_SUMMARIES_URL. Heroku
+# Key-Value Store's mini plan serves only /0 and /1, so the summaries queue
+# fails there with "DB index is out of range"; use premium-0 or larger.
 
 # Kept apart from DJANGO_HUEY, whose connections are prebuilt pools (see
 # redis_connection), for things that need the URL itself: the system-status
