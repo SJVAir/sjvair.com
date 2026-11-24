@@ -8,12 +8,12 @@ from django.utils.http import urlsafe_base64_encode
 from django.utils.translation import gettext_lazy as _
 
 from django_recaptcha.fields import ReCaptchaField
-from django_recaptcha.widgets import ReCaptchaV2Checkbox
 from phonenumber_field.formfields import PhoneNumberField
 from phonenumber_field.validators import validate_international_phonenumber
 from phonenumber_field.widgets import RegionalPhoneNumberWidget
 
 from camp.apps.accounts import sms_keywords
+from camp.utils.forms import VisibleReCaptchaV2Checkbox
 
 from .models import User
 
@@ -162,7 +162,7 @@ class UserCreationForm(forms.ModelForm):
         widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}),
     )
 
-    captcha = ReCaptchaField(label='')
+    captcha = ReCaptchaField(label='', widget=VisibleReCaptchaV2Checkbox)
 
     class Meta:
         model = User

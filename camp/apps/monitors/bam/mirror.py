@@ -75,7 +75,7 @@ def mirror_entries(monitor, client, start, end):
     save them, and run them through the processing pipeline. Returns the
     number of raw entries created or updated.
     '''
-    count = 0
+    created = []
     for EntryModel, field_map in API_FIELD_MAP.items():
         items = client.monitors.entries(
             monitor.pk, EntryModel.entry_type,
@@ -102,9 +102,13 @@ def mirror_entries(monitor, client, start, end):
                 # Already present and unchanged.
                 continue
 
-            monitor.process_entry_pipeline(entry)
-            count += 1
-    return count
+            created.append(entry)
+
+    # Process oldest first, after every RAW row is saved: the FEM cleaner
+    # looks back at the two previous hours, and the API lists newest first.
+    for entry in sorted(created, key=lambda e: e.timestamp):
+        monitor.process_entry_pipeline(entry)
+    return len(created)
 
 
 def mirror_bam_data(start, end, monitor_ids=None, log=None):

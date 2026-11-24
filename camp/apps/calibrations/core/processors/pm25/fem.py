@@ -28,5 +28,11 @@ class PM25_FEM_Cleaner(BaseProcessor):
         if (self.entry.value < self.MIN_VALID) or (self.entry.value >= self.MAX_VALID):
             return None  # Discard clearly invalid data
 
+        # Monitor types that track instrument alarms (e.g. BAM 1022) decide
+        # whether this hour can be trusted. Others don't define the hook.
+        is_disturbed = getattr(self.entry.monitor, 'is_disturbed', None)
+        if is_disturbed is not None and is_disturbed(self.entry.timestamp):
+            return None
+
         value = max(self.entry.value, 0)  # Clamp negative to 0
         return self.build_entry(value=value)

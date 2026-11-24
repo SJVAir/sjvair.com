@@ -76,10 +76,11 @@ def get_entry_filterset(EntryModel):
             processor = self.data.get('processor')
             stage = self.data.get('stage')
 
-            # If neither stage nor calibration are specified, apply default stage
+            # If neither stage nor processor is specified, return the published
+            # series (DefaultCalibration's processor, else the default stage),
+            # so a history chart matches the reading the map and detail show.
             if not processor and not stage:
-                stage = self.monitor.get_default_stage(EntryModel)
-                queryset = queryset.filter(stage=stage)
+                queryset = queryset.filter(**self.monitor.get_published_lookup(EntryModel))
 
             # If stage=calibrated is set, but no processor, use default calibration
             elif not processor and stage == EntryModel.Stage.CALIBRATED:
