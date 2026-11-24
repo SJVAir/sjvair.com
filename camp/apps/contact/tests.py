@@ -51,3 +51,10 @@ class ReportPrefillTests(TestCase):
     def test_no_prefill_without_topic(self):
         form = self.get('/workspace/shared/abc', topic=None)
         assert 'message' not in form.initial
+
+
+class ContactFormTests(TestCase):
+    def test_captcha_renders_once(self):
+        response = self.client.get('/contact/', follow=True)
+        assert response.status_code == 200
+        assert response.content.decode().count('class="g-recaptcha') == 1

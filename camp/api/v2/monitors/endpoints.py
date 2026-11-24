@@ -43,7 +43,6 @@ class MonitorMixin:
         queryset = (super()
             .get_queryset()
             .select_related('health', 'airgradient__place')
-            .prefetch_related('latest_entries')
             .with_last_entry_timestamp()
         )
 
@@ -418,9 +417,7 @@ class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
             return self.model.objects.none()
 
         # Everything up to the slice stays in SQL, so only the 3 nearest
-        # monitors are ever loaded. Not MonitorMixin's queryset: its
-        # latest_entries prefetch isn't needed here (is_active reads the
-        # last_entry_timestamp annotation). Active is an EXISTS, not
+        # monitors are ever loaded. Active is an EXISTS, not
         # get_active()'s join + DISTINCT: that join repeats each monitor once
         # per LatestEntry row, and the inflated row estimate pushed the plan
         # over Postgres' JIT threshold (~400 ms of JIT per request).
@@ -445,13 +442,14 @@ class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
         # a second time after get_queryset() returns, on the evaluated list.
         queryset = MonitorFilter(self.request.GET, queryset=queryset).qs
 
-        monitors = list(queryset[:3])
-        queryset.attach_latest_entries(monitors, self.entry_model)
-        return monitors
+        return queryset.attach_latest_entries(list(queryset[:3]), self.entry_model)
 
     def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
         entry_type = self.entry_model.entry_type
         include = [
+            # Active for this entry type: a monitor whose PM2.5 stopped while
+            # its O3 keeps arriving is inactive for PM2.5.
+            ('is_active', lambda monitor: monitor.latest_entry is not None and monitor.latest_entry.is_recent),
             ('distance', lambda monitor: monitor.distance.ft),
             ('latest', lambda monitor: EntrySerializer(getattr(monitor, f'latest_{entry_type}')).serialize()),
         ]
@@ -465,7 +463,9 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
     cache_refresh_kwargs = [{'entry_type': E.entry_type} for E in BaseEntry.get_subclasses()]
     cache_refresh_name = 'api:v2:monitors:current-data'
     cache_encoded = True
-    cache_key_version = 1  # entries are encoded bytes, not data
+    # 1: entries are encoded bytes, not data. 2: is_active is for the entry
+    # type, and latest is the published reading (Monitor.choose_latest_entry).
+    cache_key_version = 2
     cache_timeout = 90
 
     paginate = False
@@ -473,11 +473,8 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
     streaming = True
 
     def get_queryset(self, *args, **kwargs):
-        # No latest_entries prefetch: nothing here reads it (is_active uses
-        # the last_entry_timestamp annotation).
         queryset = (super()
             .get_queryset(*args, **kwargs)
-            .prefetch_related(None)
             .get_public()
             .published_for(self.entry_model)
             .filter(position__isnull=False)
@@ -513,7 +510,11 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
         return queryset
 
     def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
-        include = [('latest', lambda monitor: EntrySerializer(monitor.latest_entry).serialize())]
+        include = [
+            # Active for this entry type (see ClosestMonitor.serialize).
+            ('is_active', lambda monitor: monitor.latest_entry is not None and monitor.latest_entry.is_recent),
+            ('latest', lambda monitor: EntrySerializer(monitor.latest_entry).serialize()),
+        ]
         return super().serialize(source, fields, include, exclude, fixup)
 
 
