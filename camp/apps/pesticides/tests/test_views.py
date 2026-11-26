@@ -147,12 +147,18 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         assert response.context['hide_lbs'] is True
         assert 'Lbs applied' not in html
 
-    def test_county_scope_is_left_off_pages_narrower_than_a_county(self):
+    def test_place_page_county_picker_switches_pages_not_scope(self):
         region = Region.objects.get(pk=9001)
-        html = self.client.get(reverse('pesticides:region', kwargs={'sqid': region.sqid, 'slug': region.slug}), {'county': 'kern'}).content.decode()
+        url = reverse('pesticides:region', kwargs={'sqid': region.sqid, 'slug': region.slug})
+        html = self.client.get(url, {'county': 'kern', 'year': '2023'}).content.decode()
         assert 'data-scope="year"' in html
-        assert 'data-scope="county"' not in html
-        # The scope still rides along in the page's links.
+        # The picker is set to the page's own county, each option a county's page.
+        menu = html.split('id="scope-menu-county"')[1].split('data-scope="narrow"')[0]
+        assert f'href="{url}?year=2023" aria-current="page"' in menu
+        assert f'href="{reverse("pesticides:home")}?year=2023">All counties' in menu
+        assert 'county=' not in menu
+        assert '<span class="explorer-scope-label">Fresno</span>' in html
+        # The scope still rides along in the page's other links.
         assert 'county=kern' in html
 
     def test_default_sort_is_lbs_desc(self):

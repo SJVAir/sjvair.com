@@ -1248,6 +1248,25 @@ def area_tabs(view, area, current):
     ]
 
 
+# The Valley-wide page for an area tab: where a county page's "All counties" goes.
+VALLEY_TAB_URLS = {
+    'overview': 'emissions:home',
+    'facilities': 'emissions:facility-list',
+    'dairies': 'emissions:dairy-list',
+    'oil-gas': 'emissions:oil-gas',
+    'methane': 'emissions:methane',
+}
+
+
+def county_switch(request, county, tab, subview=None):
+    """The county picker on a region's page, set to its county (headers.county_switch)."""
+    valley = VALLEY_TAB_URLS.get(tab)
+    return headers.county_switch(
+        request.GET, county, url_method='get_emissions_tab_url', tab=tab,
+        valley_url=reverse(valley) if valley else None, path_suffix='table/' if subview == 'table' else '',
+    )
+
+
 class OilGasTabMixin:
     """
     An Oil & gas tab's context, an area's (AreaPage) or the whole Valley's
@@ -1685,6 +1704,8 @@ class RegionPage(RegionLookupMixin, AreaPage):
         if tab == 'oil-gas':
             extra['wells_block'] = wells_block(self.get_area(), self.get_scope(), kern=is_kern(region))
         extra['ab617'] = ab617_notice(region)
+        # The county picker, set to the region's county, switches county on the same tab.
+        extra.update(county_switch(self.request, self.get_county(), tab, self.subview))
         extra['buffer_note'] = self.buffer_note()
         county_scope = stats.Scope(
             year=self.get_scope().year, county=region, pollutant=self.get_scope().pollutant, minor=self.get_scope().minor,

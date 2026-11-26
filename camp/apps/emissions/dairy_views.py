@@ -521,6 +521,8 @@ class RegionDairies(views.RegionLookupMixin, DairyAreaPage):
             kind=region.type_label,
             population=(region.metadata or {}).get('population'),
             county_region=county,
+            # The county picker, set to the region's county, switches county on the same tab.
+            **views.county_switch(self.request, county, 'dairies', self.subview),
             # Non-county pages point at the county's dairy page for CARB's estimate.
             county_dairies_url=county.get_emissions_dairies_url() if county is not None and county != region else None,
             within=views.region_within_dairies(region),

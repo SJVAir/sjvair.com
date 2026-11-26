@@ -60,3 +60,36 @@ def region_header(region, *, url_method, tab='overview', scope_qs=''):
 def point_kind(radius):
     """The gray line for a near-me page: 'Within 3 miles'."""
     return f'Within {radius} mile{"" if radius == 1 else "s"}'
+
+
+def county_switch(params, county, *, url_method, tab='overview', valley_url=None, path_suffix=''):
+    """
+    The scope bar's county picker on an area page, which can't scope by
+    ?county= (the page is the area), so each option is a page of its own:
+    set to `county` (the page's own county, or the one it sits in), each
+    county linking to the same `tab` of its page (`url_method`, as in
+    region_header) and "All counties" to `valley_url`, the explorer's
+    Valley-wide page for the tab (None: no "All counties"). `path_suffix`
+    goes on every path ('table/' for a Table subview). `params` (a QueryDict)
+    is the query every link keeps, less the page number, the region's buffer
+    and any stray ?county=.
+
+    {'county_links': [{name, url, current}], 'county_current',
+    'all_counties_url'} for includes/scope-picker.html; {} with no county.
+    """
+    if county is None:
+        return {}
+    params = params.copy()
+    for key in ('page', 'buffer', 'county'):
+        params.pop(key, None)
+    query = params.urlencode()
+    suffix = path_suffix + (f'?{query}' if query else '')
+    links = [
+        {'name': option.name, 'url': getattr(option, url_method)(tab) + suffix, 'current': option.pk == county.pk}
+        for option in Region.objects.counties().filter(boundary__isnull=False).order_by('name')
+    ]
+    return {
+        'county_links': links,
+        'county_current': county,
+        'all_counties_url': valley_url + suffix if valley_url else None,
+    }

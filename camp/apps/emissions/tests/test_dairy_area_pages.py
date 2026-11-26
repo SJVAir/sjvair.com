@@ -127,8 +127,10 @@ class ScopeTests(DairyAreaTestCase):
         response = self.get(self.fresno_city, {'year': '2023', 'county': 'kern'})
         content = response.content.decode()
         assert 'county=' not in content
-        assert 'data-scope="county"' not in content
         assert response.context['county_options'] == []
+        # The county picker is the city's county, each option a county's dairy page.
+        assert response.context['county_current'] == self.fresno
+        assert '<span class="explorer-scope-label">Fresno</span>' in content
 
     def test_disabled_options_have_the_tabs_tooltips(self):
         content = self.get(self.fresno, {'year': '2023'}).content.decode()
