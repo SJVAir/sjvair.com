@@ -211,6 +211,48 @@ class HistoryChunkTaskTests(TestCase):
         assert gap.reason == PurpleAirHistoryGap.Reason.ERROR
         assert gap.message == "KeyError: 'fields'"
 
+    def test_cancelled_job_skips_the_request(self):
+        self.job.state = PurpleAirHistoryJob.State.DONE
+        self.job.save()
+        with patch(API) as api:
+            self.run_chunk()
+        assert api.call_count == 0
+        assert self.job.pending_tasks == 0
+
+    def test_paused_job_still_imports(self):
+        # Resuming continues from this batch, so its windows must be filled.
+        self.job.state = PurpleAirHistoryJob.State.PAUSED
+        self.job.save()
+        with patch(API, return_value=_tail(WINDOW_END, 3)):
+            self.run_chunk()
+        assert _pm25_raw(self.monitor).count() == 6
+
+    def test_retry_still_imports_for_a_finished_job(self):
+        self.job.state = PurpleAirHistoryJob.State.DONE
+        self.job.save()
+        with patch(API, return_value=_tail(WINDOW_END, 3)):
+            self.run_chunk(batch_id=None)
+        assert _pm25_raw(self.monitor).count() == 6
+
+    def test_clean_import_clears_an_earlier_gap(self):
+        PurpleAirHistoryGap.objects.create(
+            job=self.job, monitor=self.monitor, window_start=WINDOW_START, window_end=WINDOW_END,
+            reason=PurpleAirHistoryGap.Reason.ERROR, message='earlier failure',
+        )
+        with patch(API, return_value=_tail(WINDOW_END, 3)):
+            self.run_chunk()
+        assert not PurpleAirHistoryGap.objects.exists()
+
+    def test_leftover_task_of_a_failed_job_leaves_it_alone(self):
+        from camp.apps.monitors.tasks import _fail_job
+        self.job.pending_tasks = 2
+        _fail_job(self.job, 'PurpleAir history import', 'import_purpleair_history')
+        with patch(API) as api:
+            self.run_chunk(batch_id=1)  # still queued from the abandoned batch
+        assert api.call_count == 0
+        assert self.job.pending_tasks == 0
+        assert self.job.state == PurpleAirHistoryJob.State.FAILED
+
     def test_rerun_is_idempotent(self):
         rows = _rows(WINDOW_START, 5)
         with patch(API, return_value=rows):
@@ -309,6 +351,19 @@ class HistoryTickTests(TestCase):
         assert self.job.cursor == self.range_start
         assert _pm25_raw(self.monitor).count() == 6
 
+    def test_finishing_a_window_dispatches_the_next_in_the_same_tick(self):
+        self.job.range_end = self.job.cursor = self.range_end + timedelta(days=7)
+        self.job.save()
+        with patch(API, side_effect=lambda sensor, start, end: _tail(end, 3)) as api:
+            self.tick()  # dispatches [Jan 8, Jan 15); the task reports back
+            self.job.locked_at = None
+            self.job.save()
+            self.tick()  # completes it and dispatches [Jan 1, Jan 8)
+        assert api.call_count == 2
+        assert self.job.cursor == self.range_end
+        assert self.job.chunk_start == self.range_start
+        assert self.job.state == PurpleAirHistoryJob.State.RUNNING
+
     def test_monitor_ids_limit_the_dispatch(self):
         self.job.monitor_ids = [OTHER_ID]
         self.job.save()
@@ -366,7 +421,7 @@ class HistoryTickStalenessTests(TestCase):
         self.tick()
         assert self.job.cursor == self.range_end
         assert self.job.consecutive_failures == 0
-        assert self.job.batch_id == 2
+        assert self.job.batch_id == 3  # failing bumped it to 2, so stale tasks leave the job alone
 
 
 class HistoryCommandTests(TestCase):

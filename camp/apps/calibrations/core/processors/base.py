@@ -1,6 +1,8 @@
 from abc import ABC, ABCMeta, abstractmethod
+from decimal import Decimal
 
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, models, transaction
+from django.db.backends.utils import format_number
 from django.utils.functional import cached_property
 
 from camp.utils import classproperty
@@ -170,7 +172,7 @@ class BaseProcessor(ABC, metaclass=ProcessorMeta):
         sync_fields = [*processed.declared_field_names, 'calibration_id']
         changed_fields = [
             field for field in sync_fields
-            if getattr(existing, field) != getattr(processed, field)
+            if getattr(existing, field) != _as_stored(processed, field)
         ]
 
         if changed_fields and commit:
@@ -179,3 +181,16 @@ class BaseProcessor(ABC, metaclass=ProcessorMeta):
             existing.save()
 
         return existing
+
+
+def _as_stored(entry, name):
+    '''
+    The value as the database would store it. The stored row's decimals are
+    rounded to the field's places; the freshly computed ones aren't, so
+    comparing them raw rewrites rows that haven't changed.
+    '''
+    value = getattr(entry, name)
+    field = entry._meta.get_field(name)
+    if value is None or not isinstance(field, models.DecimalField):
+        return value
+    return Decimal(format_number(field.to_python(value), field.max_digits, field.decimal_places))

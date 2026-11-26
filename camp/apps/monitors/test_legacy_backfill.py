@@ -544,6 +544,11 @@ class BackfillLegacyEntriesTickStalenessTests(TestCase):
         assert self.job.consecutive_failures == 0
 
     def test_failed_job_clears_chunk_and_resumes_from_cursor(self):
+        # Legacy data in the unfinished chunk, so resuming has work to dispatch.
+        Entry.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=self.range_end - timedelta(days=1),
+            location=self.monitor.location, position=self.monitor.position, pm25_reported=Decimal('5.00'),
+        )
         self.job.consecutive_failures = 4
         self.job.save()
         with self.captureOnCommitCallbacks(execute=True):

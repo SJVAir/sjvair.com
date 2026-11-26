@@ -18,7 +18,7 @@ from camp.apps.monitors.purpleair.api import (
 )
 from camp.apps.monitors.purpleair.history import existing_raw_timestamps, monitors_for_window
 from camp.apps.monitors.purpleair.models import PurpleAir, PurpleAirHistoryGap, PurpleAirHistoryJob
-from camp.apps.monitors.tasks import _fail_job, _insert_raw_entries, _is_stalled
+from camp.apps.monitors.tasks import _advance_job, _fail_job, _insert_raw_entries, _is_stalled
 from camp.apps.regions.models import Region
 from camp.utils import gis
 
@@ -216,6 +216,13 @@ def _history_store(monitor, rows, start, end):
     return created
 
 
+def _history_job_active(job_id):
+    return PurpleAirHistoryJob.objects.filter(
+        pk=job_id,
+        state__in=[PurpleAirHistoryJob.State.RUNNING, PurpleAirHistoryJob.State.PAUSED],
+    ).exists()
+
+
 @db_task(priority=1, queue='secondary')
 def import_purpleair_history_chunk(job_id, monitor_id, start, end, batch_id=None):
     '''
@@ -229,6 +236,11 @@ def import_purpleair_history_chunk(job_id, monitor_id, start, end, batch_id=None
         monitor = PurpleAir.objects.filter(pk=monitor_id, sensor_id__isnull=False).first()
         if monitor is None:
             logger.warning('PurpleAir history: monitor %s no longer exists; skipping.', monitor_id)
+        elif batch_id is not None and not _history_job_active(job_id):
+            # Cancelled (DONE) or FAILED since dispatch: don't spend API
+            # points. A paused job still imports, since resuming continues
+            # from this batch.
+            logger.info('PurpleAir history: job %s is no longer running; skipping monitor %s.', job_id, monitor_id)
         else:
             rows, gap = _history_fetch(monitor, start, end, stats)
             stats['rows'] = len(rows)
@@ -237,7 +249,12 @@ def import_purpleair_history_chunk(job_id, monitor_id, start, end, batch_id=None
             )
             if rows:
                 stats['created'] = _history_store(monitor, rows, start, end)
-            if gap is not None and PurpleAirHistoryJob.objects.filter(pk=job_id).exists():
+            if gap is None:
+                # Imported cleanly: a gap recorded by an earlier attempt is filled.
+                PurpleAirHistoryGap.objects.filter(
+                    job_id=job_id, monitor=monitor, window_start=start, window_end=end,
+                ).delete()
+            elif PurpleAirHistoryJob.objects.filter(pk=job_id).exists():
                 reason, message = gap
                 PurpleAirHistoryGap.objects.update_or_create(
                     job_id=job_id, monitor=monitor, window_start=start, window_end=end,
@@ -303,13 +320,14 @@ def import_purpleair_history_tick():
                 _history_restart_batch(job)
             return
 
-        if job.chunk_start is not None:
-            _history_complete_chunk(job)
-        else:
-            job.chunk_start = chunk_start_for(job.cursor, job.range_start, job.chunk_days)
-            if job.consecutive_failures >= HISTORY_MAX_CONSECUTIVE_FAILURES:
-                job.consecutive_failures = 0  # resumed after FAILED: fresh retry budget
-            _history_dispatch(job)
+        _advance_job(job, _history_complete_chunk, _history_dispatch_next)
+
+
+def _history_dispatch_next(job):
+    job.chunk_start = chunk_start_for(job.cursor, job.range_start, job.chunk_days)
+    if job.consecutive_failures >= HISTORY_MAX_CONSECUTIVE_FAILURES:
+        job.consecutive_failures = 0  # resumed after FAILED: fresh retry budget
+    _history_dispatch(job)
 
 
 def _history_dispatch(job):

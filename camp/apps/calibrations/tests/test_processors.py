@@ -1,6 +1,6 @@
 from datetime import timedelta
 from decimal import Decimal
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
 from django.utils import timezone
@@ -744,6 +744,14 @@ class BaseProcessorRunIdempotencyTests(TestCase):
             sensor='a', stage=entry_models.PM25.Stage.CORRECTED,
         ).count()
         assert count == 1
+
+    def test_run_does_not_rewrite_a_row_that_only_differs_by_rounding(self):
+        # A freshly computed value carries more places than the column keeps.
+        self.raw.value = Decimal('10.001')
+        with patch.object(entry_models.PM25, 'save') as save:
+            result = _AlwaysDuplicateProcessor(self.raw).run()
+        assert result.pk == self.existing_corrected.pk
+        save.assert_not_called()
 
     def test_run_still_creates_when_nothing_exists(self):
         self.existing_corrected.delete()

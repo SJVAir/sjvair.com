@@ -243,10 +243,27 @@ def backfill_legacy_entries_tick():
                 _entry_backfill_restart_batch(job)
             return
 
+        _advance_job(job, _entry_backfill_complete_chunk, _entry_backfill_dispatch_chunk)
+
+
+MAX_CHUNKS_PER_TICK = 50
+
+
+def _advance_job(job, complete_chunk, dispatch_chunk):
+    '''
+    With no tasks pending: finish the current chunk, if any, and dispatch the
+    next one in the same tick, so no chunk waits a tick in between. A chunk
+    with nothing to dispatch is finished right away, up to
+    MAX_CHUNKS_PER_TICK of them per tick.
+    '''
+    for _ in range(MAX_CHUNKS_PER_TICK):
         if job.chunk_start is not None:
-            _entry_backfill_complete_chunk(job)
-        else:
-            _entry_backfill_dispatch_chunk(job)
+            complete_chunk(job)
+            if job.state != job.State.RUNNING:
+                return
+        dispatch_chunk(job)
+        if job.pending_tasks > 0:
+            return
 
 
 def _is_stalled(job, stale_before):
@@ -269,6 +286,9 @@ def _fail_job(job, job_label, management_command):
     job.pending_tasks = 0
     job.chunk_start = None
     job.state = job.State.FAILED
+    # Tasks still queued for the abandoned batch then find a stale batch_id
+    # and leave the job alone, instead of counting pending_tasks below zero.
+    job.batch_id += 1
     job.save()
     transaction.on_commit(lambda: _notify_job_failed(job, job_label, management_command))
 
@@ -393,10 +413,7 @@ def reprocess_legacy_pipeline_tick():
                 _pipeline_backfill_restart_batch(job)
             return
 
-        if job.chunk_start is not None:
-            _pipeline_backfill_complete_chunk(job)
-        else:
-            _pipeline_backfill_dispatch_chunk(job)
+        _advance_job(job, _pipeline_backfill_complete_chunk, _pipeline_backfill_dispatch_chunk)
 
 
 def _pipeline_backfill_dispatch_chunk(job):
