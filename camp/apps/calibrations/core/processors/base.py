@@ -132,6 +132,12 @@ class BaseProcessor(ABC, metaclass=ProcessorMeta):
 
         if processed.validation_check():
             if commit:
+                if getattr(processed.monitor, '_latest_deferral', None) is not None:
+                    # Reprocessing: the chunk wraps each entry in its own
+                    # transaction and retries it on a later run, so skip the
+                    # savepoint. A lost race fails (and rolls back) the entry.
+                    processed.save()
+                    return processed
                 try:
                     with transaction.atomic():
                         processed.save()

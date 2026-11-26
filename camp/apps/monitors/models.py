@@ -3,7 +3,7 @@ import logging
 import math
 import uuid
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -13,7 +13,7 @@ from django.conf import settings
 from django.core.exceptions import FieldDoesNotExist, ObjectDoesNotExist, ValidationError
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
-from django.db import IntegrityError, transaction
+from django.db import DatabaseError, IntegrityError, transaction
 from django.db.models import Avg, Q
 from django.utils import timezone
 from django.utils.functional import cached_property
@@ -623,13 +623,20 @@ class Monitor(models.Model):
             if cutoff_stage and processor.next_stage == cutoff_stage:
                 continue
 
-            # One failing processor must not stop the ones after it.
+            # One failing processor must not stop the ones after it. While
+            # reprocessing, the chunk's per-entry transaction isolates
+            # failures instead, so skip the savepoint (most processor runs
+            # write nothing). A database error then aborts the transaction,
+            # so it must reach the chunk to roll the entry back.
+            isolate = self._latest_deferral is None
             try:
-                with transaction.atomic():
+                with transaction.atomic() if isolate else nullcontext():
                     result = processor(entry).run()
                     if result:
                         self.update_latest_entry(result)
-            except Exception:
+            except Exception as err:
+                if not isolate and isinstance(err, DatabaseError):
+                    raise
                 logger.exception(
                     'Processor %s failed for %s %s (monitor=%s)',
                     processor.name, entry.__class__.__name__, entry.pk, self.pk,

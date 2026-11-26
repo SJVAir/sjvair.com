@@ -5,12 +5,13 @@ from unittest.mock import patch
 
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.db import connection
+from django.db import DatabaseError, connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 
 import pytest
 
+from camp.apps.calibrations.core.processors.base import BaseProcessor
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.legacy_backfill import (
     find_incomplete_pipelines, monitors_with_incomplete_pipelines_in, processable_stages,
@@ -237,14 +238,73 @@ class ReprocessLatestEntryTests(ReprocessChunkTestCase):
             assert entry_models.PM25.objects.filter(pk=latest_entry.entry_id).exists()
 
 
+    def test_database_error_in_a_processor_rolls_back_only_its_entry(self):
+        # Without per-processor savepoints, a database error rolls back the
+        # whole entry (ProcessEntryIsolationTests covers the re-raise itself;
+        # TestCase's wrapping transaction can't show a swallowed error).
+        self.make_raw_entries()
+        last = (entry_models.PM25.objects
+            .filter(monitor=self.monitor, stage=Stage.RAW)
+            .order_by('-timestamp').first())
+        original = entry_models.PM25.save
+
+        def failing_save(entry, *args, **kwargs):
+            if entry.stage == Stage.CORRECTED and entry.timestamp == last.timestamp:
+                with connection.cursor() as cursor:
+                    cursor.execute('SELECT 1 / 0')
+            return original(entry, *args, **kwargs)
+
+        with patch.object(entry_models.PM25, 'save', failing_save):
+            job = self.reprocess()
+
+        job.refresh_from_db()
+        assert job.pending_tasks == 0
+        assert not entry_models.PM25.objects.filter(
+            monitor=self.monitor, timestamp=last.timestamp, stage__in=[Stage.CORRECTED, Stage.CLEANED],
+        ).exists()
+        assert entry_models.PM25.objects.filter(
+            monitor=self.monitor, timestamp__lt=last.timestamp, stage=Stage.CLEANED,
+        ).exists()
+        # The rolled-back entry is still incomplete, so the next run retries it.
+        incomplete = find_incomplete_pipelines(
+            self.monitor, entry_models.PM25, self.start, self.end, '')
+        assert last.pk in {entry.pk for entry in incomplete}
+
+class ProcessEntryIsolationTests(ReprocessChunkTestCase):
+    # In production the chunk's per-entry atomic is the outermost transaction,
+    # and Postgres turns COMMIT of an aborted transaction into a silent
+    # ROLLBACK. So while reprocessing (no savepoints), process_entry_ng must
+    # re-raise database errors rather than log them and carry on.
+    def raw_entry(self):
+        self.make_raw_entries(count=1)
+        return entry_models.PM25.objects.filter(monitor=self.monitor, stage=Stage.RAW).first()
+
+    def test_reprocessing_reraises_database_errors(self):
+        entry = self.raw_entry()
+        with patch.object(BaseProcessor, 'run', side_effect=DatabaseError('boom')):
+            with self.monitor.deferred_latest_entries():
+                with pytest.raises(DatabaseError):
+                    self.monitor.process_entry_ng(entry)
+
+    def test_live_processing_isolates_database_errors(self):
+        entry = self.raw_entry()
+        with patch.object(BaseProcessor, 'run', side_effect=DatabaseError('boom')):
+            assert self.monitor.process_entry_ng(entry) == []
+
+    def test_reprocessing_still_isolates_python_errors(self):
+        entry = self.raw_entry()
+        with patch.object(BaseProcessor, 'run', side_effect=ValueError('boom')):
+            with self.monitor.deferred_latest_entries():
+                assert self.monitor.process_entry_ng(entry) == []
+
 class ReprocessQueryBudgetTests(ReprocessChunkTestCase):
     count = 30
 
     # Measured 24.5 per RAW PM2.5 entry after the reprocess optimizations
-    # (31.4 before), then 38.3 once each processor run and each processor
-    # save got its own savepoint (failure isolation and the save race, from
-    # main): ~18 of the 38 are SAVEPOINT/RELEASE pairs. Bound has ~20% headroom.
-    MAX_QUERIES_PER_ENTRY = 46
+    # (31.4 before). Main's per-processor and per-save savepoints would make
+    # it 38.3; reprocessing skips them (the chunk's per-entry transaction
+    # isolates failures), which keeps it at 24.5. Bound has ~20% headroom.
+    MAX_QUERIES_PER_ENTRY = 29.5
 
     def test_queries_per_raw_pm25_entry(self):
         self.make_raw_entries()
