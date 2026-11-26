@@ -26,7 +26,7 @@
             <div class="navbar-start">
                 <a class="navbar-item" href="/alerts/">Text Alerts</a>
                 <a class="navbar-item has-text-weight-medium" href="/app/">Get the App!</a>
-                {% if beta_tools %}
+                {# The explorers are public; a tool still in beta goes in a beta_tools check. #}
                 <div class="navbar-item has-dropdown is-hoverable">
                     <a class="navbar-link">Data Tools</a>
                     <div class="navbar-dropdown">
@@ -39,13 +39,14 @@
                             <span class="icon"><span class="fa-regular fa-fw fa-industry-windows"></span></span>
                             <span>Facility Emissions Explorer</span> <span class="tag is-success explorer-beta">Beta</span>
                         </a>
+                        {% if beta_tools %}
                         <a class="navbar-item" href="/workspace/">
                             <span class="icon"><span class="fa-regular fa-fw fa-chart-mixed"></span></span>
                             <span>My Dashboard</span> <span class="tag is-success explorer-beta">Beta</span>
                         </a>
+                        {% endif %}
                     </div>
                 </div>
-                {% endif %}
                 <div class="navbar-item has-dropdown is-hoverable">
                     <a class="navbar-link">Resources</a>
                     <div class="navbar-dropdown">
@@ -219,7 +220,6 @@
                         </span>
                         <a href="{% static 'docs/Wildfire-Smoke-Preparedness-2021.pdf' %}">Wildfire Smoke Preparedness</a>
                     </li>
-                    {% if beta_tools %}
                     <li>
                         <span class="fa-li">
                             <span class="fa-regular fa-fw fa-spray-can-sparkles"></span>
@@ -232,6 +232,7 @@
                         </span>
                         <a href="{% url 'emissions:home' %}">Facility Emissions Explorer</a>
                     </li>
+                    {% if beta_tools %}
                     <li>
                         <span class="fa-li">
                             <span class="fa-regular fa-fw fa-chart-mixed"></span>

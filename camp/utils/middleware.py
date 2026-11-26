@@ -14,7 +14,7 @@ class TimezoneMiddleware:
         return self.get_response(request)
 
 class BetaToolsMiddleware:
-    """The beta pages (/tools/, /workspace) are a 404 for anyone without the flag (see utils.beta)."""
+    """The beta pages (/tools/ but the public explorers, /workspace) are a 404 for anyone without the flag (see utils.beta)."""
     def __init__(self, get_response):
         self.get_response = get_response
 
