@@ -1,5 +1,6 @@
 from django.core.management.base import BaseCommand
 
+from camp.apps.pesticides import stats
 from camp.apps.pesticides.spraydays import SJV_COUNTY_CODES, fetch_applications
 
 
@@ -15,7 +16,11 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        fetch_applications(
-            county_filter=options.get('county'),
-            stdout=self.stdout,
-        )
+        # Bump even on failure: a partial fetch may have changed notices.
+        try:
+            fetch_applications(
+                county_filter=options.get('county'),
+                stdout=self.stdout,
+            )
+        finally:
+            stats.bump_notices_version()

@@ -128,6 +128,14 @@ class CountyMapTests(TestCase):
         assert maps.RAMP[-1] in html      # the only county with data gets the darkest step
         assert maps.NO_DATA in html       # a county with no rows is gray
 
+    def test_county_retired_after_geometries_cached_is_omitted(self):
+        maps.county_map(self.rows)  # warms the 24h geometry cache
+        assert 9002 in maps.county_geometries(maps.FIGURE_SIMPLIFY_TOLERANCE)
+        Region.all_objects.get(pk=9002).retire(since='2026-01-01')
+        html = maps.county_map(self.rows)
+        assert 'Fresno County' in html
+        assert 'Kern County' not in html
+
     def test_none_without_geometries(self):
         Region.objects.filter(type='county').update(boundary=None)
         assert maps.county_map(self.rows) is None

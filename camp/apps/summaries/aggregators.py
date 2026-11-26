@@ -40,8 +40,24 @@ def _stage_for_processor(processor):
     return Stage.RAW if not processor else Stage.CALIBRATED
 
 
-def compute_stats(values, expected_count):
-    """Compute summary stats from a list of float values."""
+def hourly_output_processor(processor):
+    """
+    The registered processor class when it publishes one value per hour
+    (`output_interval == '1h'`), else None. Blank (RAW) is never one.
+    """
+    from camp.apps.calibrations import processors
+
+    if not processor or processor not in processors:
+        return None
+    cls = processors[processor]
+    return cls if getattr(cls, 'output_interval', None) == '1h' else None
+
+
+def compute_stats(values, expected_count, is_complete=None):
+    """
+    Compute summary stats from a list of float values. An explicit
+    `is_complete` overrides the 80% rule.
+    """
     if not values:
         return None
 
@@ -67,7 +83,7 @@ def compute_stats(values, expected_count):
         'p25': float(np.percentile(arr, 25)),
         'p75': float(np.percentile(arr, 75)),
         'tdigest': tdigest_to_dict(digest),
-        'is_complete': count >= 0.8 * expected_count,
+        'is_complete': count >= 0.8 * expected_count if is_complete is None else is_complete,
     }
 
 
@@ -95,16 +111,37 @@ def compute_monitor_summary(monitor, timestamp, EntryModel, processor):
         if v is not None
     ]
 
+    cls = hourly_output_processor(processor)
+    if cls is not None:
+        # One value per hour: complete when enough source readings went into it.
+        source_count = EntryModel.objects.filter(
+            monitor=monitor,
+            timestamp__gte=timestamp,
+            timestamp__lt=hour_end,
+            stage=cls.source_stage,
+        ).count()
+        return compute_stats(
+            values, 1,
+            is_complete=source_count >= 0.8 * (monitor.expected_hourly_entries or 1),
+        )
+
     return compute_stats(values, monitor.expected_hourly_entries or 1)
 
 
-def rollup_summaries(records):
+def rollup_summaries(records, with_tdigest=True, hourly_output=False):
     """
     Aggregate a list of MonitorSummary value dicts into one stats dict.
     Used to roll up hourly → daily → monthly etc.
 
     Each dict must have: count, expected_count, sum_value, sum_of_squares,
-    minimum, maximum, tdigest.
+    minimum, maximum, tdigest. `with_tdigest=False` leaves the merged digest
+    out of the result (rows that are never saved, like open days, don't need it).
+
+    `hourly_output=True` is for a series whose processor publishes one value
+    per hour (`hourly_output_processor`): its hours have `count == 1` however
+    many readings went into them, so the 80% rule credits only the records
+    stored `is_complete` (each dict must then carry it). A coarser row credits
+    its complete days' counts, so an incomplete day counts for nothing.
 
     Returns None if records is empty or total count is zero.
     """
@@ -127,6 +164,11 @@ def rollup_summaries(records):
 
     merged = merge_tdigests([r['tdigest'] for r in records])
 
+    if hourly_output:
+        credited = sum(r['count'] for r in records if r['is_complete'])
+    else:
+        credited = count
+
     return {
         'count': count,
         'expected_count': expected_count,
@@ -138,12 +180,12 @@ def rollup_summaries(records):
         'stddev': stddev,
         'p25': merged.percentile(25),
         'p75': merged.percentile(75),
-        'tdigest': tdigest_to_dict(merged),
-        'is_complete': count >= 0.8 * expected_count,
+        **({'tdigest': tdigest_to_dict(merged)} if with_tdigest else {}),
+        'is_complete': credited >= 0.8 * expected_count,
     }
 
 
-def rollup_region_stats(records):
+def rollup_region_stats(records, with_tdigest=True):
     """
     Aggregate a list of RegionSummary value dicts into one stats dict.
 
@@ -153,7 +195,8 @@ def rollup_region_stats(records):
     weights whose rounded sum diverges from the true total.
 
     Each dict must have: count, weight, expected_count, sum_value,
-    sum_of_squares, minimum, maximum, tdigest.
+    sum_of_squares, minimum, maximum, tdigest. `with_tdigest` as in
+    rollup_summaries.
 
     Returns None if records is empty or total weight is zero.
     """
@@ -189,7 +232,7 @@ def rollup_region_stats(records):
         'stddev': stddev,
         'p25': merged.percentile(25),
         'p75': merged.percentile(75),
-        'tdigest': tdigest_to_dict(merged),
+        **({'tdigest': tdigest_to_dict(merged)} if with_tdigest else {}),
     }
 
 

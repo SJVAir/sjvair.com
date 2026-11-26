@@ -43,7 +43,7 @@ class Command(BaseCommand):
                 'storymaps_url': props.get('STORYMAPS') or '',
             }
 
-            region, created = Region.objects.import_or_update(
+            region, created = Region.all_objects.import_or_update(
                 name=name,
                 slug=slugify(name),
                 type=Region.Type.AB617_COMMUNITY,

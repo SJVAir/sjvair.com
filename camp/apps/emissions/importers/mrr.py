@@ -135,7 +135,7 @@ def is_basin_wide(row):
 
 def valley_zips():
     """{zip5: Region} for every ZIP Region we carry: the Valley filter, since MRR has no county."""
-    return {region.external_id: region for region in Region.objects.filter(type=Region.Type.ZIPCODE)}
+    return {region.external_id: region for region in Region.all_objects.filter(type=Region.Type.ZIPCODE)}
 
 
 def apply(rows, gases, year):

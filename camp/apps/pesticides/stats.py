@@ -6,7 +6,7 @@ per-month rollup of PesticideUse rebuilt by camp.apps.pesticides.rollup.
 """
 import math
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from types import SimpleNamespace
 
 from django.contrib.gis.db.models.functions import Centroid
@@ -14,6 +14,8 @@ from django.contrib.gis.geos import MultiPoint, Polygon
 from django.contrib.gis.measure import D
 from django.conf import settings
 from django.core.cache import cache
+from django.core.exceptions import EmptyResultSet
+from django.db import connection
 from django.db.models import Case, Count, Exists, F, FloatField, Max, Min, OuterRef, Q, Sum, When
 from django.db.models.functions import Lower, Trim
 from django.utils import timezone
@@ -49,6 +51,7 @@ RELATED_LIMIT = 5
 ALL_YEARS_KEY = 'pesticides:all-years'
 ALL_YEARS_TTL = None
 DATA_VERSION_KEY = 'pesticides:data-version'
+NOTICES_VERSION_KEY = 'pesticides:notices-version'
 # refresh_landing_stats deletes and rebuilds these after every import.
 LATEST_YEAR_TTL = None
 LANDING_TTL = 60 * 60 * 24
@@ -378,6 +381,25 @@ METHOD_ORDER = ('G', 'A', 'F', 'O', '')
 # SprayDays names its methods itself; where they differ from the labels above
 # for the same thing, tables show ours.
 NOTICE_METHOD_LABELS = {'Aircraft': 'Air'}
+# The use records' method code a SprayDays method means (compared ignoring case). `O`
+# is any other non-blank method; blank is not reported.
+NOTICE_METHOD_FOR_CODE = {'G': 'Ground', 'A': 'Aircraft', 'F': 'Fumigation'}
+
+
+def notice_method_code(application_method):
+    """
+    The use-record method code (`aerial_ground`: G/A/F/O/none) for a notice's SprayDays
+    wording, by the same rule as the `aerial_ground` filter (sections.notice_method_q):
+    Ground, Aircraft and Fumigation ignoring case, any other non-blank wording `O`, blank
+    `none`. Never null: `application_method` is a non-null CharField.
+    """
+    if application_method == '':
+        return 'none'
+    lowered = application_method.lower()
+    for code, wording in NOTICE_METHOD_FOR_CODE.items():
+        if lowered == wording.lower():
+            return code
+    return 'O'
 
 
 def by_method(rows, year, lbs_field='lbs_chemical', all_years=False, apps_field='records'):
@@ -612,7 +634,7 @@ def by_county(rows, year, lbs_field='lbs_chemical', all_years=False, apps_field=
     )
     # sqid isn't a DB column, so it can't come off the aggregate above --
     # one in_bulk() for the (at most eight) counties involved.
-    regions = Region.objects.in_bulk([row['county_id'] for row in counties])
+    regions = Region.all_objects.in_bulk([row['county_id'] for row in counties])
     return [
         {
             'county_id': row['county_id'],
@@ -924,6 +946,64 @@ def by_township(rows, year, all_years=False, chemical_scoped=False):
     return totals
 
 
+def section_totals_by_record(rows):
+    """`totals_by_record` grouped by section: {section pk: totals}."""
+    return totals_by_record(rows, 'mtrs')
+
+
+def totals_by_record(rows, group):
+    """
+    {group value: {'lbs_chemical', 'lbs_product', 'acres_treated', 'applications'}}, `group`
+    one of the record key's columns (year, month, county, mtrs, product, commodity, method), for rows
+    that can keep several ingredient rows of one record (a category or IARC filter, no
+    chemical), counted as `places.monthly_use` counts them: pounds sum `lbs_chemical`, and
+    product pounds, acres and applications take the MAX per record key, then sum per group.
+    """
+    # places imports the API's sections module, which imports this one.
+    from camp.apps.pesticides.places import _RECORD_KEY
+    # Interpolated into the SQL below.
+    assert group in _RECORD_KEY, group
+    inner = (
+        rows.order_by()
+        .values(*_RECORD_KEY)
+        .annotate(p=Sum('lbs_chemical'), pp=Max('lbs_product'), a=Max('acres_treated'), n=Max('applications'))
+    )
+    try:
+        sql, params = inner.query.sql_with_params()
+    except EmptyResultSet:
+        # .none() (no year loaded) or no sections: nothing to wrap.
+        return {}
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f'SELECT g.{group}, SUM(g.p), SUM(g.pp), SUM(g.a), SUM(g.n) '
+            f'FROM ({sql}) g WHERE g.{group} IS NOT NULL GROUP BY g.{group}',
+            params,
+        )
+        return {
+            key: {
+                'lbs_chemical': float(pounds or 0),
+                'lbs_product': float(product or 0),
+                'acres_treated': float(acres or 0),
+                'applications': int(applications or 0),
+            }
+            for key, pounds, product, acres, applications in cursor.fetchall()
+        }
+
+
+def fold_townships(by_section):
+    """{township: totals} from {section pk: totals}, through the section -> township index (as by_township folds)."""
+    index = township_index()
+    totals = {}
+    for mtrs, row in by_section.items():
+        township = index.get(mtrs)
+        if township is None:
+            continue
+        total = totals.setdefault(township, {field: 0 for field in TOWNSHIP_FIELDS})
+        for field in TOWNSHIP_FIELDS:
+            total[field] += row[field] or 0
+    return totals
+
+
 def year_totals(rows, year, lbs_field='lbs_chemical', all_years=False, apps_field='records'):
     data = in_year(rows, year, all_years).aggregate(
         lbs=Sum(lbs_field),
@@ -1062,6 +1142,62 @@ def recent_uses(uses, limit=10):
 # the grower then has up to four days after that date to start. A notice is
 # "active" until that grace period has passed.
 NOTICE_GRACE_DAYS = 4
+
+
+def _pacific_day_start(day):
+    return datetime(day.year, day.month, day.day, tzinfo=settings.DEFAULT_TIMEZONE)
+
+
+def notice_day_bounds(day):
+    """
+    [start, end) Pacific instants of the notices active on `day`: scheduled
+    from four days before it through the end of the day itself.
+    """
+    return (
+        _pacific_day_start(day - timedelta(days=NOTICE_GRACE_DAYS)),
+        _pacific_day_start(day + timedelta(days=1)),
+    )
+
+
+def notices_on(notices, day):
+    """The notices (a queryset) active on `day`, per notice_day_bounds."""
+    start, end = notice_day_bounds(day)
+    return notices.filter(scheduled_application__gte=start, scheduled_application__lt=end)
+
+
+def notice_day_settled_at(day):
+    """
+    The instant after which no notice can newly be active on `day`: the later
+    of the Pacific start of day+5 and 96 hours past the end of the day (the two
+    differ by an hour across a DST change).
+    """
+    elapsed = (
+        _pacific_day_start(day + timedelta(days=1)).astimezone(dt_timezone.utc)
+        + timedelta(hours=24 * NOTICE_GRACE_DAYS)
+    ).astimezone(settings.DEFAULT_TIMEZONE)
+    return max(_pacific_day_start(day + timedelta(days=NOTICE_GRACE_DAYS + 1)), elapsed)
+
+
+def notices_version():
+    """
+    The version the notices feeds' cache keys carry. Bumped when notices
+    change, which retires every entry built before; an evicted version just
+    starts a new one, never a stale read.
+    """
+    value = cache.get(NOTICES_VERSION_KEY)
+    if value is None:
+        value = bump_notices_version()
+    return value
+
+
+def bump_notices_version():
+    """
+    Start a new notices version, retiring every cached notices answer. Call it
+    after anything that writes PesticideNotice rows.
+    """
+    value = str(time.time_ns())
+    cache.set(NOTICES_VERSION_KEY, value, None)
+    return value
 
 
 def _upcoming(notices):
@@ -1606,7 +1742,7 @@ def schools_near_use(year, all_years=False, county=None, concern=False):
     if concern:
         rows = narrow_rows(rows, concern)
     sections = list(in_year(rows, year, all_years).values_list('mtrs', flat=True).distinct())
-    boundaries = list(Region.objects.filter(pk__in=sections).values_list('boundary_id', flat=True))
+    boundaries = list(Region.all_objects.filter(pk__in=sections).values_list('boundary_id', flat=True))
     near = Boundary.objects.filter(
         pk__in=boundaries,
         geometry__dwithin=(OuterRef('point'), SCHOOLS_NEAR_PREFILTER_DEGREES),

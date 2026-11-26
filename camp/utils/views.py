@@ -107,12 +107,19 @@ class CachedEndpointMixin:
             response = api_settings.JSON_ENCODER().encode(response).encode('utf-8')
         if self.is_cacheable(response):
             try:
-                cache.set(cache_key, response, self.cache_timeout)
+                cache.set(cache_key, response, self.get_cache_timeout(response))
             except Exception as err:
                 # A cache that won't take the item (memcached's 1 MB limit, a
                 # backend hiccup) is a miss next time, never an error now.
                 logger.warning('Could not cache %s: %s', cache_key, err)
         return self._finalize_response(response, status)
+
+    def get_cache_timeout(self, response) -> int:
+        """
+        Seconds to cache this response. Called after the response is built,
+        so a subclass can read self.request to vary the timeout per request.
+        """
+        return self.cache_timeout
 
     def is_cacheable(self, response) -> bool:
         """
@@ -147,14 +154,22 @@ class CachedEndpointMixin:
         # TODO: Account for self.filter_class, so that the cache
         # isn't polluted with garbage kwargs.
 
-        params = self.request.GET.copy()
-        params.pop('_cc', None)
-        params.pop('_warm', None)
+        params = self.get_cache_key_params()
         if params:
             qs = urllib.parse.urlencode(params, doseq=True)
             key = f'{key}|q:{hashlib.sha1(qs.encode()).hexdigest()}'
 
         return key
+
+    def get_cache_key_params(self):
+        """
+        The query params that pick the cache entry: the request's, minus the
+        control params. Override to drop params that don't change the answer.
+        """
+        params = self.request.GET.copy()
+        params.pop('_cc', None)
+        params.pop('_warm', None)
+        return params
 
     def _finalize_response(self, response, cache_status: str):
         if isinstance(response, bytes):
@@ -280,7 +295,36 @@ class PageTemplate(generic.TemplateView):
         except TemplateDoesNotExist:
             raise Http404
 
-        return self.render_to_response({})
+        return self.render_to_response(self.get_page_context())
+
+    def get_page_context(self):
+        return {}
+
+
+class GuidelinesPage(PageTemplate):
+    """The /guidelines/ pages, built from the PM2.5 and AQI level sets."""
+
+    def get_page_context(self):
+        from camp.apps.entries import levels
+        from camp.apps.entries.guidelines import SCHOOL_ACTIVITIES
+        from camp.apps.entries.models import PM25
+        from camp.apps.entries.templatetags.level_tags import level_range
+
+        pm25_levels = list(levels.PM25)
+        pm25_ranges = level_range(levels.PM25, 1)
+        aqi_ranges = level_range(levels.AQI, 0)
+        return {
+            'levels': pm25_levels,
+            'pm25_units': PM25.units,
+            'columns': [
+                {'level': level, 'pm25_range': pm25, 'aqi_range': aqi}
+                for level, pm25, aqi in zip(pm25_levels, pm25_ranges, aqi_ranges, strict=True)
+            ],
+            'activities': [
+                {'activity': activity, 'cells': [activity.levels[level.key] for level in pm25_levels]}
+                for activity in SCHOOL_ACTIVITIES
+            ],
+        }
 
 
 class GetTheApp(vanilla.TemplateView):

@@ -177,7 +177,7 @@ def fetch_applications(county_filter=None, stdout=None):
     product_map = build_product_map()
     county_regions = {
         r.metadata['ca_county_code']: r
-        for r in Region.objects.filter(
+        for r in Region.all_objects.filter(
             type=Region.Type.COUNTY,
             metadata__ca_county_code__in=SJV_COUNTY_CODES,
         ).select_related('boundary')

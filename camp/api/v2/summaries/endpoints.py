@@ -1,12 +1,13 @@
-import calendar as cal
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from resticus import generics
 from resticus.http import Http400
 
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.http import Http404
+from django.utils.cache import get_conditional_response, patch_cache_control, set_response_etag
+from django.utils import timezone
 from django.utils.functional import cached_property
 
 from camp.api.v2.monitors.filters import MonitorFilter
@@ -14,25 +15,70 @@ from camp.apps.calibrations.models import DefaultCalibration
 from camp.apps.entries.utils import get_entry_model_by_name
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
+from camp.apps.summaries.open_days import cached_open_rows, open_days
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
+from camp.apps.summaries.periods import period_end
+from camp.apps.summaries.schedule import is_settled, settle_flags
+from camp.apps.summaries.selection import is_summarized
 from camp.utils.datetime import make_aware
 
-from .filters import BulkMonitorSummaryFilter, BulkRegionSummaryFilter
-from .forms import BulkMonitorSummaryForm, BulkRegionSummaryForm
+from .filters import (
+    BulkMonitorOpenDaysFilter,
+    BulkMonitorSummaryFilter,
+    BulkRegionOpenDaysFilter,
+    BulkRegionSummaryFilter,
+)
+from .forms import (
+    BulkMonitorScopeForm,
+    BulkMonitorSummaryForm,
+    BulkRegionScopeForm,
+    BulkRegionSummaryForm,
+)
 from .serializers import (
     BulkMonitorSummaryGroupSerializer,
     BulkRegionSummaryGroupSerializer,
     MonitorSummarySerializer,
     RegionSummarySerializer,
+    serializing_at,
 )
 
 
 VALID_RESOLUTIONS = {c.value for c in BaseSummary.Resolution}
 
+SETTLED_MAX_AGE = 24 * 60 * 60
+UNSETTLED_MAX_AGE = 60
+
 
 class SummaryMixin:
     paginate = True
     page_size = 168  # one week of hourly data
+    # Open-day rows change until their day settles, so they are always cached
+    # for a minute, whatever get_date_filter() says.
+    serves_open_days = False
+
+    def dispatch(self, request, *args, **kwargs):
+        # One instant per request: the cache rule below, every row's is_final
+        # and the open days all read it.
+        self.now = timezone.now()
+        with serializing_at(self.now) as serialized:
+            response = super().dispatch(request, *args, **kwargs)
+        if response.status_code != 200:
+            patch_cache_control(response, no_cache=True)
+            return response
+
+        # Summaries in a settled range no longer change, so they can be cached
+        # for a day; anything still being rolled up (or open-ended) for a minute.
+        settled = not self.serves_open_days and not serialized['partial'] and is_settled(
+            self.resolution, self.get_date_filter().get('timestamp__lt'), now=self.now,
+            **settle_flags(self.entry_model),
+        )
+        patch_cache_control(
+            response, private=True,
+            max_age=SETTLED_MAX_AGE if settled else UNSETTLED_MAX_AGE,
+        )
+        if not response.has_header('ETag'):
+            set_response_etag(response)
+        return get_conditional_response(request, etag=response['ETag'], response=response)
 
     @cached_property
     def resolution(self):
@@ -67,14 +113,13 @@ class SummaryMixin:
 
         if day is not None:
             start = make_aware(datetime(year, month, day), tz)
-            end = start + timedelta(days=1)
+            end = period_end('day', start)
         elif month is not None:
-            _, days_in_month = cal.monthrange(year, month)
             start = make_aware(datetime(year, month, 1), tz)
-            end = start + timedelta(days=days_in_month)
+            end = period_end('month', start)
         else:
             start = make_aware(datetime(year, 1, 1), tz)
-            end = make_aware(datetime(year + 1, 1, 1), tz)
+            end = period_end('year', start)
 
         return {'timestamp__gte': start, 'timestamp__lt': end}
 
@@ -102,11 +147,177 @@ class MonitorSummaryList(SummaryMixin, generics.ListEndpoint):
         return super().get_queryset().filter(monitor=monitor, processor=processor)
 
 
-class BulkMonitorSummaryList(SummaryMixin, generics.ListEndpoint):
+def _get_region(region_id):
+    try:
+        return Region.all_objects.get(sqid=region_id)
+    except (Region.DoesNotExist, ValueError):
+        raise Http404('Region not found')
+
+
+class MonitorOpenDays(SummaryMixin, generics.GenericEndpoint):
+    """Today's (and, until its rollup settles, yesterday's) daily rows for one monitor,
+    built on request from the hourly rows and never stored. Not paginated; `?processor=`
+    picks the series (default raw)."""
+
+    model = MonitorSummary
+    serializer_class = MonitorSummarySerializer
+    paginate = False
+    serves_open_days = True
+
+    def get(self, request, *args, **kwargs):
+        monitor = getattr(request, 'monitor', None)
+        if monitor is None:
+            raise Http404('Monitor not found')
+        rows = cached_open_rows(
+            'monitor', [monitor.pk], self.entry_model, self.now,
+            processor_q=Q(processor=request.GET.get('processor', '')),
+        ).get(monitor.pk, [])
+        return {'data': self.serialize(rows)}
+
+
+class RegionOpenDays(SummaryMixin, generics.GenericEndpoint):
+    """Today's (and, until its rollup settles, yesterday's) daily rows for one region."""
+
+    model = RegionSummary
+    serializer_class = RegionSummarySerializer
+    paginate = False
+    serves_open_days = True
+
+    def get(self, request, *args, **kwargs):
+        region = _get_region(kwargs.get('region_id'))
+        rows = cached_open_rows('region', [region.pk], self.entry_model, self.now).get(region.pk, [])
+        return {'data': self.serialize(rows)}
+
+
+class BulkFormMixin:
+    """Validates the bulk endpoints' query-string form; a bad one is a 400."""
+
+    def get_form_kwargs(self):
+        return {'resolution': self.resolution}
+
+    @cached_property
+    def form(self):
+        return self.get_form(self.request.GET, **self.get_form_kwargs())
+
+    def get(self, request, *args, **kwargs):
+        if not self.form.is_valid():
+            return Http400({'errors': self.form.errors.get_json_data()})
+        return super().get(request, *args, **kwargs)
+
+    def get_date_filter(self):
+        tz = settings.DEFAULT_TIMEZONE
+        start = make_aware(datetime.combine(self.form.cleaned_data['start'], datetime.min.time()), tz)
+        end = make_aware(datetime.combine(self.form.cleaned_data['end_exclusive'], datetime.min.time()), tz)
+        return {'timestamp__gte': start, 'timestamp__lt': end}
+
+
+class BulkMonitorScopeMixin:
+    """Which monitors and which series the monitor bulk endpoints return."""
+
+    @cached_property
+    def monitor_types(self):
+        """The `type` values (monitor types), or [] for every public type."""
+        return self.form.cleaned_data.get('type') or []
+
+    @cached_property
+    def opt_in_types(self):
+        """Opt-in monitor types (MONITOR_OPT_IN_TYPES, e.g. CIMIS) named by `type`
+        that summarize this entry type. They have no DefaultCalibration, so their
+        raw series is served."""
+        return sorted(
+            subclass.monitor_type for subclass in Monitor.get_subclasses()
+            if subclass.monitor_type in self.monitor_types
+            and subclass.monitor_type in settings.MONITOR_OPT_IN_TYPES
+            and is_summarized(subclass, self.entry_model)
+        )
+
+    def get_monitors(self):
+        monitors = Monitor.objects.get_queryset()
+        if self.monitor_types:
+            # Only the named types. The form allows only public and opt-in
+            # types, so this keeps get_public()'s rules: not hidden, and an
+            # opt-in type only when named.
+            published = set(DefaultCalibration.objects
+                .filter(entry_type=self.entry_model.entry_type)
+                .values_list('monitor_type', flat=True)
+            ) | set(self.opt_in_types)
+            lookup = Q()
+            for subclass in Monitor.get_subclasses():
+                if subclass.monitor_type in self.monitor_types and subclass.monitor_type in published:
+                    lookup |= Q(**subclass.type_queryset_filter())
+            monitors = monitors.filter(is_hidden=False).filter(lookup) if lookup else monitors.none()
+        else:
+            monitors = monitors.get_public().published_for(self.entry_model)
+
+        monitors = monitors.scope_to(
+            region_ids=self.request.GET.getlist('region'),
+            bbox=self.form.cleaned_data.get('bbox'),
+        )
+        return MonitorFilter(self.request.GET, queryset=monitors).qs
+
+    @cached_property
+    def series(self):
+        """
+        Which summary series to return, as (monitor type, processor) pairs; a
+        None type means every monitor. An explicit `?processor=` (blank
+        included) is an exact match across all monitors. Otherwise, per
+        monitor type, use the DefaultCalibration the map publishes when it
+        names a CALIBRATED processor (those are summarized), else raw -
+        FEM cleaners produce CLEANED entries, which are never summarized.
+        An opt-in type named by `type` (see opt_in_types) adds its raw series.
+        Ordered by type, so the filters built from it are stable.
+        """
+        if 'processor' in self.request.GET:
+            return [(None, self.request.GET['processor'])]
+
+        series = []
+        defaults = (DefaultCalibration.objects
+            .filter(entry_type=self.entry_model.entry_type)
+            .order_by('monitor_type')
+        )
+        for default in defaults:
+            if default.monitor_model is None:
+                continue
+            processor = ''
+            for candidate in default.allowed_processors:
+                if candidate.name == default.calibration and candidate.next_stage == self.entry_model.Stage.CALIBRATED:
+                    processor = candidate.name
+                    break
+            series.append((default.monitor_type, processor))
+
+        series += [(monitor_type, '') for monitor_type in self.opt_in_types]
+        series.sort(key=lambda pair: pair[0])
+        return series or [(None, '')]
+
+    def get_processor_filter(self):
+        """The `series` as a filter on MonitorSummary rows."""
+        lookup = Q()
+        for monitor_type, processor in self.series:
+            if monitor_type is None:
+                lookup |= Q(processor=processor)
+            else:
+                lookup |= Q(**{f'monitor__{monitor_type}__isnull': False}, processor=processor)
+        return lookup
+
+    def load_monitors(self, ids):
+        # Same related loads as MonitorMixin, so MonitorSerializer's health
+        # and is_active lookups don't cost a query per monitor.
+        return (Monitor.objects
+            .select_related('health')
+            .with_last_entry_timestamp()
+            .in_bulk(list(ids))
+        )
+
+
+class BulkMonitorSummaryList(BulkFormMixin, BulkMonitorScopeMixin, SummaryMixin, generics.ListEndpoint):
     """Summary statistics for every published monitor matching an inclusive `start`/`end` date
     range, optionally scoped to one or more `region` ids (covered by any of their boundaries)
     or a `bbox` (`west,south,east,north`). Each result is a monitor (same shape as the other
     monitor endpoints) with its matching rows nested under `summaries`.
+
+    `type` (repeatable monitor type ids, e.g. `purpleair`, as in monitors/meta/) keeps only
+    those types; an unknown type is a 400. It is the only way to reach an opt-in type (CIMIS),
+    whose raw series is returned. Without `type`, every public type is returned.
 
     `start` and `end` are required, and the span is capped per resolution (31 days for
     hourly, 366 days for daily); invalid parameters return a 400 with form errors.
@@ -129,56 +340,8 @@ class BulkMonitorSummaryList(SummaryMixin, generics.ListEndpoint):
     form_class = BulkMonitorSummaryForm
     filter_class = BulkMonitorSummaryFilter
 
-    @cached_property
-    def form(self):
-        return self.get_form(self.request.GET, resolution=self.resolution)
-
-    def get(self, request, *args, **kwargs):
-        if not self.form.is_valid():
-            return Http400({'errors': self.form.errors.get_json_data()})
-        return super().get(request, *args, **kwargs)
-
-    def get_date_filter(self):
-        tz = settings.DEFAULT_TIMEZONE
-        start = make_aware(datetime.combine(self.form.cleaned_data['start'], datetime.min.time()), tz)
-        end = make_aware(datetime.combine(self.form.cleaned_data['end_exclusive'], datetime.min.time()), tz)
-        return {'timestamp__gte': start, 'timestamp__lt': end}
-
-    def get_processor_filter(self):
-        """
-        Which summary series to return. An explicit `?processor=` (blank
-        included) is an exact match across all monitors. Otherwise, per
-        monitor type, use the DefaultCalibration the map publishes when it
-        names a CALIBRATED processor (those are summarized), else raw -
-        FEM cleaners produce CLEANED entries, which are never summarized.
-        """
-        if 'processor' in self.request.GET:
-            return Q(processor=self.request.GET['processor'])
-
-        lookup = Q()
-        defaults = DefaultCalibration.objects.filter(entry_type=self.entry_model.entry_type)
-        for default in defaults:
-            if default.monitor_model is None:
-                continue
-            processor = ''
-            for candidate in default.allowed_processors:
-                if candidate.name == default.calibration and candidate.next_stage == self.entry_model.Stage.CALIBRATED:
-                    processor = candidate.name
-                    break
-            lookup |= Q(**{f'monitor__{default.monitor_type}__isnull': False}, processor=processor)
-
-        return lookup if lookup else Q(processor='')
-
     def get_queryset(self):
-        monitors = (Monitor.objects.get_queryset()
-            .get_public()
-            .published_for(self.entry_model)
-            .scope_to(
-                region_ids=self.request.GET.getlist('region'),
-                bbox=self.form.cleaned_data.get('bbox'),
-            )
-        )
-        monitors = MonitorFilter(self.request.GET, queryset=monitors).qs
+        monitors = self.get_monitors()
 
         # super() -> SummaryMixin.get_queryset() -> ListEndpoint -> MonitorSummary.objects.all()
         # SummaryMixin applies resolution/entry_type/date filters (get_date_filter() above).
@@ -199,13 +362,7 @@ class BulkMonitorSummaryList(SummaryMixin, generics.ListEndpoint):
         for row in source:
             grouped.setdefault(row.monitor_id, []).append(row)
 
-        # Same related loads as MonitorMixin, so MonitorSerializer's health
-        # and is_active lookups don't cost a query per monitor.
-        monitors_by_id = (Monitor.objects
-            .select_related('health')
-            .with_last_entry_timestamp()
-            .in_bulk(list(grouped))
-        )
+        monitors_by_id = self.load_monitors(grouped)
         monitors = []
         for monitor_id, rows in grouped.items():
             monitor = monitors_by_id.get(monitor_id)
@@ -222,22 +379,20 @@ class RegionSummaryList(SummaryMixin, generics.ListEndpoint):
     serializer_class = RegionSummarySerializer
 
     def get_queryset(self):
-        region_id = self.kwargs.get('region_id')
-        try:
-            region = Region.objects.get(sqid=region_id)
-        except (Region.DoesNotExist, ValueError):
-            raise Http404('Region not found')
+        region = _get_region(self.kwargs.get('region_id'))
         # super() → SummaryMixin.get_queryset() → ListEndpoint → RegionSummary.objects.all()
         return super().get_queryset().filter(region=region)
 
 
-class BulkRegionSummaryList(SummaryMixin, generics.ListEndpoint):
+class BulkRegionSummaryList(BulkFormMixin, SummaryMixin, generics.ListEndpoint):
     """Summary statistics for one or more regions matching an inclusive `start`/`end`
     date range. Each result is a region (same shape as RegionList) with its matching
     rows nested under `summaries` (without the region's `boundary` - fetch that from
-    the regions list, it would otherwise repeat on every page a region spans). `start`,
-    `end`, and at least one `region` are required, and every `region` id must exist;
-    invalid/missing parameters return a 400 with form errors.
+    the regions list, it would otherwise repeat on every page a region spans). `start`
+    and `end` are required, plus exactly one of `region` (repeatable; every id must
+    exist, retired regions included) or `type` (every current region of that type
+    with a boundary, the set /regions/geojson/ draws; not `land_use`). Invalid/missing parameters
+    return a 400 with form errors.
 
     Pagination is by summary row, not by region, same cross-page merge contract
     as BulkMonitorSummaryList: if the last region `id` on a page matches the first
@@ -249,27 +404,12 @@ class BulkRegionSummaryList(SummaryMixin, generics.ListEndpoint):
     form_class = BulkRegionSummaryForm
     filter_class = BulkRegionSummaryFilter
 
-    @cached_property
-    def form(self):
-        return self.get_form(self.request.GET, resolution=self.resolution)
-
-    def get(self, request, *args, **kwargs):
-        if not self.form.is_valid():
-            return Http400({'errors': self.form.errors.get_json_data()})
-        return super().get(request, *args, **kwargs)
-
-    def get_date_filter(self):
-        tz = settings.DEFAULT_TIMEZONE
-        start = make_aware(datetime.combine(self.form.cleaned_data['start'], datetime.min.time()), tz)
-        end = make_aware(datetime.combine(self.form.cleaned_data['end_exclusive'], datetime.min.time()), tz)
-        return {'timestamp__gte': start, 'timestamp__lt': end}
-
     def get_queryset(self):
         # Order by region_id, not `region`: the latter resolves to Region.Meta.ordering,
         # which isn't stable enough to paginate on (same reasoning as the monitor bulk).
         return (super()
             .get_queryset()
-            .filter(region__in=self.form.cleaned_data['region'])
+            .filter(region__in=self.form.cleaned_data['regions'])
             .order_by('region_id', 'timestamp')
         )
 
@@ -278,7 +418,7 @@ class BulkRegionSummaryList(SummaryMixin, generics.ListEndpoint):
         for row in source:
             grouped.setdefault(row.region_id, []).append(row)
 
-        regions_by_id = Region.objects.in_bulk(list(grouped))
+        regions_by_id = Region.all_objects.in_bulk(list(grouped))
         regions = []
         for region_id, rows in grouped.items():
             region = regions_by_id.get(region_id)
@@ -287,4 +427,110 @@ class BulkRegionSummaryList(SummaryMixin, generics.ListEndpoint):
             region.summary_rows = rows
             regions.append(region)
 
+        return super().serialize(regions, fields, include, exclude, fixup)
+
+
+class BulkOpenDaysMixin(BulkFormMixin, SummaryMixin):
+    """
+    Open-day rows (see MonitorOpenDays) for many owners at once. Paginated by
+    owner, ordered by pk, 100 per page, with the usual page keys (`page`, `count`,
+    `pages`, `has_next_page`, `has_previous_page`); `count` counts owners. Only
+    owners with an HOURLY row of the series since the first open day are listed
+    (an EXISTS on the summary table's unique index), so an unscoped request
+    doesn't page through every idle owner. A listed owner can still have
+    `summaries: []` (its only hours are yesterday's and yesterday is stored).
+    An owner's rows are never split across pages. The rows are built once per
+    page and shared through the cache for a minute (cached_open_rows).
+    """
+
+    page_size = 100
+    serves_open_days = True
+
+    def get_form_kwargs(self):
+        return {}
+
+    def get_date_filter(self):
+        return {}
+
+
+class BulkMonitorOpenDays(BulkOpenDaysMixin, BulkMonitorScopeMixin, generics.ListEndpoint):
+    """Open-day rows for every published monitor, scoped like BulkMonitorSummaryList
+    (`region`, `bbox`, `type`, MonitorFilter parameters, the published series unless
+    `processor` is given) but with no `start`/`end`."""
+
+    model = Monitor
+    serializer_class = BulkMonitorSummaryGroupSerializer
+    form_class = BulkMonitorScopeForm
+    filter_class = BulkMonitorOpenDaysFilter
+
+    def get_queryset(self):
+        # Page on ids: the full monitor rows are loaded only for the page.
+        return (self.get_monitors()
+            .filter(self.open_series_filter())
+            .order_by('pk')
+            .values_list('pk', flat=True)
+        )
+
+    def open_series_filter(self):
+        """Monitors with an hourly row of their series since the first open day."""
+        since = open_days(self.now)[0]
+        lookup = Q()
+        for monitor_type, processor in self.series:
+            # Every column of the (monitor, entry_type, processor, resolution,
+            # timestamp) unique index is an equality or the range's start.
+            exists = Exists(MonitorSummary.objects.filter(
+                monitor_id=OuterRef('pk'),
+                entry_type=self.entry_model.entry_type,
+                processor=processor,
+                resolution=BaseSummary.Resolution.HOURLY,
+                timestamp__gte=since,
+            ))
+            if monitor_type is None:
+                lookup |= Q(exists)
+            else:
+                lookup |= Q(exists, **{f'{monitor_type}__isnull': False})
+        return lookup
+
+    def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
+        ids = list(source)
+        monitors_by_id = self.load_monitors(ids)
+        rows = cached_open_rows(
+            'monitor', ids, self.entry_model, self.now,
+            processor_q=self.get_processor_filter(),
+        )
+        monitors = []
+        for pk in ids:
+            monitor = monitors_by_id.get(pk)
+            if monitor is None:
+                continue
+            monitor.summary_rows = rows.get(pk, [])
+            monitors.append(monitor)
+        return super().serialize(monitors, fields, include, exclude, fixup)
+
+
+class BulkRegionOpenDays(BulkOpenDaysMixin, generics.ListEndpoint):
+    """Open-day rows for one or more regions (exactly one of `region` or `type`,
+    as in BulkRegionSummaryList), with no `start`/`end`."""
+
+    model = Region
+    serializer_class = BulkRegionSummaryGroupSerializer
+    form_class = BulkRegionScopeForm
+    filter_class = BulkRegionOpenDaysFilter
+
+    def get_queryset(self):
+        # Only regions with an hourly row since the first open day; the EXISTS
+        # is served by the (region, entry_type, resolution, timestamp) unique index.
+        recent = RegionSummary.objects.filter(
+            region_id=OuterRef('pk'),
+            entry_type=self.entry_model.entry_type,
+            resolution=BaseSummary.Resolution.HOURLY,
+            timestamp__gte=open_days(self.now)[0],
+        )
+        return Region.all_objects.filter(Exists(recent), pk__in=self.form.cleaned_data['regions']).order_by('pk')
+
+    def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
+        regions = list(source)
+        rows = cached_open_rows('region', [r.pk for r in regions], self.entry_model, self.now)
+        for region in regions:
+            region.summary_rows = rows.get(region.pk, [])
         return super().serialize(regions, fields, include, exclude, fixup)

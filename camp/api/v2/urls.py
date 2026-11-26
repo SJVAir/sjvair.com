@@ -26,6 +26,7 @@ urlpatterns = [
 
     path('account/', include('camp.api.v2.accounts.urls', namespace='account')),
     path('monitors/', include('camp.api.v2.monitors.urls', namespace='monitors')),
+    path('meta/', include('camp.api.v2.meta.urls', namespace='meta')),
     path('calibrations/', include('camp.api.v2.calibrations.urls', namespace='calibrations')),
     path('calenviroscreen/', include('camp.api.v2.ces.urls', namespace='ces')),
     path('calheatscore/', include('camp.api.v2.calheatscore.urls', namespace='calheatscore')),
@@ -35,5 +36,6 @@ urlpatterns = [
     path('hms/', include('camp.api.v2.hms.urls', namespace='hms')),
     path('tempo/', include('camp.api.v2.tempo.urls', namespace='tempo')),
     path('pesticides/', include('camp.api.v2.pesticides.urls', namespace='pesticides')),
+    path('documents/', include('camp.api.v2.documents.urls', namespace='documents')),
     path('task/<task_id>/', endpoints.TaskStatus.as_view(), name='task-status'),
 ]

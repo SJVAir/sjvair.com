@@ -1,5 +1,5 @@
 {% extends "account/base.html" %}
-{% load tz %}
+{% load tz level_tags %}
 
 {% block title %}Monitor subscriptions | {{ block.super }}{% endblock %}
 
@@ -20,7 +20,7 @@
                     <span class="is-size-7">{{ subscription.monitor.county }} County</span>
                 </td>
                 <td class="has-text-centered">
-                    <span class="tag air {{ subscription.level }}">{{ subscription.get_level_display }}</span>
+                    <span class="tag air" style="{{ subscription.get_level|level_style }}">{{ subscription.get_level_display }}</span>
                 </td>
             </tr>
             {% empty %}

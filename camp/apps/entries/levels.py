@@ -5,6 +5,12 @@ from typing import Optional, Union, List, Dict, Tuple
 from django.utils.translation import gettext_lazy as _
 
 from camp.utils import classproperty
+from camp.utils.scales import Scale, ScaleLevel
+
+EPA_SOURCE = {
+    'name': 'US EPA AirNow, AQI Basics',
+    'url': 'https://www.airnow.gov/aqi/aqi-basics/',
+}
 
 
 def _blend_hex(hex1, hex2, ratio):
@@ -33,6 +39,8 @@ class Level:
     guidance: Optional[str] = None
     key: Optional[str] = None
     rank: int = 0
+    tier: Optional[int] = None
+    description: str = ''
 
     def __repr__(self):
         return f'Level({self.value}, {self.label!r}, {self.color})'
@@ -68,35 +76,49 @@ class AQLevelMeta(type):
         'GOOD': {
             'label': _('Good'),
             'color': '#00e400',
+            'tier': 0,
+            'description': _('Air quality is satisfactory, and air pollution poses little or no risk.'),
         },
         'MODERATE': {
             'label': _('Moderate'),
             'color': '#ffff00',
+            'tier': 1,
+            'description': _('Air quality is acceptable. However, there may be a risk for some people, particularly those who are unusually sensitive to air pollution.'),
             'guidance': _('Highly sensitive groups should stay indoors and avoid outdoor activities.'),
         },
         'UNHEALTHY_SENSITIVE': {
             'label': _('Unhealthy for Sensitive Groups'),
             'color': '#ff7e00',
+            'tier': 2,
+            'description': _('Members of sensitive groups may experience health effects. The general public is less likely to be affected.'),
             'guidance': _('Sensitive groups should stay indoors and avoid outdoor activities.'),
         },
         'UNHEALTHY': {
             'label': _('Unhealthy'),
             'color': '#ff0000',
+            'tier': 3,
+            'description': _('Some members of the general public may experience health effects; members of sensitive groups may experience more serious health effects.'),
             'guidance': _('Everyone should reduce prolonged or heavy exertion.'),
         },
         'VERY_UNHEALTHY': {
             'label': _('Very Unhealthy'),
             'color': '#8f3f97',
+            'tier': 4,
+            'description': _('Health alert: The risk of health effects is increased for everyone.'),
             'guidance': _('Everyone should avoid prolonged or heavy exertion.'),
         },
         'HAZARDOUS': {
             'label': _('Hazardous'),
             'color': '#7e0023',
+            'tier': 4,
+            'description': _('Health warning of emergency conditions: everyone is more likely to be affected.'),
             'guidance': _('Everyone should stay indoors and avoid physical outdoor activities.'),
         },
         'VERY_HAZARDOUS': {
             'label': _('Very Hazardous'),
             'color': '#7e0023',
+            'tier': 4,
+            'description': _('Health warning of emergency conditions: everyone is more likely to be affected.'),
             'guidance': _('Everyone should stay indoors and avoid physical outdoor activities.'),
         },
     }
@@ -114,6 +136,8 @@ class AQLevelMeta(type):
             rank=rank,
             color=meta['color'],
             guidance=guidance or meta.get('guidance'),
+            tier=meta['tier'],
+            description=meta['description'],
         )
 
 class AQLevel(metaclass=AQLevelMeta):
@@ -133,8 +157,30 @@ class AQLevel(metaclass=AQLevelMeta):
         return cls._scale
 
 
+# How a day is colored from hourly values, keyed by the scale's averaging hours.
+DAILY_STATISTIC = {24: 'mean_24h', 1: 'max_1h', 8: 'max_8h'}
+
+DAILY_STATISTIC_LABELS = {
+    'mean_24h': _('24-hour average'),
+    'max_1h': _('Highest 1-hour average'),
+    'max_8h': _('Highest 8-hour average'),
+}
+
+# The average of a period's daily figures, on monthly-and-coarser summaries.
+PERIOD_STATISTIC_FIELD = 'daily_statistic_mean'
+
+PERIOD_STATISTIC_LABELS = {
+    'max_1h': _('Average of daily highest 1-hour averages'),
+    'max_8h': _('Average of daily highest 8-hour averages'),
+    'mean_24h': _('Average of 24-hour averages'),
+}
+
+
 class LevelSet:
-    def __init__(self, *args: Level, **kwargs: Level):
+    def __init__(self, *args: Level, averaging_hours: Optional[int] = None, **kwargs: Level):
+        if averaging_hours is not None and averaging_hours not in DAILY_STATISTIC:
+            raise ValueError(f'Invalid averaging_hours: {averaging_hours}')
+        self.averaging_hours = averaging_hours
         self._levels: List[Level] = []
         self._map: Dict[str, Level] = {}
 
@@ -152,6 +198,14 @@ class LevelSet:
             object.__setattr__(lvl, 'key', attr.lower())
             self._levels.append(lvl)
             self._map[attr] = lvl
+
+    @property
+    def daily_statistic(self) -> Optional[str]:
+        return DAILY_STATISTIC.get(self.averaging_hours)
+
+    @property
+    def daily_statistic_label(self) -> Optional[str]:
+        return DAILY_STATISTIC_LABELS.get(self.daily_statistic)
 
     def __getattr__(self, attr: str) -> Level:
         try:
@@ -191,19 +245,33 @@ class LevelSet:
     def lookup(self, key: str) -> Level:
         return self._map[key.upper()]
 
-    def as_dict(self) -> Dict[str, Dict[str, any]]:
-        result = {}
+    def to_scale(self, id: str, label: str, units: str) -> Scale:
         levels = sorted(self._levels, key=lambda l: l.value)
-        for i, level in enumerate(levels):
-            max_value = (levels[i + 1].value - 0.1) if i + 1 < len(levels) else 99999
-            result[level.key.upper()] = {
-                'name': level.key,
-                'label': level.label,
-                'color': level.color,
-                'range': (level.value, max_value),
-                'guidance': level.guidance,
-            }
-        return result
+        return Scale(
+            id=id,
+            label=label,
+            units=units,
+            kind='range',
+            source=EPA_SOURCE,
+            averaging_hours=self.averaging_hours,
+            daily_statistic=self.daily_statistic,
+            daily_statistic_label=self.daily_statistic_label,
+            period_statistic=PERIOD_STATISTIC_FIELD if self.daily_statistic else None,
+            period_statistic_label=PERIOD_STATISTIC_LABELS.get(self.daily_statistic),
+            levels=tuple(
+                ScaleLevel(
+                    key=level.key,
+                    label=level.label,
+                    color=level.color,
+                    tier=level.tier,
+                    description=level.description,
+                    guidance=level.guidance or '',
+                    min=level.value,
+                    max=levels[i + 1].value if i + 1 < len(levels) else None,
+                )
+                for i, level in enumerate(levels)
+            ),
+        )
 
 
 # Pollutant-specific level sets, breakpoints in each pollutant's native unit.
@@ -219,6 +287,7 @@ PM25 = LevelSet(
     AQLevel.UNHEALTHY(55.5),
     AQLevel.VERY_UNHEALTHY(125.5),
     AQLevel.HAZARDOUS(225.5),
+    averaging_hours=24,
 )
 
 PM100 = LevelSet(
@@ -229,6 +298,7 @@ PM100 = LevelSet(
     AQLevel.VERY_UNHEALTHY(355),
     AQLevel.HAZARDOUS(425),
     AQLevel.VERY_HAZARDOUS(605),
+    averaging_hours=24,
 )
 
 CO = LevelSet(
@@ -239,6 +309,7 @@ CO = LevelSet(
     AQLevel.VERY_UNHEALTHY(15.5),
     AQLevel.HAZARDOUS(30.5),
     AQLevel.VERY_HAZARDOUS(50.4),
+    averaging_hours=8,
 )
 
 NO2 = LevelSet(
@@ -249,6 +320,7 @@ NO2 = LevelSet(
     AQLevel.VERY_UNHEALTHY(650.0),
     AQLevel.HAZARDOUS(1250.0),
     AQLevel.VERY_HAZARDOUS(2050.0),
+    averaging_hours=1,
 )
 
 O3 = LevelSet(
@@ -258,6 +330,7 @@ O3 = LevelSet(
     AQLevel.VERY_UNHEALTHY(205),
     AQLevel.HAZARDOUS(405),
     AQLevel.VERY_HAZARDOUS(605),
+    averaging_hours=1,
 )
 
 SO2 = LevelSet(
@@ -266,11 +339,12 @@ SO2 = LevelSet(
     AQLevel.UNHEALTHY_SENSITIVE(76),
     AQLevel.UNHEALTHY(186),
     AQLevel.VERY_UNHEALTHY(305),
+    averaging_hours=1,
 )
 
 # The EPA Air Quality Index itself (0-500), as opposed to a pollutant's raw
-# concentration. Breakpoints match camp.utils.aqi.aqi_label exactly (301+ is
-# "Hazardous" all the way to 500 -- the EPA AQI has no tier past Hazardous).
+# concentration. 301+ is "Hazardous", including forecasts above 500 -- the EPA
+# AQI has no tier past Hazardous.
 AQI = LevelSet(
     AQLevel.GOOD(0),
     AQLevel.MODERATE(51),

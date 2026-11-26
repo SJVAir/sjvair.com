@@ -155,6 +155,21 @@ class Monitor(models.Model):
 
     GRADE = None
 
+    class GradeGroup(models.TextChoices):
+        # Map toolbar groups (monitors/meta/ monitor_groups); ids are permanent.
+        REFERENCE = 'reference', _('Reference-grade')
+        LOW_COST = 'low-cost', _('Low-cost sensors')
+
+    GRADE_GROUPS = {
+        Grade.FEM: GradeGroup.REFERENCE,
+        Grade.FRM: GradeGroup.REFERENCE,
+        Grade.LCS: GradeGroup.LOW_COST,
+    }
+
+    @classmethod
+    def get_grade_group(cls):
+        return cls.GRADE_GROUPS.get(cls.GRADE)
+
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -264,6 +279,15 @@ class Monitor(models.Model):
         if not enabled:
             return subclasses
         return [subclass for subclass in subclasses if subclass.monitor_type in enabled]
+
+    @classmethod
+    def get_opt_in_subclasses(cls, dataset):
+        """Monitor subclasses served only for `?dataset=<dataset>` (see settings.MONITOR_OPT_IN_TYPES)."""
+        opt_in = settings.MONITOR_OPT_IN_TYPES
+        return [
+            subclass for subclass in cls.get_subclasses()
+            if opt_in.get(subclass.monitor_type) == dataset
+        ]
 
     @property
     def slug(self):

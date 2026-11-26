@@ -1,0 +1,137 @@
+from datetime import datetime, timedelta
+from unittest import mock
+from zoneinfo import ZoneInfo
+
+from django.core.cache import cache
+from django.test import Client, TestCase, override_settings
+
+from camp.api.v2.documents.tests.helpers import body, make_user, save
+from camp.apps.documents import snapshots
+from camp.apps.documents.models import DocumentSnapshot, SavedDocument, measure
+
+PACIFIC = ZoneInfo('America/Los_Angeles')
+
+
+class SnapshotTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.alice = make_user(1)
+        self.client = Client()
+        self.client.force_login(self.alice)
+
+    def put(self, id='doc', **overrides):
+        response = save(self.client, id, **overrides)
+        assert response.status_code == 200, response.content
+
+    def test_create_takes_no_snapshot(self):
+        self.put(body=body(1))
+        assert not DocumentSnapshot.objects.exists()
+
+    def test_first_save_of_day_snapshots_stored_version(self):
+        self.put(body=body(1), name='Old')
+        self.put(base_version=1, body=body(2), name='New')
+        snap = DocumentSnapshot.objects.get()
+        assert snap.reason == 'daily'
+        assert snap.version == 1
+        assert snap.name == 'Old'
+        assert snap.body == body(1)
+        assert snap.size == measure(body(1))
+        assert snap.owner == self.alice
+
+    def test_second_save_same_day_no_snapshot(self):
+        self.put()
+        self.put(base_version=1)
+        self.put(base_version=2)
+        assert DocumentSnapshot.objects.count() == 1
+
+    def test_next_pacific_day_snapshots_again(self):
+        self.put()
+        self.put(base_version=1)
+        # 23:30 Pacific on the snapshot's day is still that day; 00:30 next day is a new one.
+        taken = DocumentSnapshot.objects.get().created_at.astimezone(PACIFIC)
+        midnight = datetime.combine(taken.date(), datetime.min.time(), tzinfo=PACIFIC)
+        late = midnight + timedelta(hours=23, minutes=30)
+        with mock.patch('django.utils.timezone.now', return_value=late):
+            self.put(base_version=2)
+        assert DocumentSnapshot.objects.count() == 1
+        with mock.patch('django.utils.timezone.now', return_value=midnight + timedelta(hours=24, minutes=30)):
+            self.put(base_version=3)
+        assert DocumentSnapshot.objects.count() == 2
+
+    def test_schema_bump_snapshots(self):
+        self.put()
+        self.put(base_version=1)  # daily
+        self.put(base_version=2, schema_version=2)
+        latest = DocumentSnapshot.objects.order_by('-pk').first()
+        assert latest.reason == 'schema'
+        assert latest.schema_version == 1
+        assert DocumentSnapshot.objects.count() == 2
+
+    def test_conflict_flag_snapshots_even_same_day(self):
+        self.put()
+        self.put(base_version=1)  # daily
+        self.put(base_version=2, snapshot='conflict')
+        assert list(DocumentSnapshot.objects.order_by('pk').values_list('reason', flat=True)) == ['daily', 'conflict']
+
+    def test_conflict_snapshot_does_not_suppress_daily(self):
+        self.put()
+        self.put(base_version=1, snapshot='conflict')  # first save of the day: conflict
+        self.put(base_version=2)                       # still takes the daily
+        reasons = list(DocumentSnapshot.objects.order_by('pk').values_list('reason', flat=True))
+        assert reasons == ['conflict', 'daily']
+        assert DocumentSnapshot.objects.get(reason='daily').version == 2
+
+    def test_schema_snapshot_still_suppresses_daily(self):
+        self.put()
+        self.put(base_version=1, schema_version=2)
+        self.put(base_version=2, schema_version=2)
+        assert list(DocumentSnapshot.objects.values_list('reason', flat=True)) == ['schema']
+
+    def test_one_snapshot_per_save_by_priority(self):
+        self.put()
+        self.put(base_version=1, schema_version=2, snapshot='conflict')
+        assert DocumentSnapshot.objects.get().reason == 'schema'
+
+    def test_snapshot_cap_trims_oldest_never_refuses(self):
+        size = measure(body(1))
+        with override_settings(DOCUMENTS_MAX_SNAPSHOT_STORAGE=size * 2):
+            self.put(body=body(1))
+            for base in (1, 2, 3):
+                self.put(base_version=base, body=body(1), snapshot='conflict')
+            assert SavedDocument.objects.get().version == 4
+            versions = list(DocumentSnapshot.objects.order_by('pk').values_list('version', flat=True))
+            assert versions == [2, 3]
+            assert sum(DocumentSnapshot.objects.values_list('size', flat=True)) <= size * 2
+
+    def test_start_of_day_is_pacific(self):
+        now = datetime(2026, 10, 28, 3, 0, tzinfo=ZoneInfo('UTC'))  # Oct 27, 20:00 Pacific
+        assert snapshots.start_of_day(now) == datetime(2026, 10, 27, tzinfo=PACIFIC)
+
+
+class KeepTests(TestCase):
+    def setUp(self):
+        self.alice = make_user(1)
+        self.doc = SavedDocument.objects.create(
+            id='d', owner=self.alice, kind='dashboard', name='Stored', body={'a': 1}, size=7,
+            schema_version=1, version=2,
+        )
+
+    def test_keep_stores_given_content_not_stored(self):
+        made = snapshots.keep(
+            self.doc, version=2, schema_version=1, name='Mine', body={'b': 2}, size=7,
+        )
+        made.refresh_from_db()
+        assert (
+            made.reason, made.version, made.schema_version, made.name, made.body, made.size,
+            made.owner_id,
+        ) == ('conflict', 2, 1, 'Mine', {'b': 2}, 7, self.alice.pk)
+        self.doc.refresh_from_db()
+        assert (self.doc.version, self.doc.body) == (2, {'a': 1})
+
+    @override_settings(DOCUMENTS_MAX_SNAPSHOT_STORAGE=20)
+    def test_keep_trims_oldest(self):
+        first = snapshots.keep(self.doc, version=2, schema_version=1, name=None, body={}, size=10)
+        snapshots.keep(self.doc, version=2, schema_version=1, name=None, body={}, size=10)
+        snapshots.keep(self.doc, version=2, schema_version=1, name=None, body={}, size=10)
+        assert not DocumentSnapshot.objects.filter(pk=first.pk).exists()
+        assert DocumentSnapshot.objects.count() == 2

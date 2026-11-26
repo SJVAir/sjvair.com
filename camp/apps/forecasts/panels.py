@@ -3,6 +3,7 @@
 from django.utils import timezone
 
 from camp.apps.forecasts.models import Forecast
+from camp.apps.forecasts.scales import burn_status_label
 from camp.apps.regions.models import Region
 from camp.apps.regions.panels import Panel, register
 
@@ -32,9 +33,9 @@ class ForecastPanel(Panel):
                     'pollutant': row.pollutant,
                     'label': row.get_pollutant_display(),
                     'aqi': row.aqi_value,
-                    'category': row.aqi_category,
+                    'category': str(row.level.label),
                     'color': row.color,
-                    'burn': row.burn_status_text or row.burn_status,
+                    'burn': burn_status_label(row.burn_status) or row.burn_status_text or row.burn_status,
                     'alert': row.air_alert,
                     'alert_start': row.air_alert_start,
                     'alert_end': row.air_alert_end,

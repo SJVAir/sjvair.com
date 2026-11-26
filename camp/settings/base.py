@@ -43,6 +43,10 @@ if COMMIT_HASH is None:
 # Empty means all registered types are exposed.
 MONITOR_ENABLED_TYPES = ['purpleair', 'airgradient', 'bam1022', 'aqview', 'airnow', 'vozbox', 'aqlite']
 
+# Monitor types left out of MONITOR_ENABLED_TYPES that the monitor list still
+# serves when a request asks for their dataset with `?dataset=` ({type: dataset id}).
+MONITOR_OPT_IN_TYPES = {'cimis': 'weather'}
+
 # The counties SJVAir covers, by short name. County geometry comes from the
 # county Region rows (`import_counties`); this list says which of those
 # counties are "ours" for monitor county assignment, ingestion filters
@@ -56,10 +60,10 @@ BAM_MIRROR_ENABLED = bool(int(env('BAM_MIRROR_ENABLED', 0)))
 
 MONITOR_ACTIVE_WINDOW_DAYS = int(env('MONITOR_ACTIVE_WINDOW_DAYS', '90'))
 
-# The data tools under /tools/ (the pesticides and emissions explorers) are in
-# beta: only users the `beta_tools` waffle flag is on for (the "Beta testers"
-# group, staff, superusers) can see them; everyone else gets a 404 and no nav
-# links. Set BETA_TOOLS_GATE=0 to open them to everyone (tests and local dev).
+# The data tools under /tools/ (the pesticides and emissions explorers) and the
+# data dashboard at /workspace/ are in beta: only users the `beta_tools` waffle
+# flag is on for (the "Beta testers" group, staff, superusers) can see them;
+# everyone else gets a 404 and no nav links. Set BETA_TOOLS_GATE=0 to open them to everyone (tests and local dev).
 # The explorers' data APIs under /api/ aren't gated.
 BETA_TOOLS_GATE = bool(int(env('BETA_TOOLS_GATE', 1)))
 
@@ -82,6 +86,30 @@ SECRET_KEY = env('SECRET_KEY')
 DEBUG = bool(int(env('DJANGO_DEBUG', 1)))
 
 ALLOWED_HOSTS = env('ALLOWED_HOSTS', 'localhost').split(',')
+
+# The data dashboard at /workspace/ (camp.apps.workspace), built into
+# dist/workspace/ by `invoke import-data-dashboard`. Its CSP is report-only
+# unless enforced: on by default in local dev, switched on in production
+# (WORKSPACE_CSP_ENFORCE=1) before public go-live. The report URI is the
+# dashboard Sentry project's security endpoint; unset means no reports.
+WORKSPACE_DIST_DIR = BASE_DIR.child('dist', 'workspace')
+WORKSPACE_CSP_ENFORCE = bool(int(env('WORKSPACE_CSP_ENFORCE', int(DEBUG))))
+WORKSPACE_CSP_REPORT_URI = env('WORKSPACE_CSP_REPORT_URI', '')
+
+# Saved dashboards (camp.apps.documents). Sizes count characters of compact JSON.
+DOCUMENTS_MAX_PER_ACCOUNT = 50
+DOCUMENTS_MAX_STORAGE = 25 * 1024 * 1024
+DOCUMENTS_MAX_SNAPSHOT_STORAGE = 25 * 1024 * 1024
+DOCUMENTS_MAX_BODY = 1_000_000
+DOCUMENTS_MAX_CHANGES = 2_000_000
+DOCUMENTS_SAVES_PER_MINUTE = 120
+DOCUMENTS_LOG_LIMIT = 500
+DOCUMENTS_TRASH_DAYS = 30
+DOCUMENTS_SNAPSHOT_DAYS = 30
+# The request-size cap for a signed-in save (PUT documents/<id>/) only; it replaces Django's
+# DATA_UPLOAD_MAX_MEMORY_SIZE for that request. A save carries up to DOCUMENTS_MAX_BODY +
+# DOCUMENTS_MAX_CHANGES characters, up to 4 bytes each in UTF-8.
+DOCUMENTS_MAX_REQUEST_BYTES = 16 * 1024 * 1024
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -139,6 +167,8 @@ INSTALLED_APPS = [
     'camp.apps.emissions',
     'camp.apps.monitors',
     'camp.apps.pesticides',
+    'camp.apps.workspace',
+    'camp.apps.documents',
     'camp.apps.monitors.airgradient',
     'camp.apps.monitors.airnow',
     'camp.apps.monitors.aqlite',
@@ -159,6 +189,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'camp.api.middleware.CoordinateQueryGuardMiddleware',
     'django.middleware.gzip.GZipMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
 
@@ -554,10 +585,14 @@ if "SENTRY_DSN" in os.environ:
     import sentry_sdk
     from sentry_sdk.integrations.django import DjangoIntegration
 
+    from camp.utils.sentry import scrub_event
+
     sentry_sdk.init(
         dsn=os.environ["SENTRY_DSN"],
         integrations=[DjangoIntegration(transaction_style="url")],
         release=COMMIT_HASH,
+        # Saved dashboards' bodies and names, and lookup coordinates, stay out of error reports.
+        before_send=scrub_event,
     )
 
 
@@ -589,6 +624,9 @@ SCOUT_KEY = env('SCOUT_KEY')
 SCOUT_NAME = env('SCOUT_NAME')
 
 SCOUT_ERRORS_ENABLED = not DEBUG
+
+# Never record query strings in traces (lookup coordinates must not reach Scout).
+SCOUT_URI_REPORTING = 'path'
 
 if SCOUT_KEY is not None:
     INSTALLED_APPS.insert(0, 'scout_apm.django')

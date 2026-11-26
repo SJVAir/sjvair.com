@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 
 from django.conf import settings
 from django.core.management import call_command
@@ -8,6 +8,9 @@ from django.utils import timezone
 import pytest
 
 from camp.utils.datetime import make_aware
+from camp.apps.summaries.aggregators import compute_stats
+from camp.apps.summaries.periods import is_period_start, iter_hours
+from camp.apps.summaries.tasks import backfill_summaries_tick
 from camp.apps.summaries.backfill import (
     chunk_start_for,
     hour_range,
@@ -33,47 +36,106 @@ def _day(y, m, d):
     return make_aware(datetime(y, m, d), settings.DEFAULT_TIMEZONE)
 
 
+LA = settings.DEFAULT_TIMEZONE
+R = BaseSummary.Resolution
+
+
+def _iso(ts):
+    return ts.astimezone(LA).isoformat()
+
+
 class ChunkStartForTests(TestCase):
     def test_defaults_to_one_day(self):
-        cursor = _day(2023, 7, 15)
-        range_start = _day(2020, 1, 1)
-        assert chunk_start_for(cursor, range_start) == cursor - timedelta(days=1)
+        assert chunk_start_for(_day(2023, 7, 15), _day(2020, 1, 1)) == _day(2023, 7, 14)
 
     def test_steps_back_by_chunk_days(self):
-        cursor = _day(2023, 7, 15)
-        range_start = _day(2020, 1, 1)
-        assert chunk_start_for(cursor, range_start, chunk_days=7) == cursor - timedelta(days=7)
+        assert chunk_start_for(_day(2023, 7, 15), _day(2020, 1, 1), chunk_days=7) == _day(2023, 7, 8)
 
     def test_clamps_to_range_start(self):
-        cursor = _day(2020, 1, 4)
-        range_start = _day(2020, 1, 1)
-        assert chunk_start_for(cursor, range_start, chunk_days=7) == range_start
+        assert chunk_start_for(_day(2020, 1, 4), _day(2020, 1, 1), chunk_days=7) == _day(2020, 1, 1)
+
+    def test_steps_back_across_spring_forward(self):
+        # 2026-03-08 is 23 hours long: stepping back from the 9th lands on the 8th's midnight (PST).
+        start = chunk_start_for(_day(2026, 3, 9), _day(2026, 1, 1))
+        assert _iso(start) == '2026-03-08T00:00:00-08:00'
+
+    def test_steps_back_across_fall_back(self):
+        # 2026-11-01 is 25 hours long.
+        start = chunk_start_for(_day(2026, 11, 2), _day(2026, 1, 1))
+        assert _iso(start) == '2026-11-01T00:00:00-07:00'
+        start = chunk_start_for(_day(2026, 11, 2), _day(2026, 1, 1), chunk_days=3)
+        assert _iso(start) == '2026-10-30T00:00:00-07:00'
+
+    def test_chunk_spanning_a_dst_change_starts_at_midnight(self):
+        start = chunk_start_for(_day(2026, 3, 10), _day(2026, 1, 1), chunk_days=3)
+        assert _iso(start) == '2026-03-07T00:00:00-08:00'
+
+    def test_a_cursor_read_back_as_utc(self):
+        job = SummaryBackfillJob.objects.create(
+            range_start=_day(2026, 1, 1), range_end=_day(2026, 3, 10),
+            cursor=_day(2026, 3, 10), chunk_days=3,
+        )
+        job.refresh_from_db()
+        assert job.cursor.utcoffset() == timedelta(0)   # the database hands back UTC
+        start = chunk_start_for(job.cursor, job.range_start, 3)
+        assert _iso(start) == '2026-03-07T00:00:00-08:00'
 
 
 class HourRangeTests(TestCase):
     def test_yields_each_hour_exclusive_of_end(self):
         start = _day(2023, 1, 1)
-        end = start + timedelta(hours=3)
-        hours = list(hour_range(start, end))
-        assert hours == [start, start + timedelta(hours=1), start + timedelta(hours=2)]
+        hours = list(hour_range(start, start + timedelta(hours=3)))
+        assert [h.isoformat() for h in hours] == [
+            '2023-01-01T08:00:00+00:00', '2023-01-01T09:00:00+00:00', '2023-01-01T10:00:00+00:00',
+        ]
+
+    def test_spring_forward_day_has_23_hours(self):
+        assert len(list(hour_range(_day(2026, 3, 8), _day(2026, 3, 9)))) == 23
+
+    def test_fall_back_day_has_25_hours(self):
+        assert len(list(hour_range(_day(2026, 11, 1), _day(2026, 11, 2)))) == 25
 
 
 class IterChunkDaysTests(TestCase):
     def test_yields_each_day_exclusive_of_end(self):
-        start = _day(2023, 1, 1)
-        end = start + timedelta(days=3)
-        days = list(iter_chunk_days(start, end))
-        assert days == [start, start + timedelta(days=1), start + timedelta(days=2)]
+        days = list(iter_chunk_days(_day(2023, 1, 1), _day(2023, 1, 4)))
+        assert days == [_day(2023, 1, 1), _day(2023, 1, 2), _day(2023, 1, 3)]
+
+    def test_days_across_spring_forward_are_pacific_midnights(self):
+        days = list(iter_chunk_days(_day(2026, 3, 7), _day(2026, 3, 10)))
+        assert [_iso(d) for d in days] == [
+            '2026-03-07T00:00:00-08:00', '2026-03-08T00:00:00-08:00', '2026-03-09T00:00:00-07:00',
+        ]
+
+    def test_days_across_fall_back_are_pacific_midnights(self):
+        days = list(iter_chunk_days(_day(2026, 10, 31), _day(2026, 11, 3)))
+        assert [_iso(d) for d in days] == [
+            '2026-10-31T00:00:00-07:00', '2026-11-01T00:00:00-07:00', '2026-11-02T00:00:00-08:00',
+        ]
+
+    def test_utc_inputs_give_the_same_days(self):
+        start = _day(2026, 3, 7).astimezone(dt_timezone.utc)
+        end = _day(2026, 3, 10).astimezone(dt_timezone.utc)
+        assert len(list(iter_chunk_days(start, end))) == 3
 
 
 class DailyRollupWindowTests(TestCase):
     def test_returns_daily_window(self):
-        day = _day(2023, 7, 15)
-        target, source, window_start, window_end = daily_rollup_window(day)
-        assert target == BaseSummary.Resolution.DAILY
-        assert source == BaseSummary.Resolution.HOURLY
-        assert window_start == day
-        assert window_end == day + timedelta(days=1)
+        target, source, window_start, window_end = daily_rollup_window(_day(2023, 7, 15))
+        assert target == R.DAILY
+        assert source == R.HOURLY
+        assert window_start == _day(2023, 7, 15)
+        assert window_end == _day(2023, 7, 16)
+
+    def test_spring_forward_day_is_23_hours(self):
+        _, _, start, end = daily_rollup_window(_day(2026, 3, 8))
+        assert _iso(end) == '2026-03-09T00:00:00-07:00'
+        assert end.astimezone(dt_timezone.utc) - start.astimezone(dt_timezone.utc) == timedelta(hours=23)
+
+    def test_fall_back_day_is_25_hours(self):
+        _, _, start, end = daily_rollup_window(_day(2026, 11, 1))
+        assert _iso(end) == '2026-11-02T00:00:00-08:00'
+        assert end.astimezone(dt_timezone.utc) - start.astimezone(dt_timezone.utc) == timedelta(hours=25)
 
 
 class HigherRollupWindowsTests(TestCase):
@@ -82,48 +144,135 @@ class HigherRollupWindowsTests(TestCase):
 
     def test_ordinary_month_start_rolls_up_month_only(self):
         windows = higher_rollup_windows(_day(2023, 8, 1))
-        resolutions = [w[0] for w in windows]
-        assert resolutions == [BaseSummary.Resolution.MONTHLY]
+        assert [w[0] for w in windows] == [R.MONTHLY]
 
     def test_quarter_start_month_cascades_to_quarterly(self):
-        windows = higher_rollup_windows(_day(2023, 7, 1))
-        resolutions = [w[0] for w in windows]
-        assert BaseSummary.Resolution.MONTHLY in resolutions
-        assert BaseSummary.Resolution.QUARTERLY in resolutions
-        assert BaseSummary.Resolution.SEASONAL not in resolutions
-        assert BaseSummary.Resolution.YEARLY not in resolutions
+        resolutions = [w[0] for w in higher_rollup_windows(_day(2023, 7, 1))]
+        assert R.MONTHLY in resolutions
+        assert R.QUARTERLY in resolutions
+        assert R.SEASONAL not in resolutions
+        assert R.YEARLY not in resolutions
 
     def test_season_start_month_cascades_to_seasonal(self):
-        windows = higher_rollup_windows(_day(2023, 6, 1))
-        resolutions = [w[0] for w in windows]
-        assert BaseSummary.Resolution.SEASONAL in resolutions
+        assert R.SEASONAL in [w[0] for w in higher_rollup_windows(_day(2023, 6, 1))]
 
     def test_december_is_season_start_but_not_quarter_start(self):
-        windows = higher_rollup_windows(_day(2023, 12, 1))
-        resolutions = [w[0] for w in windows]
-        assert BaseSummary.Resolution.SEASONAL in resolutions
-        assert BaseSummary.Resolution.QUARTERLY not in resolutions
+        resolutions = [w[0] for w in higher_rollup_windows(_day(2023, 12, 1))]
+        assert R.SEASONAL in resolutions
+        assert R.QUARTERLY not in resolutions
 
     def test_january_cascades_to_quarterly_and_yearly(self):
-        windows = higher_rollup_windows(_day(2023, 1, 1))
-        resolutions = [w[0] for w in windows]
-        assert BaseSummary.Resolution.MONTHLY in resolutions
-        assert BaseSummary.Resolution.QUARTERLY in resolutions
-        assert BaseSummary.Resolution.YEARLY in resolutions
+        resolutions = [w[0] for w in higher_rollup_windows(_day(2023, 1, 1))]
+        assert R.MONTHLY in resolutions
+        assert R.QUARTERLY in resolutions
+        assert R.YEARLY in resolutions
 
     def test_quarterly_window_spans_three_months(self):
-        windows = higher_rollup_windows(_day(2023, 7, 1))
-        quarterly = next(w for w in windows if w[0] == BaseSummary.Resolution.QUARTERLY)
-        _, _, window_start, window_end = quarterly
-        assert window_start == _day(2023, 7, 1)
-        assert window_end == _day(2023, 10, 1)
+        quarterly = next(w for w in higher_rollup_windows(_day(2023, 7, 1)) if w[0] == R.QUARTERLY)
+        assert quarterly[2] == _day(2023, 7, 1)
+        assert quarterly[3] == _day(2023, 10, 1)
 
     def test_yearly_window_spans_twelve_months(self):
-        windows = higher_rollup_windows(_day(2023, 1, 1))
-        yearly = next(w for w in windows if w[0] == BaseSummary.Resolution.YEARLY)
-        _, _, window_start, window_end = yearly
-        assert window_start == _day(2023, 1, 1)
-        assert window_end == _day(2024, 1, 1)
+        yearly = next(w for w in higher_rollup_windows(_day(2023, 1, 1)) if w[0] == R.YEARLY)
+        assert yearly[2] == _day(2023, 1, 1)
+        assert yearly[3] == _day(2024, 1, 1)
+
+    def test_march_first_is_a_month_start_when_given_as_utc(self):
+        # 2026-03-01 00:00 PST is 08:00 UTC: given in UTC it must still read as
+        # March 1 in Pacific, a month and season start.
+        day = _day(2026, 3, 1).astimezone(dt_timezone.utc)
+        windows = higher_rollup_windows(day)
+        assert [w[0] for w in windows] == [R.MONTHLY, R.SEASONAL]
+        assert _iso(windows[0][3]) == '2026-04-01T00:00:00-07:00'
+        assert _iso(windows[1][3]) == '2026-06-01T00:00:00-07:00'
+
+    def test_an_hour_early_stamp_is_not_a_month_start(self):
+        # Feb 28 23:00 PST must not count as March 1.
+        assert higher_rollup_windows(_day(2026, 3, 1) - timedelta(hours=1)) == []
+
+    def test_january_window_ends_across_dst_are_pacific_midnights(self):
+        windows = {w[0]: w for w in higher_rollup_windows(_day(2026, 1, 1))}
+        assert _iso(windows[R.QUARTERLY][3]) == '2026-04-01T00:00:00-07:00'
+        assert _iso(windows[R.YEARLY][3]) == '2027-01-01T00:00:00-08:00'
+
+
+class BackfillJobDstTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def _run_backfill(self, from_date, to_date, hours_from, hours_to):
+        monitor = PurpleAir.objects.first()
+        MonitorSummary.objects.bulk_create([
+            MonitorSummary(
+                monitor=monitor, timestamp=hour, resolution=R.HOURLY,
+                entry_type='pm25', processor='', **compute_stats([10.0], 1),
+            )
+            for hour in iter_hours(hours_from, hours_to)
+        ])
+
+        call_command('backfill_summaries', 'start', '--from', from_date, '--to', to_date)
+        for _ in range(200):
+            SummaryBackfillJob.objects.update(locked_at=None)
+            with self.captureOnCommitCallbacks(execute=True):
+                backfill_summaries_tick()
+            if SummaryBackfillJob.objects.get().state != SummaryBackfillJob.State.RUNNING:
+                break
+        assert SummaryBackfillJob.objects.get().state == SummaryBackfillJob.State.DONE
+        return MonitorSummary.objects.exclude(resolution=R.HOURLY)
+
+    def _assert_all_period_starts(self, rows):
+        assert rows.exists()
+        for row in rows:
+            assert is_period_start(row.resolution, row.timestamp), (row.resolution, _iso(row.timestamp))
+
+    def test_summer_end_backfill_stamps_pacific_period_starts(self):
+        rows = self._run_backfill('2026-02-27', '2026-03-10', _day(2026, 2, 1), _day(2026, 3, 10))
+        self._assert_all_period_starts(rows)
+        stamps = {(r.resolution, _iso(r.timestamp)) for r in rows}
+        assert (R.MONTHLY, '2026-03-01T00:00:00-08:00') in stamps
+        assert (R.SEASONAL, '2026-03-01T00:00:00-08:00') in stamps
+        day = rows.get(resolution=R.DAILY, timestamp=_day(2026, 3, 8))
+        assert day.count == 23
+
+    def test_a_cursor_written_by_the_old_code_runs_to_done(self):
+        # The old code stepped the cursor back in 24-hour steps from a PDT
+        # midnight, so a job paused in standard time holds 23:00 the day before.
+        monitor = PurpleAir.objects.first()
+        MonitorSummary.objects.bulk_create([
+            MonitorSummary(
+                monitor=monitor, timestamp=hour, resolution=R.HOURLY,
+                entry_type='pm25', processor='', **compute_stats([10.0], 1),
+            )
+            for hour in iter_hours(_day(2026, 2, 1), _day(2026, 3, 10))
+        ])
+        cursor = datetime(2026, 3, 5, 7, tzinfo=dt_timezone.utc)
+        assert _iso(cursor) == '2026-03-04T23:00:00-08:00'
+        SummaryBackfillJob.objects.create(
+            range_start=_day(2026, 2, 26), range_end=_day(2026, 3, 10), cursor=cursor,
+        )
+        for _ in range(200):
+            SummaryBackfillJob.objects.update(locked_at=None)
+            with self.captureOnCommitCallbacks(execute=True):
+                backfill_summaries_tick()
+            if SummaryBackfillJob.objects.get().state != SummaryBackfillJob.State.RUNNING:
+                break
+        assert SummaryBackfillJob.objects.get().state == SummaryBackfillJob.State.DONE
+
+        rows = MonitorSummary.objects.exclude(resolution=R.HOURLY)
+        self._assert_all_period_starts(rows)
+        days = {_iso(r.timestamp): r.count for r in rows.filter(resolution=R.DAILY)}
+        # Feb 26 - Mar 4: the old cursor's own day is written whole, none are lost.
+        assert days == {f'2026-{m:02d}-{d:02d}T00:00:00-08:00': 24 for m, d in [
+            (2, 26), (2, 27), (2, 28), (3, 1), (3, 2), (3, 3), (3, 4),
+        ]}
+        march = rows.get(resolution=R.MONTHLY, timestamp=_day(2026, 3, 1))
+        assert _iso(march.timestamp) == '2026-03-01T00:00:00-08:00'
+
+    def test_standard_end_backfill_across_fall_back(self):
+        rows = self._run_backfill('2026-10-30', '2026-11-04', _day(2026, 10, 1), _day(2026, 11, 4))
+        self._assert_all_period_starts(rows)
+        day = rows.get(resolution=R.DAILY, timestamp=_day(2026, 11, 1))
+        assert day.count == 25
+        assert (R.MONTHLY, '2026-11-01T00:00:00-07:00') in {(r.resolution, _iso(r.timestamp)) for r in rows}
 
 
 class BackfillMonitorHoursTests(TestCase):
@@ -484,7 +633,9 @@ class BackfillSummariesTickDispatchMonitorsTests(TestCase):
             backfill_summaries_tick()
 
         self.job.refresh_from_db()
-        assert self.job.chunk_start == self.job.cursor - timedelta(days=7)
+        cursor_date = self.job.cursor.astimezone(settings.DEFAULT_TIMEZONE).date()
+        expected = cursor_date - timedelta(days=7)
+        assert self.job.chunk_start == _day(expected.year, expected.month, expected.day)
         assert MonitorSummary.objects.filter(monitor=self.monitor).exists()
 
 
@@ -561,6 +712,104 @@ class BackfillSummariesTickCompleteChunkTests(TestCase):
         backfill_summaries_tick()
         self.job.refresh_from_db()
         assert self.job.state == SummaryBackfillJob.State.DONE
+
+    def test_backfill_done_writes_current_periods(self):
+        now = timezone.now()
+        self.job.range_start = self.month_start
+        self.job.range_end = now
+        self.job.save()
+        with patch('camp.apps.summaries.tasks.roll_current_periods') as mock_roll:
+            mock_roll.return_value = {'rolled': {}, 'refreshed': {}, 'stopped': False}
+            backfill_summaries_tick()
+        self.job.refresh_from_db()
+        assert self.job.state == SummaryBackfillJob.State.DONE
+        assert [c.args[:2] for c in mock_roll.call_args_list] == [('monitor', None), ('region', None)]
+        # Every owner of the periods the range rewrote, not only the nightly set.
+        assert all(c.kwargs == {'rewritten_until': now} for c in mock_roll.call_args_list)
+
+    def test_backfill_done_inside_current_year_writes_current_periods(self):
+        # The range ends before yesterday but inside the year holding it: the
+        # year (and any other period it reaches) was rewritten.
+        now = make_aware(datetime(2026, 11, 18, 10), LA)
+        self.job.range_start = self.month_start
+        self.job.range_end = _day(2026, 2, 1)
+        self.job.save()
+        with patch('django.utils.timezone.now', return_value=now), \
+                patch('camp.apps.summaries.tasks.roll_current_periods') as mock_roll:
+            mock_roll.return_value = {'rolled': {}, 'refreshed': {}, 'stopped': False}
+            backfill_summaries_tick()
+        assert [c.args for c in mock_roll.call_args_list] == [('monitor', None, now), ('region', None, now)]
+        assert all(c.kwargs == {'rewritten_until': _day(2026, 2, 1)} for c in mock_roll.call_args_list)
+
+    def test_current_periods_read_the_clock_after_the_cascade(self):
+        # The cascade runs past midnight: the current periods use the new day.
+        before, after = make_aware(datetime(2026, 11, 18, 23, 59), LA), make_aware(datetime(2026, 11, 19, 0, 5), LA)
+        clock = [before]
+        self.job.range_start = self.month_start
+        self.job.range_end = before
+        self.job.save()
+
+        def cascade(*args, **kwargs):
+            clock[0] = after
+            return True
+
+        with patch('django.utils.timezone.now', side_effect=lambda: clock[0]), \
+                patch('camp.apps.summaries.tasks.rollup_monitor_summaries', side_effect=cascade), \
+                patch('camp.apps.summaries.tasks.rollup_region_summaries', return_value=True), \
+                patch('camp.apps.summaries.tasks.roll_current_periods') as mock_roll:
+            mock_roll.return_value = {'rolled': {}, 'refreshed': {}, 'stopped': False}
+            backfill_summaries_tick()
+        assert [c.args[2] for c in mock_roll.call_args_list] == [after, after]
+
+    def test_stopped_at_midnight_runs_again_from_the_new_day(self):
+        before = make_aware(datetime(2026, 11, 18, 23, 59), LA)
+        after = make_aware(datetime(2026, 11, 19, 0, 1), LA)
+        clock = [before]
+        self.job.range_start = self.month_start
+        self.job.range_end = before
+        self.job.save()
+        stopped = {'rolled': {}, 'refreshed': {}, 'stopped': True}
+        done = {'rolled': {}, 'refreshed': {}, 'stopped': False}
+        answers = iter([stopped, done, done])
+
+        def roll(*args, **kwargs):
+            clock[0] = after  # midnight passed during the first pass
+            return next(answers)
+
+        with patch('django.utils.timezone.now', side_effect=lambda: clock[0]), \
+                patch('camp.apps.summaries.tasks.roll_current_periods', side_effect=roll) as mock_roll:
+            backfill_summaries_tick()
+        self.job.refresh_from_db()
+        assert [c.args[0] for c in mock_roll.call_args_list] == ['monitor', 'monitor', 'region']
+        assert [c.args[2] for c in mock_roll.call_args_list] == [before, after, after]
+        assert self.job.state == SummaryBackfillJob.State.DONE
+        assert self.job.last_error == ''
+
+    def test_stopped_twice_is_recorded_on_the_job(self):
+        from camp.apps.summaries.tasks import BACKFILL_CURRENT_PERIODS_STOPPED
+        now = timezone.now()
+        self.job.range_start = self.month_start
+        self.job.range_end = now
+        self.job.save()
+        stopped = {'rolled': {}, 'refreshed': {}, 'stopped': True}
+        with patch('camp.apps.summaries.tasks.roll_current_periods', return_value=stopped) as mock_roll, \
+                self.assertLogs('camp.apps.summaries', level='WARNING') as logs:
+            backfill_summaries_tick()
+        self.job.refresh_from_db()
+        assert [c.args[0] for c in mock_roll.call_args_list] == ['monitor', 'monitor']
+        assert self.job.state == SummaryBackfillJob.State.DONE
+        assert self.job.last_error == BACKFILL_CURRENT_PERIODS_STOPPED
+        assert any(
+            r.levelname == 'ERROR' and 'stopped at midnight' in r.getMessage() for r in logs.records)
+
+    def test_backfill_done_before_the_current_periods_writes_none(self):
+        self.job.range_start = self.month_start
+        self.job.save()
+        with patch('camp.apps.summaries.tasks.roll_current_periods') as mock_roll:
+            backfill_summaries_tick()
+        self.job.refresh_from_db()
+        assert self.job.state == SummaryBackfillJob.State.DONE
+        mock_roll.assert_not_called()
 
     def test_july_first_cascades_monthly_and_quarterly_rollups(self):
         # July is a quarter-start month (Jul/Aug/Sep = Q3) — crossing Jul 1
@@ -717,3 +966,32 @@ class BackfillSummariesTickRegionsStalenessRecoveryTests(TestCase):
         assert self.job.batch_id == 6
         assert self.job.consecutive_failures == 1
         assert 'restarting the regions phase' in self.job.last_error
+
+
+class BackfillCompleteChunkCurrentPeriodTests(TestCase):
+    """The month-start cascade marks a period still running as partial."""
+    fixtures = ['purple-air.yaml']
+
+    def test_cascade_writes_the_running_period_partial(self):
+        from unittest.mock import patch
+        monitor = PurpleAir.objects.first()
+        oct_1, nov_1 = _day(2026, 10, 1), _day(2026, 11, 1)
+        for day in (oct_1, nov_1):
+            MonitorSummary.objects.create(
+                monitor=monitor, timestamp=day, resolution=R.DAILY, entry_type='pm25',
+                processor='', **compute_stats([10.0], 1))
+        # Walking backward, the chunk reaches Oct 1: the October month and the
+        # Q4 quarter cascade. Q4 is still running on Nov 18.
+        SummaryBackfillJob.objects.create(
+            cursor=_day(2026, 10, 3), chunk_start=oct_1,
+            range_start=oct_1, range_end=_day(2026, 10, 3),
+            phase=SummaryBackfillJob.Phase.REGIONS, pending_tasks=0, batch_id=1,
+        )
+        now = make_aware(datetime(2026, 11, 18, 10), LA)
+        with patch('django.utils.timezone.now', return_value=now):
+            backfill_summaries_tick()
+
+        month = MonitorSummary.objects.get(monitor=monitor, resolution=R.MONTHLY, timestamp=oct_1)
+        quarter = MonitorSummary.objects.get(monitor=monitor, resolution=R.QUARTERLY, timestamp=oct_1)
+        assert month.is_partial is False
+        assert quarter.is_partial is True

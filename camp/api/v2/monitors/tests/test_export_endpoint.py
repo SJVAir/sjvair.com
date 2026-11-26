@@ -9,7 +9,7 @@ import pandas as pd
 from django.contrib.auth.models import AnonymousUser
 from django.core import mail
 from django.http import StreamingHttpResponse
-from django.test import TestCase, RequestFactory
+from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -19,7 +19,7 @@ from camp.apps.entries.models import PM25, Humidity, Temperature
 from camp.api.v2.monitors import endpoints
 from camp.api.v2.monitors.forms import EntryExportForm
 from camp.utils.datetime import make_aware
-from camp.utils.test import debug, get_response_data
+from camp.utils.test import CsrfExemptRequestFactory, debug, get_response_data
 
 
 entry_export = endpoints.EntryExport.as_view()
@@ -40,7 +40,7 @@ class ExportTestsMixin:
     fixtures = ['purple-air', 'users']
 
     def setUp(self):
-        self.factory = RequestFactory()
+        self.factory = CsrfExemptRequestFactory()
         self.monitor = PurpleAir.objects.get(sensor_id=8892)
         self.start = timezone.now().date() - timedelta(days=7)
         self.end = timezone.now().date()

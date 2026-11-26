@@ -168,7 +168,7 @@ class MonitorQuerySet(InheritanceQuerySet):
             regions = []
             for region_id in region_ids:
                 try:
-                    regions.append(Region.objects.get(sqid=region_id))
+                    regions.append(Region.all_objects.get(sqid=region_id))
                 except Region.DoesNotExist:
                     raise Http404(f'"{region_id}" is not a valid region id')
             queryset = queryset.in_regions(regions)
@@ -209,7 +209,42 @@ class MonitorQuerySet(InheritanceQuerySet):
         '''
         Evaluate the queryset, keep monitors with a latest entry of
         `entry_model`, and attach it as `latest_<entry_type>` (and
-        `latest_entry`). Returns a list.
+        `latest_entry`). Returns a list. Loads every matching monitor: to
+        keep only a few, use annotate_latest_entry(), slice, then
+        attach_latest_entries().
+        '''
+        return self.attach_latest_entries(
+            list(self), entry_model, stage=stage, processor=processor)
+
+    def annotate_latest_entry(self, entry_model, stage=None, processor=None):
+        '''
+        SQL only: drop monitors without a LatestEntry of `entry_model` (of
+        `stage`/`processor` when given). Nothing is evaluated, so it can
+        still be filtered, ordered and sliced; attach_latest_entries()
+        picks which one to show.
+        '''
+        from camp.apps.monitors.models import LatestEntry
+
+        rows = self._latest_entry_rows(
+            LatestEntry.objects.filter(monitor_id=OuterRef('pk')), entry_model, stage, processor)
+        return self.filter(Exists(rows))
+
+    @staticmethod
+    def _latest_entry_rows(rows, entry_model, stage=None, processor=None):
+        rows = rows.filter(entry_type=entry_model.entry_type)
+        if stage is not None:
+            rows = rows.filter(stage=stage)
+            if stage == entry_model.Stage.CALIBRATED:
+                rows = rows.filter(processor=processor or '')
+        elif processor is not None:
+            rows = rows.filter(stage=entry_model.Stage.CALIBRATED, processor=processor or '')
+        return rows
+
+    @classmethod
+    def attach_latest_entries(cls, monitors, entry_model, stage=None, processor=None):
+        '''
+        Set `latest_<entry_type>` and `latest_entry` on each of the evaluated
+        `monitors`, in place, and return those that have one, in order.
 
         A monitor keeps one LatestEntry per processor (e.g. the cleaned and
         the calibrated PM2.5). Without `stage`/`processor`, each monitor gets
@@ -219,18 +254,9 @@ class MonitorQuerySet(InheritanceQuerySet):
         from camp.apps.monitors.models import LatestEntry
 
         entry_type = entry_model.entry_type
-        monitors = list(self)
-
-        rows = LatestEntry.objects.filter(
-            monitor_id__in=[monitor.pk for monitor in monitors],
-            entry_type=entry_type,
-        )
-        if stage is not None:
-            rows = rows.filter(stage=stage)
-            if stage == entry_model.Stage.CALIBRATED:
-                rows = rows.filter(processor=processor or '')
-        elif processor is not None:
-            rows = rows.filter(stage=entry_model.Stage.CALIBRATED, processor=processor or '')
+        rows = cls._latest_entry_rows(
+            LatestEntry.objects.filter(monitor_id__in=[monitor.pk for monitor in monitors]),
+            entry_model, stage, processor)
 
         by_monitor = {}
         for row in rows:

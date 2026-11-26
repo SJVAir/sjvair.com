@@ -17,6 +17,7 @@ from .. import stages
 class BaseEntry(models.Model):
     epa_aqs_code = None
     units = None
+    description = None
     summarize = False
     Stage = stages.Stage
     Levels = None

@@ -1,12 +1,20 @@
+import json
 import pytest
 from datetime import date, timedelta
+from unittest.mock import patch
 
 from django.contrib.gis.geos import GEOSGeometry
+from django.core.cache.backends.base import memcache_key_warnings
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from camp.apps.monitors.cimis.models import CIMIS
+from camp.apps.pesticides import maps, stats
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product
+from camp.apps.pesticides.models import PesticideUseRollup
+from camp.apps.pesticides.places import monthly_use, rollup_rows_for
+from camp.api.v2.pesticides.endpoints import counting_mode
 from camp.apps.regions.models import Boundary, Region
 
 
@@ -88,8 +96,16 @@ class ChemicalListTests(TestCase):
         item = data['data'][0]
         assert set(item.keys()) == {
             'id', 'chem_code', 'name', 'preferred_name', 'display_name', 'cas_number', 'dtxsid', 'iarc_group', 'categories',
+            'placeholder',
         }
         assert item['display_name'] == item['name'].capitalize()
+
+    def test_placeholder_flag(self):
+        confidential = make_chemical(chem_code=-2, name='AI IS CONFIDENTIAL')
+        rows = {c['chem_code']: c for c in self.client.get(self.url).json()['data']}
+        assert rows[100]['placeholder'] is False and rows[-2]['placeholder'] is True
+        detail = self.client.get(reverse('api:v2:pesticides:chemical-detail', kwargs={'chemical_id': confidential.sqid}))
+        assert detail.json()['data']['placeholder'] is True
 
     def test_display_name_prefers_the_comptox_name(self):
         make_chemical(chem_code=633, name='1080', preferred_name='Sodium fluoroacetate')
@@ -136,7 +152,7 @@ class ChemicalDetailTests(TestCase):
         item = self.client.get(self.url).json()['data']
         assert set(item.keys()) == {
             'id', 'chem_code', 'name', 'preferred_name', 'display_name', 'cas_number', 'dtxsid', 'iarc_group', 'categories',
-            'products', 'commodities',
+            'placeholder', 'products', 'commodities',
         }
 
     def test_detail_includes_products(self):
@@ -148,6 +164,8 @@ class ChemicalDetailTests(TestCase):
         item = self.client.get(self.url).json()['data']
         assert len(item['commodities']) == 1
         assert item['commodities'][0]['name'] == 'ALMOND'
+        assert item['commodities'][0]['display_name'] == 'Almond'
+        assert item['products'][0]['display_name'] == 'SULFUR DUST'
 
     def test_no_n_plus_1_queries(self):
         # Add more PesticideUse records linking the same chemical to the same commodity —
@@ -174,7 +192,13 @@ class CommodityListTests(TestCase):
         data = self.client.get(self.url).json()
         assert 'count' in data
         item = data['data'][0]
-        assert set(item.keys()) == {'id', 'site_code', 'name'}
+        assert set(item.keys()) == {'id', 'site_code', 'name', 'display_name'}
+
+    def test_display_name_is_humanized(self):
+        make_commodity(site_code='02', name='WHEAT (FORAGE - FODDER)')
+        data = self.client.get(self.url, {'site_code': '02'}).json()
+        assert data['data'][0]['name'] == 'WHEAT (FORAGE - FODDER)'
+        assert data['data'][0]['display_name'] == 'Wheat (forage - fodder)'
 
     def test_filter_by_name(self):
         make_commodity(site_code='02', name='GRAPE')
@@ -201,7 +225,7 @@ class CommodityDetailTests(TestCase):
 
     def test_detail_fields(self):
         item = self.client.get(self.url).json()['data']
-        assert set(item.keys()) == {'id', 'site_code', 'name', 'chemicals', 'products'}
+        assert set(item.keys()) == {'id', 'site_code', 'name', 'display_name', 'chemicals', 'products'}
 
     def test_detail_includes_chemicals(self):
         item = self.client.get(self.url).json()['data']
@@ -239,7 +263,13 @@ class ProductListTests(TestCase):
     def test_list_fields(self):
         data = self.client.get(self.url).json()
         item = data['data'][0]
-        assert set(item.keys()) == {'id', 'prodno', 'reg_number', 'name', 'fumigant', 'cdpr_fumigant', 'california_restricted'}
+        assert set(item.keys()) == {
+            'id', 'prodno', 'reg_number', 'name', 'display_name', 'fumigant', 'cdpr_fumigant', 'california_restricted',
+        }
+
+    def test_display_name_is_the_name(self):
+        item = self.client.get(self.url).json()['data'][0]
+        assert item['display_name'] == item['name'] == 'SULFUR DUST'
 
     def test_filter_by_name(self):
         make_product(prodno=2, reg_number='100-2', name='COPPER SPRAY')
@@ -303,7 +333,7 @@ class ProductDetailTests(TestCase):
     def test_detail_fields(self):
         item = self.client.get(self.url).json()['data']
         assert set(item.keys()) == {
-            'id', 'prodno', 'reg_number', 'name', 'fumigant', 'cdpr_fumigant', 'california_restricted',
+            'id', 'prodno', 'reg_number', 'name', 'display_name', 'fumigant', 'cdpr_fumigant', 'california_restricted',
             'chemicals', 'commodities',
         }
 
@@ -528,7 +558,7 @@ class PesticideRegionSummaryTests(TestCase):
         data = self.client.get(self.url).json()
         assert set(data.keys()) == {'region', 'data', 'count'}
         assert data['count'] == 1
-        assert set(data['region'].keys()) == {'id', 'name', 'slug', 'type'}
+        assert set(data['region'].keys()) == {'id', 'name', 'slug', 'type', 'external_id', 'retired'}
         item = data['data'][0]
         assert set(item.keys()) == {'year', 'chemical', 'commodity', 'total_lbs', 'total_acres', 'application_count'}
 
@@ -1000,6 +1030,21 @@ class SectionEndpointTests(TestCase):
         assert [c['name'] for c in data['top_chemicals']] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
         assert data['top_commodities'][0]['name'] == 'GRAPE'
 
+    def test_top_chemicals_badges(self):
+        from camp.apps.pesticides.badges import chemical_badges
+        section = Region.objects.get(pk=9101)
+        data = self.client.get(reverse('api:v2:pesticides:section-detail', kwargs={'section_id': section.sqid})).json()
+        assert data['top_chemicals']
+        for row in data['top_chemicals']:
+            chemical = Chemical.objects.get(sqid=row['id'])
+            assert row['badges'] == chemical_badges(chemical)
+            assert 'is_of_concern' in row
+        assert all('badges' not in row for row in data['top_products'] + data['top_commodities'])
+        # Pinned: GLYPHOSATE is a carcinogen (Prop 65) and IARC 2A; SULFUR carries none.
+        by_name = {row['name']: row['badges'] for row in data['top_chemicals']}
+        assert by_name['GLYPHOSATE'] == ['prop65', 'iarc_2a']
+        assert by_name['SULFUR'] == []
+
     def test_detail_404(self):
         assert self.client.get(reverse('api:v2:pesticides:section-detail', kwargs={'section_id': 'nope'})).status_code == 404
 
@@ -1142,6 +1187,166 @@ class ArchivedNoticeEndpointTests(TestCase):
             sections.MAX_NOTICES = original
 
 
+class NoticeMethodCodeTests(TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def test_notice_method_code(self):
+        assert stats.notice_method_code('Ground') == 'G'
+        assert stats.notice_method_code('AIRCRAFT') == 'A'
+        assert stats.notice_method_code('fumigation') == 'F'
+        assert stats.notice_method_code('Hand') == 'O'
+        assert stats.notice_method_code('Aerial') == 'O'
+        assert stats.notice_method_code('') == 'none'
+
+    def test_features_carry_the_code_beside_the_wording(self):
+        # The same rule as the aerial_ground filter, so a card's label matches the filter.
+        PesticideNotice.objects.filter(pk=2).update(application_method='Aircraft')
+        PesticideNotice.objects.filter(pk=3).update(application_method='')
+        PesticideNotice.objects.filter(pk=1).update(application_method='Hand')
+        active = self.client.get(reverse('api:v2:pesticides:notice-active')).json()['features']
+        by_id = {f['properties']['id']: f['properties'] for f in active}
+        two = by_id[PesticideNotice.objects.get(pk=2).sqid]
+        assert (two['application_method'], two['aerial_ground']) == ('Aircraft', 'A')
+        assert by_id[PesticideNotice.objects.get(pk=3).sqid]['aerial_ground'] == 'none'
+        archive = self.client.get(reverse('api:v2:pesticides:notice-archive')).json()['features']
+        assert archive[0]['properties']['aerial_ground'] == 'O'
+        # Every code a feature carries filters back to that feature.
+        for code in ('A', 'none'):
+            ids = {f['properties']['id'] for f in self.client.get(
+                reverse('api:v2:pesticides:notice-active'), {'aerial_ground': code}).json()['features']}
+            assert all(by_id[i]['aerial_ground'] == code for i in ids) and ids
+
+    def test_cache_key_versioned(self):
+        # Cached notice answers from before `aerial_ground` must never be served.
+        from camp.api.v2.pesticides.sections import ActiveNoticeList
+        assert ActiveNoticeList.cache_key_version == 1
+
+
+class NoticeDayEndpointTests(TestCase):
+    """notices/active/ and notices/archive/ with `date`, `category`, `iarc_group`."""
+    fixtures = ['pesticides-explorer']
+
+    # The explorer's feature properties, unchanged without the new params.
+    PROPERTY_KEYS = {
+        'id', 'scheduled_application', 'scheduled_end', 'county', 'application_method',
+        'treated_amount', 'treated_units', 'section', 'section_id', 'products', 'chemicals',
+        'aerial_ground',
+    }
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.url = reverse('api:v2:pesticides:notice-active')
+        self.archive_url = reverse('api:v2:pesticides:notice-archive')
+
+    def sqid(self, pk):
+        return PesticideNotice.objects.get(pk=pk).sqid
+
+    def ids(self, params, url=None):
+        response = self.client.get(url or self.url, params)
+        assert response.status_code == 200, response.content
+        return [f['properties']['id'] for f in response.json()['features']]
+
+    def pacific(self, *args):
+        from datetime import datetime
+        from django.conf import settings
+        return datetime(*args, tzinfo=settings.DEFAULT_TIMEZONE)
+
+    def test_date_window(self):
+        PesticideNotice.objects.filter(pk=2).update(scheduled_application=self.pacific(2026, 6, 12, 10))
+        PesticideNotice.objects.filter(pk=3).update(scheduled_application=self.pacific(2026, 6, 16))
+        assert self.ids({'date': '2026-06-15'}) == [self.sqid(2)]
+        assert self.ids({'date': '2026-06-16'}) == [self.sqid(2), self.sqid(3)]
+
+    def test_date_includes_archived_notice(self):
+        data = self.client.get(self.url, {'date': '2020-01-17'}).json()
+        assert [f['properties']['id'] for f in data['features']] == [self.sqid(1)]
+        assert data['features'][0]['properties']['past'] is True
+
+    def test_past_flag_only_with_date(self):
+        # Notice 2 is 2099-01-10 08:00 UTC: active on 2099-01-12, not yet past.
+        for day, expected in (('2099-01-12', False), ('2020-01-17', True)):
+            features = self.client.get(self.url, {'date': day}).json()['features']
+            assert features
+            assert all(f['properties']['past'] is expected for f in features)
+        features = self.client.get(self.url).json()['features']
+        assert features
+        assert all('past' not in f['properties'] for f in features)
+
+    def test_bad_date(self):
+        for value in ('2026-13-01', 'nope', '2026-6-1', '0001-01-01', '2026-W01-1'):
+            response = self.client.get(self.url, {'date': value})
+            assert response.status_code == 400, value
+            assert response.json() == {'error': 'date must be YYYY-MM-DD'}
+
+    def test_category_any_chemical(self):
+        assert self.ids({'category': 'carcinogen'}) == [self.sqid(3)]
+        assert self.ids({'category': 'toxic_air_contaminant'}) == [self.sqid(2), self.sqid(3)]
+        assert self.ids({'category': ['carcinogen', 'oil']}) == [self.sqid(3)]
+        assert self.ids({'category': 'oil,carcinogen'}) == [self.sqid(3)]
+
+    def test_iarc_group(self):
+        assert self.ids({'iarc_group': '2A'}) == [self.sqid(3)]
+        response = self.client.get(self.url, {'iarc_group': '9'})
+        assert response.status_code == 400
+        assert '9' in response.json()['error']
+
+    def test_category_and_iarc_group_match_the_same_chemical(self):
+        # Notice 3: GLYPHOSATE (carcinogen, 2A) and CHLORPYRIFOS (TAC, no IARC).
+        assert self.ids({'category': 'toxic_air_contaminant', 'iarc_group': '2A'}) == []
+        assert self.ids({'category': 'carcinogen', 'iarc_group': '2A'}) == [self.sqid(3)]
+
+    def test_unknown_category(self):
+        response = self.client.get(self.url, {'category': 'foo'})
+        assert response.status_code == 400
+        assert response.json() == {'error': 'Unknown category: foo.'}
+
+    def test_settled_day_cached_for_a_day(self):
+        from camp.utils import views
+        now = self.pacific(2026, 6, 20, 12)
+        for day, timeout in (('2026-06-10', 86400), ('2026-06-20', 300)):
+            with patch.object(views, 'cache') as cache, patch('django.utils.timezone.now', return_value=now):
+                cache.get.return_value = None
+                assert self.client.get(self.url, {'date': day}).status_code == 200
+            assert cache.set.call_count == 1
+            assert cache.set.call_args.args[2] == timeout, day
+        # No date: the class-wide timeout, as before.
+        with patch.object(views, 'cache') as cache:
+            cache.get.return_value = None
+            self.client.get(self.url)
+        assert cache.set.call_count == 1
+        assert cache.set.call_args.args[2] == 300
+
+    def test_fetch_version_retires_cached_day(self):
+        PesticideNotice.objects.filter(pk=2).update(scheduled_application=self.pacific(2026, 6, 12, 10))
+        assert self.ids({'date': '2026-06-15'}) == [self.sqid(2)]
+        PesticideNotice.objects.filter(pk=2).update(scheduled_application=self.pacific(2026, 6, 1))
+        response = self.client.get(self.url, {'date': '2026-06-15'})
+        assert response['X-Cache-Status'] == 'HIT'
+        assert [f['properties']['id'] for f in response.json()['features']] == [self.sqid(2)]
+        stats.bump_notices_version()
+        response = self.client.get(self.url, {'date': '2026-06-15'})
+        assert response['X-Cache-Status'] == 'MISS'
+        assert response.json()['features'] == []
+
+    def test_archive_takes_date_and_filters(self):
+        params = {'date': '2020-01-17', 'category': 'toxic_air_contaminant'}
+        assert self.ids(params, self.archive_url) == [self.sqid(1)]
+        assert self.ids({'date': '2020-01-17', 'category': 'carcinogen'}, self.archive_url) == []
+
+    def test_no_new_params_unchanged(self):
+        active = self.client.get(self.url).json()['features']
+        assert [f['id'] for f in active] == [self.sqid(2), self.sqid(3)]
+        assert all(set(f['properties']) == self.PROPERTY_KEYS for f in active)
+        archive = self.client.get(self.archive_url).json()['features']
+        assert [f['id'] for f in archive] == [self.sqid(1)]
+        assert all(set(f['properties']) == self.PROPERTY_KEYS | {'past'} for f in archive)
+
+
 # ---------------------------------------------------------------------------
 # County outlines and township grid GeoJSON endpoints
 # ---------------------------------------------------------------------------
@@ -1231,6 +1436,23 @@ class EntitySearchTests(RollupTestMixin, TestCase):
         response = self.client.get(self.url, params)
         assert response.status_code == 200
         return response.json()['results']
+
+    def test_more_flag(self):
+        # "os" matches Glyphosate and Chlorpyrifos, both with use in the fixture.
+        both = self.client.get(self.url, {'type': 'chemical', 'q': 'os'}).json()
+        assert len(both['results']) == 2 and both['more'] is False
+        one = self.client.get(self.url, {'type': 'chemical', 'q': 'os', 'limit': 1}).json()
+        assert one['results'] == both['results'][:1] and one['more'] is True
+        assert self.client.get(self.url, {'type': 'chemical', 'q': 'o'}).json() == {'results': [], 'more': False}
+
+    def test_chemical_results_flag_placeholder(self):
+        # Sulfur stands in for a placeholder here: it has use in the fixture totals.
+        Chemical.objects.filter(name='SULFUR').update(chem_code=-1)
+        flags = {r['name']: r['placeholder']
+                 for q in ('sulf', 'chlor') for r in self.results(type='chemical', q=q)}
+        assert flags['Sulfur'] is True and flags['Chlorpyrifos'] is False
+        assert all('placeholder' not in r for r in self.results(type='product', q='roundup'))
+        assert all('placeholder' not in r for r in self.results(type='commodity', q='grape'))
 
     def test_chemical_search_matches_and_shows_the_preferred_name(self):
         Chemical.objects.filter(pk=3).update(name='1080', preferred_name='Sodium fluoroacetate')
@@ -1412,6 +1634,15 @@ class LocationEndpointTests(TestCase):
         assert names == ['Alpha Elementary', 'Bravo Child Care']
         assert [f['properties']['name'] for f in self.features(lat=35.36, lng=-119.04, radius=1)] == ['Charlie Academy']
 
+    def test_features_carry_the_location_code(self):
+        # (source, external_id) is the permanent public code a saved place
+        # refers to; named as LocationSerializer names them.
+        props = {f['properties']['name']: f['properties'] for f in self.features(region=self.county.sqid)}
+        assert props['Alpha Elementary']['source'] == 'cde-public'
+        assert props['Alpha Elementary']['external_id'] == '1'
+        assert props['Bravo Child Care']['source'] == 'cdss-ccl'
+        assert props['Bravo Child Care']['external_id'] == '2'
+
     def test_a_bad_area_is_a_bad_request(self):
         assert self.client.get(self.url, {'region': 'nope'}).status_code == 400
         assert self.client.get(self.url, {'lat': 'x', 'lng': '-119'}).status_code == 400
@@ -1429,6 +1660,8 @@ class LocationEndpointTests(TestCase):
         assert feature['geometry'] == {'type': 'Point', 'coordinates': [-119.79, 36.71]}
         assert feature['properties'] == {
             'id': self.school.sqid,
+            'source': 'cde-public',
+            'external_id': '1',
             'name': 'Alpha Elementary',
             'type': 'public_school',
             'type_label': 'Public school',
@@ -1467,8 +1700,45 @@ class LocationEndpointTests(TestCase):
         assert response.status_code == 400
         assert 'type' in response.json()['error']
 
-    def test_missing_bbox_is_a_400(self):
-        assert self.client.get(self.url).status_code == 400
+    def test_no_area_and_no_bbox_is_the_whole_valley(self):
+        everyone = ['Alpha Elementary', 'Bravo Child Care', 'Charlie Academy']
+        assert [f['properties']['name'] for f in self.features()] == everyone
+        assert [f['properties']['name'] for f in self.features(bbox='')] == everyone
+
+    def test_a_whitespace_bbox_is_the_whole_valley(self):
+        names = [f['properties']['name'] for f in self.features(bbox=' ')]
+        assert names == ['Alpha Elementary', 'Bravo Child Care', 'Charlie Academy']
+
+    def test_radius_or_buffer_without_an_area_is_a_400(self):
+        # Without a region or a point there's nothing for them to widen, so
+        # the client meant an area it didn't send: not the whole valley.
+        for params in ({'radius': '3'}, {'buffer': '1'}, {'radius': '3', 'type': 'child_care'}):
+            response = self.client.get(self.url, params)
+            assert response.status_code == 400, params
+            assert 'error' in response.json()
+
+    def test_valley_answer_is_cached_as_encoded_bytes(self):
+        from django.core.cache import cache
+        from django.test import RequestFactory
+        from camp.api.v2.pesticides.locations import LocationList
+        assert len(self.features()) == 3
+        view = LocationList()
+        view.request = RequestFactory().get(self.url)
+        view.kwargs = {}
+        assert isinstance(cache.get(view.get_view_cache_key()), bytes)
+
+    def test_valley_takes_type_and_county(self):
+        assert [f['properties']['name'] for f in self.features(type='child_care')] == ['Bravo Child Care']
+        assert [f['properties']['name'] for f in self.features(county='kern')] == ['Charlie Academy']
+
+    def test_valley_leaves_out_retired_locations(self):
+        self.daycare.retire(timezone.localdate())
+        assert [f['properties']['name'] for f in self.features()] == ['Alpha Elementary', 'Charlie Academy']
+
+    def test_valley_is_cached(self):
+        assert len(self.features()) == 3
+        Location.objects.all().delete()
+        assert len(self.features()) == 3
 
     def test_bad_bbox_is_a_400(self):
         assert self.client.get(self.url, {'bbox': '-119.9,36.6'}).status_code == 400
@@ -1502,6 +1772,11 @@ class LocationEndpointTests(TestCase):
 
     def test_unknown_county_returns_nothing(self):
         assert self.features(bbox='-120.0,35.0,-119.0,37.0', county='nope') == []
+
+    def test_retired_locations_are_left_out(self):
+        self.daycare.retire(timezone.localdate())
+        names = [f['properties']['name'] for f in self.features(bbox='-119.9,36.6,-119.7,36.8')]
+        assert names == ['Alpha Elementary']
 
     def test_cached(self):
         assert len(self.features(bbox='-119.9,36.6,-119.7,36.8')) == 2
@@ -1843,3 +2118,993 @@ class RegionClipTests(TestCase):
         assert names(region=self.region.sqid) == ['Inside']
         assert names(region=self.region.sqid, buffer=1) == ['Inside', 'Near']
         assert self.get('location-list', region=self.region.sqid, buffer=2).status_code == 400
+
+
+class PesticidePlaceTests(RollupTestMixin, TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        super().setUp()
+        self.url = reverse('api:v2:pesticides:pesticide-place')
+        self.params = {'region_type': 'county', 'region': '06019'}
+
+    def get(self, **extra):
+        return self.client.get(self.url, {**self.params, **extra})
+
+    def test_county(self):
+        r = self.get()
+        assert r.status_code == 200 and r['Cache-Control'] == 'public, max-age=3600'
+        data = r.json()['data']
+        assert data['place'] == {'region': {'type': 'county', 'external_id': '06019', 'name': 'Fresno County'}}
+        assert {'year': 2023, 'month': 8, 'pounds': 500.0, 'acres': 50.0, 'applications': 1} in data['months']
+
+    @staticmethod
+    def sqid(model, **lookup):
+        return model.objects.get(**lookup).sqid
+
+    @staticmethod
+    def codec(model):
+        return model._meta.get_field('sqid').sqids_instance
+
+    def assert_error(self, r, field, code):
+        assert r.status_code == 400 and r['Cache-Control'] == 'no-cache', r.content[:200]
+        assert r.json()['errors'][field][0]['code'] == code, r.json()
+
+    def test_filters(self):
+        d = self.get(chemical=self.sqid(Chemical, chem_code=253), year__gte=2023).json()['data']
+        assert [y['year'] for y in d['years']] == [2023] and d['years'][0]['pounds'] == 20.0
+        d = self.client.get(self.url, {'region_type': 'county', 'region': '06029', 'aerial_ground': 'A', 'year__lte': 2022}).json()['data']
+        assert d['years'] == [{'year': 2022, 'pounds': 60.0, 'acres': 6.0, 'applications': 1,
+                               'undated': {'pounds': 0.0, 'acres': 0.0, 'applications': 0}}]
+
+    def test_iarc_group_filters(self):
+        # Glyphosate (2A) is the only IARC chemical; Fresno 2023 uses 1 and 2 are its.
+        d = self.get(iarc_group='2A', year__gte=2023).json()['data']
+        assert [(y['year'], y['pounds']) for y in d['years']] == [(2023, 150.0)]
+        d = self.get(iarc_group='1').json()['data']
+        assert d['months'] == [] and d['years'] == []
+
+    def test_bad_filter_values_are_400(self):
+        for bad in ({'year__gte': 'abc'}, {'category': 'nope'}, {'aerial_ground': 'X'}, {'iarc_group': '9'}, {'chemical': 'x'},
+                    {'year__gte': 1899}, {'year__lte': 2101}, {'year__gte': 10**12}):
+            r = self.get(**bad)
+            assert r.status_code == 400 and r['Cache-Control'] == 'no-cache'
+            assert 'errors' in r.json()
+
+    def test_odd_id_values_are_invalid(self):
+        for value in ('a b', 'x' * 300, 'tab\there'):
+            self.assert_error(self.get(commodity=value), 'commodity', 'invalid')
+
+    def test_codes_are_refused(self):
+        # CDPR codes are not our ids: a digit string may decode to some id, but never
+        # silently answers as the code's chemical or product.
+        for field, model, code in (('chemical', Chemical, 253), ('product', Product, Product.objects.first().prodno)):
+            r = self.get(**{field: code})
+            assert r.status_code == 400, (field, r.content[:200])
+            assert r.json()['errors'][field][0]['code'] in ('invalid', 'not_found')
+
+    def test_unknown_id_is_not_found(self):
+        for field, model in (('chemical', Chemical), ('commodity', Commodity), ('product', Product)):
+            gone = self.codec(model).encode([model.objects.order_by('-pk')[0].pk + 1000])
+            self.assert_error(self.get(**{field: gone}), field, 'not_found')
+
+    def test_id_spellings(self):
+        sqid = self.sqid(Chemical, chem_code=253)
+        assert self.get(chemical=f' {sqid} ').json()['data'] == self.get(chemical=sqid).json()['data']
+        codec = self.codec(Chemical)
+        for char in Chemical._meta.get_field('sqid').alphabet:
+            odd = sqid + char
+            decoded = codec.decode(odd)
+            if decoded and codec.encode(decoded) != odd:
+                self.assert_error(self.get(chemical=odd), 'chemical', 'invalid')
+                break
+        else:
+            pytest.skip('no non-canonical spelling of this id decodes')
+
+    def test_commodity_and_product_filter(self):
+        place = Region.all_objects.get(type='county', external_id='06019')
+        rows = rollup_rows_for(place)
+        for field, model in (('commodity', Commodity), ('product', Product)):
+            for obj in model.objects.all():
+                expected = monthly_use(rows.filter(**{field: obj}), False, False)
+                data = self.get(**{field: obj.sqid}).json()['data']
+                assert data['years'] == expected['years'] and data['months'] == expected['months'], (field, obj.pk)
+
+    def county_rows(self):
+        return rollup_rows_for(Region.all_objects.get(type='county', external_id='06019'))
+
+    def test_counting_mode(self):
+        chem, prod = object(), object()
+        for filters, expected in (
+            ({'chemical': chem}, (True, False)),
+            ({'chemical': chem, 'narrow': 'concern'}, (True, False)),
+            ({'chemical': chem, 'category': ['carcinogen']}, (True, False)),
+            ({'category': ['carcinogen']}, (False, True)),
+            ({'iarc_group': '2A'}, (False, True)),
+            ({'product': prod, 'category': ['carcinogen']}, (False, True)),
+            ({'product': prod}, (False, False)),
+            ({'narrow': 'concern'}, (False, False)),
+            ({'narrow': 'restricted'}, (False, False)),
+            ({'narrow': 'fumigant'}, (False, False)),
+            ({'narrow': 'aerial'}, (False, False)),
+            ({'commodity': object()}, (False, False)),
+            ({'aerial_ground': 'G'}, (False, False)),
+            ({}, (False, False)),
+        ):
+            assert counting_mode(filters) == expected, filters
+
+    def test_narrow_matches_stats(self):
+        for narrow in sorted(stats.NARROW_VALUES):
+            expected = monthly_use(stats.narrow_rows(self.county_rows(), narrow), False, False)
+            data = self.get(narrow=narrow).json()['data']
+            assert data['years'] == expected['years'] and data['months'] == expected['months'], narrow
+
+    def test_unknown_narrow_is_400(self):
+        self.assert_error(self.get(narrow='nope'), 'narrow', 'invalid')
+
+    def test_several_categories_overlap(self):
+        cats = ['carcinogen', 'toxic_air_contaminant']
+        expected = monthly_use(self.county_rows().filter(chemical__categories__overlap=cats), False, True)
+        data = self.client.get(self.url, {**self.params, 'category': cats}).json()['data']
+        assert data['years'] == expected['years'] and data['months'] == expected['months']
+        assert data['years'] != self.get(category='carcinogen').json()['data']['years']
+        one = monthly_use(self.county_rows().filter(chemical__categories__contains=['carcinogen']), False, True)
+        assert self.get(category='carcinogen').json()['data']['years'] == one['years']
+
+    def test_category_forms_share_cache_key(self):
+        keys = []
+        real = stats.cached
+
+        def spy(key, build, ttl=None):
+            keys.append(key)
+            return real(key, build, ttl=ttl)
+
+        with patch('camp.api.v2.pesticides.endpoints.stats.cached', spy):
+            for query in ('category=carcinogen,toxic_air_contaminant',
+                          'category=toxic_air_contaminant&category=carcinogen',
+                          'category=carcinogen,,toxic_air_contaminant'):
+                assert self.client.get(f'{self.url}?region_type=county&region=06019&{query}').status_code == 200
+        assert len(keys) == 3 and len(set(keys)) == 1
+        r = self.get(category='carcinogen,nope')
+        self.assert_error(r, 'category', 'invalid')
+        assert 'nope' in r.json()['errors']['category'][0]['message']
+
+    def test_aerial_ground_none(self):
+        row = self.county_rows().first()
+        PesticideUseRollup.objects.create(
+            year=2023, month=9, county=row.county, mtrs=row.mtrs, chemical=row.chemical,
+            product=row.product, commodity=row.commodity, method='', lbs_chemical=7,
+            acres_treated=2, applications=1, records=1, acres_once=2)
+        expected = monthly_use(self.county_rows().filter(method=''), False, False)
+        data = self.get(aerial_ground='none').json()['data']
+        assert data['years'] == expected['years'] and data['years']
+        assert self.get(aerial_ground='G').json()['data']['years'] != data['years']
+
+    def add_placeholder_row(self):
+        confidential = Chemical.objects.create(chem_code=-2, name='AI IS CONFIDENTIAL')
+        row = self.county_rows().filter(year=2023).first()
+        PesticideUseRollup.objects.create(
+            year=2023, month=10, county=row.county, mtrs=row.mtrs, chemical=confidential,
+            product=row.product, commodity=row.commodity, method='G', lbs_chemical=0,
+            acres_treated=5, applications=1, records=1, acres_once=5)
+        return confidential
+
+    def test_placeholder_records_count(self):
+        before = next(y for y in self.get().json()['data']['years'] if y['year'] == 2023)
+        self.add_placeholder_row()
+        after = next(y for y in self.get(year__gte=2023).json()['data']['years'] if y['year'] == 2023)
+        assert after['applications'] == before['applications'] + 1
+        assert after['acres'] == before['acres'] + 5 and after['pounds'] == before['pounds']
+
+    def test_placeholder_chemical_scope(self):
+        confidential = self.add_placeholder_row()
+        r = self.get(chemical=confidential.sqid)
+        assert r.status_code == 200
+        assert r.json()['data']['years'] == [{'year': 2023, 'pounds': 0.0, 'acres': 5.0, 'applications': 1,
+                                              'undated': {'pounds': 0.0, 'acres': 0.0, 'applications': 0}}]
+
+    def test_cache_key_cannot_meet_old_code_keys(self):
+        # Before ids, the key hashed [["chemical", <chem_code>]]. A pk equal to some old code
+        # must not read that entry back.
+        import hashlib, json
+        from camp.apps.regions.resolve import _place_key, resolve_place
+        chemical = Chemical.objects.get(chem_code=253)
+        keys = []
+        real = stats.cached
+
+        def spy(key, build, ttl=None):
+            keys.append(key)
+            return real(key, build, ttl=ttl)
+
+        with patch('camp.api.v2.pesticides.endpoints.stats.cached', spy):
+            self.get(chemical=chemical.sqid)
+        place = resolve_place({'region_type': 'county', 'region': '06019'})
+        old = stats.all_years_key('place', _place_key('pesticides', place),
+                                  hashlib.md5(json.dumps([['chemical', chemical.pk]]).encode()).hexdigest())
+        assert keys and keys[0] != old
+
+    def test_long_ids_are_refused_before_decoding(self):
+        codec = Chemical._meta.get_field('sqid').sqids_instance
+        with patch.object(codec, 'decode', wraps=codec.decode) as decode:
+            self.assert_error(self.get(chemical='A' * 500), 'chemical', 'invalid')
+        assert decode.call_count == 0
+
+    def test_blank_filters_ignored(self):
+        plain = self.get().json()['data']
+        blank = self.get(chemical='', commodity='', category='', iarc_group='', aerial_ground='',
+                         year__gte='', year__lte='').json()['data']
+        assert blank == plain
+
+    def test_place_errors(self):
+        for params, status in (
+            ({'region_type': 'land_use', 'region': '1'}, 400),
+            ({'region_type': 'county', 'region': 'nope'}, 404),
+            ({'region_type': 'county'}, 400),
+            ({'region': '06019'}, 400),
+            ({'region_type': 'county', 'region': '06019', 'monitor': '1'}, 400),
+        ):
+            r = self.client.get(self.url, params)
+            assert r.status_code == status, params
+            assert r['Cache-Control'] == 'no-cache' and 'error' in r.json()
+
+    def test_no_place_is_the_valley(self):
+        for params in ({}, {'region_type': '', 'region': ' ', 'monitor': ''}):
+            r = self.client.get(self.url, params)
+            assert r.status_code == 200 and r['Cache-Control'] == 'public, max-age=3600'
+            data = r.json()['data']
+            assert data['place'] is None
+            expected = monthly_use(PesticideUseRollup.objects.order_by(), False, False)
+            assert data['years'] == expected['years'] and data['months'] == expected['months']
+        # Every county's use, so at least each county's.
+        valley = {y['year']: y['pounds'] for y in data['years']}
+        fresno = {y['year']: y['pounds'] for y in self.get().json()['data']['years']}
+        assert fresno and all(valley[year] >= pounds for year, pounds in fresno.items())
+        assert sum(valley.values()) > sum(fresno.values())
+
+    def test_no_place_takes_the_filters(self):
+        sqid = self.sqid(Chemical, chem_code=253)
+        data = self.client.get(self.url, {'chemical': sqid, 'year__gte': 2023}).json()['data']
+        rows = PesticideUseRollup.objects.order_by().filter(chemical__chem_code=253, year__gte=2023)
+        expected = monthly_use(rows, True, False)
+        assert data['place'] is None and data['years'] == expected['years']
+        r = self.client.get(self.url, {'aerial_ground': 'X'})
+        assert r.status_code == 400 and r['Cache-Control'] == 'no-cache'
+
+    def test_retired_region_answers(self):
+        Region.all_objects.filter(type='county', external_id='06019').update(retired_at=timezone.now())
+        r = self.get()
+        assert r.status_code == 200
+        assert r.json()['data']['years']
+
+    def test_monitor_without_zip_is_empty(self):
+        monitor = CIMIS.objects.create(
+            name='M', station_number='7', position=Point(-119.79, 36.71, srid=4326),
+            location=CIMIS.LOCATION.outside)
+        with patch('camp.apps.pesticides.places.zips_for', return_value=[]):
+            r = self.client.get(self.url, {'monitor': str(monitor.pk)})
+        assert r.status_code == 200
+        data = r.json()['data']
+        assert data['place'] == {'monitor': str(monitor.pk)}
+        assert data['months'] == [] and data['years'] == []
+
+    def test_rebuild_retires_cache(self):
+        first = self.get().json()['data']
+        PesticideUse.objects.filter(pk=6).delete()
+        with self.captureOnCommitCallbacks(execute=True):
+            rollup.rebuild_year(2023)
+        second = self.get().json()['data']
+        assert next(y for y in first['years'] if y['year'] == 2023)['pounds'] == 670.0
+        assert next(y for y in second['years'] if y['year'] == 2023)['pounds'] == 170.0
+
+
+class PesticidesMetaTests(TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        self.url = reverse('api:v2:pesticides:pesticides-meta')
+
+    def get(self):
+        r = self.client.get(self.url)
+        assert r.status_code == 200 and r['Cache-Control'] == 'public, max-age=86400'
+        return r.json()['data']
+
+    def test_shape(self):
+        from camp.apps.pesticides import notes
+        data = self.get()
+        assert set(data) == {
+            'categories', 'iarc_groups', 'methods', 'narrows', 'placeholder_chemicals',
+            'notes', 'badges', 'links', 'link_params', 'notice_filters', 'years', 'ramp', 'scales'}
+        categories = data['categories']
+        assert [c['key'] for c in categories] == list(Chemical.Category.values)
+        assert {c['key'] for c in categories if not c['in_use']} == {
+            'biopesticide', 'cholinesterase_inhibitor', 'groundwater_contaminant', 'oil'}
+        by_key = {c['key']: c for c in categories}
+        assert by_key['carcinogen']['label'] == 'Carcinogen'
+        assert by_key['carcinogen']['description'] == notes.note('prop65')['summary']
+        assert by_key['toxic_air_contaminant']['description'] == notes.note('carb_tac')['summary']
+        assert by_key['fumigant']['description'] == notes.note('fumigant')['summary']
+        assert all(c['description'] for c in categories)
+        iarc = {g['key']: g for g in data['iarc_groups']}
+        assert list(iarc) == ['1', '2A', '2B', '3']
+        assert iarc['2A'] == {'key': '2A', 'label': 'Group 2A', 'description': 'Probably carcinogenic to humans'}
+        assert [(m['key'], m['label']) for m in data['methods']] == [
+            ('G', 'Ground'), ('A', 'Air'), ('F', 'Field fumigation'), ('O', 'Other'), ('none', 'Not reported')]
+        narrows = {n['key']: n for n in data['narrows']}
+        assert list(narrows) == ['concern', 'restricted', 'fumigant', 'aerial']
+        assert narrows['concern']['label'] == 'Flagged chemicals'
+        assert narrows['aerial']['description'] == stats.NARROW_HELP['aerial']
+        assert all(n['description'] for n in narrows.values())
+        assert data['placeholder_chemicals'] == []
+
+    def test_meta_explorer_links(self):
+        from camp.apps.pesticides.places import SPRAYDAYS_URL
+        data = self.get()
+        origin = 'http://testserver'
+        assert data['links'] == {
+            'spraydays_signup': SPRAYDAYS_URL,
+            'section_page': f'{origin}/tools/pesticides/sections/{{id}}/',
+            'section_records': f'{origin}/tools/pesticides/records/?section={{id}}',
+            'section_notices': f'{origin}/tools/pesticides/notices/?section={{id}}',
+            'section_notices_past': f'{origin}/tools/pesticides/notices/?section={{id}}&past=1',
+            'chemical_page': f'{origin}/tools/pesticides/chemicals/{{id}}/',
+        }
+        assert set(data['link_params']) == set(data['links']) - {'spraydays_signup'}
+        assert data['link_params']['section_records'] == [
+            {'param': 'year', 'from': 'year'}, {'param': 'start', 'from': 'month_start'},
+            {'param': 'end', 'from': 'month_end'}, {'param': 'chemical', 'from': 'chemical_id'},
+            {'param': 'product', 'from': 'product_id'}, {'param': 'commodity', 'from': 'commodity_id'},
+            {'param': 'method', 'from': 'aerial_ground'}, {'param': 'narrow', 'from': 'narrow'}]
+        assert data['link_params']['section_notices_past'][:2] == [
+            {'param': 'archive_year', 'from': 'notices_year'}, {'param': 'month', 'from': 'notices_month'}]
+        for entries in data['link_params'].values():
+            assert not {e['from'] for e in entries} & {'county', 'category', 'iarc_group'}
+
+    def test_meta_links_open_the_pages(self):
+        # BETA_TOOLS_GATE is off under test, so no beta user is needed.
+        links = self.get()['links']
+        section = Region.objects.get(pk=9101)
+        chemical = Chemical.objects.get(pk=1)
+        for key in ('section_page', 'section_records'):
+            path = links[key].replace('http://testserver', '').replace('{id}', section.sqid)
+            assert self.client.get(path).status_code == 200, key
+        path = links['chemical_page'].replace('http://testserver', '').replace('{id}', chemical.sqid)
+        r = self.client.get(path + '?year=2023&narrow=concern')
+        assert r.status_code == 301
+        assert r['Location'].endswith('?year=2023&narrow=concern')
+        assert r['Location'].startswith('/tools/pesticides/chemicals/')
+
+    def test_notes_served(self):
+        from camp.apps.pesticides import notes
+        served = self.get()['notes']
+        assert served['noi_meaning'] == json.loads(json.dumps(notes.all_notes()['noi_meaning']))
+        for key in ('pur_lag', 'badges', 'prop65', 'carb_tac', 'iarc_2a', 'california_restricted'):
+            assert key in served, key
+
+    def test_badges_and_links(self):
+        from camp.apps.pesticides.badges import BADGES
+        data = self.get()
+        assert [b['key'] for b in data['badges']] == [b['key'] for b in BADGES]
+        assert [(b['key'], b['label'], b['note']) for b in data['badges']] == [
+            ('prop65', 'Prop 65', 'prop65'), ('carb_tac', 'CARB TAC', 'carb_tac'),
+            ('iarc_1', 'IARC 1', 'iarc_1'), ('iarc_2a', 'IARC 2A', 'iarc_2a'),
+            ('iarc_2b', 'IARC 2B', 'iarc_2b'), ('iarc_3', 'IARC 3', 'iarc_3'),
+            ('california_restricted', 'Restricted', 'california_restricted'),
+        ]
+        assert data['links']['spraydays_signup'] == 'https://spraydays.cdpr.ca.gov/'
+
+    def test_meta_years_and_ramp(self):
+        from django.core.cache import cache
+        from camp.apps.pesticides import maps, notes
+        cache.clear()
+        data = self.get()
+        assert data['years'] == list(reversed(stats.available_years()))
+        assert data['ramp'] == {'colors': maps.RAMP, 'no_data': maps.NO_DATA}
+        assert data['notes']['shades_valley']['summary'] == (
+            'Darker squares had more of what the map shows (pounds, acres treated, or '
+            'applications) in that year or month. Every section or township in the valley is '
+            'ranked together, so a color means the same range anywhere on the map, but not from '
+            'one month to the next. An outline with no shading means nothing was reported.')
+        assert data['notes']['shades_valley']['title'] == 'What the shades mean'
+        assert data['notes']['shades'] == json.loads(json.dumps(notes.all_notes()['shades']))
+        assert data['notes']['shades']['summary'].startswith('Darker squares and counties')
+
+    def test_scales(self):
+        # Keyed by catalog entry-type id, like hms/meta/'s.
+        from camp.apps.pesticides.scales import get_spray_notice_scale
+        assert self.get()['scales'] == {'spray-notice': get_spray_notice_scale().to_json()}
+
+    def test_placeholder_chemicals(self):
+        unknown = Chemical.objects.create(chem_code=-1, name='UNKNOWN')
+        confidential = Chemical.objects.create(chem_code=-2, name='AI IS CONFIDENTIAL')
+        Chemical.objects.create(chem_code=5, name='OTHER')
+        assert self.get()['placeholder_chemicals'] == [
+            {'id': confidential.sqid, 'name': 'AI IS CONFIDENTIAL'}, {'id': unknown.sqid, 'name': 'UNKNOWN'}]
+
+
+class MapIdFilterTests(RollupTestMixin, TestCase):
+    """The charts' filter values on the map endpoints: `*_id` sqids, `aerial_ground`."""
+    fixtures = ['pesticides-explorer']
+
+    SECTIONS = '/api/2.0/pesticides/sections/'
+    TOWNSHIPS = '/api/2.0/pesticides/townships/'
+    BASE = {'bbox': '-121,35,-118,37.5', 'year': 2023}
+
+    def setUp(self):
+        super().setUp()
+        self.active_url = reverse('api:v2:pesticides:notice-active')
+        self.archive_url = reverse('api:v2:pesticides:notice-archive')
+
+    def properties(self, url, params):
+        response = self.client.get(url, {**self.BASE, **params})
+        assert response.status_code == 200, response.content
+        return [f['properties'] for f in response.json()['features']]
+
+    def assert_same(self, a, b):
+        for url in (self.SECTIONS, self.TOWNSHIPS):
+            left, right = self.properties(url, a), self.properties(url, b)
+            assert left == right, url
+            assert left
+
+    def notice_ids(self, params, url=None):
+        response = self.client.get(url or self.active_url, params)
+        assert response.status_code == 200, response.content
+        return [f['properties']['id'] for f in response.json()['features']]
+
+    def notice(self, pk):
+        return PesticideNotice.objects.get(pk=pk).sqid
+
+    def test_chemical_id_equals_code(self):
+        glyphosate = Chemical.objects.get(chem_code=1855)
+        self.assert_same({'chemical_id': glyphosate.sqid}, {'chemical': 1855})
+        # And it narrows: not the unfiltered answer.
+        assert self.properties(self.SECTIONS, {'chemical_id': glyphosate.sqid}) != self.properties(self.SECTIONS, {})
+
+    def test_chemical_id_counts_per_row(self):
+        # chemical_id sets chemical_scoped as chemical does, the compared year included.
+        glyphosate = Chemical.objects.get(chem_code=1855)
+        self.assert_same({'chemical_id': glyphosate.sqid, 'compare': 2022}, {'chemical': 1855, 'compare': 2022})
+
+    def test_product_and_commodity_ids(self):
+        product = Product.objects.get(prodno=2)
+        commodity = Commodity.objects.get(site_code='3001')
+        self.assert_same({'product_id': product.sqid}, {'product': 2})
+        self.assert_same({'commodity_id': commodity.sqid}, {'commodity': '3001'})
+
+    def test_both_forms_400(self):
+        glyphosate = Chemical.objects.get(chem_code=1855)
+        product = Product.objects.get(prodno=2)
+        commodity = Commodity.objects.get(site_code='3001')
+        for url in (self.SECTIONS, self.TOWNSHIPS):
+            response = self.client.get(url, {**self.BASE, 'chemical': 1855, 'chemical_id': glyphosate.sqid})
+            assert response.status_code == 400
+            assert response.json() == {'error': 'give chemical or chemical_id, not both'}
+            response = self.client.get(url, {**self.BASE, 'product': 2, 'product_id': product.sqid})
+            assert response.json() == {'error': 'give product or product_id, not both'}
+            response = self.client.get(url, {**self.BASE, 'commodity': '3001', 'commodity_id': commodity.sqid})
+            assert response.json() == {'error': 'give commodity or commodity_id, not both'}
+        for url in (self.active_url, self.archive_url):
+            response = self.client.get(url, {'chemical': 1855, 'chemical_id': glyphosate.sqid})
+            assert response.status_code == 400
+            assert response.json() == {'error': 'give chemical or chemical_id, not both'}
+
+    def test_bad_id_400(self):
+        for url in (self.SECTIONS, self.TOWNSHIPS, self.active_url):
+            response = self.client.get(url, {**self.BASE, 'chemical_id': 'zzzz'})
+            assert response.status_code == 400
+            assert response.json()['error'] == 'Not a chemical id.'
+        # A well-formed id that names no row.
+        codec = Chemical._meta.get_field('sqid').sqids_instance
+        response = self.client.get(self.SECTIONS, {**self.BASE, 'chemical_id': codec.encode([999999])})
+        assert response.status_code == 400
+        assert response.json()['error'] == 'No chemical has this id.'
+
+    def test_aerial_ground_sections(self):
+        self.assert_same({'aerial_ground': 'G'}, {'method': 'G'})
+        self.assert_same({'aerial_ground': 'none'}, {'method': 'none'})
+        assert self.properties(self.SECTIONS, {'aerial_ground': 'A'}) != self.properties(self.SECTIONS, {})
+        for url in (self.SECTIONS, self.TOWNSHIPS, self.active_url):
+            response = self.client.get(url, {**self.BASE, 'aerial_ground': 'X'})
+            assert response.status_code == 400
+            assert 'X' in response.json()['error']
+
+    def test_aerial_ground_notices(self):
+        PesticideNotice.objects.filter(pk=2).update(application_method='Aircraft')
+        PesticideNotice.objects.filter(pk=3).update(application_method='Ground')
+        assert self.notice_ids({'aerial_ground': 'A'}) == [self.notice(2)]
+        assert self.notice_ids({'aerial_ground': 'G'}) == [self.notice(3)]
+        assert self.notice_ids({'aerial_ground': 'F'}) == []
+        assert self.notice_ids({'aerial_ground': 'O'}) == []
+        assert self.notice_ids({'aerial_ground': 'none'}) == []
+        # Any case.
+        PesticideNotice.objects.filter(pk=3).update(application_method='GROUND')
+        stats.bump_notices_version()
+        assert self.notice_ids({'aerial_ground': 'G'}) == [self.notice(3)]
+        PesticideNotice.objects.filter(pk=2).update(application_method='Hand')
+        PesticideNotice.objects.filter(pk=3).update(application_method='')
+        stats.bump_notices_version()
+        assert self.notice_ids({'aerial_ground': 'O'}) == [self.notice(2)]
+        assert self.notice_ids({'aerial_ground': 'none'}) == [self.notice(3)]
+        # The archive's notice 1 is Ground.
+        assert self.notice_ids({'aerial_ground': 'G'}, self.archive_url) == [self.notice(1)]
+        assert self.notice_ids({'aerial_ground': 'A'}, self.archive_url) == []
+
+    def test_notice_chemical_and_product_ids(self):
+        glyphosate = Chemical.objects.get(chem_code=1855)
+        roundup = Product.objects.get(prodno=1)
+        assert self.notice_ids({'chemical_id': glyphosate.sqid}) == self.notice_ids({'chemical': 1855}) == [self.notice(3)]
+        assert self.notice_ids({'product_id': roundup.sqid}) == self.notice_ids({'product': 1}) == [self.notice(3)]
+
+    def test_notice_chemical_id_same_chemical(self):
+        chlorpyrifos = Chemical.objects.get(chem_code=253)
+        glyphosate = Chemical.objects.get(chem_code=1855)
+        assert self.notice_ids({'chemical_id': chlorpyrifos.sqid, 'iarc_group': '2A'}) == []
+        assert self.notice_ids({'chemical_id': glyphosate.sqid, 'iarc_group': '2A'}) == [self.notice(3)]
+
+    def test_notice_commodity_id_400(self):
+        commodity = Commodity.objects.get(site_code='3001')
+        for url in (self.active_url, self.archive_url):
+            response = self.client.get(url, {'commodity_id': commodity.sqid})
+            assert response.status_code == 400
+            assert response.json() == {'error': "notices don't record a commodity"}
+        # Plain commodity stays ignored, as before.
+        assert self.notice_ids({'commodity': '3001'}) == self.notice_ids({})
+
+    def test_meta_notice_filters(self):
+        from camp.api.v2.pesticides.sections import NOTICE_VALUE_FILTERS
+        data = self.client.get(reverse('api:v2:pesticides:pesticides-meta')).json()['data']
+        assert data['notice_filters'] == list(NOTICE_VALUE_FILTERS)
+        assert data['notice_filters'] == ['chemical_id', 'product_id', 'category', 'iarc_group', 'narrow', 'aerial_ground']
+
+
+class MapCategoryFilterTests(RollupTestMixin, TestCase):
+    """`category` and `iarc_group` on sections/ and townships/, counted as place/ counts them."""
+    fixtures = ['pesticides-explorer']
+
+    SECTIONS = '/api/2.0/pesticides/sections/'
+    TOWNSHIPS = '/api/2.0/pesticides/townships/'
+    TOWNSHIP = 'MDM-T14S-R20E'  # the fixture's township of section 9101, its only section
+
+    def setUp(self):
+        super().setUp()
+        self.section = Region.objects.get(pk=9101)
+        self.bbox = ','.join(str(v) for v in self.section.boundary.geometry.extent)
+        self.year = stats.latest_year()
+
+    def section_props(self, **params):
+        response = self.client.get(self.SECTIONS, {'bbox': self.bbox, 'year': self.year, **params})
+        assert response.status_code == 200, response.content
+        return next(f['properties'] for f in response.json()['features'] if f['properties']['mtrs'] == self.section.external_id)
+
+    def township_props(self, **params):
+        response = self.client.get(self.TOWNSHIPS, {'year': self.year, **params})
+        assert response.status_code == 200, response.content
+        return next(f['properties'] for f in response.json()['features'] if f['id'] == self.TOWNSHIP)
+
+    def place(self, month=None, **params):
+        url = reverse('api:v2:pesticides:pesticide-place')
+        response = self.client.get(url, {'region_type': 'mtrs', 'region': self.section.external_id, **params})
+        assert response.status_code == 200, response.content
+        data = response.json()['data']
+        if month is None:
+            return next(y for y in data['years'] if y['year'] == self.year)
+        return next(m for m in data['months'] if m['year'] == self.year and m['month'] == month)
+
+    @staticmethod
+    def figures(props):
+        return {'pounds': props['lbs_chemical'], 'acres': props['acres_treated'], 'applications': props['applications']}
+
+    @staticmethod
+    def expected(place):
+        return {key: place[key] for key in ('pounds', 'acres', 'applications')}
+
+    def test_section_matches_place(self):
+        for filters in ({'category': 'carcinogen'}, {'iarc_group': '2A'}):
+            expected = self.expected(self.place(**filters))
+            assert expected['applications']
+            assert self.figures(self.section_props(**filters)) == expected, filters
+            month = self.expected(self.place(month=3, **filters))
+            assert self.figures(self.section_props(month=3, **filters)) == month, filters
+
+    def test_township_matches_place(self):
+        for filters in ({'category': 'carcinogen'}, {'iarc_group': '2A'}):
+            assert self.figures(self.township_props(**filters)) == self.expected(self.place(**filters)), filters
+            month = self.expected(self.place(month=3, **filters))
+            assert self.figures(self.township_props(month=3, **filters)) == month, filters
+
+    def test_two_ingredients_count_once(self):
+        # A second carcinogen on the same record (month 3's ROUNDUP PRO on almonds, by ground):
+        # one more ingredient row, not one more application.
+        row = PesticideUseRollup.objects.get(year=2023, month=3, mtrs=self.section, chemical__chem_code=1855)
+        other = Chemical.objects.create(chem_code=9999, name='OTHER CARCINOGEN', categories=['carcinogen'])
+        PesticideUseRollup.objects.create(
+            year=2023, month=3, county=row.county, mtrs=row.mtrs, chemical=other, product=row.product,
+            commodity=row.commodity, method=row.method, lbs_chemical=40, lbs_product=row.lbs_product,
+            acres_treated=row.acres_treated, applications=row.applications, records=0, acres_once=0)
+        stats.bump_data_version()
+        from django.core.cache import cache
+        cache.clear()
+        march = self.section_props(year=2023, month=3, category='carcinogen')
+        assert march['lbs_chemical'] == row.lbs_chemical + 40
+        assert march['acres_treated'] == row.acres_treated
+        assert march['applications'] == row.applications
+        assert march['lbs_product'] == row.lbs_product
+        # The year: GLYPHOSATE's March and April records, one application each.
+        year = self.section_props(year=2023, category='carcinogen')
+        assert year['applications'] == 2 and year['lbs_chemical'] == 190.0 and year['acres_treated'] == 15.0
+        assert self.figures(self.township_props(year=2023, category='carcinogen')) == self.figures(year)
+
+    def test_unknown_category_400(self):
+        for url in (self.SECTIONS, self.TOWNSHIPS):
+            response = self.client.get(url, {'bbox': self.bbox, 'category': 'foo'})
+            assert response.status_code == 400
+            assert response.json() == {'error': 'Unknown category: foo.'}
+            response = self.client.get(url, {'bbox': self.bbox, 'iarc_group': 'nope'})
+            assert response.status_code == 400
+            assert 'nope' in response.json()['error']
+
+    def test_order_independent_cache(self):
+        for url in (self.SECTIONS, self.TOWNSHIPS):
+            a = self.client.get(f'{url}?bbox={self.bbox}&category=carcinogen,toxic_air_contaminant')
+            b = self.client.get(f'{url}?bbox={self.bbox}&category=toxic_air_contaminant&category=carcinogen')
+            assert a.status_code == b.status_code == 200
+            assert a.json() == b.json()
+
+    def test_filters_narrow(self):
+        # TAC is CHLORPYRIFOS alone: June's 20 lbs in 9101.
+        tac = self.section_props(year=2023, category='toxic_air_contaminant')
+        assert tac['lbs_chemical'] == 20.0 and tac['applications'] == 1
+        compare = self.section_props(year=2023, compare=2022, category='carcinogen')
+        assert compare['lbs_chemical_prev'] == 80.0 and compare['applications_prev'] == 1
+
+    def test_no_new_params_unchanged(self):
+        # Without the new values the request stays on PesticideSectionTotal and never
+        # takes the per-record path; blank values are the same request.
+        with patch('camp.apps.pesticides.stats.section_totals_by_record', side_effect=AssertionError):
+            for url in (self.SECTIONS, self.TOWNSHIPS):
+                plain = self.client.get(url, {'bbox': self.bbox, 'year': 2023}).json()
+                blank = self.client.get(url, {'bbox': self.bbox, 'year': 2023, 'category': '', 'iarc_group': ''}).json()
+                assert plain == blank and plain['features']
+            assert self.section_props(year=2023)['lbs_chemical'] == 670.0
+            assert self.township_props(year=2023)['applications'] == 4
+
+
+class MapClassesTests(RollupTestMixin, TestCase):
+    """`classes=1` on sections/ and townships/: valley-wide breaks, ignoring the spatial scope."""
+    fixtures = ['pesticides-explorer']
+
+    SECTIONS = '/api/2.0/pesticides/sections/'
+    TOWNSHIPS = '/api/2.0/pesticides/townships/'
+
+    def setUp(self):
+        super().setUp()
+        self.section = Region.objects.get(pk=9101)
+        self.other = Region.objects.get(pk=9102)
+        self.bbox = ','.join(str(v) for v in self.section.boundary.geometry.extent)
+        self.year = stats.latest_year()
+
+    def get(self, url, **params):
+        response = self.client.get(url, {'bbox': self.bbox, 'year': self.year, 'classes': '1', **params})
+        assert response.status_code == 200, response.content
+        return response.json()
+
+    def figures_breaks(self, by_key):
+        from camp.apps.pesticides import classes
+        return {f: classes.breaks_for({k: v[f] for k, v in by_key.items()}) for f in classes.FIGURES}
+
+    def section_figures(self, params=None, filters=None):
+        from camp.api.v2.pesticides.sections import apply_filters, section_figures
+        params, filters = params or {}, filters or {}
+        rows = stats.in_year(PesticideUseRollup.objects.filter(mtrs__isnull=False), self.year)
+        rows, _ = apply_filters(rows, params, filters)
+        return section_figures(rows, params, filters)
+
+    def test_valley_not_bbox(self):
+        from camp.apps.pesticides import classes
+        body = self.get(self.SECTIONS)
+        assert [f['properties']['mtrs'] for f in body['features']] == [self.section.external_id]
+        assert body['classes'] == classes.valley_classes('section', self.year, False, {})
+        # Both sections are ranked, not only the one in the bbox.
+        assert body['classes']['lbs_chemical'] == {'breaks': [70.0, 670.0], 'min': 70.0, 'colors': maps.sample_ramp(maps.RAMP, 2)}
+        assert body['classes'] == self.figures_breaks(self.section_figures())
+
+    def test_spatial_params_ignored(self):
+        from camp.apps.pesticides import classes
+        other_bbox = ','.join(str(v) for v in self.other.boundary.geometry.extent)
+        fresno = Region.objects.get(pk=9001)
+        with patch.object(classes, 'build_classes', wraps=classes.build_classes) as build:
+            bodies = [
+                self.get(self.SECTIONS),
+                self.get(self.SECTIONS, county='fresno'),
+                self.get(self.SECTIONS, bbox='', region=fresno.sqid),
+                self.get(self.SECTIONS, bbox=other_bbox),
+            ]
+        assert all(b['classes'] == bodies[0]['classes'] for b in bodies)
+        assert build.call_count == 1
+
+    def test_month_ranked_alone(self):
+        body = self.get(self.SECTIONS, month=6)
+        expected = self.figures_breaks(self.section_figures({'month': '6'}))
+        assert body['classes'] == expected
+        # June is CHLORPYRIFOS's 20 lbs in 9101 alone.
+        assert body['classes']['lbs_chemical'] == {'breaks': [20.0], 'min': 20.0, 'colors': maps.sample_ramp(maps.RAMP, 1)}
+
+    def test_filters_change_classes(self):
+        plain = self.get(self.SECTIONS)
+        carcinogen = self.get(self.SECTIONS, category='carcinogen')
+        assert carcinogen['classes'] != plain['classes']
+        expected = self.figures_breaks(self.section_figures({'category': 'carcinogen'}, {'category': ['carcinogen']}))
+        assert carcinogen['classes'] == expected
+        assert carcinogen['classes']['lbs_chemical'] == {'breaks': [30.0, 150.0], 'min': 30.0, 'colors': maps.sample_ramp(maps.RAMP, 2)}
+        # Other value filters reach the classes too.
+        chem = self.get(self.SECTIONS, chemical=253)
+        assert chem['classes']['lbs_chemical'] == {'breaks': [20.0, 40.0], 'min': 20.0, 'colors': maps.sample_ramp(maps.RAMP, 2)}
+
+    def test_compare_classes_scope_year(self):
+        assert self.get(self.SECTIONS, compare=2022)['classes'] == self.get(self.SECTIONS)['classes']
+        assert self.get(self.TOWNSHIPS, compare=2022)['classes'] == self.get(self.TOWNSHIPS)['classes']
+
+    def test_all_years(self):
+        body = self.get(self.SECTIONS, year='all')
+        assert body['classes']['lbs_chemical'] == {'breaks': [130.0, 1150.0], 'min': 130.0, 'colors': maps.sample_ramp(maps.RAMP, 2)}
+
+    def test_no_classes_without_param(self):
+        for url in (self.SECTIONS, self.TOWNSHIPS):
+            for value in (None, '0', ''):
+                params = {'bbox': self.bbox, 'year': self.year}
+                if value is not None:
+                    params['classes'] = value
+                assert 'classes' not in self.client.get(url, params).json()
+
+    def test_classes_only_adds_the_key(self):
+        for url in (self.SECTIONS, self.TOWNSHIPS):
+            for extra in ({}, {'category': 'carcinogen'}, {'month': 3}):
+                plain = self.client.get(url, {'bbox': self.bbox, 'year': self.year, **extra}).json()
+                with_classes = self.get(url, **extra)
+                with_classes.pop('classes')
+                assert with_classes == plain
+
+    def test_empty_month(self):
+        for url in (self.SECTIONS, self.TOWNSHIPS):
+            body = self.get(url, month=1)
+            assert body['classes'] == {
+                'lbs_chemical': {'breaks': [], 'min': None, 'colors': []},
+                'acres_treated': {'breaks': [], 'min': None, 'colors': []},
+                'applications': {'breaks': [], 'min': None, 'colors': []},
+            }
+
+    def test_township_level(self):
+        body = self.get(self.TOWNSHIPS)
+        expected = self.figures_breaks(stats.fold_townships(self.section_figures()))
+        assert body['classes'] == expected
+        assert body['classes'] == self.figures_breaks(stats.by_township(PesticideUseRollup.objects.all(), self.year))
+        carcinogen = self.get(self.TOWNSHIPS, category='carcinogen')
+        expected = self.figures_breaks(stats.fold_townships(
+            self.section_figures({'category': 'carcinogen'}, {'category': ['carcinogen']})))
+        assert carcinogen['classes'] == expected
+
+    def test_feature_values_fall_in_classes(self):
+        for url in (self.SECTIONS, self.TOWNSHIPS):
+            for extra in ({}, {'month': 6}, {'category': 'carcinogen'}, {'county': 'kern', 'bbox': ''},
+                          {'year': 'all'}, {'iarc_group': '2A'}):
+                params = {'bbox': self.bbox if url == self.SECTIONS else '', **extra}
+                if url == self.SECTIONS and not params['bbox']:
+                    params['bbox'] = '-121,35,-118,37'
+                body = self.get(url, **params)
+                for feature in body['features']:
+                    props = feature['properties']
+                    for figure in ('lbs_chemical', 'acres_treated', 'applications'):
+                        value = props[figure]
+                        if value:
+                            cls = body['classes'][figure]
+                            assert value <= cls['breaks'][-1], (url, extra, figure)
+                            # A county-filtered border feature counts only that county's
+                            # use, so it may fall below the valley-wide `min`.
+                            if 'county' not in extra:
+                                assert cls['min'] <= value, (url, extra, figure)
+
+    def test_township_classes_reuse_valley_totals(self):
+        # Without `county` the township totals are valley-wide, so a cold classes=1 builds
+        # the township figures once (not again inside build_classes).
+        from camp.api.v2.pesticides import sections
+        from camp.apps.pesticides import classes
+        with patch.object(sections, 'section_figures', wraps=sections.section_figures) as figures, \
+                patch.object(classes, 'build_classes', wraps=classes.build_classes) as build:
+            body = self.get(self.TOWNSHIPS, category='carcinogen')
+        assert figures.call_count == 1
+        assert build.call_count == 0
+        filters = {'category': ['carcinogen']}
+        params = {'category': 'carcinogen', 'year': str(self.year)}
+        # The cached value is the one build_classes would make, under its key.
+        independent = classes.build_classes('township', self.year, False, params, filters)
+        assert body['classes'] == independent
+        assert classes.valley_classes('township', self.year, False, params, filters) == independent
+
+    def test_township_county_still_builds_valley(self):
+        from camp.apps.pesticides import classes
+        with patch.object(classes, 'build_classes', wraps=classes.build_classes) as build:
+            body = self.get(self.TOWNSHIPS, category='carcinogen', county='kern', bbox='')
+        assert build.call_count == 1
+        assert body['classes'] == self.get(self.TOWNSHIPS, category='carcinogen')['classes']
+
+    def test_month_spellings_share_a_key(self):
+        from camp.apps.pesticides import classes
+        with patch.object(classes, 'build_classes', wraps=classes.build_classes) as build:
+            a = self.get(self.SECTIONS, month='6')
+            b = self.get(self.SECTIONS, month='06')
+        assert build.call_count == 1
+        assert a['classes'] == b['classes']
+
+    def test_category_spellings_share_a_key(self):
+        from camp.apps.pesticides import classes
+        with patch.object(classes, 'build_classes', wraps=classes.build_classes) as build:
+            a = self.client.get(self.SECTIONS, {
+                'bbox': self.bbox, 'year': self.year, 'classes': '1',
+                'category': 'carcinogen,toxic_air_contaminant'})
+            b = self.client.get(self.SECTIONS, {
+                'bbox': self.bbox, 'year': self.year, 'classes': '1',
+                'category': ['toxic_air_contaminant', 'carcinogen']})
+        assert a.status_code == b.status_code == 200
+        assert build.call_count == 1
+        assert a.json()['classes'] == b.json()['classes']
+
+    def test_narrow_spellings_share_a_key(self):
+        from camp.apps.pesticides import classes
+        with patch.object(classes, 'build_classes', wraps=classes.build_classes) as build:
+            bodies = [self.get(self.SECTIONS, narrow=value) for value in ('concern', 'Concern')]
+            bodies.append(self.get(self.SECTIONS, concern='1'))
+        assert build.call_count == 1
+        assert all(b['classes'] == bodies[0]['classes'] for b in bodies)
+
+    def test_all_years_category(self):
+        from camp.api.v2.pesticides.sections import apply_filters, section_figures
+        body = self.get(self.SECTIONS, year='all', category='carcinogen')
+        params, filters = {'category': 'carcinogen'}, {'category': ['carcinogen']}
+        rows = stats.in_year(PesticideUseRollup.objects.filter(mtrs__isnull=False), None, True)
+        rows, _ = apply_filters(rows, params, filters)
+        expected = self.figures_breaks(section_figures(rows, params, filters))
+        assert body['classes'] == expected
+        assert body['classes']['lbs_chemical']['breaks']
+
+
+class SectionDetailFilterTests(RollupTestMixin, TestCase):
+    """`sections/<id>/` takes the map's value filters and `month`, opt-in."""
+    fixtures = ['pesticides-explorer']
+
+    SECTIONS = '/api/2.0/pesticides/sections/'
+    PINNED = 'camp/api/v2/pesticides/testdata/section-detail-unfiltered.json'
+
+    def setUp(self):
+        super().setUp()
+        self.section = Region.objects.get(pk=9101)
+        self.url = f'{self.SECTIONS}{self.section.sqid}/'
+        self.bbox = ','.join(str(v) for v in self.section.boundary.geometry.extent)
+        self.year = stats.latest_year()
+
+    def detail(self, **params):
+        from django.core.cache import cache
+        cache.clear()
+        response = self.client.get(self.url, params)
+        assert response.status_code == 200, response.content
+        return response.json()
+
+    def feature(self, **params):
+        from django.core.cache import cache
+        cache.clear()
+        response = self.client.get(self.SECTIONS, {'bbox': self.bbox, 'year': self.year, **params})
+        assert response.status_code == 200, response.content
+        return next(f['properties'] for f in response.json()['features'] if f['properties']['mtrs'] == self.section.external_id)
+
+    def place(self, **params):
+        from django.core.cache import cache
+        cache.clear()
+        url = reverse('api:v2:pesticides:pesticide-place')
+        response = self.client.get(url, {'region_type': 'mtrs', 'region': self.section.external_id, **params})
+        assert response.status_code == 200, response.content
+        return response.json()['data']
+
+    def year_entry(self, data):
+        return next(y for y in data['years'] if y['year'] == self.year)
+
+    def test_unfiltered_unchanged(self):
+        # Pinned from the view before it took any filter: the explorer's popup sends only
+        # `year` and `narrow`, and its answers must stay byte-for-byte the same.
+        from django.core.cache import cache
+        with open(self.PINNED) as f:
+            pinned = json.load(f)
+        sets = {
+            'none': {}, 'year=latest': {'year': self.year},
+            'year=all': {'year': 'all'}, 'narrow=concern': {'narrow': 'concern'},
+        }
+        assert set(pinned) == set(sets)
+        for key, params in sets.items():
+            cache.clear()
+            response = self.client.get(self.url, params)
+            assert response.status_code == 200
+            assert response.content.decode() == pinned[key], key
+
+    def test_category_matches_place(self):
+        data = self.detail(year=self.year, category='carcinogen')
+        place = self.place(category='carcinogen')
+        year = self.year_entry(data)
+        expected = next(y for y in place['years'] if y['year'] == self.year)
+        assert expected['applications']
+        assert (year['lbs_chemical'], year['acres_treated'], year['applications']) == \
+            (expected['pounds'], expected['acres'], expected['applications'])
+        place_months = {m['month']: m for m in place['months'] if m['year'] == self.year}
+        assert [m['month'] for m in data['months']] == list(range(1, 13))
+        for row in data['months']:
+            m = place_months.get(row['month'], {'pounds': 0, 'acres': 0, 'applications': 0})
+            assert (row['lbs_chemical'], row['acres_treated'], row['applications']) == \
+                (m['pounds'], m['acres'], m['applications']), row
+        assert {c['name'] for c in data['top_chemicals']} == {'GLYPHOSATE'}
+
+    def test_unmatched_filter_keeps_county(self):
+        # A filter matching nothing in the section empties the lists, not the section's county.
+        unused = Chemical.objects.create(chem_code=30002, name='NEVER USED HERE')
+        expected = self.detail(year=self.year)['county']
+        assert expected
+        data = self.detail(year=self.year, chemical_id=unused.sqid)
+        assert data['county'] == expected
+        assert data['top_chemicals'] == [] and data['top_products'] == [] and data['top_commodities'] == []
+
+    def test_category_top_products_count_once(self):
+        # A second carcinogen on the same record: one more ingredient row, not more product pounds.
+        row = PesticideUseRollup.objects.get(year=2023, month=3, mtrs=self.section, chemical__chem_code=1855)
+        other = Chemical.objects.create(chem_code=9999, name='OTHER CARCINOGEN', categories=['carcinogen'])
+        PesticideUseRollup.objects.create(
+            year=2023, month=3, county=row.county, mtrs=row.mtrs, chemical=other, product=row.product,
+            commodity=row.commodity, method=row.method, lbs_chemical=40, lbs_product=row.lbs_product,
+            acres_treated=row.acres_treated, applications=row.applications, records=0, acres_once=0)
+        stats.bump_data_version()
+        data = self.detail(year=2023, category='carcinogen')
+        products = data['top_products']
+        assert 0 < len(products) < 5
+        assert sum(p['lbs'] for p in products) == self.feature(year=2023, category='carcinogen')['lbs_product']
+        assert set(products[0]) == {'id', 'name', 'display_name', 'lbs'}
+        assert self.year_entry(data)['applications'] == 2
+
+    def test_chemical_id_matches_sections(self):
+        glyphosate = Chemical.objects.get(chem_code=1855)
+        year = self.year_entry(self.detail(year=self.year, chemical_id=glyphosate.sqid))
+        feature = self.feature(chemical_id=glyphosate.sqid)
+        assert year == {'year': self.year, **{
+            key: feature[key] for key in ('lbs_chemical', 'lbs_product', 'acres_treated', 'applications')}}
+
+    def test_month_narrows_top_lists_only(self):
+        plain = self.detail(year=self.year)
+        june = self.detail(year=self.year, month=6)
+        assert len(june['months']) == 12
+        assert june['months'] == plain['months']
+        assert june['years'] == plain['years']
+        rows = PesticideUseRollup.objects.filter(mtrs=self.section, month=6)
+        expected = [r.obj.sqid for r in stats.top_related(rows, self.year, 'chemical', limit=5)]
+        assert expected
+        assert [c['id'] for c in june['top_chemicals']] == expected
+        assert june['top_chemicals'] != plain['top_chemicals']
+
+    def test_bad_values_400(self):
+        glyphosate = Chemical.objects.get(chem_code=1855)
+        cases = [
+            ({'month': '13'}, 'month must be 1-12'),
+            ({'chemical_id': 'zzz'}, 'Not a chemical id.'),
+            ({'chemical': '1855', 'chemical_id': glyphosate.sqid}, 'give chemical or chemical_id, not both'),
+        ]
+        for params, message in cases:
+            response = self.client.get(self.url, params)
+            assert response.status_code == 400, params
+            assert response.json() == {'error': message}
+        assert self.client.get(self.url, {'category': 'foo'}).status_code == 400
+
+    def test_cache_keys_by_filter(self):
+        from django.core.cache import cache
+        cache.clear()
+        plain = self.client.get(self.url, {'year': self.year}).json()
+        filtered = self.client.get(self.url, {'year': self.year, 'category': 'carcinogen'}).json()
+        assert filtered != plain
+        assert [c['name'] for c in filtered['top_chemicals']] == ['GLYPHOSATE']
+        assert len(plain['top_chemicals']) > 1
+
+    def test_cdpr_codes_alone_ignored(self):
+        plain = self.detail(year=self.year)
+        for params in ({'chemical': '1855'}, {'product': '1'}, {'commodity': '01'}, {'method': 'A'}, {'county': 'kern'}):
+            assert self.detail(year=self.year, **params) == plain, params

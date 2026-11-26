@@ -9,6 +9,7 @@ from .base import BaseEntry
 
 class CO(BaseEntry):
     label = _('Carbon Monoxide')
+    description = _('Colorless, odorless gas from vehicle exhaust and burning fuel.')
     epa_aqs_code = 42101
     units = 'ppm'
     summarize = True
@@ -23,6 +24,7 @@ class CO(BaseEntry):
 
 class CO2(BaseEntry):
     label = _('Carbon Dioxide')
+    description = _('Gas from breathing and burning fuel; high levels indoors mean a room needs fresh air.')
     epa_aqs_code = 42102
     units = 'ppm'
 
@@ -34,6 +36,7 @@ class CO2(BaseEntry):
 
 class NO2(BaseEntry):
     label = _('Nitrogen Dioxide')
+    description = _('Gas from vehicle and engine exhaust, highest near busy roads.')
     epa_aqs_code = 42602
     units = 'ppb'
     summarize = True
@@ -48,6 +51,7 @@ class NO2(BaseEntry):
 
 class O3(BaseEntry):
     label = _('Ozone')
+    description = _('Ground-level gas that forms in sunlight on hot days.')
     epa_aqs_code = 44201
     units = 'ppb'
     summarize = True
@@ -62,6 +66,7 @@ class O3(BaseEntry):
 
 class SO2(BaseEntry):
     label = _('Sulfur Dioxide')
+    description = _('Gas from burning fuels that contain sulfur, mostly from industry.')
     epa_aqs_code = 42401
     units = 'ppb'
     summarize = True

@@ -4,20 +4,23 @@ Totals come from PesticideUseRollup; geometry from the MTRS Region boundaries.
 """
 import json
 import math
+import re
 
-from datetime import timedelta
+from datetime import date, timedelta
 
+from django import forms
 from django.contrib.gis.geos import GEOSGeometry, Point, Polygon
 from django.contrib.gis.measure import D
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
 from resticus import generics, http
 
-from camp.apps.pesticides import maps, stats
+from camp.apps.pesticides import classes, maps, stats
+from camp.apps.pesticides.badges import chemical_badges
 from camp.apps.pesticides.models import (
-    PesticideNotice, PesticideSectionTotal, PesticideUseRollup,
+    Chemical, Commodity, PesticideNotice, PesticideSectionTotal, PesticideUseRollup, Product,
 )
 from camp.apps.pesticides.townships import township_geometries
 from camp.apps.regions.models import Region
@@ -25,9 +28,16 @@ from camp.apps.regions.shapes import parse_buffer, region_shape
 from camp.utils.gis import round_coords
 from camp.utils.views import CachedEndpointMixin
 
+from .fields import AERIAL_GROUND_CHOICES, NO_METHOD, CategoryListField, PlaceChoiceField, SqidChoiceField
+
 MAX_SECTIONS = 2500
 MAX_NOTICES = 2000
 NOTICE_CACHE_TTL = 300
+# A settled day's notices only change when the daily fetch rewrites them,
+# and that bumps the notices version in the cache key.
+SETTLED_NOTICE_CACHE_TTL = 60 * 60 * 24
+
+
 def totals_aggregates(chemical_scoped=False):
     """
     The per-feature sums. The output names are the API's; which column feeds
@@ -75,21 +85,34 @@ def clip_shape(params):
     miles, error = parse_buffer(params)
     if error:
         return None, error
-    region = Region.objects.filter(sqid=sqid, boundary__isnull=False).select_related('boundary').first()
+    region = Region.all_objects.filter(sqid=sqid, boundary__isnull=False).select_related('boundary').first()
     if region is None:
         return None, 'region not found'
     return region_shape(region, miles), None
 
 
-def apply_filters(rows, params):
-    """Entity/county/month/narrowing filters shared by both endpoints. Returns (rows, error)."""
-    if params.get('month'):
-        try:
-            month = int(params['month'])
-        except ValueError:
-            return rows, 'month must be 1-12'
-        if not 1 <= month <= 12:
-            return rows, 'month must be 1-12'
+def parse_month(params):
+    """`month` as an int. Returns (month, error): (None, None) when absent."""
+    if not params.get('month'):
+        return None, None
+    try:
+        month = int(params['month'])
+    except ValueError:
+        return None, 'month must be 1-12'
+    if not 1 <= month <= 12:
+        return None, 'month must be 1-12'
+    return month, None
+
+
+def apply_filters(rows, params, filters):
+    """
+    Entity/county/month/narrowing filters shared by both endpoints, plus `filters`, the
+    cleaned map filters (`parse_map_filters(params, ROLLUP_MAP_FILTERS)`). Returns (rows, error).
+    """
+    month, error = parse_month(params)
+    if error:
+        return rows, error
+    if month is not None:
         rows = rows.filter(month=month)
     cast_lookups = {
         'chemical': ('chemical__chem_code', int),
@@ -118,13 +141,57 @@ def apply_filters(rows, params):
     narrow = stats.resolve_narrow(params)
     if narrow:
         rows = stats.narrow_rows(rows, narrow)
-    return rows, None
+    return apply_map_filters(rows, filters), None
+
+
+def apply_map_filters(rows, filters):
+    """The cleaned map filters (`parse_map_filters`) applied to rollup rows."""
+    # The charts' values: our ids, and `aerial_ground` (the same codes as `method`; both
+    # apply when both are given).
+    for name, field in (('chemical_id', 'chemical'), ('product_id', 'product'), ('commodity_id', 'commodity')):
+        if name in filters:
+            rows = rows.filter(**{field: filters[name]})
+    if 'aerial_ground' in filters:
+        code = filters['aerial_ground']
+        rows = rows.filter(method='' if code == NO_METHOD else code)
+    # Any of the categories, on the row's own chemical (as place/ filters them).
+    if 'category' in filters:
+        rows = rows.filter(chemical__categories__overlap=filters['category'])
+    if 'iarc_group' in filters:
+        rows = rows.filter(chemical__iarc_group=filters['iarc_group'])
+    return rows
+
+
+def chemical_scoped(params, filters):
+    """Whether the rows are one chemical's, so the per-row columns count (see totals_aggregates)."""
+    return bool(params.get('chemical')) or 'chemical_id' in filters
+
+
+def counts_by_record(params, filters):
+    """Whether the rows can hold several ingredient rows of one record: a category or IARC filter without a chemical."""
+    return not chemical_scoped(params, filters) and ('category' in filters or 'iarc_group' in filters)
+
+
+def section_figures(rows, params, filters):
+    """
+    `{section pk: totals}` over `rows`, rollup rows already narrowed by apply_filters(),
+    counted as place/ counts them (`counting_mode`). One chemical sums its own ingredient
+    rows; a category or IARC filter without one can keep several ingredient rows of a record,
+    so those take the MAX per record; anything else sums the once-per-record columns.
+    """
+    if counts_by_record(params, filters):
+        return stats.section_totals_by_record(rows)
+    scoped = chemical_scoped(params, filters)
+    return {r['mtrs']: r for r in rows.values('mtrs').annotate(**totals_aggregates(scoped))}
 
 
 # What apply_filters() narrows on. A request carrying none of these wants
 # plain section totals, which PesticideSectionTotal already holds; anything
 # here has to go back to the rollup, the only place those dimensions survive.
-SECTION_FILTER_PARAMS = ('month', 'chemical', 'product', 'commodity', 'county', 'method')
+SECTION_FILTER_PARAMS = (
+    'month', 'chemical', 'product', 'commodity', 'county', 'method',
+    'chemical_id', 'product_id', 'commodity_id', 'aerial_ground', 'category', 'iarc_group',
+)
 
 
 def section_totals_available(params):
@@ -136,13 +203,16 @@ def section_totals_available(params):
 
 def section_totals(section_pks, year, all_years):
     """
-    `{section pk: totals}` for `year` from PesticideSectionTotal.
+    `{section pk: totals}` for `year` from PesticideSectionTotal; `section_pks` None
+    means every section (the valley-wide classes).
 
     All years sums the stored years, which is still a fraction of the rollup
     rows behind them. No year at all matches in_year()'s "nothing loaded
     means nothing", rather than quietly totalling every year.
     """
-    rows = PesticideSectionTotal.objects.filter(mtrs__in=section_pks)
+    rows = PesticideSectionTotal.objects.all()
+    if section_pks is not None:
+        rows = rows.filter(mtrs__in=section_pks)
     if all_years:
         return {
             r['mtrs']: r
@@ -192,6 +262,17 @@ def totals_properties(totals, previous=None):
     if previous is not None:
         properties.update({f'{key}_prev': (previous[key] or 0) for key in TOTALS})
     return properties
+
+
+def with_classes(body, params, level, year, all_years, filters, build=None):
+    """
+    `body` plus `classes` (valley-wide breaks over the scope year; see classes.py) when
+    `classes=1` is asked for. Any other value leaves the body as it was. `build` is passed
+    to valley_classes() (a cache-miss builder from figures the endpoint already has).
+    """
+    if params.get('classes') == '1':
+        body['classes'] = classes.valley_classes(level, year, all_years, params, filters, build=build)
+    return body
 
 
 def year_value(year, all_years):
@@ -304,6 +385,9 @@ class SectionListBase(generics.Endpoint):
 
     def get(self, request):
         params = request.GET
+        filters, error = parse_map_filters(params, ROLLUP_MAP_FILTERS)
+        if error:
+            return bad_request(error)
         sections, error = self.get_sections(params)
         if error:
             return bad_request(error)
@@ -335,18 +419,17 @@ class SectionListBase(generics.Endpoint):
         else:
             in_bbox = PesticideUseRollup.objects.filter(mtrs__in=section_pks)
             rows = stats.in_year(in_bbox, year, all_years)
-            rows, error = apply_filters(rows, params)
+            rows, error = apply_filters(rows, params, filters)
             if error:
                 return bad_request(error)
-            scoped = bool(params.get('chemical'))
-            totals = {r['mtrs']: r for r in rows.values('mtrs').annotate(**totals_aggregates(scoped))}
+            totals = section_figures(rows, params, filters)
             previous = {}
             if compare:
                 # The same filters over the compared year, so the change is
                 # the one the reader's filters describe and not the section's
                 # total.
-                compare_rows, _ = apply_filters(stats.in_year(in_bbox, compare), params)
-                previous = {r['mtrs']: r for r in compare_rows.values('mtrs').annotate(**totals_aggregates(scoped))}
+                compare_rows, _ = apply_filters(stats.in_year(in_bbox, compare), params, filters)
+                previous = section_figures(compare_rows, params, filters)
         counties = county_name_for(section_pks, year, all_years)
 
         # Section outlines never change, so a reader who already has them --
@@ -377,7 +460,8 @@ class SectionListBase(generics.Endpoint):
                 },
             })
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
-        return {'type': 'FeatureCollection', 'year': year_value(year, all_years), 'features': features}
+        body = {'type': 'FeatureCollection', 'year': year_value(year, all_years), 'features': features}
+        return with_classes(body, params, 'section', year, all_years, filters)
 
 
 class SectionList(CachedEndpointMixin, SectionListBase):
@@ -389,6 +473,12 @@ class SectionList(CachedEndpointMixin, SectionListBase):
     (prodno), `commodity` (site code), `county` (slug), and `narrow=concern|restricted|fumigant|aerial` (or the legacy `concern=1`) to
     count only what that narrowing keeps, e.g. the chemicals of concern (Prop 65, CARB TAC, IARC 1/2A/2B,
     California restricted materials).
+    The charts' values also filter: `chemical_id`, `product_id`, `commodity_id` (our ids, as
+    `place/` takes them; giving one with its code form is a 400) and `aerial_ground`
+    (`G`, `A`, `F`, `O`, `none`; the same as `method`), `category` (repeated or
+    comma-separated, any of them) and `iarc_group`, counted as `place/` counts them.
+    `classes=1` adds `classes`: quantile breaks (`{breaks, min}` per figure) over every section in
+    the valley for the year, month and value filters, whatever the bbox, region or county.
     """
     cache_timeout = 60 * 60
 
@@ -399,29 +489,82 @@ class SectionDetailBase(generics.Endpoint):
     # is the one actually dispatched to.
     def get(self, request, section_id):
         section = get_object_or_404(
-            Region.objects.filter(type=Region.Type.MTRS).select_related('boundary'), sqid=section_id,
+            Region.all_objects.filter(type=Region.Type.MTRS).select_related('boundary'), sqid=section_id,
         )
-        year, all_years = parse_year(request.GET)
+        params = request.GET
+        filters, error = parse_map_filters(params, ROLLUP_MAP_FILTERS)
+        if error:
+            return bad_request(error)
+        month, error = parse_month(params)
+        if error:
+            return bad_request(error)
+        year, all_years = parse_year(params)
         rows = PesticideUseRollup.objects.filter(mtrs=section)
-        narrow = stats.resolve_narrow(request.GET)
+        narrow = stats.resolve_narrow(params)
         if narrow:
             rows = stats.narrow_rows(rows, narrow)
-        years = list(rows.values('year').annotate(**TOTALS).order_by('-year'))
-        months = stats.by_month(rows, year, all_years=all_years) if (year or all_years) else []
-        county = rows.values_list('county__name', flat=True).order_by('county__name').first()
+        # The county is the section's, so it reads the rows before the map's filters.
+        county_rows = rows
+        rows = apply_map_filters(rows, filters)
+        has_year = bool(year or all_years)
+        # The top lists alone follow `month`; `years` and `months` stay whole.
+        top_rows = rows if month is None else rows.filter(month=month)
+        # Counted as sections/ counts them (section_figures), so the card matches the shading.
+        # Only the filters decide: the CDPR `chemical` code is ignored here, so it mustn't switch columns.
+        by_record = counts_by_record({}, filters)
+        scoped = chemical_scoped({}, filters)
+        if by_record:
+            years = [
+                {'year': key, **figures}
+                for key, figures in sorted(stats.totals_by_record(rows, 'year').items(), reverse=True)
+            ]
+            found = stats.totals_by_record(stats.in_year(rows, year, all_years), 'month') if has_year else {}
+            months = [
+                {
+                    'month': m,
+                    'lbs': figures.get('lbs_chemical') or 0,
+                    'acres': figures.get('acres_treated') or 0,
+                    'applications': figures.get('applications') or 0,
+                }
+                for m in range(1, 13)
+                for figures in [found.get(m) or {}]
+            ] if has_year else []
+        else:
+            years = list(rows.values('year').annotate(**totals_aggregates(scoped)).order_by('-year'))
+            apps_field = stats.apps_field_for(scoped)
+            months = stats.by_month(rows, year, all_years=all_years, apps_field=apps_field) if has_year else []
+        county = county_rows.values_list('county__name', flat=True).order_by('county__name').first()
+
+        def entry(obj, lbs, field):
+            item = {'id': obj.sqid, 'name': obj.name, 'display_name': obj.display_name, 'lbs': lbs}
+            # The map's section popup marks the chemicals of concern.
+            if field == 'chemical':
+                item['is_of_concern'] = obj.is_of_concern
+                item['badges'] = chemical_badges(obj)
+            return item
 
         def top(field, lbs_field='lbs_chemical', limit=5):
-            if not (year or all_years):
+            if not has_year:
                 return []
-            related = stats.top_related(rows, year, field, lbs_field=lbs_field, limit=limit, all_years=all_years)
-            entries = []
-            for r in related:
-                entry = {'id': r.obj.sqid, 'name': r.obj.name, 'display_name': r.obj.display_name, 'lbs': r.lbs}
-                # The map's section popup marks the chemicals of concern.
-                if field == 'chemical':
-                    entry['is_of_concern'] = r.obj.is_of_concern
-                entries.append(entry)
-            return entries
+            related = stats.top_related(top_rows, year, field, lbs_field=lbs_field, limit=limit, all_years=all_years)
+            return [entry(r.obj, r.lbs, field) for r in related]
+
+        def top_products_by_record(limit=5):
+            # Product pounds repeat on every ingredient row of a record: MAX per record, then sum.
+            if not has_year:
+                return []
+            totals = stats.totals_by_record(stats.in_year(top_rows, year, all_years), 'product')
+            ranked = sorted(totals.items(), key=lambda item: (-item[1]['lbs_product'], item[0]))[:limit]
+            products = Product.objects.with_restricted().in_bulk([pk for pk, _ in ranked])
+            return [
+                entry(products[pk], figures['lbs_product'], 'product')
+                for pk, figures in ranked if pk in products
+            ]
+
+        if by_record:
+            top_products = top_products_by_record()
+        else:
+            top_products = top('product', lbs_field=stats.product_lbs_field(scoped))
 
         return {
             'id': section.sqid,
@@ -435,14 +578,101 @@ class SectionDetailBase(generics.Endpoint):
                 for m in months
             ],
             'top_chemicals': top('chemical'),
-            'top_products': top('product', lbs_field='lbs_product_once'),
+            'top_products': top_products,
             'top_commodities': top('commodity'),
         }
 
 
 class SectionDetail(CachedEndpointMixin, SectionDetailBase):
-    """One MTRS section: geometry, totals by year and by month, and top chemicals, products, and commodities for `year` (default latest). `narrow=concern|restricted|fumigant|aerial` (or legacy `concern=1`) counts only what that narrowing keeps."""
+    """
+    One MTRS section: geometry, totals by year and by month, and top chemicals, products,
+    and commodities for `year` (default latest). `narrow=concern|restricted|fumigant|aerial`
+    (or legacy `concern=1`) counts only what that narrowing keeps. Each top chemical carries
+    `badges` (keys of meta's `badges`).
+
+    The map's value filters narrow `years`, `months` and the top lists, validated as on
+    `sections/` (a bad value is a 400 `{"error": ...}`): `chemical_id`, `product_id`,
+    `commodity_id` (our sqids), `category` (repeated or comma-separated, any of them),
+    `iarc_group` and `aerial_ground`. The CDPR-code forms (`chemical`, `product`, `commodity`,
+    `method`) and `county` stay ignored, except that giving a code and its id is a 400.
+    Counting matches `sections/`: with `chemical_id` the per-ingredient columns count; with
+    `category` or `iarc_group` and no chemical, product pounds, acres and applications take the
+    MAX per record key; otherwise the once-per-record columns count. Top chemicals and
+    commodities rank by chemical pounds either way. `month` (1-12) narrows the top lists only;
+    `months` stays the year's twelve rows. Without any of these params the response is
+    unchanged.
+    """
     cache_timeout = 60 * 60
+    cache_key_version = 1
+
+
+class MapFilterForm(forms.Form):
+    """
+    The map layers' filters in the charts' (`place/`'s) values. The `*_id` fields take our
+    sqids; the layers' `chemical`/`product`/`commodity` keep taking CDPR codes.
+    """
+    category = CategoryListField()
+    iarc_group = PlaceChoiceField(choices=Chemical.IARCGroup.choices)
+    chemical_id = SqidChoiceField(Chemical)
+    product_id = SqidChoiceField(Product)
+    commodity_id = SqidChoiceField(Commodity)
+    aerial_ground = PlaceChoiceField(choices=AERIAL_GROUND_CHOICES)
+
+
+# Which of MapFilterForm's fields each layer reads; the others aren't validated there, so a
+# layer ignores them as before.
+ROLLUP_MAP_FILTERS = ('chemical_id', 'product_id', 'commodity_id', 'aerial_ground', 'category', 'iarc_group')
+# The value filters the notice endpoints accept, served as meta's `notice_filters`.
+NOTICE_VALUE_FILTERS = ('chemical_id', 'product_id', 'category', 'iarc_group', 'narrow', 'aerial_ground')
+NOTICE_MAP_FILTERS = ('category', 'iarc_group', 'chemical_id', 'product_id', 'aerial_ground')
+
+# A filter given both as a CDPR code and as one of our ids.
+CODE_OR_ID = ('chemical', 'product', 'commodity')
+
+
+def parse_map_filters(params, fields):
+    """
+    The map filters `fields` (names of MapFilterForm's fields), cleaned; ids clean to
+    instances. Returns (the non-blank values, None) or ({}, the error message): giving a
+    filter both as a code and an id, else the first field error's message.
+    """
+    for name in CODE_OR_ID:
+        if f'{name}_id' in fields and params.get(name) and params.get(f'{name}_id'):
+            return {}, f'give {name} or {name}_id, not both'
+    form = MapFilterForm(params)
+    for name in set(form.fields) - set(fields):
+        del form.fields[name]
+    if not form.is_valid():
+        return {}, next(iter(form.errors.values()))[0]
+    return {key: value for key, value in form.cleaned_data.items() if value}, None
+
+
+def notice_method_q(code):
+    """A SprayDays `application_method` filter for a use-record method code (`aerial_ground`)."""
+    if code == NO_METHOD:
+        return Q(application_method='')
+    if code in stats.NOTICE_METHOD_FOR_CODE:
+        return Q(application_method__iexact=stats.NOTICE_METHOD_FOR_CODE[code])
+    q = ~Q(application_method='')
+    for method in stats.NOTICE_METHOD_FOR_CODE.values():
+        q &= ~Q(application_method__iexact=method)
+    return q
+
+
+def parse_day(params):
+    """`date=YYYY-MM-DD` as a date. Returns (date or None, error or None)."""
+    value = params.get('date')
+    if not value:
+        return None, None
+    # fromisoformat also takes other ISO forms (20260601, 2026-W01-1); only
+    # YYYY-MM-DD is the documented one.
+    try:
+        day = date.fromisoformat(value) if re.fullmatch(r'\d{4}-\d{2}-\d{2}', value) else None
+    except ValueError:
+        day = None
+    if day is None or not stats.MIN_FILTER_YEAR <= day.year <= stats.MAX_FILTER_YEAR:
+        return None, 'date must be YYYY-MM-DD'
+    return day, None
 
 
 class ActiveNoticeListBase(generics.Endpoint):
@@ -451,13 +681,26 @@ class ActiveNoticeListBase(generics.Endpoint):
     # below is the one actually dispatched to.
     past = False
 
-    def notices(self, params):
-        """The notices this endpoint serves before its filters, soonest first. Returns (queryset, error)."""
-        return stats._upcoming(PesticideNotice.objects.all()).order_by('scheduled_application', 'pk'), None
+    def notices(self, params, day=None):
+        """The notices this endpoint serves before its filters, soonest first: those active on `day`, else today's. Returns (queryset, error)."""
+        if day is not None:
+            notices = stats.notices_on(PesticideNotice.objects.all(), day)
+        else:
+            notices = stats._upcoming(PesticideNotice.objects.all())
+        return notices.order_by('scheduled_application', 'pk'), None
 
     def get(self, request):
         params = request.GET
-        notices, error = self.notices(params)
+        day, error = parse_day(params)
+        if error:
+            return bad_request(error)
+        # SprayDays notices record no crop. Plain `commodity` stays ignored, as before.
+        if params.get('commodity_id'):
+            return bad_request("notices don't record a commodity")
+        filters, error = parse_map_filters(params, NOTICE_MAP_FILTERS)
+        if error:
+            return bad_request(error)
+        notices, error = self.notices(params, day)
         if error:
             return bad_request(error)
         notices = notices.select_related('county', 'mtrs').prefetch_related('chemicals', 'products')
@@ -477,6 +720,8 @@ class ActiveNoticeListBase(generics.Endpoint):
         # The notice list's method filter (SprayDays' own wording, any case).
         if params.get('method'):
             notices = notices.filter(application_method__iexact=params['method'])
+        if 'aerial_ground' in filters:
+            notices = notices.filter(notice_method_q(filters['aerial_ground']))
         for param, lookup, cast in (
             ('chemical', 'chemicals__chem_code', int),
             ('product', 'products__prodno', int),
@@ -488,6 +733,22 @@ class ActiveNoticeListBase(generics.Endpoint):
                     notices = notices.filter(**{lookup: cast(value)})
                 except ValueError:
                     return bad_request(f'{param} is invalid')
+        # Any chemical of the notice matching is enough, but with several of
+        # these filters it must be the same chemical (as place/ filters
+        # ingredient rows), so they go in one filter() call: one join.
+        # .distinct() below keeps a notice with several matching chemicals to
+        # one row.
+        lookups = {}
+        if filters.get('chemical_id'):
+            lookups['chemicals'] = filters['chemical_id']
+        if filters.get('product_id'):
+            lookups['products'] = filters['product_id']
+        if filters.get('category'):
+            lookups['chemicals__categories__overlap'] = filters['category']
+        if filters.get('iarc_group'):
+            lookups['chemicals__iarc_group'] = filters['iarc_group']
+        if lookups:
+            notices = notices.filter(**lookups)
         # Same shape of cap as SectionList's MAX_SECTIONS: an unbounded
         # response (no bbox, or one covering the whole valley) would serialize
         # every active notice in the state. Counting first keeps that off the
@@ -507,6 +768,8 @@ class ActiveNoticeListBase(generics.Endpoint):
                 'scheduled_end': (n.scheduled_application + grace).isoformat(),
                 'county': n.county.name if n.county else None,
                 'application_method': n.application_method,
+                # The filter's code for that wording, for clients that label it like the filter.
+                'aerial_ground': stats.notice_method_code(n.application_method),
                 'treated_amount': n.treated_amount,
                 'treated_units': n.treated_units,
                 'section': n.mtrs.external_id if n.mtrs else None,
@@ -518,6 +781,11 @@ class ActiveNoticeListBase(generics.Endpoint):
         if self.past:
             for feature in features:
                 feature['properties']['past'] = True
+        elif day is not None:
+            # Only with a date, so the explorer's response is unchanged.
+            cutoff = timezone.now() - grace
+            for feature, n in zip(features, notices):
+                feature['properties']['past'] = n.scheduled_application < cutoff
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
         return {'type': 'FeatureCollection', 'as_of': timezone.now().isoformat(), 'features': features}
 
@@ -528,6 +796,9 @@ class TownshipListBase(generics.Endpoint):
     # is the one actually dispatched to.
     def get(self, request):
         params = request.GET
+        filters, error = parse_map_filters(params, ROLLUP_MAP_FILTERS)
+        if error:
+            return bad_request(error)
         bbox = None
         if params.get('bbox'):
             bbox, error = parse_bbox(params['bbox'])
@@ -543,16 +814,23 @@ class TownshipListBase(generics.Endpoint):
             return bad_request(error)
 
         rows = stats.in_year(PesticideUseRollup.objects.all(), year, all_years)
-        rows, error = apply_filters(rows, params)
+        rows, error = apply_filters(rows, params, filters)
         if error:
             return bad_request(error)
-        scoped = bool(params.get('chemical'))
-        totals = stats.by_township(rows, year, all_years, chemical_scoped=scoped)
+        scoped = chemical_scoped(params, filters)
+        # A category or IARC filter counts per record (section_figures), folded into
+        # townships; everything else keeps by_township's per-section sums.
+        def township_totals(rows, year, all_years=False):
+            if counts_by_record(params, filters):
+                return stats.fold_townships(section_figures(rows, params, filters))
+            return stats.by_township(rows, year, all_years, chemical_scoped=scoped)
+
+        totals = township_totals(rows, year, all_years)
         previous = {}
         if compare:
             compare_rows, _ = apply_filters(
-                stats.in_year(PesticideUseRollup.objects.all(), compare), params)
-            previous = stats.by_township(compare_rows, compare, chemical_scoped=scoped)
+                stats.in_year(PesticideUseRollup.objects.all(), compare), params, filters)
+            previous = township_totals(compare_rows, compare)
 
         # The map keeps township outlines from its first load and asks for
         # `geometry=0` after that (a year or filter change only moves the
@@ -593,14 +871,24 @@ class TownshipListBase(generics.Endpoint):
                 },
             })
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
-        return {'type': 'FeatureCollection', 'year': year_value(year, all_years), 'features': features}
+        body = {'type': 'FeatureCollection', 'year': year_value(year, all_years), 'features': features}
+        # Without `county` the totals are already every township's, from the same rows and
+        # counting build_classes() would use when it reads the rollup, so a cache miss
+        # builds the classes from them rather than aggregating the valley again. When it
+        # would read PesticideSectionTotal instead, let it (cheap, and its own figures).
+        build = None
+        if not params.get('county') and not section_totals_available(params):
+            build = lambda: classes.classes_from(totals)  # noqa: E731
+        return with_classes(body, params, 'township', year, all_years, filters, build=build)
 
 
 class TownshipList(CachedEndpointMixin, TownshipListBase):
     """
     PLSS townships (6x6 blocks of MTRS sections) with pesticide-use totals, as GeoJSON.
 
-    Each township is the union of its sections. Optional
+    Each township is the union of its sections. A feature's `id` (and `name`) is the PLSS
+    township designation, the section name minus its `-NN` suffix (e.g. `MDM-T14S-R20E`). It
+    is permanent: it changes only if the MTRS sections are reimported under different names. Optional
     `bbox=west,south,east,north` limits the grid to what's on screen, and
     `geometry=0` returns the features with `null` geometry (values only) for
     a client that already holds the outlines. `region=<sqid>` with an optional
@@ -609,20 +897,44 @@ class TownshipList(CachedEndpointMixin, TownshipListBase):
     Filters: `year` (default latest), `month`, `chemical` (chem code),
     `product` (prodno), `commodity` (site code), `county` (slug), and
     `narrow=concern|restricted|fumigant|aerial` (or legacy `concern=1`) to count only what that narrowing keeps.
+    The charts' values also filter: `chemical_id`, `product_id`, `commodity_id` (our ids, as
+    `place/` takes them; giving one with its code form is a 400) and `aerial_ground`
+    (`G`, `A`, `F`, `O`, `none`; the same as `method`), `category` (repeated or
+    comma-separated, any of them) and `iarc_group`, counted as `place/` counts them.
+    `classes=1` adds `classes`: quantile breaks (`{breaks, min}` per figure) over every township in
+    the valley for the year, month and value filters, whatever the bbox, region or county.
     """
     cache_timeout = 60 * 60
 
 
-class ActiveNoticeList(CachedEndpointMixin, ActiveNoticeListBase):
-    """Active SprayDays notices of intent (scheduled from four days ago onward) as GeoJSON points. Optional `bbox=west,south,east,north`, `chemical` (chem code), `product` (prodno), `county` (slug), `narrow=concern|restricted|fumigant|aerial`. `region=<sqid>` with an optional `buffer=0|1|3|5` keeps the notices inside that region widened by that many miles. A request matching more than 2000 notices returns 400; narrow it with a bbox or a filter."""
+class NoticeCacheMixin(CachedEndpointMixin):
+    """
+    The notice endpoints' cache: keyed by the notices version (the daily
+    SprayDays fetch bumps it), five minutes, or a day for a settled `date`.
+    """
     cache_timeout = NOTICE_CACHE_TTL
+    # 1: features gained `aerial_ground`.
+    cache_key_version = 1
+
+    def get_view_cache_key(self):
+        return f'{super().get_view_cache_key()}|g:{stats.notices_version()}'
+
+    def get_cache_timeout(self, response):
+        day, _ = parse_day(self.request.GET)
+        if day is not None and timezone.now() >= stats.notice_day_settled_at(day):
+            return SETTLED_NOTICE_CACHE_TTL
+        return super().get_cache_timeout(response)
+
+
+class ActiveNoticeList(NoticeCacheMixin, ActiveNoticeListBase):
+    """Active SprayDays notices of intent (scheduled from four days ago onward) as GeoJSON points. Optional `date=YYYY-MM-DD` (Pacific) lists the notices active on that day instead (scheduled from four days before it through its end, past or future), each with `properties.past` (its four-day window has ended). Optional `bbox=west,south,east,north`, `chemical` (chem code), `product` (prodno), `county` (slug), `narrow=concern|restricted|fumigant|aerial`, `category` (repeated or comma-separated chemical categories, any of them), `iarc_group`, `chemical_id` and `product_id` (our ids, as `place/` takes them; a chemical filter keeps notices with any chemical that matches, and together they must hold on the same chemical), and `aerial_ground` (`place/`'s codes: `G` Ground, `A` Aircraft, `F` Fumigation, ignoring case, `O` any other method, `none` blank). Giving a filter both as a code and an id is a 400, as is `commodity_id` (notices record no commodity). `region=<sqid>` with an optional `buffer=0|1|3|5` keeps the notices inside that region widened by that many miles. A request matching more than 2000 notices returns 400; narrow it with a bbox or a filter."""
 
 
 class ArchivedNoticeListBase(ActiveNoticeListBase):
     past = True
 
-    def notices(self, params):
-        """Notices past the grace period, newest first; one year with `year`, one month with `year` + `month`. Returns (queryset, error)."""
+    def notices(self, params, day=None):
+        """Notices past the grace period, newest first; one year with `year`, one month with `year` + `month`, the ones active on `day` with `date`. Returns (queryset, error)."""
         cutoff = timezone.now() - timedelta(days=stats.NOTICE_GRACE_DAYS)
         notices = PesticideNotice.objects.filter(scheduled_application__lt=cutoff)
         year, month = params.get('year'), params.get('month')
@@ -641,9 +953,10 @@ class ArchivedNoticeListBase(ActiveNoticeListBase):
                 return None, 'year is out of range'
             start, end = bounds
             notices = notices.filter(scheduled_application__gte=start, scheduled_application__lt=end)
+        if day is not None:
+            notices = stats.notices_on(notices, day)
         return notices.order_by('-scheduled_application', '-pk'), None
 
 
-class ArchivedNoticeList(CachedEndpointMixin, ArchivedNoticeListBase):
-    """Past SprayDays notices of intent (older than the four-day grace period) as GeoJSON points, newest first, each with `properties.past = true`. Same parameters and cap as notices/active/, plus optional `year` (a whole year) and `month` (1-12, needs a `year`) for one year or month (America/Los_Angeles)."""
-    cache_timeout = NOTICE_CACHE_TTL
+class ArchivedNoticeList(NoticeCacheMixin, ArchivedNoticeListBase):
+    """Past SprayDays notices of intent (older than the four-day grace period) as GeoJSON points, newest first, each with `properties.past = true`. Same parameters and cap as notices/active/ (`date`, `category`, `iarc_group`, the `*_id` filters and `aerial_ground` included; `date` keeps the past notices active on that day), plus optional `year` (a whole year) and `month` (1-12, needs a `year`) for one year or month (America/Los_Angeles)."""

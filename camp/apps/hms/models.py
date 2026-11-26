@@ -25,6 +25,7 @@ class Smoke(models.Model):
 
     class Meta:
         ordering = ('-date',)
+        indexes = [models.Index(fields=['date'])]
 
 
 class Fire(models.Model):
@@ -50,3 +51,5 @@ class Fire(models.Model):
 
     class Meta:
         ordering = ('-date',)
+        # Backs coverage's MIN/MAX(date) and the per-date refetch delete.
+        indexes = [models.Index(fields=['date'])]

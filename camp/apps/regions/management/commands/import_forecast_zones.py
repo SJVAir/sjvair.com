@@ -65,7 +65,7 @@ class Command(BaseCommand):
 
         for zone in ZONES:
             geometry = result[zone['key']]
-            region, created = Region.objects.import_or_update(
+            region, created = Region.all_objects.import_or_update(
                 name=zone['name'],
                 slug=slugify(zone['name']),
                 type=Region.Type.CUSTOM,

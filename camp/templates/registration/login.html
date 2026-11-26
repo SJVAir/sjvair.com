@@ -21,6 +21,7 @@
                 <div class="box">
                     <form action="{% url 'account:login' %}" method="post" class="form">
                         {% include '_includes/form/form.html' with form=form %}
+                        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
                         <div class="columns is-vcentered">
                             <div class="column is-one-third">
                                 <button type="submit" class="button is-success">Log in</button>

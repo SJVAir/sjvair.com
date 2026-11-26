@@ -149,6 +149,595 @@ docker compose run --rm web python manage.py mirror_bam_entries --monitor-id Gge
 
 Idempotent and safe to re-run.
 
+## CIMIS Weather Summaries
+
+CIMIS stations get monitor summaries (hour up to year) for 11 types: `temperature`,
+`humidity`, `dewpoint`, `soiltemperature`, `windspeed`, `precipitation`, `solarradiation`,
+`netradiation`, `vaporpressure`, `eto`, `etr`. `winddirection` stays raw. There are never region
+rows for weather: region paths use the entry models' `summarize` flag only.
+
+- **The switch** is per monitor type: `'summarize': True` on an entry type in `ENTRY_CONFIG`.
+  `camp/apps/summaries/selection.py` is the one place that picks entry types (`is_summarized`,
+  `monitor_summary_entry_models`, `region_summary_entry_models`, `switch_entry_types`,
+  `switch_entry_models`, `monitor_types_summarizing`). Air quality is unchanged: the model flag
+  still drives it, and the `:45` / `:50` hourly parents skip the switch types.
+- **On arrival**: the CIMIS ingest calls `summarize_monitor_hours` for the hours it wrote
+  (import and finalize both). `finalize_cimis_data` also re-summarizes all of yesterday
+  (Pacific) for every station and re-rolls the finished periods, changed or not.
+- **Settle margins**: switch types use `LATE_SETTLE_MARGIN` (`schedule.py`: hour 30h,
+  day and longer 7h) because CIMIS data lands late; the summaries cache rule uses it for them.
+- **Timestamps**: readings are stamped at the START of the hour the record covers, in fixed
+  UTC-8 (`CIMIS_TZ`, `CIMIS.parse_timestamp`; hour 2400 is 23:00 of the record's date). Rows
+  ingested before this were stamped the old way (`legacy_timestamp`: end of the hour, Pacific
+  wall clock) and must be re-stamped.
+
+Order for an environment: deploy, `restamp_cimis` per station, then rebuild per station.
+
+```bash
+# 1. Re-stamp (always from the station's first stored date through today, Pacific)
+docker compose run --rm web python manage.py restamp_cimis --monitor <id> --dry-run
+docker compose run --rm web python manage.py restamp_cimis --monitor <id> [--monitor <id> ...]
+
+# 2. Build the summaries (per station, from the first CIMIS date)
+docker compose run --rm web python manage.py rebuild_summaries <first CIMIS date> <today> \
+  --monitor <id> --monitors-only
+```
+
+`restamp_cimis` (`camp/apps/monitors/cimis/restamp.py`) fetches every date first, skips and
+counts malformed records, and aborts a station when a date with stored rows comes back empty.
+One transaction per station; it rebuilds `LatestEntry`. A collision with live ingest aborts
+that station, and a re-run is safe. Dry-run the largest station first. Run it away from
+:40-:50 (the live import runs at :45); a collision may still log one `IntegrityError` in the
+live import, which its next run self-heals. There is no `--end`: the delete window ends at 00:00
+of the day after the last date, which in PST is that next day's new-style 0100 row, so a past
+end would delete an hour it never re-fetches.
+
+## Region and Location Codes
+
+Regions are referenced publicly by `(type, external_id)` and locations by
+`(source, external_id)`. These codes are permanent and never reused, so imports
+**retire** rows (`retired_at`, optionally `replaced_by`) instead of deleting them.
+
+- The location import keeps child-care codes when the lowest license number closes.
+- A CDP that incorporates is retired with `replaced_by` set to the new city.
+- Staff can retire and un-retire regions and locations in the admin.
+- Land use (`type=land_use`) is excluded from code lookup and the permanence promise:
+  its codes come from OBJECTID and aren't stable.
+
+Managers: `Region.all_objects` and `Location.all_objects` are unfiltered and are the
+default and base managers; `objects` is current-only. Listings and searches use
+`objects`. Anything that resolves a specific region or location from a request id or
+code uses `all_objects`, so retired ones still answer. Resticus list endpoints default
+to `_default_manager` (unfiltered), so pin listing querysets to `objects`.
+
+After migrating on production, run `import_forecast_zones` (the 3 custom forecast
+zones are missing there; see SJVAPCD Forecast Setup).
+
+## Metadata Endpoints
+
+- `GET /api/2.0/meta/datasets/` is the dataset catalog. Dataset and entry-type ids are
+  permanent (a rename changes only the label). A pollutant's `available` flag comes
+  from `DefaultCalibration`.
+- `GET /api/2.0/meta/coverage/` returns first/last Pacific dates per dataset. It is
+  computed on request, cached, and backed by the per-monitor unique index (no
+  table-wide MIN/MAX on entry tables); there is no background task.
+- **Scale shape** (`camp/utils/scales.py`): `{id, label, units, kind: range|category, source,
+  averaging_hours, daily_statistic, daily_statistic_label, period_statistic, period_statistic_label,
+  levels[]}`; a level is `{key, label, color, tier, description,
+  guidance, min, max, value, opacity}`. Scale ids are catalog entry-type ids and level `key`s are permanent. Ranges are
+  half-open (`min <= value < max`) and the top level's `max` is `null`; categories use `value`.
+  `tier` is 0-4 or `null` (no severity). `description` is the official wording (credited via
+  `source`); `guidance` is SJVAir's own and is `""` for AQ Good and heat Low.
+  `averaging_hours` is the standard's window (PM2.5/PM10 24, O3/NO2/SO2 1, CO 8; `null` for AQI
+  and categories) and `daily_statistic` is how a day is judged against it: 24 `mean_24h`, 1
+  `max_1h`, 8 `max_8h`, `null` otherwise; `daily_statistic_label` is its display text ("24-hour
+  average", "Highest 1-hour average", "Highest 8-hour average"; `null` otherwise).
+  `period_statistic` is the coarse-row field holding the period's figure (`"daily_statistic_mean"`
+  when `daily_statistic` is set, else `null`) and `period_statistic_label` its display text
+  (`camp/apps/entries/levels.py`; "Average of daily highest 1-hour averages", "Average of daily
+  highest 8-hour averages", "Average of 24-hour averages"; `null` otherwise).
+- **Domain meta endpoints** (each a catalog `meta_url`): `calheatscore/meta/`, `hms/meta/` and
+  `forecasts/meta/` return scales keyed by catalog entry-type id (forecasts also lists the
+  zones with their regions). `pesticides/meta/` lists `categories` (with `in_use`),
+  `iarc_groups`, `methods` (the use records' G/A/F/O/none, not SprayDays' notice methods),
+  `narrows` and `placeholder_chemicals`; it's both pesticide datasets' `meta_url`. It also serves
+  `notes` (every health note in `datafiles/pesticide-health-notes.yaml`, keyed:
+  `{key, title, summary, detail|null, source_url}`), `badges` (`[{key, label, note}]` in the
+  explorer's order; `note` is a key of `notes`; keys permanent, no styling), `links`
+  (`spraydays_signup` plus the five absolute explorer templates `section_page`,
+  `section_records`, `section_notices`, `section_notices_past` and `chemical_page`, built on
+  the request's origin from `reverse()` under `/tools/pesticides/`; `{id}` is the section's
+  or chemical's sqid, and the `chemical_page` one is the bare-sqid redirect, which carries the
+  query along; keys permanent), `link_params` (`[{param, from}]` per link key: the query
+  params a client may add) and `notice_filters` (the value filters the notice endpoints accept:
+  `chemical_id`, `product_id`, `category`, `iarc_group`, `narrow`, `aerial_ground`), `years`
+  (years with data, newest first), `ramp` (`{colors, no_data}` from `maps.RAMP`/`maps.NO_DATA`,
+  the map's shade colors), a `notes.shades_valley` note (what the shades mean; no-data areas
+  are described as an outline with no shading, not a color) and `scales`
+  (`{"spray-notice": <Scale>}`, keyed by catalog entry-type id like `hms/meta/`'s: one
+  `category` level `notice`, "Spray notice", `#e64980`; `camp/apps/pesticides/scales.py`). The
+  pesticide entity search (`pesticides/search/`) returns one page plus `more`, and a
+  `placeholder` flag on chemical results. `monitors/meta/` adds a `scale` per entry type plus `stages` and
+  `processors` labels. It no longer serves the legacy `levels` dict; `scale` is the only level
+  format. It also lists `monitor_groups` (`reference`, `low-cost`; `{key, label, order}`,
+  ids permanent) and each monitor type's `group`, derived from `GRADE` (`Monitor.get_grade_group()`:
+  FEM/FRM reference, LCS low-cost, no grade `null`). Each entry type has `description`: plain help
+  text for the air-quality pollutants, `null` otherwise. Each entry type has `school_guidelines` (null except `pm25`), defined in
+  `camp/apps/entries/guidelines.py`: activity keys are permanent, the text is verbatim from the
+  old schools page, and the `/guidelines/` pages render from the same source.
+- **Forecast color and category**: the forecast API's `color` and `aqi_category` are the AQI
+  scale level's color and label, computed from `aqi_value`; the stored `aqi_category` is only
+  for the admin.
+- **Catalog** (`meta/datasets/`): each entry type has `display` hints (`precision`, `chart`,
+  `y_min`) and a top-level `aggregate`: how its values roll up over time, `sum` (weather
+  precipitation/eto/etr, pesticide use, spray notices), `mean` (other monitor types, TEMPO), or
+  `null` (never: wind direction, scores, categories, forecasts, fire, emissions). Clients read it,
+  not `chart`, to pick the summary statistic. Monitor types are `mean` unless listed in
+  `MONITOR_AGGREGATE_OVERRIDES`; static entry types state theirs. `burn-status` is an entry type
+  of the forecasts dataset.
+  Each dataset has a `places_url` (`''` when none). `settings.MONITOR_OPT_IN_TYPES`
+  (`{'cimis': 'weather'}`) holds types left out of `MONITOR_ENABLED_TYPES` that
+  `monitors/?dataset=<id>` still lists (non-hidden, then `MonitorFilter`); `air-quality` is
+  the default list, any other value is a 400, and responses without `dataset` are unchanged.
+  `places_url` for `weather` and `air-quality` points there. Each dataset also has
+  `monitor_types`: the sorted monitor type ids producing it (`weather` from `MONITOR_OPT_IN_TYPES`,
+  `air-quality` the enabled types not opted in elsewhere; `catalog._monitor_types`), `null` for
+  datasets not made of monitors. They are the values the bulk monitor summaries' `type` takes.
+- **Place endpoints** `calheatscore/place/` and `forecasts/place/` take `?region_type=&region=`
+  (code; retired regions answer, land use is refused) or `?monitor=` (hidden monitors 404). Heat returns the highest
+  score per date among the ZIPs the place covers (a region's ZIPs need >=1% of their own area
+  inside it; a monitor's is the ZIP it touches, the lowest code on a shared edge; ties go to
+  the lowest ZIP code). Forecasts return the SJVAPCD zone's latest-issued row per date plus
+  the `rule` that picked it: `county`, `zone`, `center` (zone holding the point-on-surface or
+  monitor), or `overlap` (largest shared area). Both are
+  resolved and cached 24h in `camp/apps/regions/resolve.py` (geometry-free Regions). The
+  `overlap` rule needs the zone to hold >=1% of the place's own area. **Deploy:** run
+  `import_forecast_zones` before deploying the place endpoints, or clear the cached
+  `forecast_zone_for:` keys after the import; otherwise places answered without the 3
+  custom zones keep that answer for up to 24h.
+  `monitors/weather/place/` (same addressing) lists weather-dataset stations active within
+  `MONITOR_ACTIVE_WINDOW_DAYS`: inside the place first (distance 0, `inside`, by distance from the
+  point-on-surface), then up to 5 within 25 miles by distance from the edge, and at least the
+  nearest one when the place has a boundary and any station is active; `distance` in miles;
+  selection (empty included) cached 24h in `resolve.py` (`weather_stations_for`), rows serialized
+  fresh, so a station hidden since then is dropped and the list can be shorter for up to 24h.
+  `hms/smoke/place/` takes the same place params plus `date__gte`/`date__lte` (Pacific dates;
+  both: that range; only `date__gte`: through today; only `date__lte`: the 30 days ending
+  there; neither: the last 30 days; at most 366 days, else 400, as is gte after lte). It
+  returns one row per day: `density` is the heaviest `smoke-density` key (`light`, `medium`,
+  `heavy`) or `null`; `coverage` is the share of the place's area under at least each level
+  (0 or 1 for a monitor). Computed on request in `camp/apps/hms/place.py`, measured in
+  EPSG:3310. A day is settled at 22:00 UTC the next day (an hour after `fetch_smoke_final`);
+  a settled range is cached 24h server-side and sent `public, max-age=86400`, any other
+  200 `max-age=900`, errors `no-cache`. A day with no outlines can't be told from a missed
+  fetch (deferred).
+- **Township id** `pesticides/townships/` `id`/`name` is the PLSS name (e.g. `MDM-T14S-R20E`, the
+  MTRS section name minus its `-NN` suffix; `townships.township_of`), permanent while the MTRS
+  sections keep their names.
+- **Pesticide map** `pesticides/sections/` and `pesticides/townships/` take `classes=1` and add
+  `classes`: `{figure: {breaks, min, colors}}` for `lbs_chemical`, `acres_treated` and `applications`
+  (`camp/apps/pesticides/classes.py`). `breaks` are up to 8 quantile classes cut on the distinct
+  positive values; zero means no data and is left out, and `min` is the smallest positive value
+  (`null` when none). `colors` is one fill per class in break order,
+  `maps.sample_ramp(RAMP, len(breaks))` (`[]` with no breaks; no data is meta's `ramp.no_data`),
+  so clients never sample the ramp. The population is valley-wide: every section (or township)
+  the rollup has for the year, never just the viewport, and the figures are the ones the features carry
+  (with `county`, a border feature counts only that county's use and may fall below `min`).
+  Value params (`month`, `chemical`/`product`/`commodity` and their `_id` forms, `method`,
+  `aerial_ground`, `narrow`, `concern`, `category`, `iarc_group`) change the classes; spatial
+  ones (`bbox`, `radius`, `region`, `county`, `geometry`) don't (`county` is stripped). Each
+  `month` is ranked alone, and `compare=` ranks the scope year, not the compared one;
+  `year=all` gives all-years classes. Cached under the pesticide data version through
+  `stats.all_years_key('classes-v2', ...)` (no TTL; an import retires it). A request without
+  `classes=1` is unchanged. `sections/<id>/` `top_chemicals[].badges` lists badge keys (keys of
+  meta's `badges`). `sections/<id>/` also takes the `*_id`, `category`, `iarc_group`,
+  `aerial_ground` and `month` filters, counted like `sections/`; `month` narrows the top lists
+  only (`months` stays the year's twelve rows). A request without them is unchanged.
+  - **Explorer links** (`links`/`link_params` in `pesticides/meta/`;
+    `camp/apps/pesticides/links.py`): fill a template by replacing `{id}`, then appending
+    `&param=value` (`?` when the template has no query) for each `link_params` entry whose `from`
+    value the client has, URL-encoded. `from` values: `year` (`all` for all years;
+    `section_records` needs it as well as the dates), `month_start`/`month_end` (first and last
+    Pacific day of a month period, `YYYY-MM-DD`; omit for a year period), `chemical_id`,
+    `product_id`, `commodity_id`, `aerial_ground`, `narrow` (the values sent to `sections/`, same
+    names), `notices_year` and `notices_month` (year and month 1-12 of the notices layer's day).
+    Use `section_notices_past` when the notices layer is on and showing a past day, else
+    `section_notices`. Left off because no explorer page takes them: `category` and `iarc_group`
+    everywhere, `month` on the section and chemical pages, `aerial_ground` and `commodity_id` on
+    the notices links, and `county` everywhere.
+- **Pesticide notices by day** `pesticides/notices/active/?date=YYYY-MM-DD` (Pacific) lists the
+  notices active on that day, past or future: `start(D-4) <= scheduled_application < start(D+1)`
+  (`start(X)` is 00:00 Pacific, built from calendar dates; `stats.notices_on`). Order, the 2000
+  cap and every filter are unchanged; a bad date is a 400 `{"error": "date must be YYYY-MM-DD"}`.
+  With `date`, each feature's `properties.past` is true once its window has ended
+  (`scheduled_application < now - NOTICE_GRACE_DAYS`); without it the property is absent. Every notice
+  feature (both endpoints) also carries `aerial_ground`: the filter's code for its SprayDays
+  `application_method` (`stats.notice_method_code`, never null; blank is `none`), beside the raw
+  wording; the notice cache's `cache_key_version` is 1 for it. On
+  `notices/archive/`, `date` keeps the past notices active on that day.
+  - **Filters on both notice endpoints:** `category` (repeated or comma-separated, any of them)
+    and `iarc_group`; a notice matches when any chemical does, and with `chemical_id` they must
+    hold on the same chemical. An unknown value is a 400 `{"error": "<message>"}`.
+  - **The charts' values** (`sections/`, `townships/`, `notices/active/`, `notices/archive/`):
+    `chemical_id`, `product_id`, `commodity_id` take our sqids (`place/`'s `SqidChoiceField`;
+    bad id `Not a chemical id.`, unknown `No chemical has this id.`); `chemical`/`product`/
+    `commodity` still take CDPR codes. Giving both forms is a 400 `give chemical or chemical_id,
+    not both`. `aerial_ground` takes `G`, `A`, `F`, `O`, `none`: on sections and townships it
+    equals `method` (rollup codes); on notices it maps to SprayDays' wording (`G` Ground, `A`
+    Aircraft, `F` Fumigation, ignoring case; `O` any other non-blank method; `none` blank). An
+    unknown code is a 400; `method` is unchanged and, given too, also applies. Notices record
+    no crop: `commodity_id` there is a 400 `notices don't record a commodity` (plain
+    `commodity` is still ignored). Sections and townships also take `category` (repeated or
+    comma-separated, any of them) and `iarc_group` (an unknown value is a 400 `{"error": …}`),
+    counted like `place/`: off `PesticideSectionTotal` onto the rollup, and without `chemical`
+    product pounds, acres and applications take the MAX per record key, summed per section
+    (`sections.section_figures`, `stats.section_totals_by_record`; townships fold those through
+    `stats.fold_townships`).
+  - **Cache:** the key carries the notices version (`pesticides:notices-version`, no expiry, a
+    missing value starts a new one), which `fetch_pesticide_notices` bumps in a `finally`
+    (the daily fetch rewrites schedules, chemicals and products, even when it fails partway).
+    A `date` is settled once now is past the later of `start(D+5)` and `start(D+1)` plus
+    96 hours (`stats.notice_day_settled_at`); settled answers are cached 24 h, all others
+    `NOTICE_CACHE_TTL` (5 min), so `past` can lag up to 5 minutes.
+- **Pesticide locations** `pesticides/locations/` (schools and child care as GeoJSON points;
+  `camp/api/v2/pesticides/locations.py`) takes `bbox` (at most 12 degrees a side), `region` (+
+  `buffer`) or `lat`/`lng`/`radius`. With none of them (a blank or whitespace-only `bbox` counts
+  as missing) it returns every current location: the whole valley (~2,800 rows locally, ~1.5 MB
+  uncompressed, ~195 KB gzipped); `radius` or `buffer` given without that area is a 400.
+  `type` (comma list) and `county` (slug) always filter. Cached 24 h per query string as the
+  encoded body (`cache_encoded`, `cache_key_version` 4). Requests with a bbox or an area return
+  the same bodies as before; only the no-area cases, 400s before, are new.
+- **Pesticide place** `pesticides/place/` takes the same addressing (`?region_type=&region=` or
+  `?monitor=`) and returns `months` and `years` from `PesticideUseRollup`: counties by
+  `county=`, other regions by the MTRS sections they touch, monitors by their ZIP. Month 0
+  (undated records) appears only in `years[].undated` and is included in the year totals.
+  Acres and applications count each record once: per-ingredient columns with `chemical`,
+  MAX per record key (product, commodity, method, section, month) with `category`/`iarc_group`,
+  `records`/`acres_once` otherwise (product, commodity, method, any `narrow`; `counting_mode`
+  in the endpoint). With none of `region_type`, `region` and `monitor` (blank counts as missing) it
+  answers for the whole valley: every rollup row (the import keeps only the SJVAir counties),
+  the same filters and counting, `place: null`, cached under `pesticides:valley`. Only this
+  endpoint: `resolve_place` still refuses an empty place everywhere else. Placeholder chemicals (UNKNOWN, AI IS CONFIDENTIAL) carry no pounds; their
+  records count in applications and acres. Optional filters:
+  - `chemical`, `commodity`, `product`: our sqids (the list endpoints' `id`), never CDPR
+    codes. Sqids can be all digits, so a code can't be told from an id. A value that isn't
+    an id is a 400 with code `invalid`; a well-formed id with no row is `not_found`.
+  - `category`: repeated or comma-separated, any of them (OR). `narrow`: one of `concern`,
+    `restricted`, `fumigant`, `aerial` (`stats.narrow_rows`; restricted and fumigant are
+    product properties, unlike the same-named categories).
+  - `iarc_group`, `aerial_ground` (`none` = not reported), `year__gte`, `year__lte`
+    (1900-2100).
+
+  Bounds are enforced, and an invalid value is a 400 (`no-cache`, as are place errors). The id,
+  `category`, `narrow`, `iarc_group` and `aerial_ground` field errors carry `invalid` (or
+  `not_found`); the year bounds carry Django's `min_value`/`max_value`. 200s are `public, max-age=3600`. Answers
+  are also cached server-side for 24h under the pesticides data version (an import retires
+  them), with the filters hashed into the key. A monitor outside every ZIP gets empty lists.
+- **Regions**: `regions/?within=...&within_mode=overlaps` (also the geojson variant) keeps
+  regions with >=1% of their own area inside the parents and adds `also_in`; the default
+  `contained` mode is unchanged. `regions/meta/` types carry `label_plural` (`Region.TYPE_LABELS_PLURAL`,
+  Title Case like `label`), `name_template` (`Region.TYPE_NAME_TEMPLATES`: how to show a region,
+  with `{name}` once: `"ZIP {name}"`, `"Census Tract {name}"`, `"{name} Urban Area"`,
+  `"{name} AB 617 Community"`; `null` for types shown by their plain name; region rows don't
+  carry it), `count`, `parents`, `referenceable` (false for land use) and
+  `browsable` (false for MTRS and land use).
+  `regions/meta/` also lists `buffers` (`[{miles, label}]` from `shapes.BUFFERS` and
+  `BUFFER_LABELS`): the values every `?buffer=` accepts (`regions/<id>/`, pesticide sections,
+  emissions map areas). Clients read the choices from there, so change them only in `shapes.py`.
+  `regions/meta/` `location_groups` lists the sections location types are shown in (`school`
+  "Schools", `child_care` "Child care"; `{key, label, order}`, ids permanent; `Location.Group`),
+  and each `location_types` row carries its `group` (`Location.TYPE_GROUPS`: both school types
+  `school`).
+- **Place search** `regions/places/search/?q=` returns list-shaped rows (`boundary` has `bbox`, no
+  geometry; the picker searches as you type) plus `county` (`{type, external_id, name}` of the
+  county holding the region's point-on-surface, `null` for counties and regions outside every
+  county), via `RegionQuerySet.with_county()`: one query, no per-row lookups.
+- **Bulk monitor type** `monitors/<entry_type>/summaries/<resolution>/` (every resolution) and
+  its `daily/open/` take `type`: repeatable monitor type ids (`?type=purpleair&type=airnow`, the
+  catalog's `monitor_types`; `monitors/meta/` lists only the enabled ones, not `cimis`),
+  combining with `region`, `bbox`, `processor` and `MonitorFilter` (`device` unchanged). Only the
+  named types are returned; an unknown type is a 400 (`invalid_choice`, from
+  `BulkMonitorScopeForm`), blank values are ignored, and without `type` nothing changes. It is
+  the only way to reach an opt-in type (`settings.MONITOR_OPT_IN_TYPES`, CIMIS): a named opt-in
+  type that summarizes the entry type has no `DefaultCalibration`, so its raw `''` series is
+  added (`opt_in_types` in `BulkMonitorScopeMixin`); hidden stations stay out. There is no
+  server-side response cache; the open rows' cache key already carries the series filter and the
+  owner set.
+- **Monitor list** `monitors/?region=<sqid>` (repeatable, a union) scopes the list with
+  `scope_to`, like `at/`; blank values are ignored, an unknown id is a 404 (not cached). The
+  list cache key includes it.
+- **HMS lists** `hms/smoke/` and `hms/fire/` default to today (yesterday before noon) only when
+  no date filter is given; any of `date`, `date__gte`, `date__lte`, `date__gt`, `date__lt` turns
+  the default off, so month ranges work. Rows are ordered `-date, id`; keep a unique tiebreaker
+  so paged ranges never repeat or skip rows.
+- **CalEnviroScreen** `calenviroscreen/4.0|5.0/?region_id=` matches tracts that touch the
+  region; `&within_mode=contained|overlaps` uses the regions list's 99%/1% area rule
+  (`area_fraction_inside` in `camp/apps/regions/querysets.py`), measured on each record's own
+  boundary vintage. An unknown mode is a 400.
+- **Place lookup** `regions/places/lookup/` has three modes. Name: `GET ?q=` (+ `type`), the best
+  match. Point: `POST {lat, lon, type?}` lists the current regions containing the point;
+  coordinates are rounded to 3 decimals (server too) and only ever travel in the body. Monitor:
+  `GET ?monitor=&type=`. `type` is a comma list (the POST also takes a JSON array); the
+  default is every type but `land_use` and `mtrs`, and asking for `land_use` is a 400. Hidden
+  monitors 404 (this also applies to the heat/forecast place endpoints); other monitors, CIMIS
+  included, answer. Coordinates in a query string (`lat`/`lon`/`latitude`/`longitude`) are
+  refused (400, `no-cache`) by `CoordinateQueryGuardMiddleware` (`camp/api/middleware.py`)
+  before the view stack. `camp/utils/sentry.py` scrubs lookup events, and `SCOUT_URI_REPORTING='path'`
+  keeps query strings out of Scout traces (site-wide). Answers are cached 24h; re-importing
+  boundaries leaves stale answers until they expire.
+- **Location search** `regions/locations/search/?q=` finds schools and child-care sites by name
+  (typo-tolerant, and a town can be part of the query: "lincoln visalia"). `q` is stripped; under 2
+  characters answers an empty 200, over 100 is a 400. Optional `type` (comma list of location
+  types; names the unknown ones in its 400) and `region_type`+`region` (a code, both or neither;
+  county, city, cdp, zipcode or school_district; retired regions still filter, unknown code 404).
+  Returns `{data: [location rows], more}`: 10 rows, stretched to 15 while the following rows repeat
+  the 10th's name; `more` is true when any match was left out. 200s are `public, max-age=3600`,
+  errors `no-cache`; no server-side cache. Labels for the types come from `regions/meta/`
+  `location_types`.
+- **Daily peaks**: DAILY summary rows (monitor and region) of O3, NO2, SO2 carry `max_1h`, CO
+  carries `max_8h`, PM2.5 and PM10 carry `mean_24h` (`camp/apps/summaries/peaks.py`); every other
+  row and type keeps all three `null`. `mean_24h` is the mean of the hourly means (not count-weighted)
+  and needs `ceil(0.75 * n)` hours; it has no standard exception, so a short day is `null`
+  (its `mean` and `is_complete` are unchanged).
+  Figures are computed for every stored series, but only the published series (meta
+  `default_calibration`) is EPA's basis: AirNow's `O3_AirNow_NowCast` rows get a `max_1h` that
+  isn't an EPA daily figure, so clients read the published series.
+  A monitor hour counts when its hourly row is `is_complete`; a region hour when its row exists;
+  the value is the hourly `mean` (zero and negative count). Standard = the Unhealthy for
+  Sensitive Groups lower bound (O3 125, NO2 101, SO2 76, CO 9.5). EPA 75% rule: with n the
+  day's hours (23/24/25), the peak needs `ceil(0.75 * n)` valid hours (`max_1h`) or valid
+  8-hour windows (`max_8h`, each window needing >= 6 of its 8 hours); a short day reports the
+  peak only if it is at least the standard, else `null`. CO windows start in the day and may run
+  into the next one, so the rollup refreshes `max_8h` the next night (`refresh_previous_max_8h`,
+  scoped to the task's ids when given), and `rebuild_summaries`, `repair_summaries` and the backfill
+  job refresh the day before their first day, for their own owners; the 28 h
+  `PEAK_8H_SETTLE_MARGIN` (`schedule.py`) covers the 25-hour fall-back day and applies to CO's
+  day rows and its coarser rows (see Period daily statistic). The rollup fills
+  peaks through `fill_daily_peaks` after its upsert, and a re-roll never wipes them. AQLite
+  hourly-output series (processor `output_interval='1h'`) have `expected_count = 1` and are
+  complete when the hour's CLEANED readings reach 80% of `expected_hourly_entries`. Their day and
+  coarser rollups (and open days) credit only the records stored `is_complete`, since every hour
+  carries `count` 1 (`rollup_summaries(..., hourly_output=True)`); other series credit every reading. Backfill
+  existing rows with `fill_daily_peaks` (Pacific dates, end exclusive, always scoped like
+  `repair_summaries`, one Pacific month at a time, idempotent, `--entry-type`, `--dry-run`).
+  `fill_daily_peaks` skips hourly means <= -900 (the -999 missing sentinel) and prints the skip
+  count; the rollup and the next-night refresh log a warning with it. Monitor ids can start with
+  `-`, so always pass `--monitor=<id>` (and `--region=<pk>`) with `=`. Deploy order: (1) deploy (the release phase migrates; migration 0007 sets a 10 s
+  `lock_timeout`) away from :40-:50 and with no `SummaryBackfillJob` running; (2) `backfill_airnow`
+  over the -999 range, then `rebuild_summaries ... --monitor=<id> --monitors-only` for those AirNow
+  monitors, then `rebuild_summaries ... --monitor=<id> --regions-only` (that monitor's regions;
+  the region rows built during the -999 period are FEM-weighted means that include -999, usually
+  above -900, so the sentinel skip can't catch them) before any region fill (the command's closing
+  output names all of it, with Pacific dates); (3) the same monitor rebuild per
+  AQLite monitor; (4) scoped `fill_daily_peaks`, `--dry-run` first, then for real, for monitor types
+  `airnow`, `aqlite`, `vozbox`, `purpleair`, `airgradient`, `aqview` and `bam1022` (the enabled
+  monitor types with PM or gas daily rows), then each region type with PM or gas rows; (5) backfill before
+  announcing the feature: settled daily responses are cached 24 h, so nulls served before the
+  backfill stick for a day.
+
+  ```bash
+  docker compose run --rm web python manage.py fill_daily_peaks 2026-01-01 2026-11-10 \
+    --monitor-type airnow --dry-run
+  ```
+- **Bulk region scope**: `regions/<entry_type>/summaries/<resolution>/` and its `daily/open/` take
+  exactly one of `region` (repeatable sqids, resolved through `all_objects`, so retired and
+  old-vintage regions answer) or `type` (one `Region.Type` value: every current region of it with a
+  boundary, `Region.objects.exclude(boundary=None).current_vintage()`, the set `/regions/geojson/` draws); both or neither is a 400
+  (`exclusive` / `required`), and `land_use` or an unknown type is `invalid_choice`.
+  `BulkRegionScopeForm` cleans either to a Region queryset the views use as a sub-select, so a whole
+  type (tracts, MTRS) never travels as an id list (Django refuses over 1,000 query fields).
+- **Open days**: the nightly daily rollups run at 01:00 Pacific (monitors) and 01:10 (regions),
+  so the latest daily rows are missing until then. `monitors/<id>/summaries/<entry_type>/daily/open/` (`?processor=`, default
+  the raw `''` series) and `regions/<id>/summaries/<entry_type>/daily/open/` return unsaved DAILY
+  rows for today (Pacific) and, until the plain day settle (~03:00), yesterday if the series has no
+  stored row for it (`camp/apps/summaries/open_days.py`; at most 2 rows). Bulk
+  `monitors/<entry_type>/summaries/daily/open/` (scoped like the bulk list: `region`, `bbox`,
+  `MonitorFilter`, the published series or `?processor=`) and `regions/<entry_type>/summaries/daily/open/`
+  (`region` or `type` required) page by owner, 100 per page, and list only owners with an HOURLY row of
+  the series in use (published or `?processor=`) since the first open day (an EXISTS in the owner
+  query); a listed owner whose only hours are a stored yesterday's has `summaries: []`. The built
+  rows are cached server-side for 60 s (`cached_open_rows`: kind, entry type, series filter,
+  hashed owner set, open-day set), shared by everyone polling the same page; open rows skip the
+  merged t-digest (`with_tdigest=False`). Stats roll up every hourly row of the day. The figure (only the field the
+  entry type's `daily_statistic` names; others `null`) uses complete monitor hours / any region
+  hour, skipping sentinels. Today uses "so far" rules: `mean_24h` is the mean of the hourly means
+  so far, `max_1h` the highest hour so far, `max_8h` the highest window starting today with >= 6
+  of its 8 hours; no 75% rule or standard exception. An earlier open day uses the strict
+  `peaks.py` rules. On a monitor's open row `is_complete` is relative to the hours so far for
+  today. `is_final` is `false` on every open row. Read it as: false on today = so far; false on an
+  earlier day = not final yet; missing = no data. Today itself reads as missing until its first
+  hour is summarized (~00:45 monitors / ~00:50 regions, 01:45 / 01:50 at worst). The cap is yesterday only until the day settles,
+  so a missed nightly rollup shows as no data afterwards and needs `repair_summaries`. All four
+  always send `private, max-age=60` with an ETag (304 on `If-None-Match`); errors `no-cache`.
+- **Period daily statistic** (`camp/apps/summaries/period_stats.py`): every summary row (monitor
+  and region) carries `daily_statistic_mean`, `daily_statistic_days`, `daily_statistic_expected_days`.
+  They are set only on coarse rows (`month`, `quarter`, `season`, `year`) of the peak types (those with
+  a `daily_statistic`); hour and day rows and other types keep all three `null`. `expected_days` is
+  the Pacific calendar days in the period (DST months still 30/31); `days` is the stored DAILY rows
+  of the series in the period whose figure (the `daily_statistic` field) is not null; `mean` is their
+  mean only when `days >= ceil(0.75 * expected_days)`, else `null` (`days` may be 0, never `null`
+  after a fill). Each series (monitor + processor, or region) averages only its own daily rows. Meta
+  names the field per scale (`period_statistic`, see Scale shape). `rollup_monitor_summaries` and
+  `rollup_region_summaries` call `fill_period_statistics` after their coarse upsert, in the same
+  transaction (`_upsert_and_fill`: a reader never sees a new row before its fill, and a guard stop
+  after the upsert rolls it back; the upserts' `update_fields` leave the three columns alone), so the nightly rollups, backfill jobs,
+  `repair_summaries`, `rebuild_summaries` and the CIMIS re-roll all go through them (CIMIS types have
+  no figure). CO: the month and coarser rollups read the last day's provisional `max_8h`, so
+  `_refresh_previous_max_8h` refills the coarse CO periods ending at the refreshed day, and
+  `is_settled(..., peak_8h=True)` uses the 28 h `PEAK_8H_SETTLE_MARGIN` for them (`is_final` false
+  and `max-age=60` for 28 h after the end).
+  - **Current periods (written nightly)**: the period still running has a stored row too, through
+    yesterday. `current_monitor_periods` (02:15 Pacific, priority 4) and `current_region_periods`
+    (02:20, priority 3), queue `summaries`, write the month, quarter, season and year holding
+    yesterday (`camp/apps/summaries/current_periods.py`, `roll_current_periods`). Periods come from
+    the clock when the task runs, never a scheduled date. A period still running is written with
+    `is_partial=True` (a model column on `BaseSummary`, never serialized); a period that just ended
+    is written in full (`is_partial=False`) on its first night, the same row the regular rollup
+    writes. For a partial period `fill_period_statistics` takes the days through yesterday as
+    `expected_days`, so the 75% rule judges the days so far, and a partial row is never `is_final`
+    (`row_is_final(..., is_partial=True)`). Re-rolled are the owners with a DAILY row for yesterday
+    and the owners with rows in the period so far but no row for it yet (e.g. after the deploy or a
+    backfill; a sub-select with `NOT EXISTS`, owner-level); the other owners' partial rows get their
+    expected days (and the 75% rule) moved by one UPDATE per resolution. The start of today is
+    re-checked before every write: once midnight passes the run stops, so it never writes a partial
+    row over a final one. Each resolution's upsert and period-figure fills commit in one transaction
+    (a stop inside it rolls that resolution back). `finalize_cimis_data` calls `current_monitor_periods` every time (its
+    range is always yesterday). `rebuild_summaries` (sync and `--async`), `repair_summaries`
+    (prints `current periods: <n> owners`) and the backfill job's completion write them when their
+    range reaches into a period holding yesterday (`touches_current_periods`: its end is after the
+    earliest of those periods' starts), passing `rewritten_until=<range end>`: each such period
+    starting before the end is re-rolled for the command's owners (the backfill job: every owner, not
+    the nightly set, so an owner that didn't report yesterday still gets its rewritten days); one
+    starting at or after the end is left alone. Rebuild and repair read the clock again just before
+    this step, so one that ran past midnight writes the new day's periods; one stopped by midnight
+    during the step prints `current periods: stopped at midnight; re-run to write them`. The backfill job reads the clock
+    after its cascade; if midnight stops the run it runs once more from the new day, and if that
+    stops too it logs an error (Sentry) and leaves `BACKFILL_CURRENT_PERIODS_STOPPED` in the job's
+    `last_error`. The backfill job's month-start cascade writes a month, quarter, season or year
+    still running with `is_partial=True`. With `rebuild_summaries --async` and more than one worker
+    on the `summaries` queue, priority orders dequeueing, not completion, so a current-period task can
+    start before a slow rollup finishes; the next nightly run corrects it. On spring-forward Sunday
+    Pacific 02:xx doesn't exist, so `pacific_crontab` runs the 02:xx tasks (current periods and the
+    integrity check) at 03:xx that day, in the same order (`skipped_pacific_hour` in `schedule.py`).
+    After a missed nightly run, an owner that reported only on the missed day keeps a stale partial row until
+    it reports again, the period ends, or a rebuild/repair for its scope runs.
+  - **Integrity**: `check_summary_integrity` result keys `missing_period_statistics` (coarse rows the
+    fill missed), `missing_current_periods` (series with a DAILY row for the day before yesterday and no
+    MONTHLY row for the month holding it: last night's run missed them; checked a day back so it never
+    races tonight's run, which with several `summaries` workers can still be writing) and `stale_partial_periods` (`is_partial` rows of a period that
+    ended before the one holding yesterday).
+  - **Backfill and deploy**: backfill existing coarse rows with `fill_period_statistics` (Pacific
+    dates, end exclusive, scoped like `fill_daily_peaks`, one Pacific year at a time, idempotent,
+    `--resolution`, `--entry-type`, `--dry-run`). Deploy order: (1) deploy (the release phase
+    migrates; migrations 0008 and 0009 each set a 10 s `lock_timeout`) away from :40-:50 and with no
+    `SummaryBackfillJob` running; (2) after the Daily peaks deploy steps (the AirNow -999 monitor
+    and region rebuilds, the AQLite rebuilds and the scoped `fill_daily_peaks`), scoped
+    `fill_period_statistics`, `--dry-run` first, then for real, for the same monitor types and region
+    types. It must follow them because it averages the daily figures they write. Rows those
+    rebuilds re-roll fill themselves, so it only matters for coarse rows that already exist.
+    Current-period rows appear the first night (02:15 / 02:20 Pacific); announce after that night.
+
+    ```bash
+    docker compose run --rm web python manage.py fill_period_statistics 2026-01-01 2026-11-19 \
+      --monitor-type airnow --dry-run
+    ```
+- **Summary cache rule** (`camp/api/v2/summaries/endpoints.py`): a 200 for a settled period is
+  `private, max-age=86400`, any other 200 is `private, max-age=60`; both carry an `ETag` and
+  answer `If-None-Match` with a 304 (which keeps the 200's headers). Errors are `no-cache`.
+  A period is settled once its end plus `SETTLE_MARGIN` has passed (`camp/apps/summaries/schedule.py`).
+  `ROLLUP_LOCAL_TIME` there holds when each rollup runs after the period ends; a test checks
+  the margins against the real crontabs, so moving a rollup past its settle time fails it.
+  Monitor summary rows (and the bulk rows) carry `sum`; region rows don't.
+  Every row carries `is_final`: the settled rule per row and resolution (CO, a `max_8h` type, uses
+  the 28 h margin on day and coarser rows; CIMIS switch types `LATE_SETTLE_MARGIN`); open-day rows
+  and `is_partial` rows are always `false`, and a response holding a partial row is `max-age=60`. One
+  instant per request: `SummaryMixin.dispatch` reads the time once and the cache rule, every
+  row's `is_final` (`serializing_at` in the serializers) and the open days use it.
+- **Rollup timing**: Huey crontabs are UTC (its `utc=True` default; `DJANGO_HUEY` doesn't
+  change it), so each daily-and-longer rollup is scheduled with `pacific_crontab()`
+  (`camp/apps/summaries/schedule.py`): it matches both UTC hours that can hold its Pacific hour
+  (`ROLLUP_UTC_HOURS`: 01:00 Pacific is `8,9`, 02:00 is `9,10`) and keeps only the one that is
+  that Pacific hour (fold 0 on fall-back day). The scheduler decides, so a rollup that starts
+  late still runs; the task body only works out "last period" from the current time.
+- **Summary period math** (`camp/apps/summaries/periods.py`): the one place for period
+  starts, ends and hour lists. Starts are Pacific calendar dates built with `make_aware`,
+  never a `timedelta` of a day or more; hours step in UTC. All summary period math lives here.
+- **Hourly parents**: `hourly_monitor_summaries` (:45) and `hourly_region_summaries` (:50)
+  take their hour from the schedule (`hour_for_run` in `schedule.py`), not the clock, so a late
+  start still summarizes the right hour. They run at priority 110/105, above their children
+  (100/90), and log a warning when they start more than 10 minutes late.
+- **`repair_summaries`**: fixes daily-and-longer rows stamped off a Pacific period start and
+  fills region hours missing for hours that have monitor rows. Always scoped (`--monitor`,
+  `--monitor-type`, `--region`, `--region-type`; `--region-hours` needs a region scope). Run
+  `--dry-run` first: it prints the spans it will delete and re-roll and the counts. Day and month
+  work widens to the finished periods overlapping the range; unfinished periods are left for the
+  scheduled rollup. Misaligned rows whose period it won't re-roll are left and reported.
+  It deletes and re-rolls one resolution at a time from days up, so a resolution's old rows are
+  missing only while it re-rolls. `--region-hours` fills only [start, end), not the widened range.
+  Idempotent. Limits:
+  - A misaligned row of an unfinished period (e.g. a partial current-year row) is deleted
+    and nothing replaces it until that period's scheduled rollup.
+  - `--region-type` covers current regions only; a retired region's rows need `--region <pk>`,
+    and `check_summary_integrity` keeps reporting them until then.
+  - An hour whose monitors all have weight 0 (health score 0) correctly gets no region row,
+    so `--region-hours` keeps listing it as missing (and the integrity check does too when
+    that is true of every region in the hour).
+
+  ```bash
+  docker compose run --rm web python manage.py repair_summaries 2026-10-01 2026-11-04 \
+    --monitor <monitor-id> --region <region-pk> --region-hours --dry-run
+  ```
+- **`check_summary_integrity`** (02:30 Pacific, 03:30 on spring-forward Sunday; read-only): logs an error (Sentry) when summary
+  rows in the last 400 days are off a Pacific period start, or when hours of the previous
+  Pacific day have monitor hourly rows but no region hourly rows, or when coarse rows of a peak
+  type in the last 400 days have `daily_statistic_days` null (`missing_period_statistics` in its
+  result), or when a series has a DAILY row for the day before yesterday and no row for the month
+  holding it (`missing_current_periods`), or when `is_partial` rows remain for a period that ended before the
+  one holding yesterday (`stale_partial_periods`). Logs its run time at info.
+- **Burn status** (`camp/apps/forecasts/scales.py`): the feed's `status` string is stored as
+  received; unknown values are stored and logged by the ingest task. When a new value
+  appears, add a level there. The "No Burning For All" string is still unconfirmed.
+- **Alerts current** `monitors/<id>/alerts/current/` serves the stored result of the 10-minute
+  `periodic_alerts` run (`camp/apps/alerts/current.py`: one cache key per monitor, 30-minute
+  expiry); nothing is evaluated on request. `data` is keyed by entry type; a pair the run never
+  evaluates is absent. Statuses: `ok`, `insufficient`, `no_data`, and `pending`: on a cache miss
+  an active monitor is `pending` (e.g. up to 10 minutes after a cache restart), an inactive one
+  `no_data`. `value`/`level` are null unless `ok`; `level` is the scale key; `previous` is the
+  same evaluation an hour earlier (`status`, `value`, `level`, `latest_timestamp`). Hourly feeds
+  use the latest reading (window = 2x interval), so a lagging feed's `previous` can be the same
+  reading: equal `latest_timestamp`s mean no trend.
+  Hidden monitors are served (they alert, so the tile matches the texts; whether they should
+  alert is deferred). Timestamps carry the Pacific offset. 200s are `public, max-age=60`, errors
+  `no-cache`. `monitors/meta/` entry types carry `alerts` (`window`, `min_coverage`, `stage`,
+  `processor`, `expected_interval`), `null` when the pair isn't evaluated.
+
+Timestamps: zone-less `timestamp__*` filter and `at/` values are read as Pacific,
+explicitly, via `PacificDateTimeField`. `settings.TIME_ZONE` is UTC and
+`TimezoneMiddleware` activates Pacific per request. Tests that use `RequestFactory`
+bypass the middleware and `conftest.py` activates Pacific, so wrap Pacific-date
+assertions in `timezone.override(None)`.
+
+## Data Dashboard (`/workspace/`)
+
+The data dashboard (SJVAir/data-dashboard) is built at deploy and embedded the way
+monitor-map is: `invoke build` runs `scripts/import-data-dashboard.sh`, which clones
+the dashboard's `main`, builds it (Node within its `engines`; npm refuses others), and
+copies `dist/workspace/` into `dist/`, which `collectstatic` and the S3 sync pick up
+unchanged. `camp/apps/workspace` serves `/workspace` and everything under it from a bare
+template (no `base.html`: no GTM, Bulma, or site chrome), plus
+`/workspace/manifest.webmanifest`. The repos' shared contract (file names, the
+`sjvair-identity` block, the CSP list) is data-dashboard's spec 5a "Hosting contract";
+change it there first.
+
+```bash
+# Build a dashboard branch or a local checkout (the checkout must be mounted)
+docker compose run --rm -v ../data-dashboard:/data-dashboard:ro web \
+  invoke import-data-dashboard --source /data-dashboard --ref foundations-5a-shipping
+
+# A non-staff beta tester for the dashboard's embedding tests (DEBUG only; reads
+# WORKSPACE_E2E_IDENTIFIER and WORKSPACE_E2E_PASSWORD)
+docker compose run --rm web python manage.py seed_beta_tester
+```
+
+- **Beta gate:** `/workspace` is behind the `beta_tools` flag like `/tools/` (404 without
+  it); "My Dashboard" is in the beta-only Data Tools menu. The manifest is exempt
+  (browsers fetch it without cookies; it holds nothing private) and is sent `noindex`.
+- **CSP:** built from `camp/apps/workspace/csp-hosts.json`, a byte-for-byte copy of
+  data-dashboard's `csp-hosts.json`; update both together. `WORKSPACE_CSP_ENFORCE`
+  (defaults to `DEBUG`: enforced locally, report-only in production until set to `1`
+  before public go-live). `WORKSPACE_CSP_REPORT_URI` is the dashboard Sentry project's
+  security endpoint; unset sends no reports.
+- **Production config vars** (set by hand when shipping): `VITE_SENTRY_DSN`,
+  `VITE_MAPTILER_KEY`, `VITE_NREL_KEY`, `WORKSPACE_CSP_REPORT_URI`, later
+  `WORKSPACE_CSP_ENFORCE=1`. Never `VITE_PROD_URL` or `VITE_DEV_URL`. The Sentry ingest
+  host must be in `csp-hosts.json` before the DSN is set.
+- **Deferred with monitor-map's:** compression, cache headers, ordered uploads, and failing
+  the release on an S3 upload error.
+- **Load `app.js` by its exact static URL:** no `?v=` query string and no hashed or renamed
+  copy (e.g. `ManifestStaticFilesStorage`). Hashed chunks import it back as `../app.js`, so
+  a different URL loads it twice and the app boots twice. Don't cache-bust it to work around
+  the missing `Cache-Control`.
+
 ## Architecture Overview
 
 SJVAir is a Django/PostGIS air quality monitoring platform for the San Joaquin Valley. It ingests data from multiple sensor networks, processes it through a calibration pipeline, and exposes it via a versioned REST API.

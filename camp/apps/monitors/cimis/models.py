@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
@@ -8,8 +8,15 @@ from camp.apps.entries import models as entry_models
 from camp.apps.monitors.models import Monitor
 
 
+# CIMIS labels each hourly reading with the hour it ends, in fixed PST
+# (no daylight saving), so 0100 is 00:00-01:00 PST and 2400 is 23:00-24:00.
+CIMIS_TZ = timezone(timedelta(hours=-8), 'PST')
+
+
 class CIMIS(Monitor):
-    LAST_ACTIVE_LIMIT = int(60 * 60 * 3)
+    # Readings are stamped at the start of their hour, one hour earlier than
+    # the old end-of-hour stamps in PST, so 4h keeps the old 3h lag tolerance.
+    LAST_ACTIVE_LIMIT = int(60 * 60 * 4)
 
     DATA_PROVIDERS = [{
         'name': 'California Department of Water Resources',
@@ -22,31 +29,40 @@ class CIMIS(Monitor):
     DEVICE = 'CIMIS Weather Station'
 
     EXPECTED_INTERVAL = '1h'
+
+    # 'summarize': True opts a type into CIMIS monitor summaries (see
+    # camp/apps/summaries/selection.py). Wind direction is circular, so a
+    # mean of it means nothing: it stays raw-only.
     ENTRY_CONFIG = {
         entry_models.Temperature: {
             'fields': {'value': 'HlyAirTmp'},
             'allowed_stages': [entry_models.Temperature.Stage.RAW],
             'default_stage': entry_models.Temperature.Stage.RAW,
+            'summarize': True,
         },
         entry_models.Humidity: {
             'fields': {'value': 'HlyRelHum'},
             'allowed_stages': [entry_models.Humidity.Stage.RAW],
             'default_stage': entry_models.Humidity.Stage.RAW,
+            'summarize': True,
         },
         entry_models.DewPoint: {
             'fields': {'value': 'HlyDewPnt'},
             'allowed_stages': [entry_models.DewPoint.Stage.RAW],
             'default_stage': entry_models.DewPoint.Stage.RAW,
+            'summarize': True,
         },
         entry_models.SoilTemperature: {
             'fields': {'value': 'HlySoilTmp'},
             'allowed_stages': [entry_models.SoilTemperature.Stage.RAW],
             'default_stage': entry_models.SoilTemperature.Stage.RAW,
+            'summarize': True,
         },
         entry_models.WindSpeed: {
             'fields': {'value': 'HlyWindSpd'},
             'allowed_stages': [entry_models.WindSpeed.Stage.RAW],
             'default_stage': entry_models.WindSpeed.Stage.RAW,
+            'summarize': True,
         },
         entry_models.WindDirection: {
             'fields': {'value': 'HlyWindDir'},
@@ -57,31 +73,37 @@ class CIMIS(Monitor):
             'fields': {'value': 'HlyPrecip'},
             'allowed_stages': [entry_models.Precipitation.Stage.RAW],
             'default_stage': entry_models.Precipitation.Stage.RAW,
+            'summarize': True,
         },
         entry_models.SolarRadiation: {
             'fields': {'value': 'HlySolRad'},
             'allowed_stages': [entry_models.SolarRadiation.Stage.RAW],
             'default_stage': entry_models.SolarRadiation.Stage.RAW,
+            'summarize': True,
         },
         entry_models.NetRadiation: {
             'fields': {'value': 'HlyNetRad'},
             'allowed_stages': [entry_models.NetRadiation.Stage.RAW],
             'default_stage': entry_models.NetRadiation.Stage.RAW,
+            'summarize': True,
         },
         entry_models.VaporPressure: {
             'fields': {'value': 'HlyVapPres'},
             'allowed_stages': [entry_models.VaporPressure.Stage.RAW],
             'default_stage': entry_models.VaporPressure.Stage.RAW,
+            'summarize': True,
         },
         entry_models.ETo: {
             'fields': {'value': 'HlyAsceEto'},
             'allowed_stages': [entry_models.ETo.Stage.RAW],
             'default_stage': entry_models.ETo.Stage.RAW,
+            'summarize': True,
         },
         entry_models.ETr: {
             'fields': {'value': 'HlyAsceEtr'},
             'allowed_stages': [entry_models.ETr.Stage.RAW],
             'default_stage': entry_models.ETr.Stage.RAW,
+            'summarize': True,
         },
     }
 
@@ -98,6 +120,19 @@ class CIMIS(Monitor):
     }
 
     def parse_timestamp(self, record):
+        '''
+        The start of the hour the record covers. CIMIS hour labels are
+        hour-ending in fixed PST, so 2400 is 23:00 on the record's own date.
+        '''
+        day = datetime.strptime(record['Date'], '%Y-%m-%d').replace(tzinfo=CIMIS_TZ)
+        hour = int(record['Hour'].zfill(4)[:2])
+        return day + timedelta(hours=hour - 1)
+
+    def legacy_timestamp(self, record):
+        '''
+        How readings were stamped before parse_timestamp: the end of the hour
+        on the Pacific wall clock. Only for finding those old rows.
+        '''
         date_str = record['Date']
         hour_str = record['Hour'].zfill(4)
 

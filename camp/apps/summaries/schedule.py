@@ -1,0 +1,198 @@
+from collections.abc import Callable
+from datetime import datetime, time, timedelta, timezone as dt_timezone
+from functools import lru_cache
+
+from django.conf import settings
+from django.utils import timezone
+from huey import crontab
+
+from camp.apps.summaries.periods import period_end
+from camp.utils.datetime import localtime
+
+# Huey crontabs run in UTC. A Pacific hour lands on one of two UTC hours
+# depending on DST, so pacific_crontab() matches both and keeps the one that
+# is the Pacific hour. Keys are the Pacific hour, values the UTC hours that
+# contain it in PDT and PST.
+ROLLUP_UTC_HOURS = {1: '8,9', 2: '9,10'}
+
+
+def is_pacific_hour(hour, now=None):
+    """
+    True when `now` falls in the given Pacific hour. The repeated hour on
+    the fall-back day counts once (fold 0 only).
+    """
+    local = localtime(now or timezone.now())
+    return local.hour == hour and local.fold == 0
+
+
+def skipped_pacific_hour(hour, day) -> bool:
+    """
+    True when the Pacific wall-clock hour doesn't exist on the Pacific date
+    `day` (02:00-03:00 on the spring-forward Sunday).
+    """
+    tz = settings.DEFAULT_TIMEZONE
+    wall = datetime.combine(day, time(hour), tzinfo=tz)
+    return wall.astimezone(dt_timezone.utc).astimezone(tz).replace(tzinfo=None) != wall.replace(tzinfo=None)
+
+
+def pacific_crontab(hour: int, minute: str, **crontab_kwargs) -> Callable[[datetime], bool]:
+    """
+    A Huey periodic-task schedule for a Pacific wall-clock hour. Huey's
+    scheduler calls it with the minute it is scheduling (naive UTC under
+    Huey's utc=True default), so the Pacific-hour decision is made when the
+    task is enqueued, not when a worker gets to it: a run that starts late
+    still runs. Other crontab fields (`day`, `month`, ...) are UTC, which is
+    the same date as Pacific at these early-morning hours.
+
+    On the spring-forward Sunday the 02:00 hour doesn't exist, so a 02:MM
+    task runs at 03:MM that day instead (the UTC hour matched is the one
+    holding 02:MM in PST), rather than skipping the night.
+    """
+    matches = crontab(hour=ROLLUP_UTC_HOURS[hour], minute=minute, **crontab_kwargs)
+
+    def validate(timestamp):
+        if timezone.is_naive(timestamp):
+            timestamp = timestamp.replace(tzinfo=dt_timezone.utc)
+        timestamp = timestamp.astimezone(dt_timezone.utc)
+        if not matches(timestamp.replace(tzinfo=None)):
+            return False
+        if is_pacific_hour(hour, timestamp):
+            return True
+        local = localtime(timestamp)
+        return local.hour == hour + 1 and skipped_pacific_hour(hour, local.date())
+
+    return validate
+
+
+# How long after a period ends its latest scheduled rollup runs (Pacific
+# wall-clock offsets from the period's end). Hour is the region task at H+1:50.
+ROLLUP_LOCAL_TIME = {
+    'hour': timedelta(minutes=50),
+    'day': timedelta(hours=1, minutes=10),
+    'month': timedelta(hours=1, minutes=25),
+    'quarter': timedelta(hours=1, minutes=35),
+    'season': timedelta(hours=1, minutes=55),
+    'year': timedelta(hours=2, minutes=5),
+}
+
+# After period end plus this margin, a period's rollups are done and its
+# summaries won't change. Each covers ROLLUP_LOCAL_TIME plus an hour of slack.
+SETTLE_MARGIN = {
+    'hour': timedelta(hours=2),
+    'day': timedelta(hours=3),
+    'month': timedelta(hours=4),
+    'quarter': timedelta(hours=4),
+    'season': timedelta(hours=4),
+    'year': timedelta(hours=5),
+}
+
+# Summaries fed by late-arriving data (CIMIS weather) can change until the
+# next day's finalize_cimis_data (12:00 UTC, 04:00-05:00 Pacific) re-pulls and
+# re-rolls. An hour's last change lands up to ~29h after it ends (the first
+# hour of a day, in PDT); day and longer, ~5h after the period ends.
+LATE_SETTLE_MARGIN = {
+    'hour': timedelta(hours=30),
+    'day': timedelta(hours=7),
+    'month': timedelta(hours=7),
+    'quarter': timedelta(hours=7),
+    'season': timedelta(hours=7),
+    'year': timedelta(hours=7),
+}
+
+
+# A daily max_8h (CO) uses 8-hour windows that start during the day and reach
+# into the next morning, so the next night's daily tasks recompute it. This is
+# documentation of that delay; the refresh runs inside the next day's rollup.
+PEAK_8H_REFRESH_DELAY = timedelta(days=1)
+
+# The refresh lands at most 26h10m after the day ends (fall-back day: the
+# following day has 25 hours), plus an hour of slack. Applies to `day` and
+# coarser: a coarse row's average of daily figures is refilled by the same
+# refresh when its last day is refreshed.
+PEAK_8H_SETTLE_MARGIN = timedelta(hours=28)
+
+
+def is_settled(resolution, range_end, now=None, late=False, peak_8h=False):
+    """
+    True when every period in a range ending at `range_end` (exclusive) has
+    had time to finish its rollups. An open range (None) is never settled.
+    `late` uses the longer margins of types whose data arrives late.
+    `peak_8h` (a daily max_8h type) widens the margin of `day` and every
+    coarser resolution to PEAK_8H_SETTLE_MARGIN.
+    """
+    if range_end is None:
+        return False
+    last_period_end = period_end(resolution, range_end - timedelta(microseconds=1))
+    margins = LATE_SETTLE_MARGIN if late else SETTLE_MARGIN
+    margin = margins[resolution]
+    if peak_8h and resolution != 'hour':
+        margin = max(margin, PEAK_8H_SETTLE_MARGIN)
+    return (now or timezone.now()) >= last_period_end + margin
+
+
+def settle_flags(entry_model):
+    """
+    The `is_settled` flags for an entry model: `late` (a switch type, whose
+    data arrives late) and `peak_8h` (a daily max_8h type).
+    """
+    from camp.apps.summaries.selection import switch_entry_types
+    levels = getattr(entry_model, 'Levels', None)
+    return {
+        'late': entry_model.entry_type in switch_entry_types(),
+        'peak_8h': getattr(levels, 'daily_statistic', None) == 'max_8h',
+    }
+
+
+@lru_cache(maxsize=None)
+def _flags_for_entry_type(entry_type):
+    from camp.apps.entries.utils import get_entry_model_by_name
+    model = get_entry_model_by_name(entry_type)
+    if model is None:
+        return {'late': False, 'peak_8h': False}
+    return settle_flags(model)
+
+
+def row_is_final(resolution, timestamp, entry_type, now=None, is_partial=False):
+    """
+    Whether a summary row (saved or not) has settled. Computed from the row's
+    resolution, timestamp and entry type alone, with no database query. A
+    partial row (a current period written before it ended) is never final.
+    """
+    if is_partial:
+        return False
+    return is_settled(
+        resolution, period_end(resolution, timestamp), now=now,
+        **_flags_for_entry_type(entry_type),
+    )
+
+
+# The minute of each hour the hourly parent tasks are scheduled for
+# (crontab minutes in camp/apps/summaries/tasks.py).
+HOURLY_FIRE_MINUTE = {'monitor': 45, 'region': 50}
+
+# A parent that starts this long after its scheduled minute logs a warning.
+LATE_RUN_WARNING = timedelta(minutes=10)
+
+
+def hour_for_run(fire_minute: int, now: datetime | None = None) -> tuple[datetime, timedelta]:
+    """
+    The hour an hourly parent should summarize, and how late it started.
+
+    The hour comes from the schedule, not from when a worker picked the task
+    up: `fire` is the latest HH:`fire_minute` (UTC) at or before `now`, and
+    the hour is the one before the hour holding `fire`. A parent that waited
+    behind other work therefore still summarizes the hour it was scheduled for.
+    Returns (hour, lateness), lateness being `now - fire`.
+
+    That holds only up to 60 minutes late. A parent that starts 60+ minutes
+    after its fire time resolves to the next fire instead: it summarizes the
+    next hour (which that fire's own run summarizes again), the hour it was
+    scheduled for gets no row, and no late-run warning names it, since the
+    lateness it reports is measured from the next fire. The daily
+    check_summary_integrity reports the missing region hours the next day.
+    """
+    now = (now or timezone.now()).astimezone(dt_timezone.utc)
+    fire = now.replace(minute=fire_minute, second=0, microsecond=0)
+    if fire > now:
+        fire -= timedelta(hours=1)
+    return fire.replace(minute=0) - timedelta(hours=1), now - fire

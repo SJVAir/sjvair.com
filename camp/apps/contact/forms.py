@@ -14,6 +14,7 @@ class ContactForm(forms.Form):
         ('Bug', 'Bug or Technical Issue'),
         ('Feedback', 'Feature Suggestion or App Feedback'),
         ('Media', 'Media Inquiry'),
+        ('Report', 'Report a shared dashboard'),
         ('General', 'General'),
     )
 

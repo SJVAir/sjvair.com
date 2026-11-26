@@ -30,6 +30,8 @@ class CalHeatScore(models.Model):
         constraints = [
             models.UniqueConstraint(fields=['region', 'date'], name='unique_calheatscore_region_date'),
         ]
+        # Backs coverage's MIN/MAX(date); the unique index leads with region.
+        indexes = [models.Index(fields=['date'])]
         ordering = ['-date']
         verbose_name = _('CalHeatScore')
         verbose_name_plural = _('CalHeatScore Records')

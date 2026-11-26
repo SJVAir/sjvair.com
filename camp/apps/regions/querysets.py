@@ -1,9 +1,12 @@
 from django.contrib.gis.db import models
 from django.contrib.gis.db.models import Count, FloatField, Func, F, OuterRef, Subquery, Union
-from django.contrib.gis.db.models.functions import Intersection
+from django.contrib.gis.db.models.functions import Intersection, PointOnSurface
 from django.contrib.gis.geos import GEOSGeometry
-from django.db.models import Q
-from django.db.models.functions import Lower, NullIf, Trim
+from django.contrib.postgres.search import TrigramWordSimilarity
+from django.db.models import Case, Q, Value, When
+from django.db.models.functions import Coalesce, Greatest, JSONObject, Lower, NullIf, Trim
+from django.db.models.lookups import GreaterThanOrEqual
+from django.db.models.query import ModelIterable
 
 import geopandas as gpd
 from shapely.wkt import loads as load_wkt
@@ -16,7 +19,57 @@ from camp.utils import maps
 TRACT_VINTAGE = '2020'
 
 
+def overlap_area(geometry: GEOSGeometry):
+    """Expression: the area of a region's boundary that falls inside `geometry`."""
+    return Func(
+        Intersection('boundary__geometry', geometry),
+        function='ST_Area', output_field=FloatField(),
+    )
+
+
+# ?within_mode= values, and the share of a shape's own area that must fall
+# inside the parent for each (see RegionQuerySet.contained_within).
+WITHIN_MODES = ('contained', 'overlaps')
+CONTAINED_MIN_FRACTION = 0.99
+OVERLAPS_MIN_FRACTION = 0.01
+
+
+def area_fraction_inside(queryset, geometry: GEOSGeometry, min_fraction: float):
+    """
+    Rows with at least `min_fraction` of their own `boundary__geometry` area
+    inside `geometry`. Works for any model with a `boundary` foreign key:
+    regions, and records keyed to one boundary vintage (CalEnviroScreen).
+    """
+    area = Func('boundary__geometry', function='ST_Area', output_field=FloatField())
+    return (queryset
+        # ST_Intersects first so the spatial index prunes candidates
+        # before the (expensive) intersection area is computed.
+        .filter(boundary__geometry__intersects=geometry)
+        .annotate(overlap_fraction=overlap_area(geometry) / NullIf(area, 0.0))
+        .filter(overlap_fraction__gte=min_fraction)
+    )
+
+
 class RegionQuerySet(models.QuerySet):
+    def with_county(self):
+        """
+        Annotate `county`: {type, external_id, name} of the current county holding
+        each region's point-on-surface (the lowest code if two do), or None. A
+        region spanning counties gets the one its point-on-surface falls in.
+        One correlated subquery, no extra round trips.
+        """
+        from camp.apps.regions.models import Region
+
+        county = (
+            Region.objects
+            .filter(type=Region.Type.COUNTY, boundary__geometry__contains=OuterRef('county_anchor'))
+            .order_by('external_id', 'pk')
+            .values(json=JSONObject(type='type', external_id='external_id', name='name'))[:1]
+        )
+        return (self
+            .annotate(county_anchor=PointOnSurface('boundary__geometry'))
+            .annotate(county=Subquery(county)))
+
     def current_vintage(self):
         """Leave out retired census tracts (see TRACT_VINTAGE); other types pass through.
         Tracts with no boundary at all are left out too."""
@@ -64,7 +117,10 @@ class RegionQuerySet(models.QuerySet):
         """
         return self.filter(boundary__geometry__intersects=geometry)
 
-    def contained_within(self, geometry: GEOSGeometry, min_fraction: float = 0.99):
+    def _area_fraction_inside(self, geometry: GEOSGeometry, min_fraction: float):
+        return area_fraction_inside(self, geometry, min_fraction)
+
+    def contained_within(self, geometry: GEOSGeometry, min_fraction: float = CONTAINED_MIN_FRACTION):
         """
         Filters regions that are (essentially) entirely inside the given
         geometry: at least `min_fraction` of the region's own area must fall
@@ -81,18 +137,18 @@ class RegionQuerySet(models.QuerySet):
         excursions are all well under 0.1% of area, while the smallest
         genuine straddle is several percent, so 99% separates the two.
         """
-        overlap = Func(
-            Intersection('boundary__geometry', geometry),
-            function='ST_Area', output_field=FloatField(),
-        )
-        area = Func('boundary__geometry', function='ST_Area', output_field=FloatField())
-        return (self
-            # ST_Intersects first so the spatial index prunes candidates
-            # before the (expensive) intersection area is computed.
-            .filter(boundary__geometry__intersects=geometry)
-            .annotate(overlap_fraction=overlap / NullIf(area, 0.0))
-            .filter(overlap_fraction__gte=min_fraction)
-        )
+        return self._area_fraction_inside(geometry, min_fraction)
+
+    def overlapping(self, geometry: GEOSGeometry, min_fraction: float = OVERLAPS_MIN_FRACTION):
+        """
+        Filters regions with at least `min_fraction` of their own area inside
+        the given geometry. The mirror of contained_within: that one asks
+        "is the region (essentially) inside?", this one "does the region
+        meaningfully reach in?". The small floor drops the hairline slivers
+        where neighbouring boundaries from different sources disagree (a ZIP
+        that merely touches a county's edge), while keeping real overlaps.
+        """
+        return self._area_fraction_inside(geometry, min_fraction)
 
     def combined_geometry(self) -> GEOSGeometry:
         """
@@ -124,6 +180,18 @@ class BoundaryQuerySet(models.QuerySet):
         return gpd.GeoDataFrame(records, geometry='geometry', crs=crs)
 
 
+class SearchResultIterable(ModelIterable):
+    """Model instances from LocationQuerySet.search(), with `search_rank` and
+    `search_similarity` split out of the row's `search_key` (rank * 10 + similarity)
+    in Python rather than SQL, where each would repeat the whole key expression."""
+
+    def __iter__(self):
+        for obj in super().__iter__():
+            obj.search_rank = int(obj.search_key // 10)
+            obj.search_similarity = obj.search_key - obj.search_rank * 10
+            yield obj
+
+
 class LocationQuerySet(models.QuerySet):
     """Schools and child-care centers (regions.Location)."""
 
@@ -135,7 +203,7 @@ class LocationQuerySet(models.QuerySet):
     SAME_PLACE_DEGREES = 0.00135
 
     def _same_place(self):
-        """The child-care licenses at the outer row's place (its own included): same name, case and spacing aside, within SAME_PLACE_DEGREES."""
+        """The current child-care licenses at the outer row's place (its own included): same name, case and spacing aside, within SAME_PLACE_DEGREES."""
         from camp.apps.regions.models import Location
         return (
             Location.objects.annotate(name_key=Lower(Trim('name')))
@@ -145,9 +213,13 @@ class LocationQuerySet(models.QuerySet):
     def one_per_place(self):
         """
         One row per place: a child-care center's several licenses (_same_place)
-        stand as their first (lowest pk), the rest left out, every row
+        stand as the one with the lowest code, the rest left out, every row
         annotated `licenses` -- how many it stands for (1 for schools and a
         single license). A school and a child-care center on one site stay two.
+
+        The lowest code rather than the lowest pk, so the representative is
+        the same in every environment. Facility numbers are fixed-width
+        digit strings, so string order is numeric order.
         """
         from camp.apps.regions.models import Location
         same = self._same_place()
@@ -155,6 +227,111 @@ class LocationQuerySet(models.QuerySet):
         count = Subquery(same.order_by().values('type').annotate(n=Count('pk')).values('n')[:1], output_field=models.IntegerField())
         return (
             self.annotate(name_key=Lower(Trim('name')))
-            .exclude(child_care & models.Exists(same.filter(pk__lt=OuterRef('pk'))))
+            .exclude(child_care & models.Exists(same.filter(external_id__lt=OuterRef('external_id'))))
             .annotate(licenses=models.Case(models.When(child_care, then=count), default=models.Value(1), output_field=models.IntegerField()))
         )
+
+    # Trigram word similarity at or above this is a (typo-tolerant) match,
+    # as in Region.objects.search_regions.
+    SEARCH_SIMILARITY = 0.3
+    # The most words a town part can have ("san luis obispo").
+    SEARCH_TOWN_WORDS = 3
+
+    @classmethod
+    def _search_splits(cls, q):
+        """(name text, town text or None) pairs to try for `q`: the whole of it, then each
+        name + town split, the town being the last or the first 1-3 words."""
+        text = ' '.join(q.split())
+        words = text.lower().split(' ')
+        splits = [(text, None)]
+        for k in range(1, min(cls.SEARCH_TOWN_WORDS, len(words) - 1) + 1):
+            splits.append((' '.join(words[:-k]), ' '.join(words[-k:])))
+            splits.append((' '.join(words[k:]), ' '.join(words[:k])))
+        return splits
+
+    def search(self, q):
+        """
+        Name search: current rows (one per place) whose name contains `q` or is
+        trigram-similar to it, or -- for a query of two or more words -- whose
+        name matches a name part and whose city starts with the rest (the town).
+
+        `search_rank`, best first:
+          7  the name is q (case and surrounding spaces aside)
+          6  the name starts with q
+          5  a word in the name starts with q (after a space, /, - or ()
+          4, 3, 2  a town split matched: its name part matched at tier 3
+                   (prefix), 2 (word start) or 1 (substring or similarity)
+          1  q is only in the name somewhere, or trigram-similar to it
+        so every same-named school ("lincoln elementary") comes before a longer
+        name that starts the same way (LINCOLN ELEMENTARY PRESCHOOL), and a query
+        word that happens to start a town name ("fresno high", "lincoln
+        elementary" by Lincoln Village) doesn't outrank the name itself.
+        `search_similarity` is the trigram word similarity of the best split's
+        name text. Rows are ordered by both, then city, name, source and code.
+        The city sort is the row's own `city_name` (what it shows), else its
+        linked city/CDP region's name; a town part matches either.
+        Doesn't check `q`'s length; a blank `q` matches nothing.
+
+        Each split scores rank * 10 + similarity in one CASE, and the row's
+        `search_key` annotation is the greatest of them: one expression for the
+        filter and the sort, rather than one per split per use. `search_rank`
+        and `search_similarity` are split out of it in Python as rows are read
+        (SearchResultIterable), so they're attributes, not SQL annotations:
+        filter and order on `search_key`. The result chains like any queryset
+        (filter, select_related, slicing); `.values()` drops the two attributes.
+        """
+        if not q.strip():
+            return self.none()
+
+        qs = self.one_per_place().alias(
+            city_key=Lower(Coalesce(NullIf('city_name', Value('')), 'city__name', Value(''))),
+        )
+        keys = [self._search_key(name, town) for name, town in self._search_splits(q)]
+        qs = qs.annotate(search_key=keys[0] if len(keys) == 1 else Greatest(*keys))
+        qs = qs.filter(search_key__gte=10).order_by('-search_key', 'city_key', Lower('name'), 'source', 'external_id')
+        qs._iterable_class = SearchResultIterable
+        return qs
+
+    # search_rank for each tier of a whole-query match, and of a town split's name part.
+    # Only the whole query can match a name exactly (tier 4).
+    _WHOLE_RANKS = {4: 7, 3: 6, 2: 5, 1: 1}
+    _TOWN_RANKS = {3: 4, 2: 3, 1: 2}
+
+    def _search_key(self, name, town=None):
+        """
+        One split's score, rank * 10 + similarity (0 when it doesn't match).
+        Cheapest test first, since most rows match nothing: a town split checks
+        the town, then the name's containment gates the prefix and word-start
+        tests, and only a name that doesn't contain the text pays for the
+        similarity threshold.
+        """
+        similarity = TrigramWordSimilarity(Value(name), 'name')
+        word_start = Q()
+        for sep in ' /-(':
+            word_start |= Q(name__icontains=sep + name)
+        ranks = self._TOWN_RANKS if town else self._WHOLE_RANKS
+        exact = [] if town else [When(name_key=name.lower(), then=ranks[4] * 10)]  # one_per_place's Lower(Trim(name))
+        tier_rank = Case(
+            *exact,
+            When(name__istartswith=name, then=ranks[3] * 10),
+            When(word_start, then=ranks[2] * 10),
+            default=ranks[1] * 10,
+        )
+        whens = [
+            When(name__icontains=name, then=tier_rank + similarity),
+            When(GreaterThanOrEqual(similarity, self.SEARCH_SIMILARITY), then=ranks[1] * 10 + similarity),
+        ]
+        if town:
+            whens.insert(0, When(~self._in_town(town), then=Value(0.0)))
+        return Case(*whens, default=Value(0.0), output_field=FloatField())
+
+    def _in_town(self, town):
+        """Rows whose city starts with `town`: their own `city_name` (a mailing city,
+        e.g. Stockton) or their linked city/CDP region's name (e.g. Lincoln Village),
+        whichever matches. The region side is an uncorrelated subquery of city ids rather
+        than the join, so the whole search filter applies at the location scan, ahead of
+        one_per_place()'s per-row subquery. all_objects: a row's linked city counts even
+        if retired, and it skips the retired_at scan."""
+        from camp.apps.regions.models import Region
+        cities = Region.all_objects.filter(type__in=[Region.Type.CITY, Region.Type.CDP], name__istartswith=town)
+        return Q(city_name__istartswith=town) | Q(city__in=cities.values('pk'))

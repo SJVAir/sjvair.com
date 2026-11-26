@@ -1,0 +1,16 @@
+{% load static %}<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>SJVAir Dashboard</title>
+		<link rel="icon" href="{% static 'img/favicon/favicon.ico' %}" />
+		<link rel="manifest" href="/workspace/manifest.webmanifest" />
+		<link rel="stylesheet" href="{% static 'workspace/app.css' %}" />
+		<script type="module" src="{% static 'workspace/app.js' %}"></script>
+	</head>
+	<body>
+		<div id="SJVAirDataDashboard"></div>
+		{{ workspace_identity|json_script:"sjvair-identity" }}
+	</body>
+</html>

@@ -1,23 +1,26 @@
-import calendar
-from datetime import datetime, timedelta
+import logging
+import time
+from datetime import timedelta
 from itertools import groupby
 
-from django.conf import settings
 from django.db import transaction
 from django.db.models import Exists, F, OuterRef, Q
 from django.utils import timezone
-
-from camp.utils.datetime import localtime, make_aware
 
 from django_huey import db_task, db_periodic_task
 from huey import crontab
 
 from camp.apps.entries.fields import EntryTypeField
 from camp.apps.entries.stages import Stage
-from camp.apps.entries.utils import get_all_entry_models
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
-from camp.apps.summaries.aggregators import compute_monitor_summary, compute_region_summary, rollup_summaries, rollup_region_stats
+from camp.apps.summaries.periods import iter_hours, period_end, period_start
+from camp.apps.summaries.schedule import HOURLY_FIRE_MINUTE, LATE_RUN_WARNING, hour_for_run, pacific_crontab
+from camp.apps.summaries.aggregators import (
+    compute_monitor_summary, compute_region_summary, hourly_output_processor,
+    rollup_summaries, rollup_region_stats,
+)
+from camp.apps.summaries.current_periods import roll_current_periods, touches_current_periods
 from camp.apps.summaries.backfill import (
     backfill_monitor_hours,
     backfill_region_hours,
@@ -30,40 +33,71 @@ from camp.apps.summaries.backfill import (
     regions_with_monitors,
 )
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary, SummaryBackfillJob
+from camp.apps.summaries.peaks import fill_daily_peaks, peak_entry_models
+from camp.apps.summaries.period_stats import COARSE_RESOLUTIONS, fill_period_statistics
+from camp.apps.summaries.selection import (
+    monitor_summary_entry_models,
+    monitor_types_summarizing,
+    region_summary_entry_models,
+    switch_entry_models,
+)
 
-
-def get_summarizable_entry_models():
-    """Return entry models that have opted in to summarization via summarize = True."""
-    return [m for m in get_all_entry_models() if m.summarize]
+logger = logging.getLogger('camp.apps.summaries')
 
 
 # ---- Hourly tasks ----
+
+def _scheduled_hour(kind):
+    """The hour an hourly parent was scheduled to summarize; warns if it started late."""
+    fire_minute = HOURLY_FIRE_MINUTE[kind]
+    hour, lateness = hour_for_run(fire_minute, timezone.now())
+    if lateness > LATE_RUN_WARNING:
+        logger.warning(
+            '%s started %s after its :%02d run; summarizing %s',
+            kind, lateness, fire_minute, hour,
+        )
+    return hour
 
 # Hourly summaries run late in the hour (:45/:50) rather than right after it
 # closes, so the previous hour has ~45 min to settle first: late-arriving
 # upstream batches (VOZbox lands ~:10, AirNow/AQView/CIMIS can lag longer)
 # and the hourly health checks (:40, camp/apps/qaqc/tasks.py) that weight
 # LCS monitors in the region summaries. The daily and longer rollups start
-# at 01:00 so yesterday's final hour (summarized at 00:45) is in place.
+# at 01:00 Pacific so yesterday's final hour (summarized at 00:45) is in place.
+#
+# Huey crontabs run in UTC (its utc=True default; DJANGO_HUEY doesn't change
+# it), so those rollups use schedule.pacific_crontab: it matches both UTC
+# hours that can hold 01:00 (or 02:00) Pacific and keeps the one that is the
+# Pacific hour. The decision is made when the scheduler enqueues the task, so
+# a rollup that starts late (queued behind the hourly fan-outs) still runs.
+#
+# The hourly parents pick their hour from the schedule (schedule.hour_for_run),
+# not from the clock when they run, and sit above their children (110 and 105
+# over 100 and 90) so they start before the children they enqueue: the region
+# parent can't queue behind every pending monitor child and wake up an hour
+# late. A parent that still starts late logs a warning.
 #
 # Task priorities decrease with dependency depth so upstream data is always
 # ready before downstream aggregations consume it:
-#   hourly monitor (100) → hourly region (90) → daily monitor (80) → daily region (70)
+#   hourly monitor parent (110) → hourly region parent (105)
+#   → hourly monitor (100) → hourly region (90) → daily monitor (80) → daily region (70)
 #   → monthly monitor (60) → monthly region (50) → quarterly monitor (40) → quarterly region (30)
 #   → seasonal monitor (20) → seasonal region (15) → yearly monitor (10) → yearly region (5)
 
-@db_periodic_task(crontab(hour='*', minute='45'), priority=100, queue='summaries')
+@db_periodic_task(crontab(hour='*', minute='45'), priority=110, queue='summaries')
 def hourly_monitor_summaries(hour=None):
     """
     Compute hourly MonitorSummary for every (monitor, entry_type, processor) combo
     that has entries in the previous hour. Only RAW (processor='') and CALIBRATED
     (processor≠'') entries are summarized — CORRECTED and CLEANED are skipped.
+
+    Only the region types: types a monitor type opts into through its
+    ENTRY_CONFIG (CIMIS weather) are summarized by that monitor's ingest.
     """
     if hour is None:
-        now = timezone.now().replace(minute=0, second=0, microsecond=0)
-        hour = now - timedelta(hours=1)
+        hour = _scheduled_hour('monitor')
 
-    for EntryModel in get_summarizable_entry_models():
+    for EntryModel in region_summary_entry_models():
         combos = (
             EntryModel.objects
             .filter(
@@ -101,7 +135,7 @@ def summarize_monitor_hour(monitor_id, hour, entry_type, processor):
     )
 
 
-@db_periodic_task(crontab(hour='*', minute='50'), priority=90, queue='summaries')
+@db_periodic_task(crontab(hour='*', minute='50'), priority=105, queue='summaries')
 def hourly_region_summaries(hour=None):
     """
     Compute one hourly RegionSummary per region per entry_type found in
@@ -114,10 +148,9 @@ def hourly_region_summaries(hour=None):
     over-weights bad sensors.
     """
     if hour is None:
-        now = timezone.now().replace(minute=0, second=0, microsecond=0)
-        hour = now - timedelta(hours=1)
+        hour = _scheduled_hour('region')
 
-    entry_models = get_summarizable_entry_models()
+    entry_models = region_summary_entry_models()
 
     region_ids = (Region.objects
         .filter(
@@ -140,7 +173,7 @@ def hourly_region_summaries(hour=None):
 @db_task(priority=90, queue='summaries')
 def summarize_region_hour(region_id, hour, entry_type):
     """Compute and save one hourly RegionSummary record."""
-    region = Region.objects.select_related('boundary').get(pk=region_id)
+    region = Region.all_objects.select_related('boundary').get(pk=region_id)
 
     stats = compute_region_summary(region, hour, entry_type)
     if stats is None:
@@ -155,9 +188,95 @@ def summarize_region_hour(region_id, hour, entry_type):
     )
 
 
+# ---- On-arrival summaries (CIMIS weather) ----
+#
+# CIMIS readings often land hours late, after the :45 parent has moved on
+# (and that parent skips weather types anyway). Each CIMIS import summarizes
+# the hours it wrote, and its daily finalize re-pull re-summarizes yesterday.
+
+def rollup_windows_for(hours, now):
+    """
+    {resolution: [period starts]} holding `hours`, for each resolution above
+    hourly, keeping only periods that have ended by `now`. No widening: only
+    the periods the hours fall in.
+    """
+    from camp.apps.summaries.repair import RESOLUTIONS
+
+    windows = {}
+    for resolution in RESOLUTIONS:
+        starts = {period_start(resolution, hour) for hour in hours}
+        windows[resolution] = sorted(s for s in starts if period_end(resolution, s) <= now)
+    return windows
+
+
+@db_task(priority=100, queue='summaries')
+def summarize_monitor_hours(monitor_id, hours):
+    """
+    Summarize one monitor's `hours` (hour starts, spanning at most 2 days) and
+    re-roll the finished periods holding them. Only for monitor types with
+    their own summarized types (CIMIS); monitor rows only, never region rows.
+    """
+    from camp.apps.summaries.repair import reroll
+
+    if not hours:
+        return
+    monitor = Monitor.objects.get(pk=monitor_id)
+    entry_models = monitor_summary_entry_models(monitor)
+    if not set(entry_models) & set(switch_entry_models()):
+        return
+
+    now = timezone.now()
+    start = min(hours)
+    end = max(hours) + timedelta(hours=1)
+    backfill_monitor_hours(monitor, start, end, entry_models)
+    reroll('monitor', [monitor.pk], start, end, now, windows=rollup_windows_for(hours, now))
+
+
 # ---- Rollup helpers ----
 
-def rollup_monitor_summaries(target_resolution, source_resolution, window_start, window_end, monitor_ids=None):
+def _log_skipped(result):
+    if result.skipped > 0:
+        logger.warning('Daily peaks skipped %d sentinel hourly value(s)', result.skipped)
+
+
+def _upsert_and_fill(
+    kind, model, rows, ids, target_resolution, window_start, window_end,
+    *, guard, now, unique_fields, update_fields,
+):
+    """
+    Upsert a rollup's rows and fill their daily peaks or period daily statistic
+    in one transaction, so a reader (the integrity check, the API) never sees a
+    new row before its fill. `guard` is checked before the upsert and again
+    before the fills; a stop after the upsert rolls it back, so a stopped
+    rollup writes nothing. Returns False when the guard stopped it.
+    """
+    if not rows:
+        return True
+    with transaction.atomic():
+        if guard is not None and not guard():
+            return False
+        model.objects.bulk_create(
+            rows, update_conflicts=True,
+            unique_fields=unique_fields, update_fields=update_fields,
+        )
+        if guard is not None and not guard():
+            transaction.set_rollback(True)
+            return False
+        # The peaks aren't in update_fields, so the upsert keeps them; the fill rewrites them.
+        if target_resolution == BaseSummary.Resolution.DAILY:
+            _log_skipped(fill_daily_peaks(kind, ids, window_start, window_end))
+        # Same for the period daily statistic on coarse rows.
+        if target_resolution in COARSE_RESOLUTIONS:
+            fill_period_statistics(
+                kind, ids, window_start, window_end,
+                resolutions=[target_resolution], now=now)
+    return True
+
+
+def rollup_monitor_summaries(
+    target_resolution, source_resolution, window_start, window_end, monitor_ids=None,
+    *, is_partial=False, guard=None, now=None,
+):
     """
     Roll up MonitorSummary records from source_resolution into target_resolution
     for the given time window.
@@ -170,6 +289,14 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
     the whole window (monitors × entry_types × processors × periods).
 
     Optionally scoped to a list of monitor_ids (for targeted backfill/recalculation).
+
+    Every row written gets `is_partial`, so a full write clears the flag. `guard`
+    is called right before the upsert and again before the fills; the upsert
+    and the fills share one transaction, so when it returns False nothing is
+    written. Returns True when it wrote (or had nothing to write), False when
+    the guard stopped it. `now` is passed to
+    `fill_period_statistics` (a current period expects the days through the
+    day before it).
     """
     qs = MonitorSummary.objects.filter(
         resolution=source_resolution,
@@ -182,14 +309,15 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
     rows = qs.order_by('monitor_id', 'entry_type', 'processor').values(
         'monitor_id', 'entry_type', 'processor',
         'count', 'expected_count', 'sum_value', 'sum_of_squares',
-        'minimum', 'maximum', 'tdigest',
+        'minimum', 'maximum', 'tdigest', 'is_complete',
     ).iterator()
 
     to_upsert = []
     for (monitor_id, entry_type, processor), group in groupby(
         rows, key=lambda r: (r['monitor_id'], r['entry_type'], r['processor'])
     ):
-        stats = rollup_summaries(list(group))
+        stats = rollup_summaries(
+            list(group), hourly_output=hourly_output_processor(processor) is not None)
         if stats is None:
             continue
         to_upsert.append(MonitorSummary(
@@ -198,24 +326,30 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
             resolution=target_resolution,
             entry_type=entry_type,
             processor=processor,
+            is_partial=is_partial,
             **stats,
         ))
 
-    if to_upsert:
-        MonitorSummary.objects.bulk_create(
-            to_upsert,
-            update_conflicts=True,
-            unique_fields=['monitor', 'entry_type', 'processor', 'resolution', 'timestamp'],
-            update_fields=[
-                'count', 'expected_count', 'sum_value', 'sum_of_squares',
-                'minimum', 'maximum', 'mean', 'stddev', 'p25', 'p75',
-                'tdigest', 'is_complete',
-            ],
-        )
+    return _upsert_and_fill(
+        'monitor', MonitorSummary, to_upsert, monitor_ids,
+        target_resolution, window_start, window_end, guard=guard, now=now,
+        unique_fields=['monitor', 'entry_type', 'processor', 'resolution', 'timestamp'],
+        update_fields=[
+            'count', 'expected_count', 'sum_value', 'sum_of_squares',
+            'minimum', 'maximum', 'mean', 'stddev', 'p25', 'p75',
+            'tdigest', 'is_complete', 'is_partial',
+        ],
+    )
 
 
-def rollup_region_summaries(target_resolution, source_resolution, window_start, window_end, region_ids=None):
-    """Same as rollup_monitor_summaries but for RegionSummary."""
+def rollup_region_summaries(
+    target_resolution, source_resolution, window_start, window_end, region_ids=None,
+    *, is_partial=False, guard=None, now=None,
+):
+    """
+    Same as rollup_monitor_summaries but for RegionSummary, including
+    `is_partial`, `guard` (False means stopped, nothing written) and `now`.
+    """
     qs = RegionSummary.objects.filter(
         resolution=source_resolution,
         timestamp__gte=window_start,
@@ -244,143 +378,152 @@ def rollup_region_summaries(target_resolution, source_resolution, window_start, 
             resolution=target_resolution,
             entry_type=entry_type,
             station_count=station_count,
+            is_partial=is_partial,
             **stats,
         ))
 
-    if to_upsert:
-        RegionSummary.objects.bulk_create(
-            to_upsert,
-            update_conflicts=True,
-            unique_fields=['region', 'entry_type', 'resolution', 'timestamp'],
-            update_fields=[
-                'count', 'weight', 'expected_count', 'sum_value', 'sum_of_squares',
-                'minimum', 'maximum', 'mean', 'stddev', 'p25', 'p75',
-                'tdigest', 'station_count',
-            ],
-        )
-
-
-# ---- Calendar helpers ----
-
-def _add_3_months(dt):
-    """Advance a datetime by exactly 3 calendar months, re-localizing for DST."""
-    month = dt.month + 3
-    year = dt.year
-    if month > 12:
-        month -= 12
-        year += 1
-    return make_aware(datetime(year, month, dt.day), settings.DEFAULT_TIMEZONE)
-
-
-def _yesterday():
-    today = localtime().date()
-    yesterday = today - timedelta(days=1)
-    return make_aware(datetime(yesterday.year, yesterday.month, yesterday.day), settings.DEFAULT_TIMEZONE)
-
-
-def _last_month_start():
-    today = localtime().date()
-    first_of_month = today.replace(day=1)
-    last_month_end = first_of_month - timedelta(days=1)
-    return make_aware(datetime(last_month_end.year, last_month_end.month, 1), settings.DEFAULT_TIMEZONE)
-
-
-def _last_quarter_start():
-    today = localtime().date()
-    quarter_month = ((today.month - 1) // 3) * 3 + 1
-    prev_quarter_month = quarter_month - 3
-    if prev_quarter_month <= 0:
-        return make_aware(datetime(today.year - 1, prev_quarter_month + 12, 1), settings.DEFAULT_TIMEZONE)
-    return make_aware(datetime(today.year, prev_quarter_month, 1), settings.DEFAULT_TIMEZONE)
-
-
-def _last_season_start():
-    today = localtime().date()
-    end_month = today.month
-    start_month = end_month - 3 if end_month > 3 else end_month + 9
-    start_year = today.year if end_month > 3 else today.year - 1
-    return make_aware(datetime(start_year, start_month, 1), settings.DEFAULT_TIMEZONE)
+    return _upsert_and_fill(
+        'region', RegionSummary, to_upsert, region_ids,
+        target_resolution, window_start, window_end, guard=guard, now=now,
+        unique_fields=['region', 'entry_type', 'resolution', 'timestamp'],
+        update_fields=[
+            'count', 'weight', 'expected_count', 'sum_value', 'sum_of_squares',
+            'minimum', 'maximum', 'mean', 'stddev', 'p25', 'p75',
+            'tdigest', 'station_count', 'is_partial',
+        ],
+    )
 
 
 # ---- Rollup periodic tasks ----
 
-@db_periodic_task(crontab(hour='1', minute='0'), priority=80, queue='summaries')
-def daily_monitor_summaries(day=None):
-    """Roll up yesterday's hourly MonitorSummary records into daily ones."""
-    day = day or _yesterday()
-    rollup_monitor_summaries(BaseSummary.Resolution.DAILY, BaseSummary.Resolution.HOURLY, day, day + timedelta(days=1))
+def _previous_period_start(resolution, now=None):
+    """Start of the period before the one containing `now` (default: the current time)."""
+    now = now or timezone.now()
+    return period_start(resolution, period_start(resolution, now) - timedelta(microseconds=1))
 
 
-@db_periodic_task(crontab(hour='1', minute='10'), priority=70, queue='summaries')
-def daily_region_summaries(day=None):
-    """Roll up yesterday's hourly RegionSummary records into daily ones."""
-    day = day or _yesterday()
-    rollup_region_summaries(BaseSummary.Resolution.DAILY, BaseSummary.Resolution.HOURLY, day, day + timedelta(days=1))
+def _rollup_monitors(target, source, resolution, start, monitor_ids=None):
+    start = start or _previous_period_start(resolution)
+    rollup_monitor_summaries(target, source, start, period_end(resolution, start), monitor_ids=monitor_ids)
 
 
-@db_periodic_task(crontab(day='1', hour='1', minute='15'), priority=60, queue='summaries')
-def monthly_monitor_summaries(month_start=None):
+def _rollup_regions(target, source, resolution, start, region_ids=None):
+    start = start or _previous_period_start(resolution)
+    rollup_region_summaries(target, source, start, period_end(resolution, start), region_ids=region_ids)
+
+
+R = BaseSummary.Resolution
+
+
+def refresh_previous_max_8h(kind, start, ids=None):
+    """
+    The 8-hour windows starting late in a day reach into the next morning, so
+    that day's daily rollup stores a provisional `max_8h`. Run with the next
+    day's rollup, this recomputes the previous day's, now that the hours exist.
+    `start` is the day just rolled up (or the first day a rebuild or repair
+    rewrote: the day before it read the old hours). `ids` scopes it like
+    `fill_daily_peaks` (None: every owner). When the refreshed day is the last
+    day of a coarse period, that period's daily statistic is refilled too.
+    """
+    models = [model for model, field in peak_entry_models().items() if field == 'max_8h']
+    day = _previous_period_start('day', start)
+    result = fill_daily_peaks(
+        kind, ids, day, start,
+        entry_models=models, fields=('max_8h',),
+    )
+    _log_skipped(result)
+    for resolution in COARSE_RESOLUTIONS:
+        if period_end(resolution, day) == start:
+            fill_period_statistics(
+                kind, ids, period_start(resolution, day), start,
+                resolutions=[resolution], entry_models=models,
+            )
+
+
+@db_periodic_task(pacific_crontab(1, '0'), priority=80, queue='summaries')
+def daily_monitor_summaries(day=None, monitor_ids=None):
+    """Roll up yesterday's hourly MonitorSummary records into daily ones (`monitor_ids`: only those)."""
+    day = day or _previous_period_start('day')
+    _rollup_monitors(R.DAILY, R.HOURLY, 'day', day, monitor_ids)
+    refresh_previous_max_8h('monitor', day, monitor_ids)
+
+
+@db_periodic_task(pacific_crontab(1, '10'), priority=70, queue='summaries')
+def daily_region_summaries(day=None, region_ids=None):
+    """Roll up yesterday's hourly RegionSummary records into daily ones (`region_ids`: only those)."""
+    day = day or _previous_period_start('day')
+    _rollup_regions(R.DAILY, R.HOURLY, 'day', day, region_ids)
+    refresh_previous_max_8h('region', day, region_ids)
+
+
+@db_periodic_task(pacific_crontab(1, '15', day='1'), priority=60, queue='summaries')
+def monthly_monitor_summaries(month_start=None, monitor_ids=None):
     """Roll up last month's daily MonitorSummary records into monthly ones."""
-    month_start = month_start or _last_month_start()
-    _, days_in_month = calendar.monthrange(month_start.year, month_start.month)
-    rollup_monitor_summaries(BaseSummary.Resolution.MONTHLY, BaseSummary.Resolution.DAILY, month_start, month_start + timedelta(days=days_in_month))
+    _rollup_monitors(R.MONTHLY, R.DAILY, 'month', month_start, monitor_ids)
 
 
-@db_periodic_task(crontab(day='1', hour='1', minute='25'), priority=50, queue='summaries')
-def monthly_region_summaries(month_start=None):
+@db_periodic_task(pacific_crontab(1, '25', day='1'), priority=50, queue='summaries')
+def monthly_region_summaries(month_start=None, region_ids=None):
     """Roll up last month's daily RegionSummary records into monthly ones."""
-    month_start = month_start or _last_month_start()
-    _, days_in_month = calendar.monthrange(month_start.year, month_start.month)
-    rollup_region_summaries(BaseSummary.Resolution.MONTHLY, BaseSummary.Resolution.DAILY, month_start, month_start + timedelta(days=days_in_month))
+    _rollup_regions(R.MONTHLY, R.DAILY, 'month', month_start, region_ids)
 
 
-@db_periodic_task(crontab(month='1,4,7,10', day='1', hour='1', minute='30'), priority=40, queue='summaries')
-def quarterly_monitor_summaries(quarter_start=None):
+@db_periodic_task(pacific_crontab(1, '30', month='1,4,7,10', day='1'), priority=40, queue='summaries')
+def quarterly_monitor_summaries(quarter_start=None, monitor_ids=None):
     """Roll up last quarter's monthly MonitorSummary records into quarterly ones."""
-    quarter_start = quarter_start or _last_quarter_start()
-    rollup_monitor_summaries(BaseSummary.Resolution.QUARTERLY, BaseSummary.Resolution.MONTHLY, quarter_start, _add_3_months(quarter_start))
+    _rollup_monitors(R.QUARTERLY, R.MONTHLY, 'quarter', quarter_start, monitor_ids)
 
 
-@db_periodic_task(crontab(month='1,4,7,10', day='1', hour='1', minute='35'), priority=30, queue='summaries')
-def quarterly_region_summaries(quarter_start=None):
+@db_periodic_task(pacific_crontab(1, '35', month='1,4,7,10', day='1'), priority=30, queue='summaries')
+def quarterly_region_summaries(quarter_start=None, region_ids=None):
     """Roll up last quarter's monthly RegionSummary records into quarterly ones."""
-    quarter_start = quarter_start or _last_quarter_start()
-    rollup_region_summaries(BaseSummary.Resolution.QUARTERLY, BaseSummary.Resolution.MONTHLY, quarter_start, _add_3_months(quarter_start))
+    _rollup_regions(R.QUARTERLY, R.MONTHLY, 'quarter', quarter_start, region_ids)
 
 
-@db_periodic_task(crontab(month='3,6,9,12', day='1', hour='1', minute='45'), priority=20, queue='summaries')
-def seasonal_monitor_summaries(season_start=None):
+@db_periodic_task(pacific_crontab(1, '45', month='3,6,9,12', day='1'), priority=20, queue='summaries')
+def seasonal_monitor_summaries(season_start=None, monitor_ids=None):
     """
     Roll up the past 3 months of monthly MonitorSummary records into a seasonal one.
     Runs Mar 1, Jun 1, Sep 1, Dec 1 to summarize the just-completed season.
     """
-    season_start = season_start or _last_season_start()
-    rollup_monitor_summaries(BaseSummary.Resolution.SEASONAL, BaseSummary.Resolution.MONTHLY, season_start, _add_3_months(season_start))
+    _rollup_monitors(R.SEASONAL, R.MONTHLY, 'season', season_start, monitor_ids)
 
 
-@db_periodic_task(crontab(month='3,6,9,12', day='1', hour='1', minute='55'), priority=15, queue='summaries')
-def seasonal_region_summaries(season_start=None):
+@db_periodic_task(pacific_crontab(1, '55', month='3,6,9,12', day='1'), priority=15, queue='summaries')
+def seasonal_region_summaries(season_start=None, region_ids=None):
     """Roll up the past 3 months of monthly RegionSummary records into a seasonal one."""
-    season_start = season_start or _last_season_start()
-    rollup_region_summaries(BaseSummary.Resolution.SEASONAL, BaseSummary.Resolution.MONTHLY, season_start, _add_3_months(season_start))
+    _rollup_regions(R.SEASONAL, R.MONTHLY, 'season', season_start, region_ids)
 
 
-@db_periodic_task(crontab(month='1', day='1', hour='2', minute='0'), priority=10, queue='summaries')
-def yearly_monitor_summaries(year_start=None):
+@db_periodic_task(pacific_crontab(2, '0', month='1', day='1'), priority=10, queue='summaries')
+def yearly_monitor_summaries(year_start=None, monitor_ids=None):
     """Roll up last year's monthly MonitorSummary records into yearly ones."""
-    if year_start is None:
-        today = localtime().date()
-        year_start = make_aware(datetime(today.year - 1, 1, 1), settings.DEFAULT_TIMEZONE)
-    rollup_monitor_summaries(BaseSummary.Resolution.YEARLY, BaseSummary.Resolution.MONTHLY, year_start, year_start.replace(year=year_start.year + 1))
+    _rollup_monitors(R.YEARLY, R.MONTHLY, 'year', year_start, monitor_ids)
 
 
-@db_periodic_task(crontab(month='1', day='1', hour='2', minute='5'), priority=5, queue='summaries')
-def yearly_region_summaries(year_start=None):
+@db_periodic_task(pacific_crontab(2, '5', month='1', day='1'), priority=5, queue='summaries')
+def yearly_region_summaries(year_start=None, region_ids=None):
     """Roll up last year's monthly RegionSummary records into yearly ones."""
-    if year_start is None:
-        today = localtime().date()
-        year_start = make_aware(datetime(today.year - 1, 1, 1), settings.DEFAULT_TIMEZONE)
-    rollup_region_summaries(BaseSummary.Resolution.YEARLY, BaseSummary.Resolution.MONTHLY, year_start, year_start.replace(year=year_start.year + 1))
+    _rollup_regions(R.YEARLY, R.MONTHLY, 'year', year_start, region_ids)
+
+
+# ---- Current periods ----
+
+@db_periodic_task(pacific_crontab(2, '15'), priority=4, queue='summaries')
+def current_monitor_periods(monitor_ids=None, rewritten_until=None):
+    """
+    Write each monitor's month, quarter, season and year rows holding
+    yesterday, through yesterday (`current_periods.roll_current_periods`).
+    After the last regular rollup (02:05) and before the integrity check.
+    `rewritten_until`: see `roll_current_periods` (rebuilds pass their range end).
+    """
+    return roll_current_periods('monitor', monitor_ids, rewritten_until=rewritten_until)
+
+
+@db_periodic_task(pacific_crontab(2, '20'), priority=3, queue='summaries')
+def current_region_periods(region_ids=None, rewritten_until=None):
+    """The region twin of current_monitor_periods."""
+    return roll_current_periods('region', region_ids, rewritten_until=rewritten_until)
 
 
 # ---- Backfill ----
@@ -389,7 +532,7 @@ def yearly_region_summaries(year_start=None):
 def backfill_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id):
     """Compute one monitor's hourly summaries for a backfill chunk, then report completion."""
     monitor = Monitor.objects.get(pk=monitor_id)
-    entry_models = get_summarizable_entry_models()
+    entry_models = monitor_summary_entry_models(monitor)
     backfill_monitor_hours(monitor, chunk_start, chunk_end, entry_models)
 
     SummaryBackfillJob.objects.filter(
@@ -400,7 +543,7 @@ def backfill_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id)
 @db_task(priority=1, queue='summaries')
 def backfill_region_chunk(job_id, region_id, chunk_start, chunk_end, batch_id):
     """Compute one region's hourly summaries for a backfill chunk, then report completion."""
-    region = Region.objects.select_related('boundary').get(pk=region_id)
+    region = Region.all_objects.select_related('boundary').get(pk=region_id)
     monitor_grades = dict(region.monitors.with_grade().values_list('pk', 'grade'))
     hours = list(hour_range(chunk_start, chunk_end))
     backfill_region_hours(region, hours, monitor_grades)
@@ -461,8 +604,11 @@ def backfill_summaries_tick():
 
 def _backfill_dispatch_monitors(job):
     chunk_start = chunk_start_for(job.cursor, job.range_start, job.chunk_days)
-    entry_models = get_summarizable_entry_models()
-    monitor_ids = monitors_with_data_in(chunk_start, job.cursor, entry_models)
+    # Switch types (CIMIS weather) are checked only on the monitor types that switch them on.
+    monitor_ids = monitors_with_data_in(
+        chunk_start, job.cursor, region_summary_entry_models(),
+        scoped_entry_models={m: monitor_types_summarizing(m) for m in switch_entry_models()},
+    )
 
     job.chunk_start = chunk_start
     job.batch_id += 1
@@ -507,10 +653,14 @@ def _backfill_complete_chunk(job):
         rollup_monitor_summaries(target, source, window_start, window_end)
         rollup_region_summaries(target, source, window_start, window_end)
 
+    now = timezone.now()
     for day in days:
         for target, source, window_start, window_end in higher_rollup_windows(day):
-            rollup_monitor_summaries(target, source, window_start, window_end)
-            rollup_region_summaries(target, source, window_start, window_end)
+            # The newest chunk can reach a period still running (the current month,
+            # quarter, season or year): its row is partial until the period ends.
+            partial = window_end > now
+            rollup_monitor_summaries(target, source, window_start, window_end, is_partial=partial, now=now)
+            rollup_region_summaries(target, source, window_start, window_end, is_partial=partial, now=now)
 
     job.cursor = job.chunk_start
     job.chunk_start = None
@@ -519,8 +669,42 @@ def _backfill_complete_chunk(job):
     job.consecutive_failures = 0
     job.last_error = ''
     if job.cursor <= job.range_start:
+        # The day before the range read its next morning's old hours.
+        refresh_previous_max_8h('monitor', job.range_start)
+        refresh_previous_max_8h('region', job.range_start)
+        if not _backfill_current_periods(job):
+            job.last_error = BACKFILL_CURRENT_PERIODS_STOPPED
         job.state = SummaryBackfillJob.State.DONE
     job.save()
+
+
+BACKFILL_CURRENT_PERIODS_STOPPED = (
+    'Current periods stopped at midnight twice; run rebuild_summaries over the '
+    'current periods, or wait for the nightly run.'
+)
+
+
+def _backfill_current_periods(job):
+    """
+    Re-roll the periods holding yesterday that the job's range rewrote, for
+    every owner (`rewritten_until`), not only the nightly set. The clock is
+    read here, after the cascade, never before it. When midnight passes during
+    the run it stops, so it runs once more from the new day. Returns False if
+    it was stopped both times.
+    """
+    for _ in range(2):
+        now = timezone.now()
+        if not touches_current_periods(job.range_end, now):
+            return True
+        stopped = False
+        for kind in ('monitor', 'region'):
+            if roll_current_periods(kind, None, now, rewritten_until=job.range_end)['stopped']:
+                stopped = True
+                break
+        if not stopped:
+            return True
+    logger.error('Backfill job %s: %s', job.pk, BACKFILL_CURRENT_PERIODS_STOPPED)
+    return False
 
 
 def _backfill_restart_batch(job):
@@ -551,3 +735,137 @@ def _backfill_restart_batch(job):
         _backfill_dispatch_monitors(job)
     elif job.phase == SummaryBackfillJob.Phase.REGIONS:
         _backfill_dispatch_regions(job)
+
+
+# ---- Integrity check ----
+
+INTEGRITY_LOOKBACK = timedelta(days=400)
+
+
+@db_periodic_task(pacific_crontab(2, '30'), priority=1, queue='summaries')
+def check_summary_integrity(now=None):
+    """
+    Count, and log as an error (Sentry captures it), five kinds of damage:
+
+    - summary rows whose timestamp isn't a Pacific period start, in either
+      table, over the last 400 days;
+    - hours of the previous Pacific day with monitor hourly summaries but no
+      region hourly summaries at all;
+    - coarse rows of a peak type whose period daily statistic was never filled;
+    - series with a day row for the day before yesterday and no row for the
+      month holding it (`missing_current_periods`: last night's current-period
+      run missed them; a day back, so it never races tonight's run, which with
+      several `summaries` workers may still be writing);
+    - rows still `is_partial` whose period ended before the one holding
+      yesterday (`stale_partial_periods`).
+
+    Read-only. The hour check is two bounded distinct-timestamp queries, not
+    a per-region geo check. Logs how long the run took at info level, so the
+    400-day scan's cost shows in production logs.
+    """
+    from camp.apps.summaries.repair import find_misaligned  # repair imports this module
+
+    now = now or timezone.now()
+    start = now - INTEGRITY_LOOKBACK
+    began = time.monotonic()
+
+    misaligned = 0
+    for model, ids_field in ((MonitorSummary, 'monitor_id'), (RegionSummary, 'region_id')):
+        found = find_misaligned(model, ids_field, None, start, now)
+        misaligned += sum(len(timestamps) for timestamps in found.values())
+    scanned = time.monotonic()
+
+    today = period_start('day', now)
+    yesterday = period_start('day', today - timedelta(hours=1))
+
+    def hour_timestamps(queryset):
+        return set(
+            queryset.filter(
+                resolution=BaseSummary.Resolution.HOURLY,
+                timestamp__gte=yesterday,
+                timestamp__lt=today,
+            ).values_list('timestamp', flat=True).distinct().order_by()
+        )
+
+    # Only the region types: weather types have monitor rows and never region rows.
+    region_types = [m.entry_type for m in region_summary_entry_models()]
+    monitor_hours = hour_timestamps(MonitorSummary.objects.filter(entry_type__in=region_types))
+    region_hours = hour_timestamps(RegionSummary.objects.all())
+    missing = [hour for hour in iter_hours(yesterday, today) if hour in monitor_hours and hour not in region_hours]
+
+    hours_done = time.monotonic()
+
+    peak_types = [model.entry_type for model in peak_entry_models()]
+    missing_statistics = sum(
+        model.objects.filter(
+            resolution__in=COARSE_RESOLUTIONS,
+            entry_type__in=peak_types,
+            timestamp__gte=start,
+            daily_statistic_days__isnull=True,
+        ).count()
+        for model in (MonitorSummary, RegionSummary)
+    )
+
+    # Series with a day row for the day before yesterday and no row for the
+    # month holding it: last night's current-period run missed them. Tonight's
+    # run may still be writing (it can overlap this check with several
+    # workers), but it never deletes a row last night's run wrote.
+    day_before = period_start('day', yesterday - timedelta(hours=1))
+    month_start = period_start('month', day_before)
+    missing_current = 0
+    for model, owner in ((MonitorSummary, 'monitor_id'), (RegionSummary, 'region_id')):
+        covered = model.objects.filter(
+            resolution=BaseSummary.Resolution.MONTHLY,
+            timestamp=month_start,
+            entry_type=OuterRef('entry_type'),
+            **{owner: OuterRef(owner)},
+            **({'processor': OuterRef('processor')} if model is MonitorSummary else {}),
+        )
+        missing_current += (
+            model.objects.filter(resolution=BaseSummary.Resolution.DAILY, timestamp=day_before)
+            .exclude(Exists(covered)).order_by().count()
+        )
+
+    # Partial rows of a period that ended before the one holding yesterday: the
+    # night after the period ended never replaced them.
+    stale_partial = 0
+    for resolution in COARSE_RESOLUTIONS:
+        cutoff = period_start(resolution, yesterday)
+        stale_partial += sum(
+            model.objects.filter(resolution=resolution, is_partial=True, timestamp__lt=cutoff).count()
+            for model in (MonitorSummary, RegionSummary)
+        )
+
+    result = {
+        'misaligned': misaligned,
+        'missing_region_hours': len(missing),
+        'missing_period_statistics': missing_statistics,
+        'missing_current_periods': missing_current,
+        'stale_partial_periods': stale_partial,
+    }
+    logger.info(
+        'Summary integrity check took %.1fs (misaligned scan %.1fs, region hours %.1fs, period statistics %.1fs)',
+        time.monotonic() - began, scanned - began, hours_done - scanned, time.monotonic() - hours_done,
+    )
+    extras = [
+        (missing_statistics, 'coarse row(s) missing the period daily statistic'),
+        (missing_current, 'series missing their current period row'),
+        (stale_partial, 'stale partial row(s) of a finished period'),
+    ]
+    extras = [(count, label) for count, label in extras if count]
+    message = (
+        'Summary integrity check found %d misaligned row timestamp(s) and %d hour(s) '
+        'with monitor but no region summaries (%s): %s'
+    )
+    args = [misaligned, len(missing), yesterday.date(), ', '.join(h.isoformat() for h in missing)]
+    if misaligned or missing:
+        for count, label in extras:
+            message += '; %d ' + label
+            args.append(count)
+        logger.error(message, *args)
+    elif extras:
+        logger.error(
+            'Summary integrity check found ' + '; '.join('%d ' + label for _, label in extras),
+            *[count for count, _ in extras],
+        )
+    return result
