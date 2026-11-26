@@ -122,9 +122,18 @@ class DeferredLatestEntries:
         self._default_calibrations = {}
 
     def default_calibration(self, monitor, entry_model):
-        # DefaultCalibration is a database lookup; it can't change mid-run.
+        # The DefaultCalibration value get_published_lookup would query ('' for
+        # a blank or missing row, meaning the default stage), cached per run
+        # since it can't change mid-run. Not get_default_calibration(): that
+        # falls back to a processor when the row is missing, which live
+        # ingestion doesn't, so the two would publish different series.
+        from camp.apps.calibrations.models import DefaultCalibration
+
         if entry_model not in self._default_calibrations:
-            self._default_calibrations[entry_model] = monitor.get_default_calibration(entry_model)
+            self._default_calibrations[entry_model] = (DefaultCalibration.objects
+                .filter(monitor_type=monitor.monitor_type, entry_type=entry_model.entry_type)
+                .values_list('calibration', flat=True)
+                .first()) or ''
         return self._default_calibrations[entry_model]
 
     def add(self, lookup, entry):
@@ -620,7 +629,8 @@ class Monitor(models.Model):
 
         processed_entries = []
         for processor in processors:
-            if cutoff_stage and processor.next_stage == cutoff_stage:
+            # Stop before the cutoff: skip any step producing it or a later stage.
+            if cutoff_stage and stages.at_or_after(processor.next_stage or entry.stage, cutoff_stage):
                 continue
 
             # One failing processor must not stop the ones after it. While
@@ -674,7 +684,7 @@ class Monitor(models.Model):
         # A deferred run (a backfill) caches DefaultCalibration rather than querying per entry.
         calibration = None
         if self._latest_deferral is not None:
-            calibration = self._latest_deferral.default_calibration(self, entry.__class__) or ''
+            calibration = self._latest_deferral.default_calibration(self, entry.__class__)
         lookup = self.get_published_lookup(entry.__class__, calibration=calibration)
         is_published = all(getattr(entry, field) == value for field, value in lookup.items())
         if entry.stage != self.get_default_stage(entry.__class__) and not is_published:

@@ -83,6 +83,11 @@ class StopBeforeSelectionTests(TestCase):
     def test_processable_stages(self):
         assert processable_stages(PurpleAir, entry_models.PM25) == [Stage.RAW, Stage.CORRECTED, Stage.CLEANED]
         assert processable_stages(PurpleAir, entry_models.PM25, Stage.CALIBRATED) == [Stage.RAW, Stage.CORRECTED]
+        # Stopping before CLEANED also stops what comes after it.
+        assert processable_stages(PurpleAir, entry_models.PM25, Stage.CLEANED) == [Stage.RAW]
+
+    def test_cleaned_entry_not_selected_when_stopping_before_cleaned(self):
+        assert find_incomplete_pipelines(self.monitor, entry_models.PM25, *self.window, Stage.CLEANED) == []
 
     def test_cleaned_entry_not_selected_while_cutoff_set(self):
         assert find_incomplete_pipelines(self.monitor, entry_models.PM25, *self.window, Stage.CALIBRATED) == []
@@ -127,6 +132,25 @@ class StopBeforeChunkTests(ReprocessChunkTestCase):
         self.reprocess()
         assert self.stage_count(Stage.CALIBRATED) > 0
 
+
+    def test_stop_before_cleaned_runs_only_correction(self):
+        self.make_raw_entries()
+        self.reprocess(job=self.make_job(stop_before=Stage.CLEANED), stop_before=Stage.CLEANED)
+        assert self.stage_count(Stage.CORRECTED) > 0
+        assert self.stage_count(Stage.CLEANED) == 0
+        assert self.stage_count(Stage.CALIBRATED) == 0
+        # Temperature goes RAW -> CALIBRATED in one step: past the cutoff too.
+        assert entry_models.Temperature.objects.filter(monitor=self.monitor, stage=Stage.RAW).exists()
+        assert not entry_models.Temperature.objects.filter(
+            monitor=self.monitor, stage=Stage.CALIBRATED).exists()
+
+    def test_pipeline_cutoff_skips_steps_past_it(self):
+        # Temperature goes RAW -> CALIBRATED in one step, so stopping before
+        # CLEANED must skip it, not only a step that outputs CLEANED exactly.
+        self.make_raw_entries(count=1)
+        raw = entry_models.Temperature.objects.get(monitor=self.monitor, stage=Stage.RAW)
+        assert self.monitor.process_entry_pipeline(raw, Stage.CLEANED) == []
+        assert [e.stage for e in self.monitor.process_entry_pipeline(raw)] == [Stage.CALIBRATED]
 
 class PipelineBackfillJobStopBeforeTests(TestCase):
     def test_defaults_to_blank(self):
@@ -296,6 +320,32 @@ class ProcessEntryIsolationTests(ReprocessChunkTestCase):
         with patch.object(BaseProcessor, 'run', side_effect=ValueError('boom')):
             with self.monitor.deferred_latest_entries():
                 assert self.monitor.process_entry_ng(entry) == []
+
+class DeferredDefaultCalibrationTests(ReprocessChunkTestCase):
+    # The deferral must publish what live ingestion publishes: a missing
+    # DefaultCalibration row means the default stage, not a fallback processor.
+    def test_missing_row_means_default_stage(self):
+        from camp.apps.calibrations.models import DefaultCalibration
+        from camp.apps.monitors.models import DeferredLatestEntries
+
+        DefaultCalibration.objects.filter(monitor_type=PurpleAir.monitor_type).delete()
+        deferral = DeferredLatestEntries()
+        for entry_model in (entry_models.PM25, entry_models.Temperature, entry_models.Humidity):
+            assert deferral.default_calibration(self.monitor, entry_model) == ''
+
+    def test_reprocessing_matches_live_latest_entries(self):
+        self.make_raw_entries()
+        live = PurpleAir.objects.get(pk=self.monitor.pk)
+        for entry in entry_models.Temperature.objects.filter(monitor=self.monitor, stage=Stage.RAW):
+            live.process_entry_pipeline(entry)
+        live_rows = set(LatestEntry.objects.filter(monitor=self.monitor, entry_type='temperature')
+            .values_list('stage', 'processor'))
+        entry_models.Temperature.objects.filter(monitor=self.monitor).exclude(stage=Stage.RAW).delete()
+        LatestEntry.objects.filter(monitor=self.monitor, entry_type='temperature').delete()
+
+        self.reprocess()
+        assert set(LatestEntry.objects.filter(monitor=self.monitor, entry_type='temperature')
+            .values_list('stage', 'processor')) == live_rows
 
 class ReprocessQueryBudgetTests(ReprocessChunkTestCase):
     count = 30

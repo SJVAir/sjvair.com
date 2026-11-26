@@ -6,6 +6,8 @@ from django.core import mail
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
+import pytest
+
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.legacy_backfill import (
     LEGACY_BACKFILL_MAP, PM_COLUMN_CUTOVER, build_raw_entry, chunk_start_for, find_missing_raw_entries,
@@ -183,6 +185,24 @@ class FindMissingRawEntriesTests(TestCase):
             self.monitor, entry_models.PM25, mapping, self.window_start, self.window_end,
         )
         assert missing == []
+
+    def test_legacy_rows_within_60_seconds_of_each_other_insert_once(self):
+        # Rows accepted in the same pass count like stored ones; otherwise a
+        # re-run would skip both and the first run alone breaks the rule.
+        ts = self.window_start + timedelta(hours=1)
+        for seconds, value in ((40, '6.0'), (10, '5.0'), (200, '7.0')):
+            Entry.objects.create(
+                monitor=self.monitor, sensor='a', timestamp=ts + timedelta(seconds=seconds),
+                location=self.monitor.location, pm25_reported=Decimal(value),
+            )
+        mapping = LEGACY_BACKFILL_MAP[PurpleAir][entry_models.PM25]
+        missing = find_missing_raw_entries(
+            self.monitor, entry_models.PM25, mapping, self.window_start, self.window_end,
+        )
+        assert [(e.timestamp, e.value) for e in missing] == [
+            (ts + timedelta(seconds=10), Decimal('5.0')),
+            (ts + timedelta(seconds=200), Decimal('7.0')),
+        ]
 
     def test_near_entry_across_the_window_edge_counts(self):
         Entry.objects.create(
@@ -397,6 +417,16 @@ class BackfillMonitorChunkResilienceTests(TestCase):
         self.job.refresh_from_db()
         assert self.job.pending_tasks == 0
         assert self.job.last_progress_at is not None
+
+    def test_unexpected_error_still_counts_down(self):
+        from unittest.mock import patch
+        from camp.apps.monitors.tasks import backfill_monitor_chunk
+        with patch('camp.apps.monitors.tasks.find_missing_raw_entries', side_effect=KeyError('boom')):
+            with pytest.raises(KeyError):
+                backfill_monitor_chunk.call_local(
+                    self.job.pk, str(self.monitor.pk), self.chunk_start, self.chunk_end, 1)
+        self.job.refresh_from_db()
+        assert self.job.pending_tasks == 0
 
     def test_missing_monitor_still_reports_completion(self):
         from camp.apps.monitors.tasks import backfill_monitor_chunk
@@ -964,6 +994,21 @@ class ReprocessLegacyPipelineTickStalenessTests(TestCase):
 
 class ReprocessMonitorChunkResilienceTests(TestCase):
     fixtures = ['purple-air.yaml']
+
+    def test_unexpected_error_still_counts_down(self):
+        from unittest.mock import patch
+
+        monitor = PurpleAir.objects.first()
+        ts = _ts(2023, 1, 1)
+        job = PipelineBackfillJob.objects.create(
+            cursor=ts, range_start=ts, range_end=ts + timedelta(hours=1),
+            chunk_start=ts, pending_tasks=1, batch_id=1,
+        )
+        with patch('camp.apps.monitors.tasks.find_incomplete_pipelines', side_effect=KeyError('boom')):
+            with pytest.raises(KeyError):
+                reprocess_monitor_chunk.call_local(job.pk, str(monitor.pk), ts, ts + timedelta(hours=1), 1)
+        job.refresh_from_db()
+        assert job.pending_tasks == 0
 
     def test_one_failing_entry_does_not_stop_the_chunk(self):
         from unittest.mock import patch

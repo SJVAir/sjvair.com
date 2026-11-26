@@ -80,24 +80,28 @@ def backfill_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id)
     '''
     created_count = 0
     try:
-        monitor = _resolve_monitor_subclass(monitor_id)
-    except Monitor.DoesNotExist:
-        logger.warning('Legacy backfill: monitor %s no longer exists; skipping.', monitor_id)
-        monitor = None
+        try:
+            monitor = _resolve_monitor_subclass(monitor_id)
+        except Monitor.DoesNotExist:
+            logger.warning('Legacy backfill: monitor %s no longer exists; skipping.', monitor_id)
+            monitor = None
 
-    if monitor is not None:
-        for entry_model, mapping in LEGACY_BACKFILL_MAP.get(type(monitor), {}).items():
-            missing = find_missing_raw_entries(monitor, entry_model, mapping, chunk_start, chunk_end)
-            if missing:
-                created_count += _insert_raw_entries(entry_model, missing)
-
-    EntryBackfillJob.objects.filter(
-        pk=job_id, batch_id=batch_id,
-    ).update(
-        pending_tasks=F('pending_tasks') - 1,
-        raw_entries_created=F('raw_entries_created') + created_count,
-        last_progress_at=timezone.now(),
-    )
+        if monitor is not None:
+            for entry_model, mapping in LEGACY_BACKFILL_MAP.get(type(monitor), {}).items():
+                missing = find_missing_raw_entries(monitor, entry_model, mapping, chunk_start, chunk_end)
+                if missing:
+                    created_count += _insert_raw_entries(entry_model, missing)
+    finally:
+        # Always report, even on an unexpected error (which still propagates and
+        # is logged): otherwise the batch stalls and every monitor is re-run.
+        # The backfill is idempotent, so re-running the job fills what was missed.
+        EntryBackfillJob.objects.filter(
+            pk=job_id, batch_id=batch_id,
+        ).update(
+            pending_tasks=F('pending_tasks') - 1,
+            raw_entries_created=F('raw_entries_created') + created_count,
+            last_progress_at=timezone.now(),
+        )
 
 
 def _insert_raw_entries(entry_model, entries):
@@ -146,42 +150,45 @@ def reprocess_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id
     '''
     processed_count = 0
     try:
-        monitor = _resolve_monitor_subclass(monitor_id)
-    except Monitor.DoesNotExist:
-        logger.warning('Legacy pipeline: monitor %s no longer exists; skipping.', monitor_id)
-        monitor = None
+        try:
+            monitor = _resolve_monitor_subclass(monitor_id)
+        except Monitor.DoesNotExist:
+            logger.warning('Legacy pipeline: monitor %s no longer exists; skipping.', monitor_id)
+            monitor = None
 
-    if monitor is not None:
-        lookup = ChunkCalibrationLookup(chunk_end)
-        with reuse_monitor(monitor), lookup.activate(), monitor.deferred_latest_entries() as latest:
-            for entry_model in pipeline_entry_models(type(monitor)).keys():
-                incomplete = find_incomplete_pipelines(
-                    monitor, entry_model, chunk_start, chunk_end, stop_before,
-                )
-                for entry in incomplete:
-                    entry.monitor = monitor
-                    # One entry failing (bad data, or an IntegrityError from racing
-                    # another worker on the same entry) shouldn't stall the batch.
-                    try:
-                        with transaction.atomic():
-                            monitor.process_entry_pipeline(entry, stop_before or None)
-                    except Exception:
-                        latest.discard()
-                        logger.exception(
-                            'Legacy pipeline: failed to process %s %s for monitor %s',
-                            entry_model.__name__, entry.pk, monitor_id,
-                        )
-                        continue
-                    latest.commit()
-                    processed_count += 1
-
-    PipelineBackfillJob.objects.filter(
-        pk=job_id, batch_id=batch_id,
-    ).update(
-        pending_tasks=F('pending_tasks') - 1,
-        entries_processed=F('entries_processed') + processed_count,
-        last_progress_at=timezone.now(),
-    )
+        if monitor is not None:
+            lookup = ChunkCalibrationLookup(chunk_end)
+            with reuse_monitor(monitor), lookup.activate(), monitor.deferred_latest_entries() as latest:
+                for entry_model in pipeline_entry_models(type(monitor)).keys():
+                    incomplete = find_incomplete_pipelines(
+                        monitor, entry_model, chunk_start, chunk_end, stop_before,
+                    )
+                    for entry in incomplete:
+                        entry.monitor = monitor
+                        # One entry failing (bad data, or an IntegrityError from racing
+                        # another worker on the same entry) shouldn't stall the batch.
+                        try:
+                            with transaction.atomic():
+                                monitor.process_entry_pipeline(entry, stop_before or None)
+                        except Exception:
+                            latest.discard()
+                            logger.exception(
+                                'Legacy pipeline: failed to process %s %s for monitor %s',
+                                entry_model.__name__, entry.pk, monitor_id,
+                            )
+                            continue
+                        latest.commit()
+                        processed_count += 1
+    finally:
+        # Always report (see backfill_monitor_chunk); entries left incomplete
+        # are picked up again by the next run.
+        PipelineBackfillJob.objects.filter(
+            pk=job_id, batch_id=batch_id,
+        ).update(
+            pending_tasks=F('pending_tasks') - 1,
+            entries_processed=F('entries_processed') + processed_count,
+            last_progress_at=timezone.now(),
+        )
 
 
 def _resolve_monitor_subclass(monitor_id):

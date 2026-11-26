@@ -12,7 +12,7 @@ from django.utils import timezone
 from django_huey import db_task, db_periodic_task
 from huey import crontab
 
-from camp.apps.monitors.legacy_backfill import NEAR_DUPLICATE_WINDOW, _has_near, chunk_start_for
+from camp.apps.monitors.legacy_backfill import NEAR_DUPLICATE_WINDOW, accept_if_not_near, chunk_start_for
 from camp.apps.monitors.purpleair.api import (
     PurpleAirAPIError, PurpleAirNotFound, PurpleAirRateLimited, purpleair_api,
 )
@@ -209,14 +209,8 @@ def _history_store(monitor, rows, start, end):
     created = 0
     for entry_model, entries in by_model.items():
         existing = existing_raw_timestamps(monitor, entry_model, start, end, NEAR_DUPLICATE_WINDOW)
-        seen = set()
-        missing = []
-        for entry in entries:
-            key = (entry.timestamp, entry.sensor)
-            if key in seen or _has_near(existing.get(entry.sensor, ()), entry.timestamp):
-                continue
-            seen.add(key)
-            missing.append(entry)
+        entries.sort(key=lambda entry: entry.timestamp)
+        missing = [entry for entry in entries if accept_if_not_near(existing, entry)]
         for i in range(0, len(missing), HISTORY_INSERT_BATCH):
             created += _insert_raw_entries(entry_model, missing[i:i + HISTORY_INSERT_BATCH])
     return created
@@ -231,36 +225,50 @@ def import_purpleair_history_chunk(job_id, monitor_id, start, end, batch_id=None
     doesn't.
     '''
     stats = {'requests': 0, 'rows': 0, 'created': 0, 'points': 0}
-    monitor = PurpleAir.objects.filter(pk=monitor_id, sensor_id__isnull=False).first()
-    if monitor is None:
-        logger.warning('PurpleAir history: monitor %s no longer exists; skipping.', monitor_id)
-    else:
-        rows, gap = _history_fetch(monitor, start, end, stats)
-        stats['rows'] = len(rows)
-        stats['points'] = sum(
-            1 for row in rows for field in purpleair_api.HISTORY_FIELDS if row.get(field) is not None
-        )
-        if rows:
-            stats['created'] = _history_store(monitor, rows, start, end)
-        if gap is not None and PurpleAirHistoryJob.objects.filter(pk=job_id).exists():
-            reason, message = gap
-            PurpleAirHistoryGap.objects.update_or_create(
-                job_id=job_id, monitor=monitor, window_start=start, window_end=end,
-                defaults={'reason': reason, 'message': message},
+    try:
+        monitor = PurpleAir.objects.filter(pk=monitor_id, sensor_id__isnull=False).first()
+        if monitor is None:
+            logger.warning('PurpleAir history: monitor %s no longer exists; skipping.', monitor_id)
+        else:
+            rows, gap = _history_fetch(monitor, start, end, stats)
+            stats['rows'] = len(rows)
+            stats['points'] = sum(
+                1 for row in rows for field in purpleair_api.HISTORY_FIELDS if row.get(field) is not None
             )
-
-    jobs = PurpleAirHistoryJob.objects.filter(pk=job_id)
-    updates = {
-        'requests_made': F('requests_made') + stats['requests'],
-        'rows_fetched': F('rows_fetched') + stats['rows'],
-        'raw_entries_created': F('raw_entries_created') + stats['created'],
-        'data_points': F('data_points') + stats['points'],
-        'last_progress_at': timezone.now(),
-    }
-    if batch_id is not None:
-        jobs = jobs.filter(batch_id=batch_id)
-        updates['pending_tasks'] = F('pending_tasks') - 1
-    jobs.update(**updates)
+            if rows:
+                stats['created'] = _history_store(monitor, rows, start, end)
+            if gap is not None and PurpleAirHistoryJob.objects.filter(pk=job_id).exists():
+                reason, message = gap
+                PurpleAirHistoryGap.objects.update_or_create(
+                    job_id=job_id, monitor=monitor, window_start=start, window_end=end,
+                    defaults={'reason': reason, 'message': message},
+                )
+    except Exception as error:
+        # Record the window as a gap so `retry` re-fetches it, then re-raise.
+        try:
+            if PurpleAirHistoryJob.objects.filter(pk=job_id).exists():
+                PurpleAirHistoryGap.objects.update_or_create(
+                    job_id=job_id, monitor_id=monitor_id, window_start=start, window_end=end,
+                    defaults={'reason': PurpleAirHistoryGap.Reason.ERROR, 'message': f'{type(error).__name__}: {error}'},
+                )
+        except Exception:
+            logger.exception('PurpleAir history: could not record the gap for monitor %s.', monitor_id)
+        raise
+    finally:
+        # Always report: a task that never counts down stalls the batch, and the
+        # restart re-fetches (and pays for) every monitor in the window.
+        jobs = PurpleAirHistoryJob.objects.filter(pk=job_id)
+        updates = {
+            'requests_made': F('requests_made') + stats['requests'],
+            'rows_fetched': F('rows_fetched') + stats['rows'],
+            'raw_entries_created': F('raw_entries_created') + stats['created'],
+            'data_points': F('data_points') + stats['points'],
+            'last_progress_at': timezone.now(),
+        }
+        if batch_id is not None:
+            jobs = jobs.filter(batch_id=batch_id)
+            updates['pending_tasks'] = F('pending_tasks') - 1
+        jobs.update(**updates)
 
 
 @db_periodic_task(crontab(minute='*'), priority=1, queue='secondary')

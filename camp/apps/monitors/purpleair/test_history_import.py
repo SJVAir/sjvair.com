@@ -191,6 +191,25 @@ class HistoryChunkTaskTests(TestCase):
         assert not a.filter(timestamp=near).exists()
         assert _pm25_raw(self.monitor).filter(sensor='b').count() == 2
 
+    def test_rows_within_60_seconds_of_each_other_insert_once(self):
+        near = WINDOW_START + timedelta(hours=1)
+        rows = [_row(near + timedelta(seconds=30)), _row(near), _row(near + timedelta(minutes=2))]
+        with patch(API, return_value=rows):
+            self.run_chunk()
+        assert list(_pm25_raw(self.monitor).filter(sensor='a')
+            .order_by('timestamp').values_list('timestamp', flat=True)) == [near, near + timedelta(minutes=2)]
+
+    def test_unexpected_error_records_gap_and_counts_down(self):
+        with patch('camp.apps.monitors.purpleair.tasks._history_store', side_effect=KeyError('fields')):
+            with pytest.raises(KeyError):
+                import_purpleair_history_chunk.call_local(
+                    self.job.pk, str(self.monitor.pk), WINDOW_START, WINDOW_END, 1)
+        self.job.refresh_from_db()
+        assert self.job.pending_tasks == 0
+        gap = PurpleAirHistoryGap.objects.get()
+        assert gap.reason == PurpleAirHistoryGap.Reason.ERROR
+        assert gap.message == "KeyError: 'fields'"
+
     def test_rerun_is_idempotent(self):
         rows = _rows(WINDOW_START, 5)
         with patch(API, return_value=rows):

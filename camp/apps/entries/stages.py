@@ -39,3 +39,11 @@ def is_singleton(stage):
 
 def requires_processor(stage):
     return STAGE_RULES.get(stage, {}).get('requires_processor', False)
+
+def at_or_after(stage, cutoff):
+    '''
+    True when `stage` is `cutoff` or a later stage in pipeline order
+    (Stage's declaration order): what "stop before `cutoff`" excludes.
+    '''
+    order = list(Stage.values)
+    return order.index(stage) >= order.index(cutoff)

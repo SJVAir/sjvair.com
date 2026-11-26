@@ -4,12 +4,13 @@ Field mapping and pure construction logic for backfilling legacy `Entry` rows
 PurpleAir only: AirNow, AQview and BAM history is re-imported from source.
 See docs/superpowers/specs/2026-07-28-legacy-entries-backfill-design.md.
 '''
-from bisect import bisect_left
+from bisect import bisect_left, insort
 from datetime import datetime, timedelta, timezone
 
 from django.db.models import Exists, OuterRef
 
 from camp.apps.entries import models as entry_models
+from camp.apps.entries.stages import at_or_after
 
 # A legacy row within this distance of an existing RAW row (same sensor) is
 # treated as already covered. The two systems stamped the same reading
@@ -202,17 +203,13 @@ def find_missing_raw_entries(monitor, entry_model, mapping, chunk_start, chunk_e
     for timestamps in existing.values():
         timestamps.sort()
 
-    seen = set()
     missing = []
-    for legacy_entry in legacy_qs:
+    # Oldest first so the earlier of two near rows wins; 'a' before 'b' for a
+    # shared (sensor '') field, as the legacy default ordering gave.
+    for legacy_entry in legacy_qs.order_by('timestamp', 'sensor'):
         entry = build_raw_entry(monitor, legacy_entry, entry_model, mapping)
-        if entry is None:
-            continue
-        key = (entry.timestamp, entry.sensor)
-        if key in seen or _has_near(existing.get(entry.sensor, ()), entry.timestamp):
-            continue
-        seen.add(key)
-        missing.append(entry)
+        if entry is not None and accept_if_not_near(existing, entry):
+            missing.append(entry)
 
     return missing
 
@@ -220,6 +217,20 @@ def find_missing_raw_entries(monitor, entry_model, mapping, chunk_start, chunk_e
 def _has_near(sorted_timestamps, timestamp):
     i = bisect_left(sorted_timestamps, timestamp - NEAR_DUPLICATE_WINDOW)
     return i < len(sorted_timestamps) and sorted_timestamps[i] <= timestamp + NEAR_DUPLICATE_WINDOW
+
+
+def accept_if_not_near(existing, entry):
+    '''
+    True when `entry` has no row for its sensor within NEAR_DUPLICATE_WINDOW
+    in `existing` ({sensor: sorted timestamps}); it is then added there, so
+    rows accepted in the same pass are held to the same rule as stored rows
+    (a re-run would otherwise skip what the first run inserted).
+    '''
+    timestamps = existing.setdefault(entry.sensor, [])
+    if _has_near(timestamps, entry.timestamp):
+        return False
+    insort(timestamps, entry.timestamp)
+    return True
 
 
 def monitors_with_legacy_data_in(chunk_start, chunk_end):
@@ -278,14 +289,18 @@ def processable_stages(monitor_class, entry_model, stop_before=''):
     this monitor type, i.e. stages an entry can be advanced from.
 
     With `stop_before` set (a stage value, as for process_entry_pipeline's
-    cutoff_stage), only stages with a processor whose output stage is not
+    cutoff_stage), only stages with a processor whose output comes before
     the cutoff count: e.g. with 'calibrated', CLEANED entries can't be
-    advanced, so they are not selected until a later run without the cutoff.
+    advanced, so they are not selected until a later run without the cutoff;
+    with 'cleaned', neither can CORRECTED or CLEANED ones.
     '''
     processors = monitor_class.ENTRY_CONFIG.get(entry_model, {}).get('processors', {})
     return [
         stage for stage, stage_processors in processors.items()
-        if any(not stop_before or p.next_stage != stop_before for p in stage_processors)
+        if any(
+            not stop_before or not at_or_after(p.next_stage or stage, stop_before)
+            for p in stage_processors
+        )
     ]
 
 
