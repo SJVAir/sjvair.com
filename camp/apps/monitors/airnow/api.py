@@ -1,7 +1,7 @@
 import json
 import time
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone as dt_timezone
 from random import random
 from typing import Sequence, Iterator, Dict, Any, Optional
 
@@ -13,10 +13,30 @@ from django.utils.translation import gettext as _
 from resticus.encoders import JSONEncoder
 
 from camp.apps.regions.models import Region
-from camp.utils.datetime import chunk_date_range
 
 
 # https://docs.airnowapi.org/webservices
+
+
+def _utc(value):
+    return value.astimezone(dt_timezone.utc) if timezone.is_aware(value) else value
+
+
+def hour_windows(start_date, end_date, days=7):
+    '''
+    Splits [start_date, end_date] into windows of whole UTC hours, each at most
+    `days` long. AirNow's startdate and enddate are both inclusive hours, so
+    each window starts the hour after the previous one ends: no hour is
+    skipped or fetched twice.
+    '''
+    cursor = _utc(start_date).replace(minute=0, second=0, microsecond=0)
+    last = _utc(end_date).replace(minute=0, second=0, microsecond=0)
+    windows = []
+    while cursor <= last:
+        window_end = min(cursor + timedelta(days=days) - timedelta(hours=1), last)
+        windows.append((cursor, window_end))
+        cursor = window_end + timedelta(hours=1)
+    return windows
 
 class Requestor:
     def __init__(self, client=None):
@@ -91,11 +111,12 @@ class AirNowAPI:
             'includerawconcentrations': 1,
         }
 
+        # AirNow reads these as UTC hours.
         if start_date:
-            base['startdate'] = start_date.strftime('%Y-%m-%dT%H')
+            base['startdate'] = _utc(start_date).strftime('%Y-%m-%dT%H')
 
         if end_date:
-            base['enddate']   = end_date.strftime('%Y-%m-%dT%H')
+            base['enddate']   = _utc(end_date).strftime('%Y-%m-%dT%H')
 
         params = self.build_params(base, **kwargs)
         return self.request(path, method='get', params=params)
@@ -145,7 +166,7 @@ class AirNowAPI:
         end_date = end_date or timezone.now()
         start_date = start_date or end_date - timedelta(hours=1)
 
-        windows = chunk_date_range(start_date, end_date, days=batch_days)
+        windows = hour_windows(start_date, end_date, days=batch_days)
         for idx, (win_start, win_end) in enumerate(windows):
             entries = self.fetch_entries(
                 bbox=bbox,

@@ -1,6 +1,8 @@
 from abc import ABC, ABCMeta, abstractmethod
+from decimal import Decimal
 
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, models, transaction
+from django.db.backends.utils import format_number
 from django.utils.functional import cached_property
 
 from camp.utils import classproperty
@@ -110,14 +112,34 @@ class BaseProcessor(ABC, metaclass=ProcessorMeta):
 
     def run(self, commit=True):
         '''
-        Runs the processor and returns the new entry, or None if no value is produced.
+        Runs the processor and returns the resulting entry, or None if no
+        value is produced.
+
+        If a matching entry already exists (same monitor/timestamp/sensor/
+        stage/processor), this behaves as an upsert: the existing entry's
+        computed fields are updated in place to the freshly computed values
+        when they differ, rather than just returning the stale row
+        unchanged. This makes re-running the pipeline self-healing after a
+        data correction or a calibration/algorithm change, not merely a
+        resume mechanism — and the same (existing) row is returned either
+        way, so process_entry_pipeline's recursion continues correctly
+        downstream regardless of whether anything actually changed.
         '''
         if not self.is_valid():
             return
 
         processed = self.process()
-        if processed is not None and processed.validation_check():
+        if processed is None:
+            return
+
+        if processed.validation_check():
             if commit:
+                if getattr(processed.monitor, '_latest_deferral', None) is not None:
+                    # Reprocessing: the chunk wraps each entry in its own
+                    # transaction and retries it on a later run, so skip the
+                    # savepoint. A lost race fails (and rolls back) the entry.
+                    processed.save()
+                    return processed
                 try:
                     with transaction.atomic():
                         processed.save()
@@ -134,3 +156,41 @@ class BaseProcessor(ABC, metaclass=ProcessorMeta):
                         processor=processed.processor,
                     ).first()
             return processed
+
+        existing = processed.__class__.objects.filter(
+            monitor_id=processed.monitor_id,
+            timestamp=processed.timestamp,
+            sensor=processed.sensor,
+            stage=processed.stage,
+            processor=processed.processor,
+        ).first()
+
+        if existing is None:
+            # Rare race: validation_check() saw a conflict that's since gone.
+            return None
+
+        sync_fields = [*processed.declared_field_names, 'calibration_id']
+        changed_fields = [
+            field for field in sync_fields
+            if getattr(existing, field) != _as_stored(processed, field)
+        ]
+
+        if changed_fields and commit:
+            for field in changed_fields:
+                setattr(existing, field, getattr(processed, field))
+            existing.save()
+
+        return existing
+
+
+def _as_stored(entry, name):
+    '''
+    The value as the database would store it. The stored row's decimals are
+    rounded to the field's places; the freshly computed ones aren't, so
+    comparing them raw rewrites rows that haven't changed.
+    '''
+    value = getattr(entry, name)
+    field = entry._meta.get_field(name)
+    if value is None or not isinstance(field, models.DecimalField):
+        return value
+    return Decimal(format_number(field.to_python(value), field.max_digits, field.decimal_places))
