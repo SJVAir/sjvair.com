@@ -13,6 +13,11 @@ tooltip}). Pages that set none render exactly as before.
 `scope_pickers` (default True) hides the year/pollutant/toxics/minor controls
 on a tab none of them affect (the Community tab's CalEnviroScreen numbers
 aren't scoped by any of them) without hiding the rest of this include.
+
+On a region's page the county picker is `county_links` ({name, url,
+current}: each county's page, same tab), set to `county_current` (the
+region's county), and `all_counties_url` (the tab's Valley-wide page),
+instead of `county_options`: the page is the area, not a ?county= scope.
 {% endcomment %}
 {% if not hide_scope %}
 <div class="explorer-scope-pickers">
@@ -39,22 +44,32 @@ aren't scoped by any of them) without hiding the rest of this include.
         </div>
     </div>
     {% endif %}
-    {% if county_options %}
+    {% if county_options or county_links %}
     <div class="dropdown is-right explorer-scope-picker" data-scope="county">
         <div class="dropdown-trigger">
-            <button type="button" class="button is-small" aria-haspopup="true" aria-expanded="false" aria-controls="scope-menu-county" aria-label="County: {% if county %}{{ county.name }}{% else %}all counties{% endif %}">
+            <button type="button" class="button is-small" aria-haspopup="true" aria-expanded="false" aria-controls="scope-menu-county" aria-label="County: {% if county_links %}{{ county_current.name }}{% elif county %}{{ county.name }}{% else %}all counties{% endif %}">
                 <span class="icon"><span class="fa-duotone fa-fw fa-map explorer-icon is-scope" aria-hidden="true"></span></span>
-                <span class="explorer-scope-label">{% if county %}{{ county.name|cut:" County" }}{% else %}All counties{% endif %}</span>
+                <span class="explorer-scope-label">{% if county_links %}{{ county_current.name|cut:" County" }}{% elif county %}{{ county.name|cut:" County" }}{% else %}All counties{% endif %}</span>
                 <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
             </button>
         </div>
         <div class="dropdown-menu" id="scope-menu-county">
             <div class="dropdown-content">
+                {% if county_links %}
+                {% if all_counties_url %}
+                <a class="dropdown-item" href="{{ all_counties_url }}">All counties</a>
+                <hr class="dropdown-divider">
+                {% endif %}
+                {% for link in county_links %}
+                <a class="dropdown-item{% if link.current %} is-active{% endif %}" href="{{ link.url }}"{% if link.current %} aria-current="page"{% endif %}>{{ link.name|cut:" County" }}</a>
+                {% endfor %}
+                {% else %}
                 <a class="dropdown-item{% if not county %} is-active{% endif %}" href="{% qs_replace county=None page=None %}">All counties</a>
                 <hr class="dropdown-divider">
                 {% for slug, name in county_options %}
                 <a class="dropdown-item{% if county and county.slug == slug %} is-active{% endif %}" href="{% qs_replace county=slug page=None %}">{{ name|cut:" County" }}</a>
                 {% endfor %}
+                {% endif %}
             </div>
         </div>
     </div>

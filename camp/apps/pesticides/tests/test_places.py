@@ -261,6 +261,14 @@ class RegionPageTests(RollupTestMixin, TestCase):
         html = self.client.get(reverse('pesticides:home')).content.decode()
         assert self.url in html
 
+    def test_county_picker_stays_on_the_tab(self):
+        records = self.fresno.get_pesticides_tab_url('records')
+        html = self.client.get(records, {'year': '2023', 'page': '2'}).content.decode()
+        menu = html.split('id="scope-menu-county"')[1].split('data-scope="narrow"')[0]
+        # The place's own filter (added for the Records browser) stays out of the links.
+        assert f'href="{records}?year=2023" aria-current="page"' in menu
+        assert f'href="{reverse("pesticides:records")}?year=2023">All counties' in menu
+
 
 class SchoolDistrictPageTests(RollupTestMixin, TestCase):
     """

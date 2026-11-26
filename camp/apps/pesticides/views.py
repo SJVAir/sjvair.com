@@ -2040,6 +2040,7 @@ class SectionDetail(vanilla.DetailView):
 
     def get_context_data(self, **kwargs):
         section = self.object
+        county_name = section_county_name(section)
         year, all_years = stats.resolve_year_param(self.request.GET.get('year'))
         concern = scope_concern(self.request)
         rows = PesticideUseRollup.objects.filter(mtrs=section)
@@ -2063,8 +2064,10 @@ class SectionDetail(vanilla.DetailView):
 
         return super().get_context_data(
             section='sections',
-            county_name=section_county_name(section),
+            county_name=county_name,
             **year_context(year, all_years, scope_county(self.request), county_scope=False, concern=concern),
+            # The county picker, set to the section's county, goes to that county's place page.
+            **county_switch(self.request.GET, Region.objects.counties().filter(name=county_name).first() if county_name else None),
             **section_summary(rows, year, all_years, records_url),
             upcoming=stats.notices_in_days(upcoming_days),
             upcoming_days=upcoming_days,
@@ -2377,6 +2380,20 @@ AREA_TABS = (
 )
 # A pesticides tab and the emissions tab for the same thing; any other opens its Overview.
 EMISSIONS_TABS = {'schools': 'schools'}
+# The Valley-wide page for a place tab: where a place page's "All counties" goes.
+VALLEY_TAB_URLS = {
+    'overview': 'pesticides:home',
+    'records': 'pesticides:records',
+    'notices': 'pesticides:notice-list',
+}
+
+
+def county_switch(params, county, tab='overview'):
+    """The county picker on a place or section page, set to its county (headers.county_switch)."""
+    valley = VALLEY_TAB_URLS.get(tab)
+    return headers.county_switch(
+        params, county, url_method='get_pesticides_tab_url', tab=tab, valley_url=reverse(valley) if valley else None,
+    )
 
 
 class AreaPageMixin:
@@ -2526,6 +2543,14 @@ class RegionAreaMixin(AreaPageMixin):
     def emissions_url(self):
         # No scope: the two explorers' years don't line up.
         return self.region.get_emissions_tab_url(EMISSIONS_TABS.get(self.tab, 'overview'))
+
+    def tab_scope_context(self):
+        # The county picker, set to the region's county, switches county on the same tab;
+        # a narrowed list tab's links keep what the reader asked for, not the place's own filter.
+        region = self.region
+        county = region if region.type == Region.Type.COUNTY else Region.objects.get_county_region(region)
+        params = getattr(self, 'original_query', None) or self.request.GET
+        return {**super().tab_scope_context(), **county_switch(params, county, self.tab)}
 
 
 class NearMeAreaMixin(AreaPageMixin):

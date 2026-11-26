@@ -11,10 +11,16 @@ BETA_TESTERS_GROUP = 'Beta testers'
 # it for beta testers too. It holds nothing private (name, colors, icon URLs).
 UNGATED_PATHS = {'/workspace/manifest.webmanifest'}
 
+# Data tools under /tools/ that are out of beta: open to everyone, linked in the nav for all.
+PUBLIC_TOOLS_PREFIXES = ('/tools/pesticides/', '/tools/emissions/')
+
 
 def is_beta_path(path):
-    """Whether a URL path is behind the beta gate: the data tools under /tools/ and the dashboard at /workspace."""
-    if path in UNGATED_PATHS:
+    """
+    Whether a URL path is behind the beta gate: the data tools under /tools/
+    (but the public ones, PUBLIC_TOOLS_PREFIXES) and the dashboard at /workspace.
+    """
+    if path in UNGATED_PATHS or path.startswith(PUBLIC_TOOLS_PREFIXES):
         return False
     return path.startswith('/tools/') or path == '/workspace' or path.startswith('/workspace/')
 

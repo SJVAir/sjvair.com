@@ -32,8 +32,8 @@ class RegionPageTests(TestCase):
         content = self.get(self.fresno, {'year': '2024'})
         assert '<h1' in content and 'Fresno County' in content
         assert 'Test Plant' in content
-        # The page is the area: no county picker in the scope bar.
-        assert 'data-scope="county"' not in content
+        # The county picker switches pages rather than scoping by ?county=.
+        assert 'data-scope="county"' in content
         assert map_data(content, 'areas') == '1'
         assert map_data(content, 'level') == 'tract'
         assert map_data(content, 'outline-url') == reverse('api:v2:regions:region-detail', args=[self.fresno.sqid])
@@ -112,6 +112,35 @@ class RegionPageTests(TestCase):
         hrefs = re.findall(r'href="([^"]*)"', content)
         assert [href for href in hrefs if 'year=' in href]  # the pickers are there
         assert not [href for href in hrefs if 'county=' in href]
+
+    def county_menu(self, content):
+        return re.search(r'<div class="dropdown-menu" id="scope-menu-county">(.*?)</div>\s*</div>', content, re.S).group(1)
+
+    def test_county_picker_switches_county_on_the_same_tab(self):
+        kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
+        response = self.client.get(self.fresno.get_emissions_tab_url('facilities'), {'toxics': '1', 'page': '2', 'buffer': '1'})
+        content = response.content.decode()
+        menu = self.county_menu(content)
+        assert f'href="{kern.get_emissions_tab_url("facilities")}?toxics=1"' in menu
+        assert f'href="{reverse("emissions:facility-list")}?toxics=1">All counties' in menu
+        assert f'href="{self.fresno.get_emissions_tab_url("facilities")}?toxics=1" aria-current="page"' in menu
+        assert 'county=' not in menu
+        assert '<span class="explorer-scope-label">Fresno</span>' in content
+
+    def test_county_picker_keeps_the_table_subview(self):
+        kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
+        response = self.client.get(self.fresno.get_emissions_tab_url('facilities') + 'table/', {'year': '2024'})
+        menu = self.county_menu(response.content.decode())
+        assert f'href="{kern.get_emissions_tab_url("facilities")}table/?year=2024"' in menu
+        assert f'href="{reverse("emissions:facility-list-table")}?year=2024">All counties' in menu
+
+    def test_city_page_county_picker_defaults_to_its_county(self):
+        city = Region.objects.get(type=Region.Type.CITY, slug='fresno')
+        content = self.get(city, {'year': '2024'})
+        menu = self.county_menu(content)
+        assert f'href="{self.fresno.get_emissions_url()}?year=2024" aria-current="page"' in menu
+        assert f'href="{reverse("emissions:home")}?year=2024">All counties' in menu
+        assert '<span class="explorer-scope-label">Fresno</span>' in content
 
     def test_short_url_of_a_retired_tract_404s(self):
         old = make(Region.Type.TRACT, 'Old', AROUND_PLANT, version='2010')
