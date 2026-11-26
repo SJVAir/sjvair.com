@@ -17,16 +17,22 @@ from camp.apps.monitors.purpleair.models import PurpleAir
 EXPECTED_ROW_SECONDS = 120
 FIELDS_PER_ROW = len(PurpleAirAPI.HISTORY_FIELDS)
 
+# Monitors have been imported live since 2018, so a sensor can't have reported
+# much before its monitor was created; this covers the gap on the first day.
+CREATED_LEEWAY = timedelta(hours=24)
+
 
 def monitors_for_window(window_start, window_end, monitor_ids=None):
     '''
     Returns pks of the PurpleAir monitors worth requesting for the window:
     those with a sensor_id whose latest entry isn't older than the window
-    (a sensor that stopped reporting before it has nothing to fetch). A
-    monitor with no latest entries at all is always included.
+    (a sensor that stopped reporting before it has nothing to fetch), and
+    that were created before the window ended, give or take CREATED_LEEWAY
+    (a sensor added later had nothing to report yet). A monitor with no
+    latest entries at all is included on the latest-entry side.
     '''
     queryset = (PurpleAir.objects
-        .filter(sensor_id__isnull=False)
+        .filter(sensor_id__isnull=False, created__lt=window_end + CREATED_LEEWAY)
         .annotate(last_entry_at=Max('latest_entries__timestamp'))
         .filter(Q(last_entry_at__isnull=True) | Q(last_entry_at__gte=window_start))
     )

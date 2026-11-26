@@ -17,7 +17,7 @@ from django.utils import timezone
 from django_smalluuid.models import uuid_default
 
 from camp.apps.entries import models as entry_models
-from camp.apps.monitors.models import LatestEntry
+from camp.apps.monitors.models import LatestEntry, Monitor
 from camp.apps.monitors.purpleair.api import (
     PurpleAirAPI, PurpleAirAPIError, PurpleAirNotFound, PurpleAirRateLimited, purpleair_api,
 )
@@ -302,6 +302,19 @@ class MonitorsForWindowTests(TestCase):
 
     def test_monitor_ids_filter(self):
         assert monitors_for_window(WINDOW_START, WINDOW_END, [OTHER_ID]) == []
+
+    def test_monitor_created_after_the_window_is_skipped(self):
+        Monitor.objects.filter(pk=self.monitor.pk).update(created=WINDOW_END + timedelta(days=2))
+        assert monitors_for_window(WINDOW_START, WINDOW_END) == []
+
+    def test_monitor_created_within_a_day_of_the_window_end_is_included(self):
+        Monitor.objects.filter(pk=self.monitor.pk).update(created=WINDOW_END + timedelta(hours=23))
+        assert monitors_for_window(WINDOW_START, WINDOW_END) == [self.monitor.pk]
+
+    def test_estimate_skips_windows_before_the_monitor_was_created(self):
+        Monitor.objects.filter(pk=self.monitor.pk).update(created=WINDOW_START + timedelta(days=2))
+        windows, requests, data_points = estimate(WINDOW_START, WINDOW_START + timedelta(days=4), 1)
+        assert (windows, requests) == (4, 3)
 
     def test_windows_walk_back_from_range_end(self):
         windows = list(iter_windows(_ts(2023, 1, 1), _ts(2023, 3, 1), 28))
