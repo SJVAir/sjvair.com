@@ -17,7 +17,7 @@ from django.utils import timezone
 from django_smalluuid.models import uuid_default
 
 from camp.apps.entries import models as entry_models
-from camp.apps.monitors.models import LatestEntry, Monitor
+from camp.apps.monitors.models import Entry, LatestEntry, Monitor
 from camp.apps.monitors.purpleair.api import (
     PurpleAirAPI, PurpleAirAPIError, PurpleAirNotFound, PurpleAirRateLimited, purpleair_api,
 )
@@ -298,6 +298,26 @@ class MonitorsForWindowTests(TestCase):
         )
         assert monitors_for_window(WINDOW_START, WINDOW_END) == []
         LatestEntry.objects.update(timestamp=WINDOW_START + timedelta(days=1))
+        assert monitors_for_window(WINDOW_START, WINDOW_END) == [self.monitor.pk]
+
+    def _legacy_latest(self, timestamp):
+        entry = Entry.objects.create(monitor=self.monitor, timestamp=timestamp, sensor='a')
+        Monitor.objects.filter(pk=self.monitor.pk).update(latest=entry)
+
+    def test_monitor_whose_legacy_latest_is_before_the_window_is_skipped(self):
+        self._legacy_latest(WINDOW_START - timedelta(days=1))
+        assert monitors_for_window(WINDOW_START, WINDOW_END) == []
+
+    def test_monitor_whose_legacy_latest_is_in_the_window_is_included(self):
+        self._legacy_latest(WINDOW_START + timedelta(hours=1))
+        assert monitors_for_window(WINDOW_START, WINDOW_END) == [self.monitor.pk]
+
+    def test_latest_entry_wins_over_an_older_legacy_latest(self):
+        self._legacy_latest(WINDOW_START - timedelta(days=30))
+        LatestEntry.objects.create(
+            monitor=self.monitor, entry_type=entry_models.PM25.entry_type, entry_id=OTHER_ID,
+            timestamp=WINDOW_START + timedelta(days=1),
+        )
         assert monitors_for_window(WINDOW_START, WINDOW_END) == [self.monitor.pk]
 
     def test_monitor_ids_filter(self):

@@ -8,6 +8,7 @@ import math
 from datetime import timedelta
 
 from django.db.models import Max, Q
+from django.db.models.functions import Coalesce
 
 from camp.apps.monitors.legacy_backfill import chunk_start_for
 from camp.apps.monitors.purpleair.api import PurpleAirAPI
@@ -25,15 +26,18 @@ CREATED_LEEWAY = timedelta(hours=24)
 def monitors_for_window(window_start, window_end, monitor_ids=None):
     '''
     Returns pks of the PurpleAir monitors worth requesting for the window:
-    those with a sensor_id whose latest entry isn't older than the window
+    those with a sensor_id whose last reading isn't older than the window
     (a sensor that stopped reporting before it has nothing to fetch), and
     that were created before the window ended, give or take CREATED_LEEWAY
-    (a sensor added later had nothing to report yet). A monitor with no
-    latest entries at all is included on the latest-entry side.
+    (a sensor added later had nothing to report yet).
+
+    The last reading is the newest LatestEntry, or for a sensor that stopped
+    before the entries app existed, its legacy `latest` row. A monitor with
+    neither is included on that side.
     '''
     queryset = (PurpleAir.objects
         .filter(sensor_id__isnull=False, created__lt=window_end + CREATED_LEEWAY)
-        .annotate(last_entry_at=Max('latest_entries__timestamp'))
+        .annotate(last_entry_at=Coalesce(Max('latest_entries__timestamp'), 'latest__timestamp'))
         .filter(Q(last_entry_at__isnull=True) | Q(last_entry_at__gte=window_start))
     )
     if monitor_ids:
