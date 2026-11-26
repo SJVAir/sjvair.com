@@ -190,11 +190,21 @@ def _near(timestamp, sensor, timestamps_by_sensor):
 def verify_monitor_window(monitor, window_start, window_end, report, live_lag):
     from camp.apps.monitors.models import Entry
 
-    legacy_rows = list(Entry.objects.filter(
+    # Rows within NEAR_MISS_WINDOW outside the window are loaded too, only so
+    # near-miss and extra checks see neighbours across the window's edges.
+    padded_start = window_start - NEAR_MISS_WINDOW
+    padded_end = window_end + NEAR_MISS_WINDOW
+
+    def inside(timestamp):
+        return window_start <= timestamp < window_end
+
+    padded_legacy = list(Entry.objects.filter(
         monitor=monitor,
-        timestamp__gte=window_start,
-        timestamp__lt=window_end,
+        timestamp__gte=padded_start,
+        timestamp__lt=padded_end,
     ))
+    legacy_rows = [row for row in padded_legacy if inside(row.timestamp)]
+    edge_legacy = [row for row in padded_legacy if not inside(row.timestamp)]
     if not legacy_rows:
         return
 
@@ -205,21 +215,24 @@ def verify_monitor_window(monitor, window_start, window_end, report, live_lag):
         expected, sources = _expected_rows(legacy_rows, expectation, report, key)
         report.bump(key, 'legacy', len(expected))
 
-        actual = {
+        edge_expected, _ = _expected_rows(edge_legacy, expectation, VerifyReport(), key)
+
+        padded_actual = {
             (row.timestamp, row.sensor): row
             for row in entry_model.objects.filter(
                 monitor=monitor,
                 stage=entry_model.Stage.RAW,
-                timestamp__gte=window_start,
-                timestamp__lt=window_end,
+                timestamp__gte=padded_start,
+                timestamp__lt=padded_end,
             )
         }
+        actual = {row_key: row for row_key, row in padded_actual.items() if inside(row_key[0])}
 
         actual_by_sensor = defaultdict(list)
-        for timestamp, sensor in actual:
+        for timestamp, sensor in padded_actual:
             actual_by_sensor[sensor].append(timestamp)
         expected_by_sensor = defaultdict(list)
-        for timestamp, sensor in expected:
+        for timestamp, sensor in (*expected, *edge_expected):
             expected_by_sensor[sensor].append(timestamp)
 
         for row_key, values in expected.items():

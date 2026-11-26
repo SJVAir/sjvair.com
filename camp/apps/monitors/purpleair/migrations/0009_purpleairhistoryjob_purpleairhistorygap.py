@@ -22,7 +22,7 @@ class Migration(migrations.Migration):
                 ('state', models.CharField(choices=[('running', 'Running'), ('paused', 'Paused'), ('done', 'Done'), ('failed', 'Failed')], default='running', max_length=10, verbose_name='state')),
                 ('cursor', models.DateTimeField(verbose_name='cursor')),
                 ('chunk_start', models.DateTimeField(blank=True, null=True, verbose_name='chunk start')),
-                ('chunk_days', models.PositiveSmallIntegerField(default=28, verbose_name='chunk days')),
+                ('chunk_days', models.PositiveSmallIntegerField(default=7, verbose_name='chunk days')),
                 ('range_start', models.DateTimeField(verbose_name='range start')),
                 ('range_end', models.DateTimeField(verbose_name='range end')),
                 ('monitor_ids', models.JSONField(blank=True, default=list, verbose_name='monitor ids')),

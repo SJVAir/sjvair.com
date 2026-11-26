@@ -63,7 +63,7 @@ class HistoryJobTests(TestCase):
             cursor=WINDOW_END, range_start=WINDOW_START, range_end=WINDOW_END,
         )
         assert job.state == PurpleAirHistoryJob.State.RUNNING
-        assert job.chunk_days == 28
+        assert job.chunk_days == 7
         assert job.sqid
         assert job.requests_made == job.rows_fetched == job.raw_entries_created == job.data_points == 0
 
@@ -200,7 +200,8 @@ class HistoryChunkTaskTests(TestCase):
             .order_by('timestamp').values_list('timestamp', flat=True)) == [near, near + timedelta(minutes=2)]
 
     def test_unexpected_error_records_gap_and_counts_down(self):
-        with patch('camp.apps.monitors.purpleair.tasks._history_store', side_effect=KeyError('fields')):
+        with patch(API, return_value=_tail(WINDOW_END, 3)), \
+                patch('camp.apps.monitors.purpleair.tasks._history_store', side_effect=KeyError('fields')):
             with pytest.raises(KeyError):
                 import_purpleair_history_chunk.call_local(
                     self.job.pk, str(self.monitor.pk), WINDOW_START, WINDOW_END, 1)
@@ -375,7 +376,7 @@ class HistoryCommandTests(TestCase):
         out = StringIO()
         call_command('import_purpleair_history', 'start', '--from', '2020-01-01', stdout=out)
         job = PurpleAirHistoryJob.objects.get()
-        assert job.chunk_days == 28
+        assert job.chunk_days == 7
         assert job.cursor == job.range_end
         assert timezone.now() - job.range_end < timedelta(hours=25)
         assert 'Started' in out.getvalue()
@@ -413,8 +414,8 @@ class HistoryCommandTests(TestCase):
         assert not PurpleAirHistoryJob.objects.exists()
         text = out.getvalue()
         assert 'Monitors: 1' in text
-        assert 'Windows: 3' in text
-        assert 'Requests: 3' in text
+        assert 'Windows: 9' in text
+        assert 'Requests: 9' in text
         assert 'Estimated data points:' in text
 
     def test_status_cancel(self):
@@ -501,6 +502,17 @@ class PurpleAirAPIHistoryTests(TestCase):
             with patch.object(purpleair_api, 'get', return_value=response):
                 with pytest.raises(error):
                     purpleair_api.get_sensor_history_window(42, WINDOW_START, WINDOW_END)
+
+    def test_requests_have_a_timeout(self):
+        with patch('camp.apps.monitors.purpleair.api.requests.request', return_value=self.ok()) as request:
+            purpleair_api.get_sensor_history_window(42, WINDOW_START, WINDOW_END)
+        assert request.call_args.kwargs['timeout'] == purpleair_api.TIMEOUT
+
+    def test_window_timeout_is_an_api_error(self):
+        import requests
+        with patch('camp.apps.monitors.purpleair.api.requests.request', side_effect=requests.Timeout('slow')):
+            with pytest.raises(PurpleAirAPIError):
+                purpleair_api.get_sensor_history_window(42, WINDOW_START, WINDOW_END)
 
     def test_window_wraps_network_errors(self):
         import requests

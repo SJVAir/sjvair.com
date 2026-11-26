@@ -108,6 +108,43 @@ class VerifyPurpleAirTests(TestCase):
         assert self._counts(report, 'PM25')['near_miss'] == 1
         assert not report.failed
 
+    def _day_boundary_pair(self):
+        # Legacy rows 30s before midnight, a RAW row 10s after it: the day
+        # windows split them, but they're still within 60s of each other.
+        _backfill(self.monitor, self.start, self.end)
+        legacy_ts = self.end - timedelta(seconds=30)
+        for sensor in ('a', 'b'):
+            Entry.objects.create(
+                monitor=self.monitor, sensor=sensor, timestamp=legacy_ts,
+                location=self.monitor.location, position=self.monitor.position,
+                pm25_reported=Decimal('5.00'),
+            )
+            entry_models.PM25.objects.create(
+                monitor=self.monitor, sensor=sensor, timestamp=self.end + timedelta(seconds=10),
+                location=self.monitor.location, position=self.monitor.position,
+                stage=entry_models.PM25.Stage.RAW, processor='', value=Decimal('5.00'),
+            )
+
+    def test_near_miss_across_a_day_boundary(self):
+        self._day_boundary_pair()
+        report = verify([self.monitor], self.start, self.end + timedelta(days=1))
+        counts = self._counts(report, 'PM25')
+        assert counts['near_miss'] == 2
+        assert counts['missing'] == 0
+        assert counts['extra'] == 0
+        assert not report.failed
+
+    def test_window_edges_count_rows_once(self):
+        # The padding is only for neighbours: rows outside a window are never
+        # counted in it.
+        self._day_boundary_pair()
+        report = verify([self.monitor], self.start, self.end)
+        counts = self._counts(report, 'PM25')
+        assert counts['legacy'] == 4
+        assert counts['matched'] == 2
+        assert counts['near_miss'] == 2
+        assert counts['extra'] == 0
+
     def test_unknown_sensor_rows_are_skipped_not_missing(self):
         Entry.objects.create(
             monitor=self.monitor, sensor='', timestamp=self.ts + timedelta(hours=1),

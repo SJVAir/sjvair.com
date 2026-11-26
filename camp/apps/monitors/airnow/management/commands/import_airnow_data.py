@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone as dt_timezone
 
 from django.core.management.base import BaseCommand, CommandError
 
@@ -36,6 +36,6 @@ class Command(BaseCommand):
         if not value:
             return None
         try:
-            return make_aware(datetime.fromisoformat(value))
+            return make_aware(datetime.fromisoformat(value)).astimezone(dt_timezone.utc)
         except ValueError:
             raise CommandError(f'Invalid timestamp: {value}')

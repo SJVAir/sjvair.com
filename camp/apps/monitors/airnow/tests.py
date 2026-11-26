@@ -139,6 +139,13 @@ class ImportAirNowDataCommandTests(TestCase):
         assert start == datetime(2026, 7, 24, 7, tzinfo=dt_timezone.utc)
         assert call_local.call_args.kwargs['end_date'] is None
 
+    def test_offset_is_converted_to_utc(self):
+        # AirNow reads the hours as UTC, so the command must pass UTC values.
+        from datetime import timezone as dt_timezone
+
+        call_local = self._call('--start', '2026-07-24T00:00-07:00')
+        assert call_local.call_args.kwargs['start_date'].utcoffset() == dt_timezone.utc.utcoffset(None)
+
     def test_rejects_start_after_end(self):
         import pytest
         from django.core.management.base import CommandError
@@ -720,3 +727,47 @@ class RelabelNowCastTests(TestCase):
         call_command('relabel_airnow_nowcast', stdout=io.StringIO())
 
         assert entry_models.PM25.objects.get(pk=raw.pk).stage == entry_models.PM25.Stage.CALIBRATED
+
+
+class AirNowHourWindowTests(TestCase):
+    def test_windows_cover_every_hour_once(self):
+        from datetime import datetime, timedelta, timezone as dt_timezone
+        from camp.apps.monitors.airnow.api import hour_windows
+
+        start = datetime(2026, 7, 24, tzinfo=dt_timezone.utc)
+        end = datetime(2026, 8, 12, 6, tzinfo=dt_timezone.utc)
+        windows = hour_windows(start, end, days=7)
+
+        hours = []
+        for win_start, win_end in windows:
+            assert win_end - win_start < timedelta(days=7)
+            hour = win_start
+            while hour <= win_end:
+                hours.append(hour)
+                hour += timedelta(hours=1)
+        expected = int((end - start) / timedelta(hours=1)) + 1
+        assert len(hours) == expected
+        assert len(set(hours)) == expected
+        assert hours[0] == start and hours[-1] == end
+
+    def test_short_range_is_one_window(self):
+        from datetime import datetime, timedelta, timezone as dt_timezone
+        from camp.apps.monitors.airnow.api import hour_windows
+
+        end = datetime(2026, 8, 12, 6, 30, tzinfo=dt_timezone.utc)
+        assert hour_windows(end - timedelta(hours=1), end) == [
+            (datetime(2026, 8, 12, 5, tzinfo=dt_timezone.utc), datetime(2026, 8, 12, 6, tzinfo=dt_timezone.utc)),
+        ]
+
+    def test_request_hours_are_utc(self):
+        from datetime import datetime, timedelta, timezone as dt_timezone
+        from camp.apps.monitors.airnow.api import AirNowAPI
+
+        client = AirNowAPI('key')
+        pacific = dt_timezone(timedelta(hours=-7))
+        with patch.object(client, 'request') as request:
+            client.data(bbox=(1, 2, 3, 4), start_date=datetime(2026, 7, 24, 0, tzinfo=pacific),
+                        end_date=datetime(2026, 7, 24, 5, tzinfo=pacific))
+        params = request.call_args.kwargs['params']
+        assert params['startdate'] == '2026-07-24T07'
+        assert params['enddate'] == '2026-07-24T12'

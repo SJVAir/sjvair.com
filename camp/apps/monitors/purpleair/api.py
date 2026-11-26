@@ -37,6 +37,9 @@ class PurpleAirAPI:
     API_URL = 'https://api.purpleair.com'
     READ_KEY = os.environ.get('PURPLEAIR_READ_KEY')
     WRITE_KEY = os.environ.get('PURPLEAIR_WRITE_KEY')
+    # (connect, read) seconds. Without it a stalled connection blocks the
+    # worker forever; a Timeout is a RequestException like any other failure.
+    TIMEOUT = (10, 120)
 
     MONITOR_FIELDS = [
         'name', 'private', 'date_created', 'last_modified',
@@ -101,6 +104,7 @@ class PurpleAirAPI:
             kwargs['data'] = self.encode(data)
             headers['Content-Type'] = 'application/json'
 
+        kwargs.setdefault('timeout', self.TIMEOUT)
         return requests.request(method, url, headers=headers, **kwargs)
 
     # HTTP Methods

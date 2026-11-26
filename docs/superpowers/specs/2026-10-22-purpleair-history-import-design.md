@@ -59,7 +59,7 @@ span cap, but one may exist; the importer must detect a short response (below).
 Same shape and lifecycle as `EntryBackfillJob` (state, cursor, chunk_start,
 range_start/range_end, pending_tasks, batch_id, phase_started_at,
 last_progress_at, locked_at, consecutive_failures, last_error, sqid), with
-`chunk_days` default 28 and counters `requests_made`, `rows_fetched`,
+`chunk_days` default 7 (was 28; a 28-day window held ~150 MB of entries per task) and counters `requests_made`, `rows_fetched`,
 `raw_entries_created`, `data_points` (all `PositiveBigIntegerField`). Reuse the
 existing tick/stall/fail helpers in `camp/apps/monitors/tasks.py`
 (`_is_stalled`, `_fail_job`, the dispatch/complete/restart pattern) rather
@@ -106,7 +106,7 @@ let an empty response cost nothing beyond the call.
 
 `start | status | cancel | retry`, with `--from` (required for start), `--to`
 (default 24 hours ago, like `reprocess_legacy_pipeline`), `--monitor-id`
-(repeatable), `--chunk-days` (default 28), `--force`, and `--dry-run` on start:
+(repeatable), `--chunk-days` (default 7), `--force`, and `--dry-run` on start:
 prints monitors, windows, request count and an estimated data-point count
 (windows x expected rows at 120s x 21 fields), and creates nothing.
 
@@ -136,7 +136,7 @@ start/status/cancel/retry/dry-run; the `get_sensor_history` rate-limit fix.
 CLI (final):
 
 ```
-import_purpleair_history start --from YYYY-MM-DD [--to YYYY-MM-DD] [--monitor-id ID ...] [--chunk-days 28] [--force] [--dry-run]
+import_purpleair_history start --from YYYY-MM-DD [--to YYYY-MM-DD] [--monitor-id ID ...] [--chunk-days 7] [--force] [--dry-run]
 import_purpleair_history status   # progress, counters, and the gap list
 import_purpleair_history cancel
 import_purpleair_history retry    # re-runs the latest job's gaps (untracked tasks; a window that fails again is re-recorded)

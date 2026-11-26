@@ -316,7 +316,7 @@ class PurpleAirHistoryJob(TimeStampedModel):
 
     cursor = models.DateTimeField(_('cursor'))
     chunk_start = models.DateTimeField(_('chunk start'), null=True, blank=True)
-    chunk_days = models.PositiveSmallIntegerField(_('chunk days'), default=28)
+    chunk_days = models.PositiveSmallIntegerField(_('chunk days'), default=7)
     range_start = models.DateTimeField(_('range start'))
     range_end = models.DateTimeField(_('range end'))
     monitor_ids = models.JSONField(_('monitor ids'), default=list, blank=True)

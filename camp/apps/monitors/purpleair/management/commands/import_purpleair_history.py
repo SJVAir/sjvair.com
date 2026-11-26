@@ -24,8 +24,8 @@ class Command(BaseCommand):
             help='Latest date to import, exclusive (default: 24 hours ago)')
         parser.add_argument('--monitor-id', dest='monitor_ids', action='append', default=[],
             help='Only import this monitor (repeatable)')
-        parser.add_argument('--chunk-days', dest='chunk_days', type=int, default=28,
-            help='Days per request window (default: 28)')
+        parser.add_argument('--chunk-days', dest='chunk_days', type=int, default=7,
+            help='Days per request window (default: 7; memory per task grows with it)')
         parser.add_argument('--force', action='store_true',
             help='Replace an existing running/paused job instead of refusing to start a new one')
         parser.add_argument('--dry-run', action='store_true',
