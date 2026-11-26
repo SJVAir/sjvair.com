@@ -42,7 +42,7 @@ class Command(CountyFilterMixin, BaseCommand):
                 if desc := (description.split(":")[0] if description else None):
                     region_name = f'{region_name} - {desc}'
                 external_id = f'{row.County}-{row.jurisdicti}-{row.OBJECTID}'
-                region, created = Region.objects.import_or_update(
+                region, created = Region.all_objects.import_or_update(
                     name=region_name,
                     slug=slugify(region_name),
                     type=Region.Type.LAND_USE,

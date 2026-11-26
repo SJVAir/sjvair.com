@@ -11,152 +11,22 @@
 
 {% block guidelines_content %}
 <table class="table is-bordered is-fullwidth guidelines">
-    <thead>
-        <tr class="guidelines-header">
-            <th class="guidelines-label">Air Quality</th>
-            <th class="guidelines-level level-1">Good</th>
-            <th class="guidelines-level level-2">Moderate</th>
-            <th class="guidelines-level level-3">Unhealthy for Sensitive Groups</th>
-            <th class="guidelines-level level-4">Unhealthy</th>
-            <th class="guidelines-level level-5">Very Unhealthy</th>
-            <th class="guidelines-level level-6">Hazardous</th>
-        </tr>
-    </thead>
+    {% include 'pages/guidelines/_header.html' %}
     <tbody>
+        {% for row in activities %}
         <tr>
-            <th class="guidelines-label">Recess <br /> (15 minutes)</th>
-            <td class="guidelines-level level-1">
-                <p>No restrictions.</p>
+            <th class="guidelines-label">{{ row.activity.label }}{% if row.activity.duration %} <br /> ({{ row.activity.duration }}){% endif %}</th>
+            {% for sentences in row.cells %}
+            <td class="guidelines-level level-{{ forloop.counter }}">
+                {% for sentence in sentences %}
+                <p>{{ sentence }}</p>
+                {% endfor %}
             </td>
-            <td class="guidelines-level level-2">
-                <p>Ensure that sensitive individuals are medically managing their condition.</p>
-            </td>
-            <td class="guidelines-level level-3">
-                <p>Sensitive individuals should exercise indoors or avoid vigorous outdoor activities.</p>
-            </td>
-            <td class="guidelines-level level-4">
-                <p>Exercise indoors or avoid vigorous outdoor activities.</p>
-                <p>Sensitive individuals should remain indoors.</p>
-            </td>
-            <td class="guidelines-level level-5">
-                <p>No outdoor activity.</p>
-                <p>All activities should be moved indoors.</p>
-            </td>
-            <td class="guidelines-level level-6">
-                <p>No outdoor or indoor activities.</p>
-            </td>
+            {% endfor %}
         </tr>
-        <tr>
-            <th class="guidelines-label">P.E. <br /> (1 hour)</th>
-            <td class="guidelines-level level-1">
-                <p>No restrictions.</p>
-            </td>
-            <td class="guidelines-level level-2">
-                <p>Ensure that sensitive individuals are medically managing their condition.</p>
-            </td>
-            <td class="guidelines-level level-3">
-                <p>Sensitive individuals should exercise indoors or avoid vigorous outdoor activities.</p>
-            </td>
-            <td class="guidelines-level level-4">
-                <p>Exercise indoors or limit vigorous outdoor activities to a maximum of 15 minutes.</p>
-                <p>Sensitive individuals should remain indoors.</p>
-            </td>
-            <td class="guidelines-level level-5">
-                <p>No outdoor activity.</p>
-                <p>All activities should be moved indoors.</p>
-            </td>
-            <td class="guidelines-level level-6">
-                <p>No outdoor or indoor activities.</p>
-            </td>
-        </tr>
-        <tr>
-            <th class="guidelines-label">Athletic Practice &amp; Training <br /> (2-4 hours)</th>
-            <td class="guidelines-level level-1">
-                <p>No restrictions.</p>
-            </td>
-            <td class="guidelines-level level-2">
-                <p>Ensure that sensitive individuals are medically managing their condition.</p>
-            </td>
-            <td class="guidelines-level level-3">
-                <p>Reduce vigorous exercise to 30 min per hour of practice time with increased breaks and substitutions.</p>
-                <p>Ensure that sensitive individuals are medically managing their condition.</p>
-            </td>
-            <td class="guidelines-level level-4">
-                <p>Exercise indoors or reduce vigorous exercise to 30 minutes of practice time with increased rest breaks and substitutions.</p>
-                <p>Sensitive individuals should remain indoors.</p>
-            </td>
-            <td class="guidelines-level level-5">
-                <p>No outdoor activity.</p>
-                <p>All activities should be moved indoors.</p>
-            </td>
-            <td class="guidelines-level level-6">
-                <p>No outdoor or indoor activities.</p>
-            </td>
-        </tr>
-        <tr>
-            <th class="guidelines-label">Scheduled Sporting Events</th>
-            <td class="guidelines-level level-1">
-                <p>No restrictions.</p>
-            </td>
-            <td class="guidelines-level level-2">
-                <p>Ensure that sensitive individuals are medically managing their condition.</p>
-            </td>
-            <td class="guidelines-level level-3">
-                <p>Increase rest breaks and substitutions per CIF guidelines for extreme heat.</p>
-                <p>Ensure that sensitive individuals are medically managing their condition.</p>
-            </td>
-            <td class="guidelines-level level-4">
-                <p>Increase rest breaks and substitutions per CIF guidelines for extreme heat.</p>
-                <p>Ensure that sensitive individuals are medically managing their condition.</p>
-            </td>
-            <td class="guidelines-level level-5">
-                <p>No outdoor activity.</p>
-                <p>All activities should be moved indoors.</p>
-            </td>
-            <td class="guidelines-level level-6">
-                <p>No outdoor or indoor activities.</p>
-            </td>
-        </tr>
-        <tr>
-            <th class="guidelines-label">
-                <div>PM2.5</div>
-                <div>AQI</div>
-            </th>
-            <td class="guidelines-level level-1">
-                <div>0.0 – 9.0 &micro;g/m&sup3;</div>
-                <div>1 – 50</div>
-            </td>
-            <td class="guidelines-level level-2">
-                <div>9.1 – 35.4 &micro;g/m&sup3;</div>
-                <div>51 – 100</div>
-            </td>
-            <td class="guidelines-level level-3">
-                <div>35.5 – 55.4 &micro;g/m&sup3;</div>
-                <div>101 – 150</div>
-            </td>
-            <td class="guidelines-level level-4">
-                <div>55.5 – 125.4 &micro;g/m&sup3;</div>
-                <div>151 – 200</div>
-            </td>
-            <td class="guidelines-level level-5">
-                <div>125.5 – 225.4 &micro;g/m&sup3;</div>
-                <div>201 – 300</div>
-            </td>
-            <td class="guidelines-level level-6">
-                <div>&ge;225.5 &micro;g/m&sup3;</div>
-                <div>&ge;301</div>
-            </td>
-        </tr>
+        {% endfor %}
+        {% include 'pages/guidelines/_ranges.html' %}
     </tbody>
-    <tfoot>
-        <tr>
-            <td colspan="7">
-                <p>
-                    AQI is based on 24-hour average PM2.5 concentration.
-                    Guidelines are based on hourly PM2.5 concentration.
-                </p>
-            </td>
-        </tr>
-    </tfoot>
+    {% include 'pages/guidelines/_footer.html' %}
 </table>
 {% endblock %}

@@ -128,3 +128,51 @@ class TestPM25MultivariateLinearExpressionProcessor(BaseLinearProcessorTest):
 
         assert result is not None
         assert result.value == entry.value
+
+
+class TestOutOfRangeRegressionOutput(BaseLinearProcessorTest):
+    def run_processor(self, formula, value='10.0'):
+        self.create_calibration(
+            trainer=processors.PM25_UnivariateLinearRegression.name,
+            formula=formula,
+        )
+        entry = self.create_pm25_entry(value=D(value))
+        return entry, processors.PM25_UnivariateLinearRegression(entry=entry).run()
+
+    def test_overflowing_value_yields_no_entry(self):
+        entry, result = self.run_processor('pm25 * 90.36 + 99999')
+        assert result is None
+        assert PM25.objects.filter(monitor_id=self.colocated.pk, stage=PM25.Stage.CALIBRATED).count() == 0
+
+    def test_value_above_plausible_max_yields_no_entry(self):
+        entry, result = self.run_processor('pm25 * 200')  # 2000 > 1500
+        assert result is None
+
+    def test_negative_value_is_clamped_to_zero(self):
+        entry, result = self.run_processor('pm25 - 50')
+        assert result is not None
+        assert result.value == D('0')
+
+    def test_value_that_overflows_once_rounded_yields_no_entry(self):
+        # O3 has no plausible_range, so only the column limit applies.
+        # 999999.996 is under 10**6 but rounds to 1000000.00.
+        from types import SimpleNamespace
+        from camp.apps.calibrations.core.processors.ml.linear import LinearExpressionProcessor
+        from camp.apps.entries.models import O3
+
+        processor = LinearExpressionProcessor.__new__(LinearExpressionProcessor)
+        processor.entry = O3()
+        field = O3._meta.get_field('value')
+        limit = D(10) ** (field.max_digits - field.decimal_places)
+        assert processor.bound(limit - D('0.004')) is None
+        assert processor.bound(limit - D('0.006')) == limit - D('0.006')
+
+    def test_value_at_max_is_kept(self):
+        entry, result = self.run_processor('pm25 * 150')  # 1500
+        assert result is not None
+        assert result.value == D('1500')
+
+    def test_out_of_range_logs_warning(self):
+        with self.assertLogs('camp.apps.calibrations.core.processors.ml.linear', level='WARNING') as logs:
+            self.run_processor('pm25 * 200')
+        assert 'out-of-range' in logs.output[0]

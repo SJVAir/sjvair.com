@@ -40,7 +40,12 @@ urlpatterns = [
     path('tools/emissions/', include(('camp.apps.emissions.urls', 'emissions'), namespace='emissions')),
     path('app/', views.GetTheApp.as_view(), name='app'),
 
+    # The data dashboard (SJVAir/data-dashboard), embedded like monitor-map
+    path('', include('camp.apps.workspace.urls')),
+
     # @sjvair/monitor-map specific routes
+    path('guidelines/', views.GuidelinesPage.as_view(template_name='pages/guidelines/index.html'), name='guidelines'),
+    path('guidelines/schools/', views.GuidelinesPage.as_view(template_name='pages/guidelines/schools.html'), name='guidelines-schools'),
     path('monitor/<monitor_id>/', views.PageTemplate.as_view(template_name='pages/index.html')),
     path('widget/', views.RenderStatic.as_view(static_file='widget/index.html')),
 
@@ -68,8 +73,8 @@ urlpatterns += [path('system-status/', include(([
             # One check per huey queue: each has its own Redis database. A lambda,
             # not a partial, so the URL (and its password) never shows in a repr.
             *[
-                functools.partial(Redis, client_factory=lambda url=queue['connection']['url']: RedisClient.from_url(url))
-                for queue in settings.DJANGO_HUEY['queues'].values() if 'connection' in queue
+                functools.partial(Redis, client_factory=lambda url=url: RedisClient.from_url(url))
+                for url in settings.HUEY_REDIS_URLS.values() if url
             ],
         ],
         extra_context={'title': 'Infrastructure'},

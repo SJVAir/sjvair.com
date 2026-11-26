@@ -8,6 +8,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 import numpy as np
 
+from camp.apps.entries import levels
 from camp.apps.monitors.models import Group
 
 def hex_to_rgb(c):
@@ -32,15 +33,20 @@ def gradient(a, b, steps):
     return [intermediate(a, b, step) for step in steps][::-1]
 
 
-pm_colors = (
-    # EPA's 2024 PM2.5 AQI breakpoints (see entries.levels.PM25).
-    (0, 9.0, hex_to_rgb('78FA4C')),
-    (9.1, 35.4, hex_to_rgb('FFFE54')),
-    (35.5, 55.4, hex_to_rgb('D4712B')),
-    (55.5, 125.4, hex_to_rgb('C3281C')),
-    (125.5, 225.4, hex_to_rgb('66567E')),
-    (225.5, 999999, hex_to_rgb('653734')),
-)
+def _pm_colors():
+    # (low, high, rgb) per PM2.5 level; high is the next level's start minus 0.1.
+    tiers = list(levels.PM25)
+    return tuple(
+        (
+            float(level.value),
+            round(float(tiers[i + 1].value) - 0.1, 1) if i + 1 < len(tiers) else 999999,
+            hex_to_rgb(level.color.lstrip('#')),
+        )
+        for i, level in enumerate(tiers)
+    )
+
+
+pm_colors = _pm_colors()
 
 def pm_color(pm):
     pm = max(float(pm), 0)

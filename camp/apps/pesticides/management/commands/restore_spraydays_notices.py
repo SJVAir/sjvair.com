@@ -8,6 +8,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils.dateparse import parse_datetime
 
+from camp.apps.pesticides import stats
 from camp.apps.pesticides.models import Chemical, PesticideNotice, Product
 from camp.apps.pesticides.spraydays import _MTRS_RE
 from camp.apps.regions.models import Region
@@ -54,12 +55,12 @@ class SectionFinder:
     def __init__(self):
         self.counties = {
             metadata.get('ca_county_code'): pk
-            for pk, metadata in Region.objects.filter(type=Region.Type.COUNTY).values_list('pk', 'metadata')
+            for pk, metadata in Region.all_objects.filter(type=Region.Type.COUNTY).values_list('pk', 'metadata')
             if metadata
         }
         # (township, N/S, range, E/W, section) -> [(meridian letter, pk)]
         self.sections = defaultdict(list)
-        for pk, external_id in Region.objects.filter(type=Region.Type.MTRS).values_list('pk', 'external_id'):
+        for pk, external_id in Region.all_objects.filter(type=Region.Type.MTRS).values_list('pk', 'external_id'):
             match = _MTRS_RE.match(external_id or '')
             if match:
                 township, ns, range_, ew, section = match.groups()
@@ -81,7 +82,7 @@ class SectionFinder:
             return candidates[0][1]
         if candidates and point is not None:
             # The same township/range/section under two meridians: the one the pin is in.
-            return Region.objects.filter(
+            return Region.all_objects.filter(
                 pk__in=[pk for _, pk in candidates], boundary__geometry__covers=point,
             ).values_list('pk', flat=True).first()
         return None
@@ -149,6 +150,9 @@ class Command(BaseCommand):
                 missing_products.update(code for code in product_codes if code not in products)
                 missing_chemicals.update(code for code in chemical_codes if code not in chemicals)
                 created += 1
+
+        if created:
+            stats.bump_notices_version()
 
         self.stdout.write(f'Restored {created} notices; skipped {skipped} already present.')
         if unplaced:

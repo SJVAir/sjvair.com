@@ -1,8 +1,10 @@
 import yaml
 
-from django.contrib import admin, messages
+from django.conf import settings
+from django.contrib import admin
 from django.contrib.gis.admin import GISModelAdmin
 from django.template.loader import render_to_string
+from django.utils import timezone
 from django.utils.safestring import mark_safe
 
 from camp.apps.entries import models as entry_models
@@ -14,6 +16,24 @@ from camp.utils.admin import MapFigureMixin, ReadOnlyAdminMixin
 
 # Marker outline for SJVAir-owned monitors on the region map.
 SJVAIR_BORDER = '#0a84ff'
+
+# The only fields RegionAdmin edits; everything else comes from imports.
+RETIREMENT_FIELDS = ['retired_at', 'replaced_by']
+
+
+class RetiredFilter(admin.SimpleListFilter):
+    title = 'retired'
+    parameter_name = 'retired'
+
+    def lookups(self, request, model_admin):
+        return [('yes', 'Yes'), ('no', 'No')]
+
+    def queryset(self, request, queryset):
+        if self.value() == 'yes':
+            return queryset.filter(retired_at__isnull=False)
+        if self.value() == 'no':
+            return queryset.filter(retired_at__isnull=True)
+        return queryset
 
 
 class CountyFilter(admin.SimpleListFilter):
@@ -33,7 +53,7 @@ class CountyFilter(admin.SimpleListFilter):
             return queryset
         try:
             county = (
-                Region.objects
+                Region.all_objects
                 .select_related('boundary')
                 .get(pk=self.value(), type=Region.Type.COUNTY)
             )
@@ -42,7 +62,7 @@ class CountyFilter(admin.SimpleListFilter):
         return queryset.filter(boundary__geometry__intersects=county.boundary.geometry)
 
 
-class BoundaryInline(MapFigureMixin, admin.TabularInline):
+class BoundaryInline(MapFigureMixin, ReadOnlyAdminMixin, admin.TabularInline):
     model = Boundary
     readonly_fields = ['get_map', 'get_info']
     extra = 0
@@ -82,8 +102,8 @@ class BoundaryInline(MapFigureMixin, admin.TabularInline):
 @admin.register(Region)
 class RegionAdmin(MapFigureMixin, ReadOnlyAdminMixin, GISModelAdmin):
     inlines = [BoundaryInline]
-    list_display = ['name', 'sqid', 'type', 'external_id', 'current_version', 'monitor_count']
-    list_filter = ['type', CountyFilter, 'boundary__version']
+    list_display = ['name', 'sqid', 'type', 'external_id', 'current_version', 'monitor_count', 'retired_at']
+    list_filter = ['type', RetiredFilter, CountyFilter, 'boundary__version']
     # The monitor map is rendered by the change form itself (beside the tiles);
     # see admin/regions/region/change_form.html.
     fieldsets = [
@@ -91,8 +111,32 @@ class RegionAdmin(MapFigureMixin, ReadOnlyAdminMixin, GISModelAdmin):
             'classes': ['collapse'],
             'fields': ['name', 'sqid', 'slug', 'external_id', 'type', 'boundary', 'get_metadata', 'get_overview_map'],
         }),
+        ('Retirement', {
+            'fields': RETIREMENT_FIELDS,
+        }),
     ]
+    raw_id_fields = ['replaced_by']
     search_fields = ['name', 'external_id']
+    actions = ['retire_today', 'unretire']
+
+    def has_change_permission(self, request, obj=None):
+        # ReadOnlyAdminMixin refuses every change; retirement is the one
+        # edit allowed (get_readonly_fields locks the rest), so skip it here.
+        return super(ReadOnlyAdminMixin, self).has_change_permission(request, obj)
+
+    def get_readonly_fields(self, request, obj=None):
+        return [field for _, options in self.fieldsets for field in options['fields'] if field not in RETIREMENT_FIELDS]
+
+    @admin.action(description='Retire today', permissions=['change'])
+    def retire_today(self, request, queryset):
+        today = timezone.localdate(timezone=settings.DEFAULT_TIMEZONE)
+        count = queryset.filter(retired_at__isnull=True).update(retired_at=today)
+        self.message_user(request, f'Retired {count} region(s) as of {today}.')
+
+    @admin.action(description='Un-retire', permissions=['change'])
+    def unretire(self, request, queryset):
+        count = queryset.filter(retired_at__isnull=False).update(retired_at=None, replaced_by=None)
+        self.message_user(request, f'Un-retired {count} region(s).')
 
     def get_search_results(self, request, queryset, search_term):
         """
@@ -106,7 +150,7 @@ class RegionAdmin(MapFigureMixin, ReadOnlyAdminMixin, GISModelAdmin):
         results, may_have_duplicates = super().get_search_results(request, queryset, search_term)
         term = (search_term or '').strip()
         if term:
-            pk = self.model.objects.filter(sqid=term).values_list('pk', flat=True).first()
+            pk = Region.all_objects.filter(sqid=term).values_list('pk', flat=True).first()
             if pk is not None:
                 results = results | queryset.filter(pk=pk)
         return results, may_have_duplicates
@@ -164,11 +208,15 @@ class RegionAdmin(MapFigureMixin, ReadOnlyAdminMixin, GISModelAdmin):
     get_metadata.short_description = 'Metadata'
 
     def save_model(self, request, obj, form, change):
-        messages.add_message(request, messages.WARNING, "The next message is a lie:")
+        obj.save(update_fields=RETIREMENT_FIELDS)
+
+    def save_related(self, request, form, formsets, change):
+        # The boundary inline is display-only; boundaries come from imports.
         pass
 
-    def save_formset(self, request, form, formset, change):
-        pass
+    def construct_change_message(self, request, form, formsets, add=False):
+        # The inline formsets were never saved, so they have no changes to report.
+        return super().construct_change_message(request, form, None, add)
 
     def get_overview_map(self, instance):
         if not instance or not instance.boundary:
@@ -268,11 +316,11 @@ class RegionAdmin(MapFigureMixin, ReadOnlyAdminMixin, GISModelAdmin):
 
 @admin.register(Location)
 class LocationAdmin(GISModelAdmin):
-    list_display = ('name', 'type', 'get_city', 'get_county')
-    list_filter = ('type', 'source')
+    list_display = ('name', 'type', 'get_city', 'get_county', 'retired_at')
+    list_filter = ('type', 'source', RetiredFilter)
     list_select_related = ('county', 'city', 'zipcode', 'school_district')
     search_fields = ('name', 'external_id', 'city_name')
-    raw_id_fields = ('county', 'city', 'zipcode', 'school_district')
+    raw_id_fields = ('county', 'city', 'zipcode', 'school_district', 'replaced_by')
 
     @admin.display(description='City', ordering='city__name')
     def get_city(self, instance):

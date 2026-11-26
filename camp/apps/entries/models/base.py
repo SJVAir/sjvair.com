@@ -37,9 +37,12 @@ def reuse_monitor(monitor):
 class BaseEntry(models.Model):
     epa_aqs_code = None
     units = None
+    description = None
     summarize = False
     Stage = stages.Stage
     Levels = None
+    # (min, max) a processed value must fall within to be saved; None = unbounded.
+    plausible_range = None
 
     id = SmallUUIDField(
         default=uuid_default(),
@@ -147,6 +150,17 @@ class BaseEntry(models.Model):
     def level(self):
         if self.Levels and getattr(self, 'value', None) is not None:
             return self.Levels.get_level(self.value)
+
+    @property
+    def is_recent(self):
+        '''
+        Whether this entry is within its monitor's LAST_ACTIVE_LIMIT, which
+        each subclass sets. The lazy FK loads the subclass (Monitor's base
+        manager selects subclasses) at a query per entry; select_related
+        loads the base Monitor and its 1-hour limit. For many entries, set
+        `monitor` to the loaded instance first, as with_latest_entry does.
+        '''
+        return self.monitor.is_recent(self.timestamp)
 
     @property
     def timestamp_local(self):

@@ -1,0 +1,71 @@
+import json
+
+
+from django.middleware.csrf import get_token
+from django.test import Client, TestCase
+
+from camp.apps.documents.models import SavedDocument
+
+from .helpers import BASE, account_id, body, make_user
+
+
+class SessionCsrfTests(TestCase):
+    # Never skipped: the document endpoints are under Django's CsrfViewMiddleware
+    # whatever resticus is installed (NoStoreMixin.dispatch doesn't carry resticus's
+    # csrf_exempt), and these tests are what keeps them there.
+    def setUp(self):
+        self.user = make_user(1)
+        self.client = Client(enforce_csrf_checks=True)
+        self.client.force_login(self.user)
+
+    def put(self, **headers):
+        payload = {
+            'kind': 'dashboard', 'schema_version': 1, 'name': None, 'body': body(),
+            'deleted_at': None, 'copied_from': None, 'base_version': None, 'changes': [],
+            'account_id': account_id(self.client), 'build_id': 'test-build', 'snapshot': None,
+        }
+        return self.client.put(
+            f'{BASE}doc/', json.dumps(payload), content_type='application/json', **headers
+        )
+
+    def test_session_save_without_csrf_refused(self):
+        assert self.put().status_code == 403
+
+    def token(self):
+        # A GET sets the csrftoken cookie; its value is the header token.
+        self.client.get(f'{BASE}')
+        token = self.client.cookies.get('csrftoken')
+        if token is None:
+            from django.http import HttpRequest
+            request = HttpRequest()
+            request.COOKIES = {}
+            token = get_token(request)
+        else:
+            token = token.value
+        self.client.cookies['csrftoken'] = token
+        return token
+
+    def test_session_save_with_csrf_accepted(self):
+        assert self.put(HTTP_X_CSRFTOKEN=self.token()).status_code == 200
+
+    def post_snapshot(self, **headers):
+        SavedDocument.objects.get_or_create(
+            id='doc', defaults={
+                'owner': self.user, 'kind': 'dashboard', 'body': {}, 'size': 2,
+                'schema_version': 1, 'version': 1,
+            },
+        )
+        payload = {
+            'base_version': 1, 'schema_version': 1, 'name': None, 'body': body(),
+            'account_id': account_id(self.client), 'build_id': 'test-build',
+        }
+        return self.client.post(
+            f'{BASE}doc/snapshots/', json.dumps(payload), content_type='application/json',
+            **headers,
+        )
+
+    def test_session_snapshot_post_without_csrf_refused(self):
+        assert self.post_snapshot().status_code == 403
+
+    def test_session_snapshot_post_with_csrf_accepted(self):
+        assert self.post_snapshot(HTTP_X_CSRFTOKEN=self.token()).status_code == 201

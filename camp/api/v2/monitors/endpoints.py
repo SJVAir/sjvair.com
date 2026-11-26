@@ -11,15 +11,20 @@ from resticus.views import Endpoint
 from django import forms
 from django.conf import settings
 from django.contrib.gis.db.models.functions import Distance
+from django.db.models import Exists, OuterRef, Q
 from django.http import Http404, HttpResponse, StreamingHttpResponse
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
 from django.views.decorators.csrf import csrf_exempt
 
+from camp.apps.alerts.evaluator import AlertEvaluator
+from camp.apps.entries.guidelines import school_guidelines_json
 from camp.apps.entries.models import BaseEntry, PM25
+from camp.apps.entries.stages import STAGE_DESCRIPTIONS, Stage
 from camp.apps.entries.tasks import data_export
 from camp.apps.entries.utils import get_entry_model_by_name
-from camp.apps.monitors.models import Monitor
+from camp.apps.monitors.models import LatestEntry, Monitor
 from camp.utils.forms import LatLonForm
 from camp.utils.datetime import make_aware
 from camp.utils.views import CachedEndpointMixin
@@ -37,8 +42,7 @@ class MonitorMixin:
     def get_queryset(self):
         queryset = (super()
             .get_queryset()
-            .select_related('health')
-            .prefetch_related('latest_entries')
+            .select_related('health', 'airgradient__place')
             .with_last_entry_timestamp()
         )
 
@@ -83,15 +87,53 @@ class MonitorList(CachedEndpointMixin, MonitorMixin, generics.ListEndpoint):
 
     cache_refresh = True
     cache_refresh_name = 'api:v2:monitors:monitor-list'
+    cache_encoded = True
+    cache_key_version = 1  # entries are encoded bytes, not data
     cache_timeout = 90
 
     filter_class = MonitorFilter
     paginate = False
     streaming = True
 
+    def get(self, request, *args, **kwargs):
+        # Validated ahead of the cache so an error is never stored or served as data.
+        dataset = request.GET.get('dataset')
+        if dataset is not None and dataset not in self.get_datasets():
+            response = http.Http400({'error': f'Unknown dataset: {dataset}.'})
+            response['Cache-Control'] = 'no-cache'
+            return response
+        return super().get(request, *args, **kwargs)
+
+    def get_datasets(self):
+        return {'air-quality', *settings.MONITOR_OPT_IN_TYPES.values()}
+
+    def get_cache_key_params(self):
+        # ?dataset=air-quality is the default list (the catalog links it), so
+        # it reads the same prewarmed entry as the bare URL.
+        params = super().get_cache_key_params()
+        if params.get('dataset') == 'air-quality':
+            params.pop('dataset')
+        return params
+
     def get_queryset(self):
         queryset = super().get_queryset()
-        queryset = queryset.get_public()
+        dataset = self.request.GET.get('dataset')
+        if dataset in settings.MONITOR_OPT_IN_TYPES.values():
+            lookup = Q()
+            for subclass in Monitor.get_opt_in_subclasses(dataset):
+                lookup |= Q(**subclass.type_queryset_filter())
+            # An empty Q() filters nothing: a dataset with no registered type lists none.
+            if not lookup:
+                return queryset.none()
+            queryset = queryset.filter(is_hidden=False).filter(lookup)
+        else:
+            queryset = queryset.get_public()
+
+        # ?region=<sqid>, repeatable: monitors in any of them. An unknown id is a 404
+        # (never cached); blank values are ignored.
+        region_ids = [value for value in self.request.GET.getlist('region') if value.strip()]
+        if region_ids:
+            queryset = queryset.scope_to(region_ids=region_ids)
         return queryset
 
 
@@ -105,17 +147,15 @@ class MonitorMetaEndpoint(Endpoint):
             return display
         return 'pm25'
 
-    def get_monitors(self):
+    def get_monitors(self, published):
         payload = {}
-
-        from camp.apps.calibrations.models import DefaultCalibration
-        published = set(DefaultCalibration.objects.values_list('monitor_type', 'entry_type'))
 
         monitor_subclasses = sorted(Monitor.get_enabled_subclasses(), key=lambda c: c.monitor_type)
         for monitor_model in monitor_subclasses:
             payload[monitor_model.monitor_type] = {
                 'label': monitor_model._meta.verbose_name,
                 'type': monitor_model.monitor_type,
+                'group': getattr(monitor_model.get_grade_group(), 'value', None),
                 'expected_interval': getattr(monitor_model, 'EXPECTED_INTERVAL', None),
                 'entries': {},
             }
@@ -132,28 +172,97 @@ class MonitorMetaEndpoint(Endpoint):
                         stage: sorted([proc.name for proc in processors])
                         for stage, processors
                         in config.get('processors', {}).items()
-                    }
+                    },
+                    'alerts': self.get_alerts(monitor_model, entry_model),
                 }
         return payload
 
-    def get_entries(self):
+    def get_alerts(self, monitor_model, entry_model):
+        """The series the SMS alert run evaluates for this pair, or None."""
+        config = monitor_model.alertable_entry_types.get(entry_model)
+        if config is None:
+            return None
+        lookup, expected_interval = AlertEvaluator.split_config(config)
+        processor = lookup.get('processor')
+        stage = lookup.get('stage')
+        return {
+            'window': f'{int(AlertEvaluator.WINDOW.total_seconds() // 60)} min',
+            'min_coverage': AlertEvaluator.MIN_COVERAGE,
+            'stage': getattr(stage, 'value', stage),
+            'processor': processor.name if processor else None,
+            'expected_interval': expected_interval,
+        }
+
+    def get_scale(self, entry_model):
+        if entry_model.Levels is None:
+            return None
+        scale = entry_model.Levels.to_scale(
+            id=entry_model.entry_type,
+            label=entry_model.label,
+            units=entry_model.units or '',
+        )
+        return scale.to_json()
+
+    def get_monitor_groups(self):
+        return {
+            group.value: {
+                'key': group.value,
+                'label': str(group.label),
+                'order': order,
+            }
+            for order, group in enumerate(Monitor.GradeGroup)
+        }
+
+    def get_stages(self):
+        return {
+            stage.value: {
+                'key': stage.value,
+                'label': str(stage.label),
+                'description': STAGE_DESCRIPTIONS[stage],
+            }
+            for stage in Stage
+        }
+
+    def get_processors(self):
+        processors = {}
+        for monitor_model in Monitor.get_enabled_subclasses():
+            for config in monitor_model.ENTRY_CONFIG.values():
+                for stage_processors in config.get('processors', {}).values():
+                    for proc in stage_processors:
+                        processors[proc.name] = {
+                            'key': proc.name,
+                            'label': getattr(proc, 'label', '') or proc.name,
+                            'description': getattr(proc, 'description', ''),
+                        }
+        return dict(sorted(processors.items()))
+
+    def get_entries(self, request):
+        school_guidelines = school_guidelines_json(request)
         payload = {}
         for entry_model in BaseEntry.get_subclasses():
             payload[entry_model.entry_type] = {
                 'label': entry_model.label,
                 'type': entry_model.entry_type,
                 'units': entry_model.units,
+                'description': str(entry_model.description) if entry_model.description is not None else None,
                 'epa_aqs_code': entry_model.epa_aqs_code,
-                'levels': entry_model.Levels.as_dict() if entry_model.Levels else None,
+                'scale': self.get_scale(entry_model),
+                'school_guidelines': school_guidelines if entry_model.entry_type == 'pm25' else None,
                 'fields': ['timestamp', 'sensor', 'stage', 'processor'] + entry_model.declared_field_names,
             }
         return payload
 
     def get(self, request, *args, **kwargs):
+        from camp.apps.calibrations.models import DefaultCalibration
+        published = DefaultCalibration.objects.published_pairs()
         return {'data': {
             'default_pollutant': self.get_default_pollutant(),
-            'monitors': self.get_monitors(),
-            'entries': self.get_entries()
+            'available_pollutants': DefaultCalibration.objects.available_pollutants(published),
+            'monitor_groups': self.get_monitor_groups(),
+            'monitors': self.get_monitors(published),
+            'entries': self.get_entries(request),
+            'stages': self.get_stages(),
+            'processors': self.get_processors(),
         }}
 
 
@@ -307,33 +416,40 @@ class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
         if not form.is_valid():
             return self.model.objects.none()
 
-        queryset = (super()
-            .get_queryset()
-            .get_active()
+        # Everything up to the slice stays in SQL, so only the 3 nearest
+        # monitors are ever loaded. Active is an EXISTS, not
+        # get_active()'s join + DISTINCT: that join repeats each monitor once
+        # per LatestEntry row, and the inflated row estimate pushed the plan
+        # over Postgres' JIT threshold (~400 ms of JIT per request).
+        cutoff = timezone.now() - timedelta(seconds=Monitor.LAST_ACTIVE_LIMIT)
+        is_active = Exists(LatestEntry.objects.filter(monitor_id=OuterRef('pk'), timestamp__gte=cutoff))
+
+        queryset = (self.model.objects
+            .select_related('health', 'airgradient__place')
+            .with_last_entry_timestamp()
+            .filter(is_active)
             .get_public()
             .published_for(self.entry_model)
             .filter(location=Monitor.LOCATION.outside)
+            .annotate_latest_entry(self.entry_model)
             .annotate(distance=Distance('position', form.point, spheroid=True))
-            .order_by('distance')
+            .order_by('distance', 'id')
         )
-        # Apply filters (e.g. ?device=) before limiting to the 3 nearest
-        # and before with_latest_entry() - both matter: filtering after the
-        # slice would wrongly exclude a matching monitor just outside the
-        # raw top 3, and with_latest_entry() sets `latest_<type>`/`distance`
-        # by mutating the fetched instances in place, which a later
-        # .filter() call would silently lose (Django clones the queryset,
-        # discarding that in-memory state). Not using filter_class here
+        # Apply filters (e.g. ?device=) before limiting to the 3 nearest:
+        # filtering after the slice would wrongly exclude a matching monitor
+        # just outside the raw top 3. Not using filter_class here
         # deliberately - the base ListModelMixin would call filter_queryset()
-        # a second time after get_queryset() returns, right where it would
-        # do that damage.
+        # a second time after get_queryset() returns, on the evaluated list.
         queryset = MonitorFilter(self.request.GET, queryset=queryset).qs
-        queryset = queryset.with_latest_entry(self.entry_model)
 
-        return queryset[:3]
+        return queryset.attach_latest_entries(list(queryset[:3]), self.entry_model)
 
     def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
         entry_type = self.entry_model.entry_type
         include = [
+            # Active for this entry type: a monitor whose PM2.5 stopped while
+            # its O3 keeps arriving is inactive for PM2.5.
+            ('is_active', lambda monitor: monitor.latest_entry is not None and monitor.latest_entry.is_recent),
             ('distance', lambda monitor: monitor.distance.ft),
             ('latest', lambda monitor: EntrySerializer(getattr(monitor, f'latest_{entry_type}')).serialize()),
         ]
@@ -346,6 +462,10 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
     cache_refresh = True
     cache_refresh_kwargs = [{'entry_type': E.entry_type} for E in BaseEntry.get_subclasses()]
     cache_refresh_name = 'api:v2:monitors:current-data'
+    cache_encoded = True
+    # 1: entries are encoded bytes, not data. 2: is_active is for the entry
+    # type, and latest is the published reading (Monitor.choose_latest_entry).
+    cache_key_version = 2
     cache_timeout = 90
 
     paginate = False
@@ -360,10 +480,14 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
             .filter(position__isnull=False)
         )
 
-        # Only monitors that are recently active...
-        queryset = queryset.get_active(timedelta(
-            days=settings.MONITOR_ACTIVE_WINDOW_DAYS
-        ).total_seconds())
+        # Only monitors that are recently active. An EXISTS, not
+        # get_active()'s join + DISTINCT: that join repeats each monitor once
+        # per LatestEntry row, and the inflated row estimate pushed the plan
+        # over Postgres' JIT threshold (~400-500 ms of JIT per run).
+        cutoff = timezone.now() - timedelta(days=settings.MONITOR_ACTIVE_WINDOW_DAYS)
+        queryset = queryset.filter(Exists(
+            LatestEntry.objects.filter(monitor_id=OuterRef('pk'), timestamp__gte=cutoff)
+        )).order_by('name', 'id')  # Meta.ordering, with the id tiebreak the DISTINCT's sort gave
 
         # ...and, for PM2.5, recently healthy. Health checks score the
         # dual-channel PM2.5 sensors only, so they don't gate other
@@ -386,7 +510,11 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
         return queryset
 
     def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
-        include = [('latest', lambda monitor: EntrySerializer(monitor.latest_entry).serialize())]
+        include = [
+            # Active for this entry type (see ClosestMonitor.serialize).
+            ('is_active', lambda monitor: monitor.latest_entry is not None and monitor.latest_entry.is_recent),
+            ('latest', lambda monitor: EntrySerializer(monitor.latest_entry).serialize()),
+        ]
         return super().serialize(source, fields, include, exclude, fixup)
 
 

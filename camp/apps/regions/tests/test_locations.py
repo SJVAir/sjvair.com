@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.contrib.gis.geos import Point
 from django.test import TestCase
 from django.urls import reverse
@@ -307,3 +309,46 @@ class LocationAccessorTests(TestCase):
             point=self.point,
         )
         assert location.get_pesticides_url() == ''
+
+
+class LocationRetirementTests(TestCase):
+    def setUp(self):
+        self.location = Location.objects.create(
+            type=Location.Type.CHILD_CARE, name='Little Sprouts', source='cdss-ccl',
+            external_id='100400105', point=Point(-119.79, 36.71, srid=4326),
+            metadata={'facility_numbers': ['100400105', '100400210']},
+        )
+
+    def test_retired_locations_are_hidden_from_objects(self):
+        self.location.retire(date(2026, 10, 1))
+        assert not Location.objects.filter(pk=self.location.pk).exists()
+        assert Location.all_objects.filter(pk=self.location.pk).exists()
+
+    def test_default_and_base_managers_include_retired(self):
+        self.location.retire(date(2026, 10, 1))
+        assert Location._default_manager.filter(pk=self.location.pk).exists()
+        assert Location._base_manager.filter(pk=self.location.pk).exists()
+
+    def test_both_managers_keep_the_queryset_methods(self):
+        assert hasattr(Location.objects.all(), 'one_per_place')
+        assert hasattr(Location.all_objects.all(), 'one_per_place')
+
+    def test_retire_records_replacement_and_unretire_clears_it(self):
+        other = Location.objects.create(
+            type=Location.Type.CHILD_CARE, name='Little Sprouts II', source='cdss-ccl',
+            external_id='100400300', point=Point(-119.79, 36.72, srid=4326),
+        )
+        self.location.retire(date(2026, 10, 1), replaced_by=other)
+        self.location.refresh_from_db()
+        assert self.location.is_retired
+        assert self.location.retired_at == date(2026, 10, 1)
+        assert list(other.replaces.all()) == [self.location]
+
+        self.location.unretire()
+        self.location.refresh_from_db()
+        assert not self.location.is_retired
+        assert self.location.replaced_by is None
+
+    def test_facility_numbers(self):
+        assert self.location.facility_numbers == ['100400105', '100400210']
+        assert Location(metadata={}).facility_numbers == []

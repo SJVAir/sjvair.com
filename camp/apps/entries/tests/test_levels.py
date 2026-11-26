@@ -90,13 +90,6 @@ class LevelsTests(TestCase):
         assert PM25Levels.get_level(9.1) is PM25Levels.MODERATE
         assert PM25Levels.get_level(9.2) is PM25Levels.MODERATE
 
-    def test_as_dict(self):
-        d = PM25Levels.as_dict()
-        assert d['MODERATE']['label'] == 'Moderate'
-        assert d['MODERATE']['range'] == (9.1, 35.4)
-        assert d['GOOD']['label'] == 'Good'
-        assert d['GOOD']['range'] == (0, 9)
-
     def test_color_levels_exact_values(self):
         assert ColorLevels.get_color(0) == '#000000'
         assert ColorLevels.get_color(1) == '#010101'

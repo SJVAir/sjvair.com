@@ -1,0 +1,12 @@
+<tr>
+    <th class="guidelines-label">
+        <div>PM2.5</div>
+        <div>AQI</div>
+    </th>
+    {% for column in columns %}
+    <td class="guidelines-level level-{{ forloop.counter }}">
+        <div>{{ column.pm25_range }} {{ pm25_units }}</div>
+        <div>{{ column.aqi_range }}</div>
+    </td>
+    {% endfor %}
+</tr>

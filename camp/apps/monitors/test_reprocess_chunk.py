@@ -241,8 +241,10 @@ class ReprocessQueryBudgetTests(ReprocessChunkTestCase):
     count = 30
 
     # Measured 24.5 per RAW PM2.5 entry after the reprocess optimizations
-    # (31.4 before); bound has ~20% headroom.
-    MAX_QUERIES_PER_ENTRY = 29.5
+    # (31.4 before), then 38.3 once each processor run and each processor
+    # save got its own savepoint (failure isolation and the save race, from
+    # main): ~18 of the 38 are SAVEPOINT/RELEASE pairs. Bound has ~20% headroom.
+    MAX_QUERIES_PER_ENTRY = 46
 
     def test_queries_per_raw_pm25_entry(self):
         self.make_raw_entries()

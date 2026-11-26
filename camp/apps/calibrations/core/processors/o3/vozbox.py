@@ -7,6 +7,10 @@ from camp.apps.calibrations.core.processors.ml.linear import LinearExpressionPro
 
 @processors.register()
 class O3_VOZBox(LinearExpressionProcessor):
+    label = "VOZBox ozone calibration"
+    description = (
+        "Adjusts raw VOZBox ozone using a fit that accounts for temperature and humidity."
+    )
     entry_model = O3
     required_stage = O3.Stage.RAW
     next_stage = O3.Stage.CALIBRATED
@@ -24,6 +28,10 @@ class VOZBox_QuinnCal:
     update_latest_entry recognizes it as the display value, instead of
     writing these entries with a blank/anonymous processor.
     """
+    label = "Manufacturer calibration (QuinnResearch)"
+    description = (
+        "Ozone calibrated by the data provider, QuinnResearch, and recorded here as received."
+    )
     name = 'VOZBox_QuinnCal'
     entry_model = O3
     next_stage = O3.Stage.CALIBRATED

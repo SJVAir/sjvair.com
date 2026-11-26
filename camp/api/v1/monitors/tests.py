@@ -1,3 +1,4 @@
+from datetime import timedelta
 from decimal import Decimal
 
 from django.test import TestCase, RequestFactory
@@ -112,6 +113,14 @@ class EndpointTests(TestCase):
             'BP(mmHg)': '764.5',
             'ConcHR(ug/m3)': '24',
         }
+        # Two prior hours, so the BAM cleaner's no-history holdoff doesn't drop
+        # it; relative to the stored time (the handler reads `Time` as Pacific).
+        stored = parse_datetime(payload['Time'])
+        for hours in (1, 2):
+            entry_models.PM25.objects.create(
+                monitor=monitor, timestamp=stored - timedelta(hours=hours),
+                value=Decimal('10'), stage=entry_models.PM25.Stage.RAW,
+            )
         legacy_count = Entry.objects.filter(monitor=monitor).count()
 
         response, content = self._post_entry(monitor, payload)

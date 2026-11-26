@@ -8,6 +8,8 @@ from django.utils import timezone
 from decimal import Decimal
 from unittest.mock import patch
 
+import pytest
+
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.models import LatestEntry, Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
@@ -343,6 +345,153 @@ class CreateEntryUpsertTests(TestCase):
 
         assert updated is not None
         assert entry_models.Pressure.objects.get(pk=updated.pk).value == Decimal('750.06')
+
+
+class CreateEntryRaceTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def test_integrity_error_on_save_falls_back_to_upsert(self):
+        monitor = PurpleAir.objects.get(sensor_id=8892)
+        kwargs = dict(
+            timestamp='2025-04-27T00:00:00Z', sensor='a',
+            stage=entry_models.PM25.Stage.RAW,
+        )
+        original = monitor.create_entry(entry_models.PM25, value=Decimal('12.0'), **kwargs)
+
+        # Simulate the race: the existence check passes, but the row exists by insert time.
+        with patch.object(entry_models.PM25, 'validation_check', return_value=True):
+            updated = monitor.create_entry(entry_models.PM25, value=Decimal('99.0'), **kwargs)
+
+        assert updated is not None
+        assert updated.pk == original.pk
+        assert entry_models.PM25.objects.filter(monitor=monitor).count() == 1
+        original.refresh_from_db()
+        assert original.value == Decimal('99.0')
+
+    def test_integrity_error_with_unchanged_value_returns_none(self):
+        monitor = PurpleAir.objects.get(sensor_id=8892)
+        kwargs = dict(
+            timestamp='2025-04-27T00:00:00Z', sensor='a',
+            stage=entry_models.PM25.Stage.RAW, value=Decimal('12.0'),
+        )
+        monitor.create_entry(entry_models.PM25, **kwargs)
+        with patch.object(entry_models.PM25, 'validation_check', return_value=True):
+            assert monitor.create_entry(entry_models.PM25, **kwargs) is None
+
+
+    def test_other_integrity_errors_are_not_treated_as_a_race(self):
+        # A NOT NULL / FK / check violation is a real failure; falling
+        # through to the upsert would hide it behind a DoesNotExist.
+        from django.db import IntegrityError
+
+        monitor = PurpleAir.objects.get(sensor_id=8892)
+        with patch.object(entry_models.PM25, 'save', side_effect=IntegrityError('not null')):
+            with pytest.raises(IntegrityError):
+                monitor.create_entry(
+                    entry_models.PM25, timestamp='2025-04-27T00:00:00Z', sensor='a',
+                    stage=entry_models.PM25.Stage.RAW, value=Decimal('12.0'),
+                )
+
+
+class ProcessorSaveRaceTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def test_losing_the_save_race_continues_from_the_saved_entry(self):
+        # Two runs of the same processor both pass validation_check; the
+        # second insert hits the unique index and carries on from the
+        # first run's entry instead of raising.
+        from camp.apps.calibrations import processors
+
+        monitor = PurpleAir.objects.get(sensor_id=8892)
+        raw = monitor.create_entry(
+            entry_models.PM25, timestamp='2025-04-27T00:00:00Z',
+            sensor='a', stage=entry_models.PM25.Stage.RAW, value=Decimal('12.0'),
+        )
+        first = processors.PM25_LCS_Correction(raw).run()
+        with patch.object(entry_models.PM25, 'validation_check', return_value=True):
+            second = processors.PM25_LCS_Correction(raw).run()
+
+        assert second is not None
+        assert second.pk == first.pk
+        assert entry_models.PM25.objects.filter(
+            monitor=monitor, stage=entry_models.PM25.Stage.CORRECTED).count() == 1
+
+
+class UpdateLatestEntryPublishedTests(TestCase):
+    '''
+    update_latest_entry keeps the pointers choose_latest_entry picks from:
+    the default stage and the published reading, nothing else.
+    '''
+    fixtures = ['purple-air.yaml', 'default-calibrations.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+
+    def _calibrated(self, processor):
+        entry = entry_models.PM25.objects.create(
+            monitor=self.monitor, timestamp=timezone.now(), sensor='', processor=processor,
+            stage=entry_models.PM25.Stage.CALIBRATED, value=Decimal('10.0'),
+            location=self.monitor.location,
+        )
+        self.monitor.update_latest_entry(entry)
+        return self.monitor.latest_entries.filter(processor=processor).exists()
+
+    def test_published_calibration_is_tracked(self):
+        assert self._calibrated('PM25_EPA_Oct2021')
+
+    def test_unpublished_calibration_is_not_tracked(self):
+        assert not self._calibrated('PM25_UnivariateLinearRegression')
+
+    def test_blank_default_calibration_tracks_no_calibration(self):
+        # Blank publishes the default stage (cleaned); get_default_calibration
+        # would fall back to the first cleaned-stage processor instead.
+        from camp.apps.calibrations.models import DefaultCalibration
+        DefaultCalibration.objects.filter(monitor_type='purpleair', entry_type='pm25').update(calibration='')
+        assert not self._calibrated('PM25_UnivariateLinearRegression')
+
+
+class ProcessEntryIsolationTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def test_failing_processor_does_not_block_later_processors(self):
+        monitor = PurpleAir.objects.get(sensor_id=8892)
+        entry = monitor.create_entry(
+            entry_models.PM25, timestamp='2025-04-27T00:00:00Z',
+            sensor='a', stage=entry_models.PM25.Stage.RAW, value=Decimal('12.0'),
+        )
+
+        class Boom:
+            name = 'Boom'
+            next_stage = None
+
+            def __init__(self, entry):
+                pass
+
+            def run(self):
+                # A DB error must not poison the surrounding transaction.
+                entry_models.PM25.objects.create(
+                    monitor=monitor, value=Decimal('1000000'), timestamp=entry.timestamp,
+                    stage=entry_models.PM25.Stage.CALIBRATED, processor='Boom',
+                )
+
+        class Good:
+            name = 'Good'
+            next_stage = None
+
+            def __init__(self, entry):
+                self.entry = entry
+
+            def run(self):
+                return self.entry.clone(
+                    value=Decimal('5.0'), stage=entry_models.PM25.Stage.CLEANED, processor='Good',
+                )
+
+        config = {entry_models.PM25: {'processors': {entry.stage: [Boom, Good]}}}
+        with patch.object(PurpleAir, 'ENTRY_CONFIG', config):
+            with self.assertLogs('camp.apps.monitors.models', level='ERROR'):
+                results = monitor.process_entry_ng(entry)
+
+        assert [r.processor for r in results] == ['Good']
 
 
 class MonitorSaveCountyLookupTests(TestCase):

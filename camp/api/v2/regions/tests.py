@@ -1,17 +1,35 @@
 import json
+from datetime import date
+from unittest.mock import patch
 
-from django.contrib.gis.geos import GEOSGeometry
-from django.test import TestCase, RequestFactory
+import pytest
+from django.contrib.auth import get_user_model
+from django.contrib.gis.geos import GEOSGeometry, Point
+from django.core.cache import cache
+from django.core.cache.backends.base import memcache_key_warnings
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
+from django.test import Client, TestCase, RequestFactory
 from django.urls import reverse
 
-from camp.api.v2.regions.endpoints import RegionDetail, RegionGeoJSON, RegionList, RegionMetaEndpoint
-from camp.apps.regions.models import Boundary, Region
+from camp.api.v2.regions.endpoints import LocationList, LocationSearch, RegionDetail, RegionGeoJSON, RegionList, RegionMetaEndpoint
+from camp.apps.monitors.airnow.models import AirNow
+from camp.apps.monitors.cimis.models import CIMIS
+from camp.apps.regions import shapes
+from camp.apps.regions.models import Boundary, Location, Region
+from camp.apps.regions.resolve import regions_containing, round_point
+from camp.apps.regions.tests.test_resolve import make_region as make_square_region
 from camp.utils.test import get_response_data
+
+User = get_user_model()
 
 region_list = RegionList.as_view()
 region_detail = RegionDetail.as_view()
 region_meta = RegionMetaEndpoint.as_view()
 region_geojson = RegionGeoJSON.as_view()
+location_list = LocationList.as_view()
+location_search = LocationSearch.as_view()
 
 
 class RegionListTests(TestCase):
@@ -30,7 +48,7 @@ class RegionListTests(TestCase):
         response = region_list(request)
         data = get_response_data(response)
         assert len(data['data']) > 0
-        assert set(data['data'][0].keys()) == {'id', 'name', 'slug', 'type', 'boundary'}
+        assert set(data['data'][0].keys()) == {'id', 'name', 'slug', 'type', 'boundary', 'external_id', 'retired'}
 
     def test_list_boundary_omits_geometry(self):
         request = self.factory.get(reverse('api:v2:regions:region-list'))
@@ -80,12 +98,42 @@ class RegionListTests(TestCase):
 class RegionMetaTests(TestCase):
     def setUp(self):
         self.factory = RequestFactory()
+        cache.clear()
 
     def _fetch_region_meta(self):
         url = reverse('api:v2:regions:region-meta')
         request = self.factory.get(url)
         response = region_meta(request)
         return response, get_response_data(response)
+
+    def test_location_types(self):
+        response, content = self._fetch_region_meta()
+        assert content['data']['location_types'] == {
+            'public_school': {'type': 'public_school', 'label': 'Public school', 'source': 'cde-public', 'group': 'school'},
+            'private_school': {'type': 'private_school', 'label': 'Private school', 'source': 'cde-private', 'group': 'school'},
+            'child_care': {'type': 'child_care', 'label': 'Child care', 'source': 'cdss-ccl', 'group': 'child_care'},
+        }
+
+    def test_location_groups(self):
+        response, content = self._fetch_region_meta()
+        groups = content['data']['location_groups']
+        assert groups == {
+            'school': {'key': 'school', 'label': 'Schools', 'order': 0},
+            'child_care': {'key': 'child_care', 'label': 'Child care', 'order': 1},
+        }
+        # Every type's group is a listed group.
+        assert {t['group'] for t in content['data']['location_types'].values()} == set(groups)
+
+    def test_buffers(self):
+        response, content = self._fetch_region_meta()
+        buffers = content['data']['buffers']
+        assert buffers == [
+            {'miles': 0, 'label': 'Exact boundary'},
+            {'miles': 1, 'label': '+1 mile'},
+            {'miles': 3, 'label': '+3 miles'},
+            {'miles': 5, 'label': '+5 miles'},
+        ]
+        assert [b['miles'] for b in buffers] == list(shapes.BUFFERS)
 
     def test_returns_200(self):
         response, content = self._fetch_region_meta()
@@ -101,8 +149,69 @@ class RegionMetaTests(TestCase):
         assert county == {
             'type': 'county',
             'label': 'County',
+            'label_plural': 'Counties',
+            'name_template': None,
             'category': 'administrative',
+            'count': 0,
+            'parents': [],
+            'referenceable': True,
+            'browsable': True,
         }
+
+    def test_label_plural(self):
+        response, content = self._fetch_region_meta()
+        plurals = {t: info['label_plural'] for t, info in content['data']['types'].items()}
+        assert plurals == {
+            'county': 'Counties',
+            'city': 'Cities',
+            'zipcode': 'ZIP Codes',
+            'tract': 'Census Tracts',
+            'cdp': 'Census Designated Places',
+            'congressional_district': 'Congressional Districts',
+            'state_assembly': 'State Assembly Districts',
+            'state_senate': 'State Senate Districts',
+            'school_district': 'School Districts',
+            'air_district': 'Air Districts',
+            'urban_area': 'Urban Areas',
+            'land_use': 'Land Use Areas',
+            'protected': 'Protected Areas',
+            'ab617': 'AB 617 Communities',
+            'mtrs': 'MTRS Sections',
+            'custom': 'Custom Regions',
+        }
+
+    def test_name_template(self):
+        response, content = self._fetch_region_meta()
+        templates = {t: info['name_template'] for t, info in content['data']['types'].items()}
+        assert templates == {t: None for t in Region.Type.values} | {
+            'zipcode': 'ZIP {name}',
+            'tract': 'Census Tract {name}',
+            'urban_area': '{name} Urban Area',
+            'ab617': '{name} AB 617 Community',
+        }
+
+    def test_name_templates_hold_name_once(self):
+        for template in Region.TYPE_NAME_TEMPLATES.values():
+            assert str(template).count('{name}') == 1
+
+    def test_browsable(self):
+        response, content = self._fetch_region_meta()
+        types = content['data']['types']
+        assert {t for t, info in types.items() if not info['browsable']} == {'mtrs', 'land_use'}
+
+    def test_meta_counts_parents_referenceable(self):
+        make_county('Fresno County', FRESNO_COUNTY_WKT)
+        make_county('Kern County', KERN_COUNTY_WKT)
+        retired = make_county('Old County', ELSEWHERE_WKT)
+        retired.retired_at = timezone.now()
+        retired.save(update_fields=['retired_at'])
+        response, content = self._fetch_region_meta()
+        types = content['data']['types']
+        assert types['county']['count'] == Region.objects.filter(type='county').count() == 2
+        assert types['zipcode']['parents'] == ['county']
+        assert types['county']['parents'] == []
+        assert types['land_use']['referenceable'] is False
+        assert types['zipcode']['referenceable'] is True
 
     def test_category_matches_model_mapping(self):
         response, content = self._fetch_region_meta()
@@ -150,7 +259,7 @@ class RegionDetailTests(TestCase):
         request = self.factory.get('/')
         response = region_detail(request, region_id=self.region.sqid)
         data = get_response_data(response)
-        assert set(data['data'].keys()) == {'id', 'name', 'slug', 'type', 'boundary'}
+        assert set(data['data'].keys()) == {'id', 'name', 'slug', 'type', 'boundary', 'external_id', 'retired'}
 
 
 
@@ -172,6 +281,16 @@ def make_city(name, slug, geom_wkt):
         region=region,
         version='2020',
         geometry=GEOSGeometry(geom_wkt, srid=4326),
+    )
+    region.boundary = boundary
+    region.save(update_fields=['boundary'])
+    return region
+
+
+def make_zip(code, geom_wkt):
+    region = Region.objects.create(name=code, slug=f'zip-{code}', type=Region.Type.ZIPCODE, external_id=code)
+    boundary = Boundary.objects.create(
+        region=region, version='2020', geometry=GEOSGeometry(geom_wkt, srid=4326),
     )
     region.boundary = boundary
     region.save(update_fields=['boundary'])
@@ -227,6 +346,10 @@ class TestPlaceSearch(TestCase):
         names = [r['name'] for r in response.json()['data']]
         assert 'Fresno' in names
 
+    def test_results_carry_code_and_retired(self):
+        result = self.client.get(self.url, {'q': 'Fresno'}).json()['data'][0]
+        assert 'external_id' in result and result['retired'] is None
+
     def test_case_insensitive(self):
         response = self.client.get(self.url, {'q': 'fresno'})
         names = [r['name'] for r in response.json()['data']]
@@ -249,6 +372,30 @@ class TestPlaceSearch(TestCase):
         assert response.status_code == 200
         assert response.json()['data'] == []
 
+    def test_rows_carry_bbox_not_geometry(self):
+        result = self.client.get(self.url, {'q': 'Clovis'}).json()['data'][0]
+        assert set(result) == {'id', 'name', 'slug', 'type', 'external_id', 'retired', 'boundary', 'county'}
+        assert set(result['boundary']) == {'id', 'version', 'bbox'}
+        assert result['boundary']['bbox'] == [-119.83, 36.75, -119.73, 36.85]
+
+    def test_county_on_non_county_rows(self):
+        county = make_county('Fresno County', FRESNO_COUNTY_WKT)
+        county.external_id = '019'
+        county.save(update_fields=['external_id'])
+        make_region(Region.Type.CITY, 'Fresnoville Elsewhere', 'fresnoville', ELSEWHERE_WKT)
+        rows = {r['name']: r for r in self.client.get(self.url, {'q': 'Fresno'}).json()['data']}
+        assert rows['Fresno']['county'] == {'type': 'county', 'external_id': '019', 'name': 'Fresno County'}
+        assert rows['Fresno County']['county'] is None
+        assert rows['Fresnoville Elsewhere']['county'] is None
+
+    def test_search_is_one_query(self):
+        make_county('Fresno County', FRESNO_COUNTY_WKT)
+        make_city('Fresno Heights', 'fresno-heights', CLOVIS_CITY_WKT)
+        with CaptureQueriesContext(connection) as queries:
+            data = self.client.get(self.url, {'q': 'Fresno'}).json()['data']
+        assert len(data) >= 3
+        assert len([q for q in queries if 'regions_' in q['sql']]) == 1
+
     def test_empty_query_returns_empty_list(self):
         response = self.client.get(self.url)
         assert response.status_code == 200
@@ -265,6 +412,8 @@ class TestPlaceLookup(TestCase):
         assert response.status_code == 200
         assert response.json()['data']['name'] == 'Fresno'
         assert response.json()['data']['type'] == Region.Type.CITY
+        assert 'external_id' in response.json()['data']
+        assert response.json()['data']['retired'] is None
 
     def test_case_insensitive(self):
         response = self.client.get(self.url, {'q': 'fresno'})
@@ -353,7 +502,7 @@ class RegionGeoJSONTests(TestCase):
         feature = data['features'][0]
         assert feature['type'] == 'Feature'
         assert feature['id'] == feature['properties']['id']
-        assert set(feature['properties']) == {'id', 'name', 'slug', 'type'}
+        assert set(feature['properties']) == {'id', 'name', 'slug', 'type', 'external_id', 'retired'}
         assert feature['properties']['type'] == 'county'
         assert feature['geometry']['type'] == 'MultiPolygon'
         names = [f['properties']['name'] for f in data['features']]
@@ -548,3 +697,675 @@ class RegionWithinFilterTests(TestCase):
         )
         ids = self._ids(('type', 'tract'), ('within', self.parent_a.sqid))
         assert ids == {self.inside_a.sqid, sliver_out.sqid}
+
+
+class RegionWithinOverlapsTests(TestCase):
+    def setUp(self):
+        self.fresno = make_county('Fresno County', FRESNO_COUNTY_WKT)
+        self.kern = make_county('Kern County', KERN_COUNTY_WKT)
+        # Straddles Fresno's eastern edge (x=-119.0), about half in Madera's
+        # stand-in, which here is a county east of the line.
+        self.madera = make_county(
+            'Madera County',
+            'MULTIPOLYGON(((-119.0 36.5, -117.5 36.5, -117.5 37.5, -119.0 37.5, -119.0 36.5)))',
+        )
+        self.inside = make_zip('93000', 'MULTIPOLYGON(((-120.2 36.8, -120.0 36.8, -120.0 37.0, -120.2 37.0, -120.2 36.8)))')
+        self.straddler = make_zip('93001', 'MULTIPOLYGON(((-119.3 36.8, -118.7 36.8, -118.7 37.0, -119.3 37.0, -119.3 36.8)))')
+
+    def _get(self, *params):
+        response = region_list(RequestFactory().get('/', list(params)))
+        return response, get_response_data(response)
+
+    def _overlaps(self, parent):
+        return self._get(('type', 'zipcode'), ('within', parent.sqid), ('within_mode', 'overlaps'))
+
+    def test_within_default_unchanged(self):
+        response, data = self._get(('type', 'zipcode'), ('within', self.fresno.sqid))
+        assert {r['id'] for r in data['data']} == {self.inside.sqid}
+        assert 'also_in' not in data['data'][0]
+
+    def test_overlaps_includes_straddler_with_also_in(self):
+        response, data = self._overlaps(self.fresno)
+        rows = {r['id']: r for r in data['data']}
+        assert set(rows) == {self.inside.sqid, self.straddler.sqid}
+        assert rows[self.inside.sqid]['also_in'] == []
+        assert rows[self.straddler.sqid]['also_in'] == [
+            {'type': 'county', 'external_id': self.madera.external_id, 'name': 'Madera County'},
+        ]
+
+    def test_bad_within_mode_400(self):
+        response, data = self._get(('type', 'zipcode'), ('within', self.fresno.sqid), ('within_mode', 'bogus'))
+        assert response.status_code == 400
+        assert data['error'] == 'within_mode must be contained or overlaps.'
+
+    def test_also_in_drops_a_sliver_under_one_percent(self):
+        # Reaches 0.0005 deg into the straddler's top edge: 0.25% of its area.
+        make_county('Sliver County', 'MULTIPOLYGON(((-119.3 36.9995, -118.7 36.9995, -118.7 37.5, -119.3 37.5, -119.3 36.9995)))')
+        response, data = self._overlaps(self.fresno)
+        rows = {r['id']: r for r in data['data']}
+        assert [c['name'] for c in rows[self.straddler.sqid]['also_in']] == ['Madera County']
+
+    def test_also_in_leaves_out_every_within_parent(self):
+        # A third county holding 25% of the straddler: it alone stays in also_in.
+        tulare = make_county('Tulare County', 'MULTIPOLYGON(((-119.3 36.95, -118.7 36.95, -118.7 37.5, -119.3 37.5, -119.3 36.95)))')
+        response, data = self._get(
+            ('type', 'zipcode'), ('within', self.fresno.sqid), ('within', self.madera.sqid),
+            ('within_mode', 'overlaps'))
+        rows = {r['id']: r for r in data['data']}
+        assert rows[self.straddler.sqid]['also_in'] == [
+            {'type': 'county', 'external_id': tulare.external_id, 'name': 'Tulare County'},
+        ]
+        assert rows[self.inside.sqid]['also_in'] == []
+
+    def test_also_in_skips_a_retired_candidate(self):
+        self.madera.retire(date(2026, 10, 1))
+        response, data = self._overlaps(self.fresno)
+        rows = {r['id']: r for r in data['data']}
+        assert rows[self.straddler.sqid]['also_in'] == []
+
+    def test_bad_within_mode_400_on_geojson(self):
+        request = RequestFactory().get('/', [('type', 'zipcode'), ('within', self.fresno.sqid), ('within_mode', 'bogus')])
+        response = region_geojson(request)
+        assert response.status_code == 400
+        assert get_response_data(response)['error'] == 'within_mode must be contained or overlaps.'
+
+    def test_overlaps_applies_to_geojson(self):
+        request = RequestFactory().get('/', [('type', 'zipcode'), ('within', self.fresno.sqid), ('within_mode', 'overlaps')])
+        data = get_response_data(region_geojson(request))
+        assert {f['id'] for f in data['features']} == {self.inside.sqid, self.straddler.sqid}
+
+    def test_overlaps_query_count(self):
+        def count_queries():
+            with CaptureQueriesContext(connection) as ctx:
+                response, data = self._overlaps(self.fresno)
+            return len(ctx), len(data['data'])
+
+        few_queries, few = count_queries()
+        for i in range(4):
+            x = -120.4 + i * 0.05
+            make_zip(f'9310{i}', f'MULTIPOLYGON((({x} 36.6, {x + 0.04} 36.6, {x + 0.04} 36.7, {x} 36.7, {x} 36.6)))')
+        many_queries, many = count_queries()
+        assert (few, many) == (2, 6)
+        assert few_queries == many_queries
+
+
+class RetiredRegionTests(TestCase):
+    """Listings and searches skip a retired region; naming it by sqid still finds it."""
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.factory = RequestFactory()
+        self.region = Region.objects.get(name='Fresno County')
+        self.region.retire(date(2026, 10, 1))
+
+    def test_detail_by_sqid_finds_retired_region(self):
+        response = region_detail(self.factory.get('/'), region_id=self.region.sqid)
+        assert response.status_code == 200
+        assert get_response_data(response)['data']['id'] == self.region.sqid
+
+    def test_list_and_search_skip_retired(self):
+        response = region_list(self.factory.get('/', {'type': self.region.type}))
+        ids = [r['id'] for r in get_response_data(response)['data']]
+        assert ids
+        assert self.region.sqid not in ids
+        assert self.region not in Region.objects.search_regions(self.region.name, type=self.region.type)
+
+    def test_unfiltered_list_skips_retired(self):
+        ids = [r['id'] for r in get_response_data(region_list(self.factory.get('/')))['data']]
+        assert self.region.sqid not in ids
+
+    def test_geojson_skips_retired(self):
+        response = region_geojson(self.factory.get('/', {'type': self.region.type}))
+        ids = [f['id'] for f in get_response_data(response)['features']]
+        assert ids
+        assert self.region.sqid not in ids
+
+    def test_within_accepts_a_retired_parent(self):
+        tract = make_tract('Tract inside Fresno', FRESNO_TRACT_WKT)
+        parent = make_county('Old Fresno County', FRESNO_COUNTY_WKT)
+        parent.retire(date(2026, 10, 1))
+        response = region_list(self.factory.get('/', [('type', 'tract'), ('within', parent.sqid)]))
+        ids = {r['id'] for r in get_response_data(response)['data']}
+        assert tract.sqid in ids
+
+    def test_place_lookup_skips_retired(self):
+        assert Region.objects.resolve_place(self.region.name, type=self.region.type) != self.region
+
+
+class RegionCodeLookupTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.factory = RequestFactory()
+
+    def get(self, params):
+        response = region_list(self.factory.get('/', params))
+        return response, get_response_data(response)
+
+    def test_lookup_by_several_codes(self):
+        counties = list(Region.objects.filter(type='county')[:2])
+        codes = ','.join(c.external_id for c in counties)
+        _, data = self.get({'type': 'county', 'external_id': codes})
+        assert {r['external_id'] for r in data['data']} == {c.external_id for c in counties}
+
+    def test_lookup_cleans_the_list(self):
+        c = Region.objects.filter(type='county').first()
+        _, data = self.get({'type': 'county', 'external_id': f' {c.external_id}, ,{c.external_id}'})
+        assert [r['external_id'] for r in data['data']] == [c.external_id]
+
+    def test_lookup_returns_retired_flagged_and_skips_unknown(self):
+        c = Region.objects.filter(type='county').first()
+        c.retire(date(2026, 10, 1))
+        _, data = self.get({'type': 'county', 'external_id': f'{c.external_id},99999'})
+        assert len(data['data']) == 1
+        assert data['data'][0]['retired'] == {'since': '2026-10-01', 'replaced_by': None}
+
+    def test_lookup_names_the_replacement_by_code(self):
+        old, new = list(Region.objects.filter(type='county')[:2])
+        old.retire(date(2026, 10, 1), replaced_by=new)
+        _, data = self.get({'type': 'county', 'external_id': old.external_id})
+        assert data['data'][0]['retired']['replaced_by'] == {'type': 'county', 'external_id': new.external_id}
+
+    def test_current_region_is_not_flagged(self):
+        c = Region.objects.filter(type='county').first()
+        _, data = self.get({'type': 'county', 'external_id': c.external_id})
+        assert data['data'][0]['retired'] is None
+
+    def test_lookup_only_matches_the_given_type(self):
+        c = Region.objects.filter(type='county').first()
+        _, data = self.get({'type': 'zipcode', 'external_id': c.external_id})
+        assert data['data'] == []
+
+    def test_lookup_requires_type(self):
+        response, data = self.get({'external_id': '06019'})
+        assert response.status_code == 400
+        assert data['error'] == 'The type parameter is required with external_id.'
+
+    def test_lookup_refuses_land_use(self):
+        response, data = self.get({'type': 'land_use', 'external_id': '1'})
+        assert response.status_code == 400
+        assert data['error'] == "Land-use regions can't be looked up by code yet."
+
+    def test_docs_say_land_use_codes_are_not_permanent(self):
+        from camp.api.v2.regions.filters import RegionFilter
+        from camp.api.v2.regions.serializers import RegionSerializer
+        help_text = RegionFilter.base_filters['external_id'].extra['help_text']
+        assert 'land_use' in help_text and 'not a permanent code' in help_text
+        assert 'NOT a permanent code' in ' '.join(RegionSerializer.__doc__.split())
+
+    def test_lookup_caps_codes(self):
+        codes = ','.join(str(n) for n in range(101))
+        response, _ = self.get({'type': 'county', 'external_id': codes})
+        assert response.status_code == 400
+        codes = ','.join(str(n) for n in range(100))
+        response, _ = self.get({'type': 'county', 'external_id': codes})
+        assert response.status_code == 200
+
+    def test_geojson_properties_include_code(self):
+        c = Region.objects.filter(type='county').exclude(boundary=None).first()
+        response = region_geojson(self.factory.get('/', {'type': 'county'}))
+        props = {f['id']: f['properties'] for f in get_response_data(response)['features']}[c.sqid]
+        assert props['external_id'] == c.external_id
+        assert props['retired'] is None
+
+    def test_simplified_geojson_properties_include_code(self):
+        response = region_geojson(self.factory.get('/', {'type': 'county', 'simplify': '1'}))
+        props = get_response_data(response)['features'][0]['properties']
+        assert 'external_id' in props and 'retired' in props
+
+
+class LocationLookupTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        from django.core.cache import cache
+        from django.contrib.gis.geos import Point
+        cache.clear()
+        self.factory = RequestFactory()
+        self.county = Region.objects.filter(type='county').first()
+        self.school = Location.all_objects.create(
+            type=Location.Type.PUBLIC_SCHOOL, source='cde-public', external_id='15634380000001',
+            name='Test Elementary', address='1 Main St', city_name='Bakersfield', zip='93301',
+            point=Point(-119.0, 35.4, srid=4326), county=self.county)
+        self.child_care = Location.all_objects.create(
+            type=Location.Type.CHILD_CARE, source='cdss-ccl', external_id='153400001',
+            name='Little Ones', point=Point(-119.1, 35.5, srid=4326),
+            metadata={'facility_numbers': ['153400001', '153400002']})
+
+    def get(self, params):
+        response = location_list(self.factory.get('/', params))
+        return response, get_response_data(response)
+
+    def test_lookup_by_code(self):
+        response, data = self.get({'source': 'cde-public', 'external_id': self.school.external_id})
+        assert response.status_code == 200
+        (item,) = data['data']
+        assert item['id'] == self.school.sqid
+        assert item['source'] == 'cde-public'
+        assert item['external_id'] == '15634380000001'
+        assert item['aliases'] == []
+        assert item['type'] == 'public_school'
+        assert item['name'] == 'Test Elementary'
+        assert item['city_name'] == 'Bakersfield'
+        assert item['zip'] == '93301'
+        assert item['point'] == {'lat': 35.4, 'lng': -119.0}
+        assert item['regions']['county'] == {'type': 'county', 'external_id': self.county.external_id, 'name': self.county.name}
+        assert item['regions']['city'] is None
+        assert item['retired'] is None
+
+    def test_lookup_by_non_key_license_number(self):
+        _, data = self.get({'source': 'cdss-ccl', 'external_id': '153400002'})
+        (item,) = data['data']
+        assert item['external_id'] == '153400001'
+        assert item['aliases'] == ['153400002']
+
+    def test_two_codes_for_one_site_return_it_once(self):
+        _, data = self.get({'source': 'cdss-ccl', 'external_id': '153400001,153400002'})
+        assert len(data['data']) == 1
+
+    def test_retired_is_returned_flagged(self):
+        self.school.retire(date(2026, 10, 1))
+        _, data = self.get({'source': 'cde-public', 'external_id': self.school.external_id})
+        assert data['data'][0]['retired'] == {'since': '2026-10-01', 'replaced_by': None}
+
+    def test_unknown_code_is_absent(self):
+        _, data = self.get({'source': 'cde-public', 'external_id': '000'})
+        assert data['data'] == []
+
+    def test_source_scopes_the_lookup(self):
+        _, data = self.get({'source': 'cde-private', 'external_id': self.school.external_id})
+        assert data['data'] == []
+
+    def test_missing_params_are_400(self):
+        assert self.get({'external_id': '1'})[0].status_code == 400
+        assert self.get({'source': 'cde-public'})[0].status_code == 400
+        assert self.get({})[0].status_code == 400
+
+    def test_unknown_source_is_400(self):
+        assert self.get({'source': 'nope', 'external_id': '1'})[0].status_code == 400
+
+    def test_caps_codes(self):
+        codes = ','.join(str(n) for n in range(101))
+        assert self.get({'source': 'cde-public', 'external_id': codes})[0].status_code == 400
+        codes = ','.join(str(n) for n in range(100))
+        assert self.get({'source': 'cde-public', 'external_id': codes})[0].status_code == 200
+
+    def test_url_is_not_swallowed_by_region_id(self):
+        response = self.client.get(reverse('api:v2:regions:location-list'),
+            {'source': 'cde-public', 'external_id': self.school.external_id})
+        assert response.status_code == 200
+
+
+class PlaceLookupPointTests(TestCase):
+    """POST regions/places/lookup/ with coordinates, and GET ?monitor=."""
+
+    def setUp(self):
+        cache.clear()
+        self.url = reverse('api:v2:regions:place-lookup')
+        self.county = make_square_region('Test County', Region.Type.COUNTY, '99001', (-121, 35, -117, 38))
+        self.city = make_square_region('Test City', Region.Type.CITY, '99002', (-119.8, 36.2, -119.2, 36.8))
+        self.zip_a = make_square_region('99100', Region.Type.ZIPCODE, '99100', (-120, 36, -119, 37))
+        self.zip_b = make_square_region('99200', Region.Type.ZIPCODE, '99200', (-119, 36, -118, 37))
+
+    def post(self, payload, client=None):
+        return (client or self.client).post(
+            self.url, json.dumps(payload), content_type='application/json')
+
+    def ids(self, response):
+        assert response.status_code == 200
+        return [(r['type'], r['external_id']) for r in response.json()['data']]
+
+    def test_point_returns_containing_regions_sorted(self):
+        response = self.post({'lat': 36.5, 'lon': -119.5})
+        assert self.ids(response) == [('city', '99002'), ('county', '99001'), ('zipcode', '99100')]
+        assert set(response.json()['data'][0]['boundary']) == {'id', 'version', 'bbox'}
+
+    def test_point_rounded_before_lookup(self):
+        with patch('camp.api.v2.regions.endpoints.regions_containing', wraps=regions_containing) as spy:
+            first = self.post({'lat': 36.73749, 'lon': -119.5})
+            second = self.post({'lat': 36.7371, 'lon': -119.5})
+        keys = {call.args[2] for call in spy.call_args_list}
+        assert len(keys) == 1
+        assert round_point(36.73749, -119.5) == round_point(36.7371, -119.5) == (36.737, -119.5)
+        assert first.json() == second.json()
+
+    def test_type_list_filters(self):
+        assert self.ids(self.post({'lat': 36.5, 'lon': -119.5, 'type': 'county, zipcode'})) == [
+            ('county', '99001'), ('zipcode', '99100')]
+        # Order and repeats in the list don't matter.
+        assert self.ids(self.post({'lat': 36.5, 'lon': -119.5, 'type': 'zipcode,county,county'})) == [
+            ('county', '99001'), ('zipcode', '99100')]
+
+    def test_default_excludes_land_use_and_mtrs(self):
+        make_square_region('Land', Region.Type.LAND_USE, '1', (-120, 36, -119, 37))
+        make_square_region('Section', Region.Type.MTRS, 'M1', (-120, 36, -119, 37))
+        types = {t for t, _ in self.ids(self.post({'lat': 36.5, 'lon': -119.5}))}
+        assert types == {'city', 'county', 'zipcode'}
+
+    def test_explicit_land_use_400(self):
+        response = self.post({'lat': 36.5, 'lon': -119.5, 'type': 'land_use'})
+        assert response.status_code == 400
+        assert response.json()['error'] == "Land-use regions can't be looked up."
+
+    def test_unknown_type_400(self):
+        response = self.post({'lat': 36.5, 'lon': -119.5, 'type': 'nope'})
+        assert response.status_code == 400
+        assert response.json()['error'] == 'Unknown region type: nope.'
+
+    def test_type_json_list_filters(self):
+        assert self.ids(self.post({'lat': 36.5, 'lon': -119.5, 'type': ['zipcode', 'county']})) == [
+            ('county', '99001'), ('zipcode', '99100')]
+
+    def test_type_null_means_default(self):
+        types = {t for t, _ in self.ids(self.post({'lat': 36.5, 'lon': -119.5, 'type': None}))}
+        assert types == {'city', 'county', 'zipcode'}
+
+    def test_type_json_list_unknown_type_400(self):
+        response = self.post({'lat': 36.5, 'lon': -119.5, 'type': ['county', 'nope']})
+        assert response.status_code == 400
+        assert response.json()['error'] == 'Unknown region type: nope.'
+
+    def test_type_of_another_kind_400(self):
+        for value in (5, {'county': True}, ['county', 5], [['county']]):
+            response = self.post({'lat': 36.5, 'lon': -119.5, 'type': value})
+            assert response.status_code == 400, value
+            assert response.json()['error'] == 'type must be a comma-separated string or a list of strings.'
+
+    def test_coordinates_hidden_from_django_error_reports(self):
+        # Django's error emails and debug page read frame locals through this filter.
+        # Resticus turns the exception into a 500, so grab the live stack from
+        # inside the lookup instead of from a traceback.
+        import inspect
+        from django.views.debug import SafeExceptionReporterFilter
+        report_filter = SafeExceptionReporterFilter()
+        seen = {}
+
+        def capture(*args):
+            frame = inspect.currentframe().f_back
+            while frame is not None:
+                seen[frame] = dict(report_filter.get_traceback_frame_variables(None, frame))
+                frame = frame.f_back
+            return []
+
+        with patch('camp.api.v2.regions.endpoints.regions_containing', side_effect=capture):
+            assert self.post({'lat': 36.737, 'lon': -119.787}).status_code == 200
+        endpoint_frames = {f: v for f, v in seen.items() if f.f_code.co_filename.endswith('regions/endpoints.py')}
+        assert any(f.f_code.co_name == 'post' and 'lat' in f.f_locals for f in endpoint_frames)
+        for frame, variables in endpoint_frames.items():
+            for name in ('body', 'form', 'lat', 'lon', 'geometry'):
+                if name in variables:
+                    assert variables[name] == report_filter.cleansed_substitute, (frame.f_code.co_name, name)
+        seen.clear()
+        endpoint_frames.clear()
+
+    def test_mtrs_allowed_when_asked(self):
+        make_square_region('Section', Region.Type.MTRS, 'M1', (-120, 36, -119, 37))
+        assert self.ids(self.post({'lat': 36.5, 'lon': -119.5, 'type': 'mtrs'})) == [('mtrs', 'M1')]
+
+    def test_point_outside_everything_empty_list(self):
+        response = self.post({'lat': 10, 'lon': 10})
+        assert response.status_code == 200
+        assert response.json()['data'] == []
+
+    def test_point_on_shared_edge_returns_both(self):
+        found = self.ids(self.post({'lat': 36.5, 'lon': -119, 'type': 'zipcode'}))
+        assert found == [('zipcode', '99100'), ('zipcode', '99200')]
+
+    def test_retired_region_excluded(self):
+        self.zip_a.retired_at = timezone.now()
+        self.zip_a.save()
+        assert ('zipcode', '99100') not in self.ids(self.post({'lat': 36.5, 'lon': -119.5}))
+
+    def test_bad_coordinates_400_without_echo(self):
+        cases = [
+            {'lat': 'abc', 'lon': -119.5},
+            {'lat': 'NaN', 'lon': -119.5},
+            {'lat': 91, 'lon': -119.5},
+            {'lat': 36.5, 'lon': -181},
+            {'lat': 36.5, 'lon': 'zzz-7'},
+            {'lat': 36.5},
+        ]
+        for payload in cases:
+            response = self.post(payload)
+            assert response.status_code == 400, payload
+            for echoed in ('abc', 'NaN', '91', '-181', 'zzz-7'):
+                assert echoed not in response.content.decode(), payload
+
+    def test_nonfinite_json_literal_400(self):
+        response = self.client.post(
+            self.url, '{"lat": NaN, "lon": -119.5}', content_type='application/json')
+        assert response.status_code == 400
+
+    def test_coordinates_in_query_string_400(self):
+        response = self.client.get(self.url, {'lat': '36.5', 'lon': '-119.5'})
+        assert response.status_code == 400
+        assert response.json()['error'] == 'Send coordinates in a POST body.'
+        assert '36.5' not in response.content.decode()
+
+    def test_post_with_q_400(self):
+        assert self.post({'q': 'Fresno', 'lat': 36.5, 'lon': -119.5}).status_code == 400
+
+    def test_monitor_mode(self):
+        monitor = AirNow.objects.create(
+            name='M', position=Point(-119.5, 36.5, srid=4326),
+            location='outside')
+        response = self.client.get(self.url, {'monitor': str(monitor.pk), 'type': 'county,zipcode'})
+        assert self.ids(response) == [('county', '99001'), ('zipcode', '99100')]
+
+    def test_hidden_monitor_404(self):
+        monitor = AirNow.objects.create(
+            name='M', position=Point(-119.5, 36.5, srid=4326),
+            location='outside', is_hidden=True)
+        assert self.client.get(self.url, {'monitor': str(monitor.pk)}).status_code == 404
+
+    def test_monitor_without_position_400(self):
+        monitor = AirNow.objects.create(
+            name='No Pos', position=None, location='outside')
+        response = self.client.get(self.url, {'monitor': str(monitor.pk)})
+        assert response.status_code == 400
+        assert response.json()['error'] == 'Monitor has no location.'
+
+    def test_cimis_monitor_resolves(self):
+        monitor = CIMIS.objects.create(
+            name='Weather', station_number='6', position=Point(-119.5, 36.5, srid=4326),
+            location=CIMIS.LOCATION.outside)
+        response = self.client.get(self.url, {'monitor': str(monitor.pk), 'type': 'county'})
+        assert self.ids(response) == [('county', '99001')]
+
+    def test_monitor_land_use_400(self):
+        monitor = AirNow.objects.create(
+            name='M', position=Point(-119.5, 36.5, srid=4326), location='outside')
+        assert self.client.get(
+            self.url, {'monitor': str(monitor.pk), 'type': 'land_use'}).status_code == 400
+
+    def test_cache_keys_are_memcached_safe(self):
+        from camp.apps.regions.resolve import monitor_lookup_key, point_lookup_key
+        types = tuple(sorted(Region.Type.values))
+        monitor = AirNow.objects.create(
+            name='M', position=Point(-119.5, 36.5, srid=4326), location='outside')
+        for key in (point_lookup_key(36.5, -119.5, types), monitor_lookup_key(monitor, types)):
+            assert list(memcache_key_warnings(cache.make_key(key))) == [], key
+
+    def test_monitor_with_q_400(self):
+        assert self.client.get(self.url, {'monitor': 'abc', 'q': 'Fresno'}).status_code == 400
+
+    def test_name_mode_unchanged(self):
+        response = self.client.get(self.url, {'q': 'Test City', 'type': 'city'})
+        assert response.status_code == 200
+        assert response.json()['data']['external_id'] == '99002'
+        assert self.client.get(self.url, {'q': 'Zzzzzz Qqqq'}).json()['data'] is None
+
+    def test_anonymous_post_without_csrf_token_200(self):
+        client = Client(enforce_csrf_checks=True)
+        assert self.post({'lat': 36.5, 'lon': -119.5}, client=client).status_code == 200
+
+    def test_signed_in_post_without_csrf_token_403(self):
+        try:
+            from resticus.auth import enforce_csrf  # noqa: F401
+        except ImportError:
+            pytest.skip('resticus without the session CSRF fix')
+        user = User.objects.create_user(
+            'lookup@sjvair.com', 'letmein1', full_name='Look Up', phone='+15595550001')
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(user)
+        assert self.post({'lat': 36.5, 'lon': -119.5}, client=client).status_code == 403
+
+    def test_warm_lookup_no_queries(self):
+        payload = {'lat': 36.5, 'lon': -119.5}
+        self.post(payload)
+        with self.assertNumQueries(0):
+            response = self.post(payload)
+        assert response.status_code == 200
+        assert len(response.json()['data']) == 3
+
+    def test_empty_result_is_cached(self):
+        payload = {'lat': 10, 'lon': 10}
+        self.post(payload)
+        with self.assertNumQueries(0):
+            assert self.post(payload).json()['data'] == []
+
+
+class LocationSearchEndpointTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        cache.clear()
+        self.factory = RequestFactory()
+        self.county = Region.objects.filter(type='county').first()
+        self.n = 0
+
+    def make(self, name, town='Fresno', type=Location.Type.PUBLIC_SCHOOL, **kwargs):
+        self.n += 1
+        return Location.all_objects.create(
+            type=type, source={'child_care': 'cdss-ccl', 'private_school': 'cde-private'}.get(type, 'cde-public'),
+            external_id=f'{self.n:08d}', name=name, address=f'{self.n} Main St', city_name=town,
+            point=Point(-119.0 + self.n / 1000, 36.0, srid=4326), **kwargs)
+
+    def get(self, params):
+        response = location_search(self.factory.get('/', params))
+        return response, get_response_data(response)
+
+    def names(self, data):
+        return [row['name'] for row in data['data']]
+
+    def test_returns_rows_and_more_false(self):
+        for city in ('Visalia', 'Fresno', 'Clovis'):
+            self.make('Lincoln Elementary', town=city, county=self.county)
+        response, data = self.get({'q': 'lincoln'})
+        assert response.status_code == 200
+        assert len(data['data']) == 3
+        assert data['more'] is False
+        assert all(row['regions']['county']['name'] == self.county.name for row in data['data'])
+        assert response['Cache-Control'] == 'public, max-age=3600'
+
+    def test_short_query_is_empty(self):
+        self.make('Lincoln Elementary')
+        response, data = self.get({'q': ' l '})
+        assert response.status_code == 200
+        assert data == {'data': [], 'more': False}
+
+    def test_long_query_is_400(self):
+        response, data = self.get({'q': 'x' * 101})
+        assert response.status_code == 400
+        assert data == {'error': 'q must be at most 100 characters.'}
+        assert response['Cache-Control'] == 'no-cache'
+
+    def test_caps_at_ten(self):
+        for i in range(12):
+            self.make(f'Academy {i:02d}')
+        _, data = self.get({'q': 'academy'})
+        assert len(data['data']) == 10
+        assert data['more'] is True
+
+    def test_stretches_on_name_tie(self):
+        for i in range(9):
+            self.make(f'Academy A{i}', town='Aaa')
+        for i in range(4):
+            self.make('Academy Zeta', town=f'Zz{i}')
+        _, data = self.get({'q': 'academy'})
+        assert len(data['data']) == 13
+        assert data['more'] is False
+
+    def test_stretch_stops_at_fifteen(self):
+        for i in range(9):
+            self.make(f'Academy A{i}', town='Aaa')
+        for i in range(8):
+            self.make('Academy Zeta', town=f'Zz{i}')
+        _, data = self.get({'q': 'academy'})
+        assert len(data['data']) == 15
+        assert data['more'] is True
+
+    def test_type_filter(self):
+        self.make('Lincoln School')
+        self.make('Lincoln Prep', type=Location.Type.PRIVATE_SCHOOL)
+        self.make('Lincoln Kids', type=Location.Type.CHILD_CARE)
+        _, data = self.get({'q': 'lincoln', 'type': 'child_care'})
+        assert self.names(data) == ['Lincoln Kids']
+        _, data = self.get({'q': 'lincoln', 'type': 'public_school,private_school'})
+        assert sorted(self.names(data)) == ['Lincoln Prep', 'Lincoln School']
+
+    def test_type_list_tolerates_blanks_and_repeats(self):
+        self.make('Lincoln School')
+        response, data = self.get({'q': 'lincoln', 'type': 'public_school,,public_school'})
+        assert response.status_code == 200
+        assert len(data['data']) == 1
+
+    def test_null_character_is_400(self):
+        for params in ({'q': 'ab\x00'}, {'q': 'lincoln', 'type': 'public_school\x00'},
+                       {'q': 'lincoln', 'region_type': 'county', 'region': '\x00'},
+                       {'q': 'lincoln', 'region_type': 'county\x00', 'region': '06019'}):
+            response, data = self.get(params)
+            assert response.status_code == 400
+            assert response['Cache-Control'] == 'no-cache'
+            assert 'null' in data['error']
+
+    def test_unknown_type_is_400(self):
+        response, data = self.get({'q': 'lincoln', 'type': 'public_school,college'})
+        assert response.status_code == 400
+        assert 'college' in data['error']
+        assert 'public_school' not in data['error']
+        assert response['Cache-Control'] == 'no-cache'
+
+    def test_region_filter_each_linked_type(self):
+        regions = {t: Region.objects.filter(type=t).first() for t in ('county', 'city', 'zipcode', 'school_district')}
+        cdp = Region.all_objects.create(type='cdp', name='Testville', external_id='9999', slug='testville')
+        for t, region in regions.items():
+            self.make(f'Lincoln {t}', **{t: region})
+        self.make('Lincoln cdp', city=cdp)
+        self.make('Lincoln nowhere')
+        for t, region in {**regions, 'cdp': cdp}.items():
+            _, data = self.get({'q': 'lincoln', 'region_type': t, 'region': region.external_id})
+            assert self.names(data) == [f'Lincoln {t}'], t
+
+    def test_region_filter_retired_region_still_filters(self):
+        county = Region.objects.filter(type='county').first()
+        self.make('Lincoln School', county=county)
+        self.make('Lincoln Other')
+        county.retire(date(2026, 10, 1))
+        _, data = self.get({'q': 'lincoln', 'region_type': 'county', 'region': county.external_id})
+        assert self.names(data) == ['Lincoln School']
+
+    def test_region_half_pair_is_400(self):
+        for params in ({'region_type': 'county'}, {'region': '019'}):
+            response, data = self.get({'q': 'lincoln', **params})
+            assert response.status_code == 400
+            assert response['Cache-Control'] == 'no-cache'
+
+    def test_region_unlinked_type_is_400(self):
+        response, _ = self.get({'q': 'lincoln', 'region_type': 'census_tract', 'region': '1'})
+        assert response.status_code == 400
+
+    def test_region_unknown_code_is_404(self):
+        response, _ = self.get({'q': 'lincoln', 'region_type': 'county', 'region': 'nope'})
+        assert response.status_code == 404
+        assert response['Cache-Control'] == 'no-cache'
+
+    def test_url_resolves(self):
+        from django.urls import resolve
+        url = reverse('api:v2:regions:location-search')
+        assert url.endswith('/regions/locations/search/')
+        assert resolve(url).func.view_class is LocationSearch

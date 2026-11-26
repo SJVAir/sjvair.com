@@ -5,6 +5,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from camp.apps.monitors.airnow.backfill import PAUSE_SECONDS, AirNowError, backfill_airnow
+from camp.apps.summaries.periods import period_end, period_start
 from camp.utils.datetime import make_aware
 
 
@@ -13,7 +14,8 @@ class Command(BaseCommand):
         'Re-import historical AirNow data for the valley (all parameters). PM2.5, '
         'PM10, and ozone RAW come from RawConcentration with AirNow\'s NowCast '
         'stored as CALIBRATED, and CLEANED PM2.5 is rebuilt from the new RAW. '
-        'Idempotent; requests are paced to stay under AirNow\'s 500/hour limit.'
+        'Idempotent; requests are paced to stay under AirNow\'s 500/hour limit. '
+        'Summaries are not rebuilt: the closing output names the follow-up commands.'
     )
 
     def add_arguments(self, parser):
@@ -51,6 +53,22 @@ class Command(BaseCommand):
             f'Done: {totals["entries"]} entries across {totals["monitors"]} monitors '
             f'({totals["missing"]} missing (-999) hours skipped or removed, '
             f'{totals["skipped"]} rows outside the valley skipped).'
+        ))
+
+        first = period_start('day', start)
+        last = period_start('day', end)
+        if last != end:
+            last = period_end('day', end)
+        first_date, end_date = first.date().isoformat(), last.date().isoformat()
+        self.stdout.write(self.style.NOTICE(
+            'Summaries are not rebuilt by this command. Next:\n'
+            f'  rebuild_summaries {first_date} {end_date} --monitor=<id> --monitors-only'
+            '   (per affected monitor; also fills daily figures)\n'
+            f'  rebuild_summaries {first_date} {end_date} --monitor=<id> --regions-only'
+            '   (per affected monitor, after the monitor rebuilds: the monitor\'s regions;\n'
+            '   region rows built during the -999 period are skewed)\n'
+            f'  fill_daily_peaks {first_date} {end_date} --monitor-type airnow'
+            '             (at least this)'
         ))
 
     def parse_timestamp(self, value):

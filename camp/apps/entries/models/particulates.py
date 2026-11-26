@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.contrib.gis.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -9,9 +11,12 @@ from .base import BaseEntry
 
 class PM25(BaseEntry):
     label = _('PM2.5')
+    description = _('Fine particles from smoke, dust, and vehicle exhaust.')
     epa_aqs_code = 88101
     units = 'µg/m³'
     summarize = True
+    # Dense smoke has read in the 900s; a broken channel often pegs at 2500-3300.
+    plausible_range = (Decimal('0'), Decimal('1500'))
 
     Levels = levels.PM25
 
@@ -34,6 +39,7 @@ class Particulates(BaseEntry):
 
 class PM10(BaseEntry):
     label = _('PM1.0')
+    description = _('The smallest particles, mostly from smoke and vehicle exhaust.')
     units = 'µg/m³'
 
     value = models.DecimalField(
@@ -44,6 +50,7 @@ class PM10(BaseEntry):
 
 class PM100(BaseEntry):
     label = _('PM10.0')
+    description = _('Coarser particles from dust, farming, and road traffic.')
     epa_aqs_code = 81102
     units = 'µg/m³'
 

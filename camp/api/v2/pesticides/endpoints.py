@@ -1,5 +1,8 @@
+import hashlib
+import json
 from types import SimpleNamespace
 
+from django import forms
 from django.db.models import Case, Count, Prefetch, Q, Sum, Value, When
 from django.db.models.functions import Coalesce, Length, NullIf
 from django.shortcuts import get_object_or_404
@@ -7,12 +10,15 @@ from django.shortcuts import get_object_or_404
 from resticus import generics, http
 
 from camp.apps.pesticides import stats
+from camp.apps.pesticides.places import monthly_use, rollup_rows_for
 from camp.apps.pesticides.models import (
-    Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseTotal, Product,
+    Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, PesticideUseTotal, Product,
 )
 from camp.apps.regions.models import Region
+from camp.apps.regions.resolve import CACHE_TIMEOUT, PlaceError, PlaceNotFound, _place_key, place_json, resolve_place
 from camp.utils.views import CachedEndpointMixin
 
+from .fields import AERIAL_GROUND_CHOICES, NO_METHOD, CategoryListField, PlaceChoiceField, SqidChoiceField
 from .filters import ChemicalFilter, CommodityFilter, PesticideNoticeFilter, PesticideSummaryFilter, PesticideUseFilter, ProductFilter
 from .serializers import (
     ChemicalSerializer,
@@ -151,7 +157,7 @@ class PesticideRegionMixin:
     def setup(self, request, *args, **kwargs):
         super().setup(request, *args, **kwargs)
         self.region = get_object_or_404(
-            Region.objects.select_related('boundary'),
+            Region.all_objects.select_related('boundary'),
             sqid=self.kwargs['region_id'],
         )
 
@@ -279,7 +285,7 @@ class EntitySearchBase(generics.Endpoint):
 
         query = (params.get('q') or '').strip()
         if len(query) < SEARCH_MIN_LENGTH:
-            return {'results': []}
+            return {'results': [], 'more': False}
 
         # Only names that actually appear in the use data -- in the year and
         # county the page is showing, when it says (`year=2020`, `year=all`,
@@ -344,9 +350,15 @@ class EntitySearchBase(generics.Endpoint):
             alias = getattr(obj, 'cdpr_alias', '')
             if alias:
                 detail = f'{alias} · {detail}' if detail else alias
-            return {'id': obj.sqid, 'name': obj.display_name, 'detail': detail}
+            result = {'id': obj.sqid, 'name': obj.display_name, 'detail': detail}
+            if kind == 'chemical':
+                # CDPR's stand-ins for an unnamed ingredient, so a picker can leave them out.
+                result['placeholder'] = obj.is_placeholder
+            return result
 
-        return {'results': [entry(obj) for obj in queryset[:limit]]}
+        # One past the limit says whether matches were left out, without counting them all.
+        found = list(queryset[:limit + 1])
+        return {'results': [entry(obj) for obj in found[:limit]], 'more': len(found) > limit}
 
 
 class EntitySearch(CachedEndpointMixin, EntitySearchBase):
@@ -358,6 +370,108 @@ class EntitySearch(CachedEndpointMixin, EntitySearchBase):
     `county` (slug) to offer only names with reported use there, `narrow=concern|restricted|fumigant|aerial`
     (or the legacy `concern=1`) to offer only what that narrowing keeps, and
     `limit` (default 10, capped at 25). Each result carries the entity's `id` (sqid), `name`, and a
-    `detail` string -- the CDPR chem code, registration number, or site code, labeled.
+    `detail` string -- the CDPR chem code, registration number, or site code, labeled --
+    and, for chemicals, `placeholder` (CDPR's UNKNOWN / AI IS CONFIDENTIAL stand-ins).
+    `more` is true when matches past `limit` were left out.
     """
     cache_timeout = 60 * 5
+
+
+class PesticidePlaceForm(forms.Form):
+    chemical = SqidChoiceField(Chemical)
+    commodity = SqidChoiceField(Commodity)
+    product = SqidChoiceField(Product)
+    category = CategoryListField()
+    narrow = PlaceChoiceField(choices=stats.NARROW_CHOICES)
+    iarc_group = PlaceChoiceField(choices=Chemical.IARCGroup.choices)
+    aerial_ground = PlaceChoiceField(choices=AERIAL_GROUND_CHOICES)
+    year__gte = forms.IntegerField(required=False, min_value=1900, max_value=2100)
+    year__lte = forms.IntegerField(required=False, min_value=1900, max_value=2100)
+
+
+def counting_mode(filters):
+    """
+    `(chemical_scoped, multi_chemical)` for `places.monthly_use`, from the place filters.
+    One chemical counts its own ingredient rows. A category or IARC filter can keep several
+    ingredient rows of one record, so those take the MAX per record. Everything else (product,
+    commodity, method, any narrowing, nothing) keeps whole records, or for `narrow=concern`
+    always the record's designated row (the rollup designates a restricted, then a concern,
+    ingredient first), so the once-per-record columns are right.
+    """
+    if 'chemical' in filters:
+        return True, False
+    if 'category' in filters or 'iarc_group' in filters:
+        return False, True
+    return False, False
+
+
+class PesticidePlace(generics.Endpoint):
+    """Monthly and yearly pesticide use for a place (?region_type= & ?region=,
+    or ?monitor=; with none of them, the whole valley: every county the import keeps,
+    and `place` is null; filterable by ?chemical=, ?commodity=, ?product= (our ids, as the list
+    endpoints return them), ?category= (repeated or
+    comma-separated, any of them), ?narrow=, ?iarc_group=, ?aerial_ground= (`none`: not reported), ?year__gte=, ?year__lte=)."""
+
+    @staticmethod
+    def error(response_class, err):
+        response = response_class({'error': str(err)})
+        response['Cache-Control'] = 'no-cache'
+        return response
+
+    PLACE_PARAMS = ('monitor', 'region_type', 'region')
+
+    def get(self, request, *args, **kwargs):
+        # No place is everywhere: the whole valley (place None). Only here;
+        # resolve_place still refuses an empty place for the other endpoints.
+        place = None
+        if any((request.GET.get(param) or '').strip() for param in self.PLACE_PARAMS):
+            try:
+                place = resolve_place(request.GET)
+            except PlaceNotFound as err:
+                return self.error(http.Http404, err)
+            except PlaceError as err:
+                return self.error(http.Http400, err)
+
+        form = PesticidePlaceForm(request.GET)
+        if not form.is_valid():
+            response = http.Http400({'errors': form.errors.get_json_data()})
+            response['Cache-Control'] = 'no-cache'
+            return response
+        # Blank values are not filters.
+        filters = {k: v for k, v in form.cleaned_data.items() if v not in (None, '')}
+
+        def build():
+            # The import keeps only the SJVAir counties, so every rollup row is the valley.
+            rows = rollup_rows_for(place) if place is not None else PesticideUseRollup.objects.order_by()
+            if 'chemical' in filters:
+                rows = rows.filter(chemical_id=filters['chemical'].pk)
+            if 'commodity' in filters:
+                rows = rows.filter(commodity_id=filters['commodity'].pk)
+            if 'product' in filters:
+                rows = rows.filter(product_id=filters['product'].pk)
+            if 'category' in filters:
+                rows = rows.filter(chemical__categories__overlap=filters['category'])
+            if 'narrow' in filters:
+                rows = stats.narrow_rows(rows, filters['narrow'])
+            if 'iarc_group' in filters:
+                rows = rows.filter(chemical__iarc_group=filters['iarc_group'])
+            if 'aerial_ground' in filters:
+                method = filters['aerial_ground']
+                rows = rows.filter(method='' if method == NO_METHOD else method)
+            if 'year__gte' in filters:
+                rows = rows.filter(year__gte=filters['year__gte'])
+            if 'year__lte' in filters:
+                rows = rows.filter(year__lte=filters['year__lte'])
+            return monthly_use(rows, *counting_mode(filters))
+
+        # Instances hash by their pk, so the key doesn't depend on how an id was spelled.
+        # 'ids' marks the key format: before ids, a bare int here was a CDPR code, and an old
+        # entry must never answer for the row whose pk equals that code.
+        keyed = {'ids': 1, **{k: (v.pk if hasattr(v, 'pk') else v) for k, v in filters.items()}}
+        place_key = _place_key('pesticides', place) if place is not None else 'pesticides:valley'
+        key = stats.all_years_key('place', place_key, hashlib.md5(json.dumps(sorted(keyed.items())).encode()).hexdigest())
+        data = stats.cached(key, build, ttl=CACHE_TIMEOUT)
+
+        response = http.Http200({'data': {'place': place_json(place) if place is not None else None, **data}})
+        response['Cache-Control'] = 'public, max-age=3600'
+        return response

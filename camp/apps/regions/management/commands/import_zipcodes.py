@@ -68,7 +68,7 @@ class Command(CountyFilterMixin, BaseCommand):
         with transaction.atomic():
             for _, row in gdf.iterrows():
                 zip_code = str(row.ZCTA5CE10).zfill(5)
-                region, created = Region.objects.import_or_update(
+                region, created = Region.all_objects.import_or_update(
                     name=zip_code,
                     slug=zip_code,
                     external_id=zip_code,

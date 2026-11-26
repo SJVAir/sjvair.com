@@ -4,9 +4,14 @@ from huey import crontab
 
 @db_periodic_task(crontab(minute='0', hour='14'), priority=50)
 def fetch_pesticide_notices():
+    from camp.apps.pesticides import stats
     from camp.apps.pesticides.spraydays import fetch_applications
     with get_queue('primary').lock_task('fetch-pesticide-notices'):
-        fetch_applications()
+        # Bump even on failure: a partial fetch may have changed notices.
+        try:
+            fetch_applications()
+        finally:
+            stats.bump_notices_version()
 
 
 @db_periodic_task(crontab(minute='15', hour='*/6'), priority=20)

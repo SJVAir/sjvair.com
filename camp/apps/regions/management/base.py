@@ -45,7 +45,7 @@ class CountyFilterMixin:
 
         from camp.apps.regions.models import Region
 
-        counties = Region.objects.filter(
+        counties = Region.all_objects.filter(
             type=Region.Type.COUNTY,
             name__in=county_names,
         ).select_related('boundary')

@@ -1,8 +1,10 @@
 from datetime import timedelta
 
 from django import forms
+from django.conf import settings
 
 from camp.api.v2.forms import BboxField
+from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
 from camp.apps.summaries.models import BaseSummary
 
@@ -49,8 +51,35 @@ class BulkSummaryDateRangeForm(forms.Form):
         return cleaned_data
 
 
-class BulkMonitorSummaryForm(BulkSummaryDateRangeForm):
+def monitor_type_choices():
+    """The monitor types `type` accepts: the public ones (MONITOR_ENABLED_TYPES)
+    plus the opt-in ones (MONITOR_OPT_IN_TYPES, e.g. CIMIS), which the bulk
+    endpoints serve only when `type` names them."""
+    types = {subclass.monitor_type for subclass in Monitor.get_enabled_subclasses()}
+    types |= {
+        subclass.monitor_type for subclass in Monitor.get_subclasses()
+        if subclass.monitor_type in settings.MONITOR_OPT_IN_TYPES
+    }
+    return [(monitor_type, monitor_type) for monitor_type in sorted(types)]
+
+
+class MonitorTypeListField(forms.MultipleChoiceField):
+    """Repeatable `type=<monitor type>`; blank values are dropped and an
+    unknown type is an error, like an unknown region."""
+
+    def to_python(self, value):
+        return [v.strip() for v in super().to_python(value) if v and v.strip()]
+
+
+class BulkMonitorScopeForm(forms.Form):
+    """The monitor bulk endpoints' scoping (`region`, `MonitorFilter` and
+    `processor` are read straight from the query string)."""
     bbox = BboxField()
+    type = MonitorTypeListField(choices=monitor_type_choices, required=False)
+
+
+class BulkMonitorSummaryForm(BulkMonitorScopeForm, BulkSummaryDateRangeForm):
+    pass
 
 
 class RegionListField(forms.Field):
@@ -69,7 +98,7 @@ class RegionListField(forms.Field):
         ids = [v.strip() for v in (value or []) if v and v.strip()]
         if not ids:
             return []
-        regions = list(Region.objects.filter(sqid__in=ids))
+        regions = list(Region.all_objects.filter(sqid__in=ids))
         unknown = sorted(set(ids) - {region.sqid for region in regions})
         if unknown:
             raise forms.ValidationError(
@@ -78,5 +107,40 @@ class RegionListField(forms.Field):
         return regions
 
 
-class BulkRegionSummaryForm(BulkSummaryDateRangeForm):
-    region = RegionListField(required=True)
+class BulkRegionScopeForm(forms.Form):
+    """Exactly one of `region` (repeatable ids, retired regions included) or
+    `type` (every current region of one type that has a boundary, the set
+    /regions/geojson/ draws).
+    The scope lands in `cleaned_data['regions']`, always a Region queryset, which
+    the views use as a sub-select (`region__in=` / `pk__in=`)."""
+
+    TYPE_CHOICES = [choice for choice in Region.Type.choices if choice[0] != Region.Type.LAND_USE]
+
+    region = RegionListField(required=False)
+    type = forms.ChoiceField(choices=TYPE_CHOICES, required=False)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if 'region' in self.errors or 'type' in self.errors:
+            return cleaned_data
+
+        regions = cleaned_data.get('region')
+        region_type = cleaned_data.get('type')
+        if regions and region_type:
+            self.add_error(None, forms.ValidationError(
+                'Pass either region or type, not both.', code='exclusive',
+            ))
+        elif region_type:
+            cleaned_data['regions'] = (Region.objects
+                .filter(type=region_type).exclude(boundary=None).current_vintage())
+        elif regions:
+            cleaned_data['regions'] = Region.all_objects.filter(pk__in=[region.pk for region in regions])
+        else:
+            self.add_error('region', forms.ValidationError(
+                'At least one region, or a type, is required.', code='required',
+            ))
+        return cleaned_data
+
+
+class BulkRegionSummaryForm(BulkRegionScopeForm, BulkSummaryDateRangeForm):
+    pass

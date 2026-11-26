@@ -1,0 +1,180 @@
+import pytest
+
+from unittest.mock import patch
+
+from django.test import TestCase, RequestFactory
+from django.urls import reverse
+
+from camp.api.v2.monitors import endpoints
+from camp.apps.monitors.models import Monitor
+from camp.utils.test import get_response_data
+
+monitor_meta = endpoints.MonitorMetaEndpoint.as_view()
+
+
+class MonitorMetaLabelTests(TestCase):
+    fixtures = ['default-calibrations.yaml']
+
+    def _fetch(self):
+        url = reverse('api:v2:monitors:monitor-meta')
+        return get_response_data(monitor_meta(RequestFactory().get(url)))['data']
+
+    def test_stages_listed(self):
+        stages = self._fetch()['stages']
+        assert set(stages) == {'raw', 'corrected', 'cleaned', 'calibrated'}
+        for key, stage in stages.items():
+            assert stage['key'] == key
+            assert stage['label']
+            assert stage['description']
+
+    def test_processors_listed(self):
+        data = self._fetch()
+        assert 'PM25_EPA_Oct2021' in data['processors']
+        for monitor in data['monitors'].values():
+            for entry in monitor['entries'].values():
+                for names in entry['processors'].values():
+                    for name in names:
+                        assert name in data['processors']
+
+    def test_every_processor_has_label(self):
+        for key, proc in self._fetch()['processors'].items():
+            assert proc['key'] == key
+            assert proc['label'] != key
+            assert proc['description']
+
+
+class MonitorMetaAlertsTests(TestCase):
+    fixtures = ['default-calibrations.yaml']
+
+    def _fetch(self):
+        url = reverse('api:v2:monitors:monitor-meta')
+        return get_response_data(monitor_meta(RequestFactory().get(url)))['data']
+
+    def _entry(self, monitor_type, entry_type):
+        monitors = self._fetch()['monitors']
+        if monitor_type not in monitors:
+            pytest.skip(f'{monitor_type} is not enabled')
+        return monitors[monitor_type]['entries'][entry_type]
+
+    def test_purpleair_pm25_alerts(self):
+        assert self._entry('purpleair', 'pm25')['alerts'] == {
+            'window': '60 min',
+            'min_coverage': 0.5,
+            'stage': 'calibrated',
+            'processor': 'PM25_UnivariateLinearRegression',
+            'expected_interval': None,
+        }
+
+    def test_aqlite_o3_override(self):
+        alerts = self._entry('aqlite', 'o3')['alerts']
+        assert alerts['stage'] == 'calibrated'
+        assert alerts['processor'] is None
+        assert alerts['expected_interval'] == '1h'
+
+    def test_airnow_o3_no_processor(self):
+        alerts = self._entry('airnow', 'o3')['alerts']
+        assert alerts['stage'] == 'raw'
+        assert alerts['processor'] is None
+
+    def test_non_alertable_is_null(self):
+        assert self._entry('purpleair', 'pm100')['alerts'] is None
+
+    def test_every_entry_has_alerts_key(self):
+        for monitor in self._fetch()['monitors'].values():
+            for entry in monitor['entries'].values():
+                assert 'alerts' in entry
+
+
+class MonitorMetaGroupTests(TestCase):
+    fixtures = ['default-calibrations.yaml']
+
+    def _fetch(self):
+        url = reverse('api:v2:monitors:monitor-meta')
+        return get_response_data(monitor_meta(RequestFactory().get(url)))['data']
+
+    def test_monitor_groups(self):
+        assert self._fetch()['monitor_groups'] == {
+            'reference': {'key': 'reference', 'label': 'Reference-grade', 'order': 0},
+            'low-cost': {'key': 'low-cost', 'label': 'Low-cost sensors', 'order': 1},
+        }
+
+    def test_group_labels_are_plain_strings(self):
+        for group in self._fetch()['monitor_groups'].values():
+            assert type(group['label']) is str
+
+    def test_every_graded_type_has_a_group(self):
+        data = self._fetch()
+        for monitor_model in Monitor.get_enabled_subclasses():
+            if monitor_model.GRADE is not None:
+                assert data['monitors'][monitor_model.monitor_type]['group'] in data['monitor_groups']
+
+    def test_gradeless_type_listed_with_null_group(self):
+        # Empty MONITOR_ENABLED_TYPES enables every type, CIMIS (GRADE None) included.
+        with self.settings(MONITOR_ENABLED_TYPES=[]):
+            monitors = self._fetch()['monitors']
+        assert 'cimis' in monitors
+        assert monitors['cimis']['group'] is None
+
+    CURRENT_GROUPS = {
+        'airnow': 'reference', 'aqlite': 'reference', 'aqview': 'reference', 'bam1022': 'reference',
+        'airgradient': 'low-cost', 'purpleair': 'low-cost', 'vozbox': 'low-cost',
+    }
+
+    def test_current_type_groups(self):
+        # Pinned, so a type leaving the base setting can't make this pass vacuously.
+        with self.settings(MONITOR_ENABLED_TYPES=list(self.CURRENT_GROUPS)):
+            monitors = self._fetch()['monitors']
+        assert {t: m['group'] for t, m in monitors.items()} == self.CURRENT_GROUPS
+
+    def test_bam1022_label_unchanged(self):
+        with self.settings(MONITOR_ENABLED_TYPES=['bam1022']):
+            monitors = self._fetch()['monitors']
+        assert monitors['bam1022']['label'] == 'BAM 1022'
+
+
+class GradeGroupMappingTests(TestCase):
+    def test_grade_mapping(self):
+        cases = {
+            Monitor.Grade.FEM: Monitor.GradeGroup.REFERENCE,
+            Monitor.Grade.FRM: Monitor.GradeGroup.REFERENCE,
+            Monitor.Grade.LCS: Monitor.GradeGroup.LOW_COST,
+            None: None,
+        }
+        for grade, group in cases.items():
+            with patch.object(Monitor, 'GRADE', grade):
+                assert Monitor.get_grade_group() == group
+
+
+DESCRIPTIONS = {
+    'pm25': 'Fine particles from smoke, dust, and vehicle exhaust.',
+    'o3': 'Ground-level gas that forms in sunlight on hot days.',
+    'pm10': 'The smallest particles, mostly from smoke and vehicle exhaust.',
+    'pm100': 'Coarser particles from dust, farming, and road traffic.',
+    'no2': 'Gas from vehicle and engine exhaust, highest near busy roads.',
+    'so2': 'Gas from burning fuels that contain sulfur, mostly from industry.',
+    'co': 'Colorless, odorless gas from vehicle exhaust and burning fuel.',
+    'co2': 'Gas from breathing and burning fuel; high levels indoors mean a room needs fresh air.',
+}
+
+
+class MonitorMetaDescriptionTests(TestCase):
+    fixtures = ['default-calibrations.yaml']
+
+    def _fetch(self):
+        url = reverse('api:v2:monitors:monitor-meta')
+        return get_response_data(monitor_meta(RequestFactory().get(url)))['data']
+
+    def test_pollutant_descriptions(self):
+        entries = self._fetch()['entries']
+        for entry_type, text in DESCRIPTIONS.items():
+            assert entries[entry_type]['description'] == text
+            assert type(entries[entry_type]['description']) is str
+
+    def test_other_entry_types_null(self):
+        entries = self._fetch()['entries']
+        for entry_type, entry in entries.items():
+            assert 'description' in entry
+            if entry_type not in DESCRIPTIONS:
+                assert entry['description'] is None
+        assert entries['particulates']['description'] is None
+        assert entries['temperature']['description'] is None

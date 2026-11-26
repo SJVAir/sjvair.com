@@ -1,55 +1,47 @@
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from functools import reduce
 import operator
 
 from django.conf import settings
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Count, Exists, OuterRef, Q
+from django.db.models.functions import TruncHour
 
-from camp.utils.datetime import make_aware
+from camp.utils.datetime import localtime, make_aware
+from camp.apps.summaries.periods import is_period_start, iter_hours, iter_period_starts, period_end
 from camp.apps.summaries.models import BaseSummary
 from camp.apps.entries.stages import Stage
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
-from camp.apps.summaries.aggregators import compute_stats, compute_region_summary
+from camp.apps.summaries.aggregators import compute_stats, compute_region_summary, hourly_output_processor
 from camp.apps.summaries.models import MonitorSummary, RegionSummary
+from camp.apps.summaries.selection import region_summary_entry_models
 
 
 DEFAULT_CHUNK_DAYS = 1
 
 
 def chunk_start_for(cursor, range_start, chunk_days=DEFAULT_CHUNK_DAYS):
-    """The lower bound of the next chunk to process, walking backward from cursor."""
-    return max(cursor - timedelta(days=chunk_days), range_start)
+    """
+    The lower bound of the next chunk to process, walking backward from cursor.
+    Steps whole Pacific calendar days, so the result is always a Pacific
+    midnight even when `cursor` comes back from the database as UTC.
+    """
+    target = localtime(cursor).date() - timedelta(days=chunk_days)
+    return max(make_aware(datetime(target.year, target.month, target.day), settings.DEFAULT_TIMEZONE), range_start)
 
 
-def hour_range(start, end):
-    """Yield each hourly datetime in [start, end)."""
-    current = start
-    while current < end:
-        yield current
-        current += timedelta(hours=1)
+hour_range = iter_hours
 
 
 def iter_chunk_days(chunk_start, chunk_end):
-    """Yield each day (midnight-aligned datetime) in [chunk_start, chunk_end)."""
-    day = chunk_start
-    while day < chunk_end:
-        yield day
-        day += timedelta(days=1)
-
-
-def _months_later(day, months):
-    """Advance a day-1-aligned datetime by `months` calendar months, re-localizing for DST."""
-    total = day.month - 1 + months
-    year = day.year + total // 12
-    month = total % 12 + 1
-    return make_aware(datetime(year, month, 1), settings.DEFAULT_TIMEZONE)
+    """Yield each Pacific day start in [chunk_start, chunk_end). `chunk_start` is a Pacific midnight."""
+    return iter_period_starts('day', chunk_start, chunk_end)
 
 
 def daily_rollup_window(day):
     """The (target, source, window_start, window_end) tuple to roll up a single day."""
-    return (BaseSummary.Resolution.DAILY, BaseSummary.Resolution.HOURLY, day, day + timedelta(days=1))
+    return (BaseSummary.Resolution.DAILY, BaseSummary.Resolution.HOURLY, day, period_end('day', day))
 
 
 def higher_rollup_windows(day):
@@ -61,47 +53,55 @@ def higher_rollup_windows(day):
     confirmed complete, since every later day in that period was necessarily
     already processed on an earlier (more recent) tick.
     """
-    if day.day != 1:
+    local = localtime(day)
+    if not is_period_start('day', day) or local.day != 1:
         return []
 
-    windows = [(
-        BaseSummary.Resolution.MONTHLY, BaseSummary.Resolution.DAILY,
-        day, _months_later(day, 1),
-    )]
+    R = BaseSummary.Resolution
+    windows = [(R.MONTHLY, R.DAILY, day, period_end('month', day))]
 
-    if day.month in (1, 4, 7, 10):
-        windows.append((
-            BaseSummary.Resolution.QUARTERLY, BaseSummary.Resolution.MONTHLY,
-            day, _months_later(day, 3),
-        ))
+    if local.month in (1, 4, 7, 10):
+        windows.append((R.QUARTERLY, R.MONTHLY, day, period_end('quarter', day)))
 
-    if day.month in (12, 3, 6, 9):
-        windows.append((
-            BaseSummary.Resolution.SEASONAL, BaseSummary.Resolution.MONTHLY,
-            day, _months_later(day, 3),
-        ))
+    if local.month in (12, 3, 6, 9):
+        windows.append((R.SEASONAL, R.MONTHLY, day, period_end('season', day)))
 
-    if day.month == 1:
-        windows.append((
-            BaseSummary.Resolution.YEARLY, BaseSummary.Resolution.MONTHLY,
-            day, _months_later(day, 12),
-        ))
+    if local.month == 1:
+        windows.append((R.YEARLY, R.MONTHLY, day, period_end('year', day)))
 
     return windows
 
 
-def monitors_with_data_in(chunk_start, chunk_end, entry_models):
-    """Monitor ids with at least one entry of any given type in [chunk_start, chunk_end)."""
-    conditions = [
-        Exists(EntryModel.objects.filter(
+def monitors_with_data_in(chunk_start, chunk_end, entry_models, scoped_entry_models=None):
+    """
+    Monitor ids with at least one entry of any given type in [chunk_start, chunk_end).
+
+    `scoped_entry_models` ({EntryModel: [monitor types]}) adds types checked
+    only on monitors of the listed types (one query per monitor type), so
+    other monitor types never pay their Exists.
+    """
+    def has_data(EntryModel):
+        return Exists(EntryModel.objects.filter(
             monitor_id=OuterRef('pk'),
             timestamp__gte=chunk_start,
             timestamp__lt=chunk_end,
         ))
-        for EntryModel in entry_models
-    ]
-    combined = reduce(operator.or_, conditions)
-    return list(Monitor.objects.filter(combined).values_list('pk', flat=True).distinct())
+
+    combined = reduce(operator.or_, [has_data(EntryModel) for EntryModel in entry_models])
+    monitor_ids = list(Monitor.objects.filter(combined).values_list('pk', flat=True).distinct())
+
+    by_type = defaultdict(list)
+    for EntryModel, monitor_types in (scoped_entry_models or {}).items():
+        for monitor_type in monitor_types:
+            by_type[monitor_type].append(EntryModel)
+    seen = set(monitor_ids)
+    for monitor_type, models in by_type.items():
+        combined = reduce(operator.or_, [has_data(EntryModel) for EntryModel in models])
+        for pk in monitor_type.objects.filter(combined).values_list('pk', flat=True).distinct():
+            if pk not in seen:
+                seen.add(pk)
+                monitor_ids.append(pk)
+    return monitor_ids
 
 
 def regions_with_monitors():
@@ -144,8 +144,34 @@ def backfill_monitor_hours(monitor, chunk_start, chunk_end, entry_models):
                 hour = ts.replace(minute=0, second=0, microsecond=0)
                 groups[(hour, processor)].append(float(value))
 
+        # Hourly-output series: one grouped query counts each hour's source readings.
+        source_counts = {}
+        classes = {p: hourly_output_processor(p) for p in {p for _, p in groups}}
+        classes = {p: c for p, c in classes.items() if c is not None}
+        for stage in {c.source_stage for c in classes.values()}:
+            source_counts[stage] = dict(
+                EntryModel.objects
+                .filter(
+                    monitor_id=monitor.pk,
+                    timestamp__gte=chunk_start,
+                    timestamp__lt=chunk_end,
+                    stage=stage,
+                )
+                # UTC, so the two 01:00 hours of fall-back day stay apart.
+                .annotate(hour=TruncHour('timestamp', tzinfo=dt_timezone.utc))
+                .values_list('hour')
+                .annotate(n=Count('pk'))
+                .order_by()
+            )
+
+        expected = monitor.expected_hourly_entries or 1
         for (hour, processor), values in groups.items():
-            stats = compute_stats(values, monitor.expected_hourly_entries or 1)
+            cls = classes.get(processor)
+            if cls is None:
+                stats = compute_stats(values, expected)
+            else:
+                n = source_counts[cls.source_stage].get(hour, 0)
+                stats = compute_stats(values, 1, is_complete=n >= 0.8 * expected)
             if stats is None:
                 continue
             to_upsert.append(MonitorSummary(
@@ -177,11 +203,13 @@ def backfill_region_hours(region, hours, monitor_grades):
     given hours, using precomputed monitor_grades ({monitor_id: grade}) to
     avoid a geospatial query per hour. Returns the number of summaries written.
     """
+    # Only the region types: weather types (CIMIS) have monitor rows, never region rows.
+    region_types = [m.entry_type for m in region_summary_entry_models()]
     to_upsert = []
     for hour in hours:
         entry_types = list(
             MonitorSummary.objects
-            .filter(timestamp=hour, resolution=BaseSummary.Resolution.HOURLY)
+            .filter(timestamp=hour, resolution=BaseSummary.Resolution.HOURLY, entry_type__in=region_types)
             .values_list('entry_type', flat=True)
             .distinct()
         )

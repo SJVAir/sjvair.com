@@ -1,11 +1,12 @@
 import csv
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from decimal import Decimal
 from io import StringIO
 from pprint import pprint
 
 from django.conf import settings
+from django.core.cache import cache
 from django.test import TestCase, RequestFactory, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -285,7 +286,9 @@ class EndpointTests(TestCase):
         content = get_response_data(response)
 
         assert response.status_code == 200
-        assert {e['stage'] for e in content['data']} == set([monitor.get_default_stage(entry_models.PM25).value])
+        published = monitor.get_published_lookup(entry_models.PM25)
+        assert content['data']
+        assert {(e['stage'], e['processor']) for e in content['data']} == {(published['stage'].value, published['processor'])}
 
     def test_entry_list_sensor(self):
         '''
@@ -370,7 +373,7 @@ class EndpointTests(TestCase):
             'entry_type': 'pm25'
         }
         url = reverse('api:v2:monitors:entry-list', kwargs=kwargs)
-        params = {'timestamp__date': '2024-07-24'}
+        params = {'timestamp__date': '2024-07-24', 'stage': monitor.get_default_stage(entry_models.PM25).value}
         request = self.factory.get(url, params)
         request.monitor = monitor
         response = entry_list(request, **kwargs)
@@ -404,7 +407,9 @@ class EndpointTests(TestCase):
         reader = csv.DictReader(csv_file)
         rows = list(reader)
 
-        assert {e['stage'] for e in rows} == set([monitor.get_default_stage(entry_models.PM25).value])
+        published = monitor.get_published_lookup(entry_models.PM25)
+        assert rows
+        assert {(e['stage'], e['processor']) for e in rows} == {(published['stage'].value, published['processor'])}
 
     def test_entry_csv_sensor(self):
         '''
@@ -477,8 +482,20 @@ class EndpointTests(TestCase):
             Test that we can create an entry.
         '''
         monitor = self.get_bam1022()
+        now = timezone.now().replace(minute=0, second=0, microsecond=0)
+
+        # The BAM cleaner holds off a record unless the two previous hourly
+        # RAW records exist, so seed them.
+        for hours in (1, 2):
+            entry_models.PM25.objects.create(
+                monitor=monitor,
+                timestamp=now - timedelta(hours=hours),
+                value=Decimal('10'),
+                stage=entry_models.PM25.Stage.RAW,
+            )
+
         payload = {
-            'Time': timezone.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'Time': timezone.localtime(now).strftime('%Y-%m-%d %H:%M:%S'),
             'AT(C)': Decimal('30.6'),
             'RH(%)': Decimal('25.0'),
             'BP(mmHg)': Decimal('764.5'),
@@ -538,6 +555,39 @@ class EndpointTests(TestCase):
 
             assert EntryModel.objects.get(**lookup) is not None
 
+    def test_create_entry_with_maintenance_status_is_not_cleaned(self):
+        monitor = self.get_bam1022()
+        now = timezone.now().replace(minute=0, second=0, microsecond=0)
+        for hours in (1, 2):
+            entry_models.PM25.objects.create(
+                monitor=monitor,
+                timestamp=now - timedelta(hours=hours),
+                value=Decimal('10'),
+                stage=entry_models.PM25.Stage.RAW,
+            )
+
+        payload = {
+            'Time': timezone.localtime(now).strftime('%Y-%m-%d %H:%M:%S'),
+            'AT(C)': Decimal('30.6'),
+            'RH(%)': Decimal('25.0'),
+            'BP(mmHg)': Decimal('764.5'),
+            'ConcHR(ug/m3)': Decimal('14'),
+            'Status': '00512',
+        }
+        url = reverse('api:v2:monitors:entry-create', kwargs={'monitor_id': monitor.pk})
+        request = self.factory.post(url, payload, HTTP_ACCESS_KEY=str(monitor.access_key))
+        request.monitor = monitor
+        response = create_entry(request, monitor_id=monitor.pk)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        pm25_stages = [e['stage'] for e in content['data'] if e['entry_type'] == 'pm25']
+        assert pm25_stages == [entry_models.PM25.Stage.RAW]
+
+        monitor.refresh_from_db()
+        assert monitor.status.timestamp == now
+        assert monitor.status.labels == ['Maintenance']
+
     def test_create_entry_rejected(self):
         monitor = self.get_purple_air()
         assert monitor.ENTRY_UPLOAD_ENABLED is False
@@ -556,6 +606,90 @@ class EndpointTests(TestCase):
         assert response.status_code == 403
         assert 'errors' in content
         assert content['errors']['detail'][0]['message'] == endpoints.CreateEntry.upload_not_allowed
+
+
+@override_settings(MONITOR_ENABLED_TYPES=[], MONITOR_HEALTHY_THRESHOLD=0)
+class CurrentDataActiveTests(TestCase):
+    '''
+        current/ lists each public monitor with a position and a latest entry
+        of the type, active within MONITOR_ACTIVE_WINDOW_DAYS. "Active" used
+        to be get_active()'s join to LatestEntry + DISTINCT, which repeated
+        each monitor once per LatestEntry row and pushed the plan over
+        Postgres' JIT threshold; it is an EXISTS now.
+    '''
+    fixtures = ['default-calibrations.yaml']
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.sensor_ids = iter(range(95000, 96000))
+        cache.clear()
+
+    def tearDown(self):
+        cache.clear()
+
+    def make(self, age=timedelta(minutes=1), extra_types=(), name='PurpleAir'):
+        from django.contrib.gis.geos import Point
+        monitor = PurpleAir.objects.create(
+            name=name, sensor_id=next(self.sensor_ids),
+            position=Point(-119.78, 36.73, srid=4326), location=PurpleAir.LOCATION.outside,
+        )
+        timestamp = timezone.now() - age
+        monitor.create_entry(entry_models.PM25, timestamp=timestamp, value=10.0, sensor='a',
+            stage=entry_models.PM25.Stage.CLEANED)
+        for EntryModel in extra_types:
+            monitor.create_entry(EntryModel, timestamp=timestamp, value=Decimal('50.0'))
+        return monitor
+
+    def get_ids(self):
+        kwargs = {'entry_type': 'pm25'}
+        url = reverse('api:v2:monitors:current-data', kwargs=kwargs)
+        response = current_data(self.factory.get(url, {'_cc': '1'}), **kwargs)
+        assert response.status_code == 200
+        return [m['id'] for m in get_response_data(response)['data']]
+
+    def test_active_window(self):
+        window = timedelta(days=settings.MONITOR_ACTIVE_WINDOW_DAYS)
+        recent = self.make(age=timedelta(days=10))
+        edge = self.make(age=window - timedelta(hours=1))
+        self.make(age=window + timedelta(days=1))
+        assert sorted(self.get_ids()) == sorted([str(recent.pk), str(edge.pk)])
+
+    def test_ordered_by_name_then_id(self):
+        # Same-named monitors are common (the DISTINCT's sort used to break
+        # those ties by id; without it they came back in any order).
+        monitors = [self.make() for _ in range(5)]
+        named = self.make(name='Aardvark')
+        expected = [str(named.pk)] + [str(m.pk) for m in sorted(monitors, key=lambda m: m.pk.int)]
+        assert self.get_ids() == expected
+
+    def test_each_monitor_once_with_several_latest_entries(self):
+        monitor = self.make(extra_types=(entry_models.Temperature, entry_models.Humidity))
+        assert monitor.latest_entries.count() >= 3
+        assert self.get_ids() == [str(monitor.pk)]
+
+    def test_query_count_and_no_distinct(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        kwargs = {'entry_type': 'pm25'}
+        url = reverse('api:v2:monitors:current-data', kwargs=kwargs)
+
+        def run():
+            with CaptureQueriesContext(connection) as ctx:
+                response = current_data(self.factory.get(url, {'_cc': '1'}), **kwargs)
+                get_response_data(response)
+            return ctx.captured_queries
+
+        self.make(extra_types=(entry_models.Temperature,))
+        few = run()
+        for _ in range(5):
+            self.make(extra_types=(entry_models.Temperature,))
+        many = run()
+
+        # DefaultCalibration lookups (published types, published
+        # calibrations), monitors, their LatestEntry rows, latest entries.
+        assert len(few) == len(many) == 5
+        main = max(many, key=lambda q: len(q['sql']))['sql']
+        assert 'DISTINCT' not in main
 
 
 class MonitorFilterDeviceTests(TestCase):
@@ -748,7 +882,6 @@ class MonitorFilterDeviceTests(TestCase):
         assert str(purpleair.pk) not in ids
 
 
-
 class PublishedEntryTypeTests(TestCase):
     """
     A DefaultCalibration row is the publish switch for the map endpoints
@@ -855,6 +988,14 @@ class PublishedEntryTypeTests(TestCase):
         assert entries['pm25']['published'] is False
 
 
+class MonitorMetaAvailablePollutantsTests(TestCase):
+    fixtures = ['default-calibrations.yaml']
+
+    def test_monitor_meta_lists_available_pollutants(self):
+        data = get_response_data(monitor_meta(RequestFactory().get('/')))
+        assert data['data']['available_pollutants'] == ['o3', 'pm25']
+
+
 class PublishedFixtureTests(TestCase):
     fixtures = ['default-calibrations.yaml']
 
@@ -874,3 +1015,719 @@ class PublishedFixtureTests(TestCase):
         assert rows[('airnow', 'o3')] == ''
         assert rows[('vozbox', 'o3')] == 'VOZBox_QuinnCal'
         assert ('vozbox', 'pm25') not in rows
+
+
+class ZoneAwareTimestampTests(TestCase):
+    '''
+        Clients send UTC ISO timestamps ("Z" or an offset) for
+        timestamp__gte/timestamp__lte and for at/'s timestamp. Pin that the
+        server reads them as that instant, and that a zone-less value is
+        still Pacific wall time.
+    '''
+    fixtures = ['purple-air.yaml', 'bam1022.yaml', 'default-calibrations.yaml']
+
+    # 2026-10-22 00:00 Pacific (PDT, UTC-7) is 07:00 UTC.
+    BOUNDARY_PARAMS = {
+        'utc': '2026-10-22T07:00:00Z',
+        'offset': '2026-10-22T00:00:00-07:00',
+        'zoneless': '2026-10-22 00:00:00',
+    }
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        self.boundary = datetime(2026, 10, 22, 7, 0, tzinfo=dt_timezone.utc)
+        # The published series: the entries list defaults to it.
+        lookup = self.monitor.get_published_lookup(entry_models.PM25)
+        for offset, value in [(timedelta(minutes=-1), '12.0'), (timedelta(minutes=1), '999.0')]:
+            entry_models.PM25.objects.create(
+                monitor_id=self.monitor.pk, timestamp=self.boundary + offset,
+                sensor='a', value=Decimal(value), **lookup,
+            )
+
+    def entry_values(self, **params):
+        kwargs = {'monitor_id': self.monitor.pk, 'entry_type': 'pm25'}
+        url = reverse('api:v2:monitors:entry-list', kwargs=kwargs)
+        request = self.factory.get(url, params)  # urlencodes the "+" in an offset
+        request.monitor = self.monitor
+        response = entry_list(request, **kwargs)
+        content = get_response_data(response)
+        assert response.status_code == 200
+        return sorted(Decimal(str(e['value'])) for e in content['data'])
+
+    @override_settings(MONITOR_HEALTHY_THRESHOLD=0)
+    def at_value(self, timestamp):
+        kwargs = {'entry_type': 'pm25'}
+        url = reverse('api:v2:monitors:monitor-at', kwargs=kwargs)
+        request = self.factory.get(url, {'timestamp': timestamp})
+        response = monitors_at(request, **kwargs)
+        content = get_response_data(response)
+        assert response.status_code == 200
+        result = [m for m in content['data'] if m['id'] == str(self.monitor.pk)]
+        return Decimal(str(result[0]['latest']['value'])) if result else None
+
+    def test_gte_accepts_utc_z(self):
+        assert self.entry_values(timestamp__gte=self.BOUNDARY_PARAMS['utc']) == [Decimal('999.0')]
+
+    def test_gte_accepts_offset(self):
+        assert self.entry_values(timestamp__gte=self.BOUNDARY_PARAMS['offset']) == [Decimal('999.0')]
+
+    def test_lte_accepts_utc_z(self):
+        assert self.entry_values(timestamp__lte=self.BOUNDARY_PARAMS['utc']) == [Decimal('12.0')]
+
+    def test_lte_accepts_offset(self):
+        assert self.entry_values(timestamp__lte=self.BOUNDARY_PARAMS['offset']) == [Decimal('12.0')]
+
+    def test_exact_lt_gt_accept_aware_and_zoneless(self):
+        # Entries sit 1 minute either side of the boundary, so an exact
+        # match on the boundary finds nothing and lt/gt split them.
+        for key in ('utc', 'offset', 'zoneless'):
+            value = self.BOUNDARY_PARAMS[key]
+            assert self.entry_values(timestamp__lt=value) == [Decimal('12.0')], key
+            assert self.entry_values(timestamp__gt=value) == [Decimal('999.0')], key
+            assert self.entry_values(timestamp=value) == [], key
+
+    def test_exact_matches_entry_instant(self):
+        for value in ('2026-10-22T07:01:00Z', '2026-10-22T00:01:00-07:00', '2026-10-22 00:01:00'):
+            assert self.entry_values(timestamp=value) == [Decimal('999.0')], value
+
+    def test_lt_gt_zoneless_pacific_whatever_the_active_zone(self):
+        with timezone.override(None):
+            value = self.BOUNDARY_PARAMS['zoneless']
+            assert self.entry_values(timestamp__lt=value) == [Decimal('12.0')]
+            assert self.entry_values(timestamp__gt=value) == [Decimal('999.0')]
+            assert self.entry_values(timestamp='2026-10-22 00:01:00') == [Decimal('999.0')]
+
+    def test_zoneless_filter_is_pacific_whatever_the_active_zone(self):
+        for active in (timezone.get_current_timezone(), None):
+            with timezone.override(active):
+                assert self.entry_values(timestamp__gte=self.BOUNDARY_PARAMS['zoneless']) == [Decimal('999.0')]
+                assert self.entry_values(timestamp__lte=self.BOUNDARY_PARAMS['zoneless']) == [Decimal('12.0')]
+
+    def test_at_accepts_utc_z(self):
+        assert self.at_value(self.BOUNDARY_PARAMS['utc']) == Decimal('12.0')
+
+    def test_at_accepts_offset(self):
+        assert self.at_value(self.BOUNDARY_PARAMS['offset']) == Decimal('12.0')
+
+    def test_at_zoneless_is_pacific_whatever_the_active_zone(self):
+        for active in (timezone.get_current_timezone(), None):
+            with timezone.override(active):
+                assert self.at_value(self.BOUNDARY_PARAMS['zoneless']) == Decimal('12.0')
+
+
+@override_settings(MONITOR_HEALTHY_THRESHOLD=0)
+class PublishedLatestEntryTests(TestCase):
+    '''
+    A PurpleAir keeps a LatestEntry for its cleaned PM2.5 and another for
+    the calibrated one. current/, closest/, at/ and monitor detail all show
+    the one its DefaultCalibration row publishes (PM25_EPA_Oct2021), so the
+    map and the detail page agree.
+    '''
+    fixtures = ['purple-air.yaml', 'default-calibrations.yaml']
+
+    def setUp(self):
+        from django.core.cache import cache
+        from camp.apps.monitors.models import LatestEntry
+
+        cache.clear()
+        self.factory = RequestFactory()
+        self.now = timezone.now().replace(microsecond=0)
+        self.monitor = PurpleAir.objects.get(pk='jLI5fer7S0uyR7eMYNSPpg')
+
+        # Cleaned is created last, so an unordered pick tends to land on it.
+        self.calibrated = self._latest(
+            entry_models.PM25.Stage.CALIBRATED, 'PM25_EPA_Oct2021', Decimal('1771.47'))
+        self.cleaned = self._latest(
+            entry_models.PM25.Stage.CLEANED, 'PM25_LCS_Cleaning', Decimal('1077.00'))
+
+    def _latest(self, stage, processor, value):
+        from camp.apps.monitors.models import LatestEntry
+
+        entry = entry_models.PM25.objects.create(
+            monitor=self.monitor, timestamp=self.now, sensor='', stage=stage, processor=processor,
+            location=self.monitor.location, position=self.monitor.position, value=value,
+        )
+        LatestEntry.objects.create(
+            monitor=self.monitor, entry_type='pm25', entry_id=entry.pk,
+            stage=stage, processor=processor, timestamp=self.now,
+        )
+        return entry
+
+    def _detail(self):
+        kwargs = {'monitor_id': self.monitor.pk}
+        request = self.factory.get(reverse('api:v2:monitors:monitor-detail', kwargs=kwargs))
+        request.monitor = self.monitor
+        response = monitor_detail(request, **kwargs)
+        assert response.status_code == 200
+        return get_response_data(response)['data']['latest']['pm25']
+
+    def _from_list(self, view, name, params=None):
+        from django.core.cache import cache
+        cache.clear()
+        kwargs = {'entry_type': 'pm25'}
+        response = view(self.factory.get(reverse(name, kwargs=kwargs), params or {}), **kwargs)
+        assert response.status_code == 200
+        [monitor] = [m for m in get_response_data(response)['data'] if m['id'] == str(self.monitor.pk)]
+        return monitor['latest']
+
+    def _current(self):
+        return self._from_list(current_data, 'api:v2:monitors:current-data')
+
+    def _closest(self):
+        position = self.monitor.position
+        return self._from_list(closest_monitor, 'api:v2:monitors:monitor-closest',
+            {'latitude': position.y, 'longitude': position.x})
+
+    def _at(self):
+        return self._from_list(monitors_at, 'api:v2:monitors:monitor-at',
+            {'timestamp': self.now.isoformat()})
+
+    def _all(self):
+        return {
+            'detail': self._detail(),
+            'current': self._current(),
+            'closest': self._closest(),
+            'at': self._at(),
+        }
+
+    def test_every_endpoint_shows_the_published_calibration(self):
+        for name, latest in self._all().items():
+            assert latest['processor'] == 'PM25_EPA_Oct2021', name
+            assert Decimal(str(latest['value'])) == Decimal('1771.47'), name
+
+    def test_blank_default_calibration_publishes_the_default_stage(self):
+        from camp.apps.calibrations.models import DefaultCalibration
+        DefaultCalibration.objects.filter(monitor_type='purpleair', entry_type='pm25').update(calibration='')
+
+        for name, latest in self._all().items():
+            assert latest['processor'] == 'PM25_LCS_Cleaning', name
+            assert Decimal(str(latest['value'])) == Decimal('1077.00'), name
+
+    def _entries(self, view=None, name='api:v2:monitors:entry-list', params=None):
+        kwargs = {'monitor_id': self.monitor.pk, 'entry_type': 'pm25'}
+        request = self.factory.get(reverse(name, kwargs=kwargs), params or {})
+        request.monitor = self.monitor
+        response = (view or entry_list)(request, **kwargs)
+        assert response.status_code == 200
+        return response
+
+    def _entry_processors(self, params=None):
+        return {e['processor'] for e in get_response_data(self._entries(params=params))['data']}
+
+    def test_entries_default_to_the_published_calibration(self):
+        # The detail chart asks for no stage or processor; it must plot the
+        # same series as the reading above it.
+        assert self._entry_processors() == {'PM25_EPA_Oct2021'}
+
+    def test_entries_csv_defaults_to_the_published_calibration(self):
+        response = self._entries(entry_csv, 'api:v2:monitors:entry-csv')
+        rows = list(csv.DictReader(StringIO(get_response_data(response))))
+        assert {r['processor'] for r in rows} == {'PM25_EPA_Oct2021'}
+
+    def test_entries_honor_an_explicit_stage(self):
+        assert self._entry_processors({'stage': 'cleaned'}) == {'PM25_LCS_Cleaning'}
+
+    def test_entries_honor_an_explicit_processor(self):
+        assert self._entry_processors({'processor': 'PM25_LCS_Cleaning'}) == {'PM25_LCS_Cleaning'}
+
+    def test_entries_default_to_the_default_stage_when_calibration_is_blank(self):
+        from camp.apps.calibrations.models import DefaultCalibration
+        DefaultCalibration.objects.filter(monitor_type='purpleair', entry_type='pm25').update(calibration='')
+        assert self._entry_processors() == {'PM25_LCS_Cleaning'}
+
+    def _age_calibrated(self, age):
+        from camp.apps.monitors.models import LatestEntry
+        timestamp = self.now - age
+        entry_models.PM25.objects.filter(pk=self.calibrated.pk).update(timestamp=timestamp)
+        LatestEntry.objects.filter(processor='PM25_EPA_Oct2021').update(timestamp=timestamp)
+
+    def test_published_calibration_a_little_behind_is_still_shown(self):
+        # The pipeline saves cleaned a moment before EPA; within 3 PurpleAir
+        # intervals (6 min) that's the race, not a stale calibration.
+        self._age_calibrated(timedelta(minutes=4))
+        for name, latest in self._all().items():
+            assert latest['processor'] == 'PM25_EPA_Oct2021', name
+
+    def test_stale_published_calibration_gives_way_to_the_default_stage(self):
+        # EPA stopped (e.g. a dead humidity sensor) while cleaning carried on.
+        self._age_calibrated(timedelta(minutes=10))
+        for name, latest in self._all().items():
+            assert latest['processor'] == 'PM25_LCS_Cleaning', name
+            assert Decimal(str(latest['value'])) == Decimal('1077.00'), name
+
+    def test_at_skips_the_default_stage_query_when_published_is_fresh(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        with CaptureQueriesContext(connection) as ctx:
+            [monitor] = PurpleAir.objects.filter(pk=self.monitor.pk).with_entry_as_of(
+                entry_models.PM25, self.now, seconds=3600)
+        assert monitor.latest_entry.pk == self.calibrated.pk
+        pm25_queries = [q for q in ctx.captured_queries if 'entries_pm25' in q['sql']]
+        assert len(pm25_queries) == 1
+
+    def test_falls_back_to_the_default_stage_without_a_calibrated_entry(self):
+        from camp.apps.monitors.models import LatestEntry
+        LatestEntry.objects.filter(processor='PM25_EPA_Oct2021').delete()
+        self.calibrated.delete()
+
+        for name, latest in self._all().items():
+            assert latest['processor'] == 'PM25_LCS_Cleaning', name
+
+
+@override_settings(MONITOR_ENABLED_TYPES=[])
+class MonitorListQueryCountTests(TestCase):
+    '''
+        Each AirGradient's data_providers reads its place; without
+        select_related that was one query per AirGradient on every list
+        cache miss (266 locally).
+    '''
+    fixtures = ['default-calibrations.yaml']
+
+    def setUp(self):
+        from camp.apps.monitors.airgradient.models import Place
+        self.factory = RequestFactory()
+        self.place = Place.objects.create(name='Test Place', url='https://example.com', token='test-token')
+        self.sensor_ids = iter(range(93000, 94000))
+        cache.clear()
+
+    def tearDown(self):
+        cache.clear()
+
+    def add_airgradients(self, count):
+        from django.contrib.gis.geos import Point
+        from camp.apps.monitors.airgradient.models import AirGradient
+        for _ in range(count):
+            sensor_id = next(self.sensor_ids)
+            AirGradient.objects.create(
+                name=f'AirGradient {sensor_id}', sensor_id=sensor_id, place=self.place,
+                position=Point(-119.78, 36.73, srid=4326), location=AirGradient.LOCATION.outside,
+            )
+
+    def count_queries(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        url = reverse('api:v2:monitors:monitor-list')
+        with CaptureQueriesContext(connection) as ctx:
+            response = monitor_list(self.factory.get(url, {'_cc': '1'}))
+            get_response_data(response)
+        assert response.status_code == 200
+        return len(ctx)
+
+    def test_query_count_does_not_grow_with_airgradients(self):
+        self.add_airgradients(1)
+        few = self.count_queries()
+        self.add_airgradients(5)
+        assert self.count_queries() == few
+
+
+class MonitorListDatasetTests(TestCase):
+    fixtures = ['purple-air.yaml', 'default-calibrations.yaml']
+
+    def setUp(self):
+        from django.contrib.gis.geos import Point
+        cache.clear()
+        self.factory = RequestFactory()
+        self.url = reverse('api:v2:monitors:monitor-list')
+        self.cimis = CIMIS.objects.create(
+            name='CIMIS Station',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+
+    def get(self, **params):
+        params.setdefault('_cc', '1')
+        response = monitor_list(self.factory.get(self.url, params))
+        return response, get_response_data(response)
+
+    def types(self, content):
+        return {m['type'] for m in content['data']}
+
+    def test_default_list_excludes_cimis(self):
+        response, content = self.get()
+        assert response.status_code == 200
+        assert content['data']
+        assert 'cimis' not in self.types(content)
+        assert 'purpleair' in self.types(content)
+
+    def test_weather_dataset_lists_only_cimis(self):
+        response, content = self.get(dataset='weather')
+        assert response.status_code == 200
+        assert [m['id'] for m in content['data']] == [str(self.cimis.pk)]
+
+    def test_weather_dataset_excludes_hidden(self):
+        self.cimis.is_hidden = True
+        self.cimis.save()
+        response, content = self.get(dataset='weather')
+        assert response.status_code == 200
+        assert content['data'] == []
+
+    @override_settings(MONITOR_OPT_IN_TYPES={'not-a-type': 'weather'})
+    def test_opt_in_dataset_without_a_type_lists_none(self):
+        # No subclass matches, so the type lookup is empty; it must not list every monitor.
+        response, content = self.get(dataset='weather')
+        assert response.status_code == 200
+        assert content['data'] == []
+
+    def test_air_quality_dataset_matches_default(self):
+        _, default = self.get()
+        response, content = self.get(dataset='air-quality')
+        assert response.status_code == 200
+        assert [m['id'] for m in content['data']] == [m['id'] for m in default['data']]
+
+    def cache_key(self, **params):
+        view = endpoints.MonitorList()
+        view.request = self.factory.get(self.url, params)
+        view.kwargs = {}
+        return view.get_view_cache_key()
+
+    def test_air_quality_dataset_shares_default_cache_key(self):
+        # The catalog advertises ?dataset=air-quality; it must read the prewarmed bare list.
+        assert self.cache_key(dataset='air-quality') == self.cache_key()
+        assert self.cache_key(dataset='air-quality', _cc='1') == self.cache_key()
+        assert self.cache_key(dataset='weather') != self.cache_key()
+
+    def test_air_quality_dataset_hits_default_cache(self):
+        monitor_list(self.factory.get(self.url))
+        response = monitor_list(self.factory.get(self.url, {'dataset': 'air-quality'}))
+        assert response['X-Cache-Status'] == 'HIT'
+
+    def test_unknown_dataset_400(self):
+        response, content = self.get(dataset='nope')
+        assert response.status_code == 400
+        assert content == {'error': 'Unknown dataset: nope.'}
+        assert response['Cache-Control'] == 'no-cache'
+        # not cached as an answer
+        response, _ = self.get(dataset='nope', _cc='')
+        assert response.status_code == 400
+
+    def test_closest_current_unchanged(self):
+        from camp.apps.calibrations.models import DefaultCalibration
+        DefaultCalibration.objects.get_or_create(monitor_type='cimis', entry_type='temperature')
+        self.cimis.create_entry(entry_models.Temperature, timestamp=timezone.now(), value=Decimal('70.0'))
+        kwargs = {'entry_type': 'temperature'}
+        params = {'latitude': 36.7378, 'longitude': -119.7871, 'dataset': 'weather'}
+        for view, name in ((closest_monitor, 'monitor-closest'), (current_data, 'current-data')):
+            url = reverse(f'api:v2:monitors:{name}', kwargs=kwargs)
+            response = view(self.factory.get(url, params), **kwargs)
+            assert response.status_code == 200
+            assert str(self.cimis.pk) not in [m['id'] for m in get_response_data(response)['data']]
+
+    def test_weather_dataset_cached_separately(self):
+        # Warm the default entry first, then ask for weather without clearing.
+        default = monitor_list(self.factory.get(self.url, {'_cc': '1'}))
+        assert 'cimis' not in self.types(get_response_data(default))
+        response = monitor_list(self.factory.get(self.url, {'dataset': 'weather'}))
+        assert self.types(get_response_data(response)) == {'cimis'}
+        again = monitor_list(self.factory.get(self.url))
+        assert 'cimis' not in self.types(get_response_data(again))
+
+
+class MonitorListRegionTests(TestCase):
+    fixtures = ['purple-air.yaml', 'default-calibrations.yaml']
+
+    def setUp(self):
+        from camp.apps.regions.models import Region
+        from camp.apps.regions.tests.test_resolve import make_region
+        cache.clear()
+        self.factory = RequestFactory()
+        self.url = reverse('api:v2:monitors:monitor-list')
+        from django.contrib.gis.geos import Point
+        self.a, self.b, self.c = (
+            PurpleAir.objects.create(
+                name=f'Region test {i}', sensor_id=91000 + i,
+                position=Point(-119.7 + i * 0.1, 36.7, srid=4326),
+                location=PurpleAir.LOCATION.outside,
+            )
+            for i in range(3)
+        )
+
+        def around(monitor, name):
+            x, y = monitor.position.x, monitor.position.y
+            return make_region(name, Region.Type.CUSTOM, name, (x - 0.0001, y - 0.0001, x + 0.0001, y + 0.0001))
+
+        self.region_a = around(self.a, 'Around A')
+        self.region_b = around(self.b, 'Around B')
+
+    def get(self, params):
+        params = list(params) + [('_cc', '1')]
+        response = monitor_list(self.factory.get(self.url, params))
+        return response, get_response_data(response)
+
+    def ids(self, content):
+        return {m['id'] for m in content['data']}
+
+    def test_region_scopes_the_list(self):
+        response, content = self.get([('region', self.region_a.sqid)])
+        assert response.status_code == 200
+        assert self.ids(content) == {str(self.a.pk)}
+
+    def test_repeated_region_is_a_union(self):
+        _, content = self.get([('region', self.region_a.sqid), ('region', self.region_b.sqid)])
+        assert self.ids(content) == {str(self.a.pk), str(self.b.pk)}
+
+    def test_without_region_is_unchanged(self):
+        _, default = self.get([])
+        _, blank = self.get([('region', '')])
+        assert len(default['data']) > 2
+        assert self.ids(blank) == self.ids(default)
+
+    def test_unknown_region_404s_and_is_not_cached(self):
+        response = monitor_list(self.factory.get(self.url, {'region': 'not-a-real-sqid'}))
+        assert response.status_code == 404
+        response = monitor_list(self.factory.get(self.url, {'region': 'not-a-real-sqid'}))
+        assert response.status_code == 404
+
+    def test_cache_key_varies_by_region(self):
+        def key(params):
+            view = endpoints.MonitorList()
+            view.request = self.factory.get(self.url, params)
+            view.kwargs = {}
+            return view.get_view_cache_key()
+
+        assert key([('region', self.region_a.sqid)]) != key([])
+        assert key([('region', self.region_a.sqid)]) != key([('region', self.region_b.sqid)])
+        # Cached per region: a second region's request isn't served the first's list.
+        monitor_list(self.factory.get(self.url, {'region': self.region_a.sqid}))
+        content = get_response_data(monitor_list(self.factory.get(self.url, {'region': self.region_b.sqid})))
+        assert self.ids(content) == {str(self.b.pk)}
+
+
+@override_settings(MONITOR_ENABLED_TYPES=[])
+class ClosestMonitorTests(TestCase):
+    '''
+        Pins closest/'s contract: the 3 nearest active, public, outdoor
+        monitors with a latest entry of the type, nearest first, distance in
+        feet. The query count must not grow with the number of candidates:
+        the endpoint used to load every candidate monitor before keeping 3.
+    '''
+    fixtures = ['default-calibrations.yaml']
+
+    origin = (36.7378, -119.7871)  # (lat, lon)
+
+    def setUp(self):
+        from camp.apps.monitors.airgradient.models import Place
+        self.factory = RequestFactory()
+        self.place = Place.objects.create(name='Test Place', url='https://example.com', token='test-token')
+        self.sensor_ids = iter(range(91000, 92000))
+
+    def make(self, lat_offset=0.0, lon_offset=0.0, model=PurpleAir, entry=True, **fields):
+        from django.contrib.gis.geos import Point
+        lat, lon = self.origin
+        defaults = {'location': model.LOCATION.outside}
+        if model is PurpleAir:
+            defaults['sensor_id'] = next(self.sensor_ids)
+        defaults.update(fields)
+        monitor = model.objects.create(
+            name=f'Monitor {lat_offset} {lon_offset}',
+            position=Point(lon + lon_offset, lat + lat_offset, srid=4326),
+            **defaults,
+        )
+        if entry:
+            monitor.create_entry(
+                entry_models.PM25,
+                timestamp=entry if isinstance(entry, datetime) else timezone.now(),
+                value=10.0,
+                sensor='a',
+                stage=entry_models.PM25.Stage.CLEANED,
+            )
+        return monitor
+
+    def make_airgradient(self, lat_offset=0.0, lon_offset=0.0):
+        from camp.apps.monitors.airgradient.models import AirGradient
+        return self.make(lat_offset, lon_offset, model=AirGradient,
+            sensor_id=next(self.sensor_ids), place=self.place)
+
+    def get(self, entry_type='pm25', **params):
+        lat, lon = self.origin
+        kwargs = {'entry_type': entry_type}
+        url = reverse('api:v2:monitors:monitor-closest', kwargs=kwargs)
+        request = self.factory.get(url, {'latitude': lat, 'longitude': lon, **params})
+        response = closest_monitor(request, **kwargs)
+        assert response.status_code == 200
+        return get_response_data(response)['data']
+
+    def test_nearest_three_in_distance_order(self):
+        # Created out of distance order so insertion order can't pass the test.
+        far = self.make(lon_offset=0.05)
+        third = self.make(lon_offset=0.03)
+        first = self.make(lon_offset=0.01)
+        fourth = self.make(lon_offset=0.04)
+        second = self.make(lat_offset=0.02)
+
+        ids = [m['id'] for m in self.get()]
+        assert ids == [str(first.pk), str(second.pk), str(third.pk)]
+        assert str(fourth.pk) not in ids and str(far.pk) not in ids
+
+    def test_distance_is_in_feet(self):
+        import pytest
+        self.make(lat_offset=0.01)
+        data = self.get()
+        # 0.01 degrees of latitude at 36.74N is about 1,109.9 m = 3,641 ft.
+        assert data[0]['distance'] == pytest.approx(3641, rel=0.005)
+
+    def test_latest_shape(self):
+        monitor = self.make()
+        data = self.get()
+        latest = data[0]['latest']
+        entry = entry_models.PM25.objects.get(pk=monitor.latest_entries.get(entry_type='pm25').entry_id)
+        assert latest['entry_type'] == 'pm25'
+        assert latest['value'] == str(entry.serialized_data()['value'])
+        for key in ('timestamp', 'sensor', 'stage', 'processor'):
+            assert key in latest
+        for key in ('id', 'name', 'position', 'distance'):
+            assert key in data[0]
+
+    def test_excludes_ineligible_monitors(self):
+        keep = self.make(lon_offset=0.05)
+        self.make(lon_offset=0.001, is_hidden=True)
+        self.make(lon_offset=0.002, location=PurpleAir.LOCATION.inside)
+        self.make(lon_offset=0.003, entry=timezone.now() - timedelta(hours=3))  # inactive
+        no_pm25 = self.make(lon_offset=0.004, entry=False)
+        no_pm25.create_entry(entry_models.Temperature, timestamp=timezone.now(), value=Decimal('70.0'))
+
+        assert [m['id'] for m in self.get()] == [str(keep.pk)]
+
+    def test_query_count_does_not_grow_with_candidates(self):
+        self.make_airgradient(lon_offset=0.001)
+        self.make(lon_offset=0.002)
+        self.make_airgradient(lon_offset=0.003)
+        # DefaultCalibration lookups (published types, published
+        # calibrations), the 3 nearest monitors, their LatestEntry rows,
+        # their latest entries.
+        with self.assertNumQueries(5):
+            assert len(self.get()) == 3
+
+        for i in range(10):
+            self.make(lon_offset=0.01 + i * 0.001)
+            self.make_airgradient(lon_offset=0.02 + i * 0.001)
+        with self.assertNumQueries(5):
+            assert len(self.get()) == 3
+
+
+@override_settings(MONITOR_ENABLED_TYPES=[], MONITOR_HEALTHY_THRESHOLD=0)
+class EntryTypeIsActiveTests(TestCase):
+    '''
+    is_active on current/ and closest/ is for the requested entry type. The
+    Ash Mountain case: AirNow stopped sending the site's PM2.5 but kept
+    sending O3, so the PM2.5 map showed a months-old reading as active.
+    Monitor list/detail keep is_active across every entry type.
+    '''
+    fixtures = ['default-calibrations.yaml']
+
+    def setUp(self):
+        from django.contrib.gis.geos import Point
+        cache.clear()
+        self.factory = RequestFactory()
+        now = timezone.now()
+        self.monitor = PurpleAir.objects.create(
+            name='Stopped PM2.5', sensor_id=97001,
+            position=Point(-119.78, 36.73, srid=4326), location=PurpleAir.LOCATION.outside,
+        )
+        self.monitor.create_entry(entry_models.PM25, timestamp=now - timedelta(days=2),
+            value=10.0, sensor='a', stage=entry_models.PM25.Stage.CLEANED)
+        self.monitor.create_entry(entry_models.Temperature, timestamp=now - timedelta(minutes=1),
+            value=Decimal('50.0'))
+
+    def tearDown(self):
+        cache.clear()
+
+    def _row(self, view, name, params=None, entry_type='pm25'):
+        kwargs = {'entry_type': entry_type}
+        url = reverse(f'api:v2:monitors:{name}', kwargs=kwargs)
+        response = view(self.factory.get(url, params or {'_cc': '1'}), **kwargs)
+        assert response.status_code == 200
+        rows = [m for m in get_response_data(response)['data'] if m['id'] == str(self.monitor.pk)]
+        assert len(rows) == 1
+        return rows[0]
+
+    def test_current_data_inactive_when_the_entry_type_stopped(self):
+        assert self._row(current_data, 'current-data')['is_active'] is False
+
+    def test_current_data_active_when_the_entry_type_is_recent(self):
+        self.monitor.create_entry(entry_models.PM25, timestamp=timezone.now(),
+            value=10.0, sensor='a', stage=entry_models.PM25.Stage.CLEANED)
+        assert self._row(current_data, 'current-data')['is_active'] is True
+
+    def test_closest_inactive_when_the_entry_type_stopped(self):
+        params = {'latitude': self.monitor.position.y, 'longitude': self.monitor.position.x}
+        assert self._row(closest_monitor, 'monitor-closest', params)['is_active'] is False
+
+    def test_monitor_detail_still_counts_every_entry_type(self):
+        url = reverse('api:v2:monitors:monitor-detail', kwargs={'monitor_id': self.monitor.pk})
+        request = self.factory.get(url)
+        request.monitor = self.monitor
+        response = monitor_detail(request, monitor_id=self.monitor.pk)
+        assert get_response_data(response)['data']['is_active'] is True
+
+    def test_latest_entry_has_the_loaded_monitor(self):
+        # entry.is_recent reads entry.monitor: the loaded subclass, so no
+        # query per entry and the subclass's LAST_ACTIVE_LIMIT.
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from camp.apps.monitors.models import Monitor
+
+        monitor, = Monitor.objects.filter(pk=self.monitor.pk).with_latest_entry(entry_models.PM25)
+        with CaptureQueriesContext(connection) as ctx:
+            assert monitor.latest_entry.monitor is monitor
+            assert monitor.latest_entry.is_recent is False
+        assert len(ctx.captured_queries) == 0
+
+    def test_is_active_keeps_its_place_in_the_response(self):
+        keys = list(self._row(current_data, 'current-data'))
+        assert keys.index('is_active') == keys.index('grade') + 1
+
+
+@override_settings(MONITOR_ENABLED_TYPES=[])
+class PublishedOutsidePipelineTests(TestCase):
+    '''
+    VOZbox and AQLite publish O3 from a processor listed under
+    ENTRY_CONFIG['calibrations'] (written outside the per-entry pipeline),
+    not under 'processors'. The published lookup has to find it there, or
+    at/ falls back to whichever calibrated O3 is newest (e.g. O3_VOZBox).
+    '''
+    fixtures = ['default-calibrations.yaml']
+
+    def setUp(self):
+        from django.contrib.gis.geos import Point
+        from camp.apps.monitors.vozbox.models import VOZBox
+
+        cache.clear()
+        self.factory = RequestFactory()
+        self.now = timezone.now().replace(microsecond=0)
+        self.vozbox = VOZBox.objects.create(
+            sensor_id='published-outside-pipeline', name='VOZbox',
+            position=Point(-119.7871, 36.7378, srid=4326), location=VOZBox.LOCATION.outside,
+        )
+        # The published QuinnCal reading is older than the regression one.
+        self.quinn = self._calibrated('VOZBox_QuinnCal', Decimal('35.0'), self.now - timedelta(minutes=10))
+        self._calibrated('O3_VOZBox', Decimal('80.0'), self.now - timedelta(minutes=1))
+
+    def _calibrated(self, processor, value, timestamp):
+        return entry_models.O3.objects.create(
+            monitor=self.vozbox, timestamp=timestamp, sensor='1', processor=processor,
+            stage=entry_models.O3.Stage.CALIBRATED, value=value,
+            location=self.vozbox.location, position=self.vozbox.position,
+        )
+
+    def test_lookup_finds_calibrations_outside_the_pipeline(self):
+        from camp.apps.monitors.aqlite.models import AQLite
+        from camp.apps.monitors.vozbox.models import VOZBox
+
+        calibrated = entry_models.O3.Stage.CALIBRATED
+        assert VOZBox.get_published_lookup(entry_models.O3) == {
+            'stage': calibrated, 'processor': 'VOZBox_QuinnCal'}
+        assert AQLite.get_published_lookup(entry_models.O3) == {
+            'stage': calibrated, 'processor': 'AQLiteHourlyAggregator'}
+
+    def test_at_shows_the_published_calibration_not_the_newest(self):
+        kwargs = {'entry_type': 'o3'}
+        url = reverse('api:v2:monitors:monitor-at', kwargs=kwargs)
+        request = self.factory.get(url, {'timestamp': self.now.isoformat()})
+        response = monitors_at(request, **kwargs)
+        assert response.status_code == 200
+        [monitor] = [m for m in get_response_data(response)['data'] if m['id'] == str(self.vozbox.pk)]
+        assert monitor['latest']['processor'] == 'VOZBox_QuinnCal'
+        assert Decimal(str(monitor['latest']['value'])) == Decimal('35.0')

@@ -72,6 +72,10 @@ shades:
   title: What the shades mean
   summary: Darker squares and counties had more pounds applied that year. Shades rank the areas shown against each other, so the same color can mean different amounts on different maps; read the legend for the actual range.
   source_url: https://www.cdpr.ca.gov/pesticide-use-in-california/pesticide-use-reporting/
+shades_valley:
+  title: What the shades mean
+  summary: Darker squares had more of what the map shows (pounds, acres treated, or applications) in that year or month. Every section or township in the valley is ranked together, so a color means the same range anywhere on the map, but not from one month to the next. An outline with no shading means nothing was reported.
+  source_url: https://www.cdpr.ca.gov/pesticide-use-in-california/pesticide-use-reporting/
 badges:
   title: What the badges mean
   summary: Badges mark chemicals that an official list flags for cancer, reproductive harm, or air toxicity. A badge says the chemical is on a list, not how much of it reached anyone.

@@ -6,7 +6,7 @@ from camp.apps.regions.models import Location
 
 def place(name, lng, lat, type=Location.Type.CHILD_CARE, n=[0]):
     n[0] += 1
-    return Location.objects.create(name=name, type=type, source='test', external_id=str(n[0]), point=Point(lng, lat, srid=4326))
+    return Location.objects.create(name=name, type=type, source='test', external_id=str(n[0]).zfill(9), point=Point(lng, lat, srid=4326))
 
 
 class OnePerPlaceTests(TestCase):
@@ -28,3 +28,24 @@ class OnePerPlaceTests(TestCase):
     def test_it_chains_after_a_filter(self):
         rows = Location.objects.filter(type=Location.Type.CHILD_CARE).one_per_place()
         assert sorted(row.pk for row in rows) == [self.day_care.pk, self.across_town.pk]
+
+    def test_the_lowest_code_stands_for_the_place_not_the_lowest_pk(self):
+        # The higher code is created first (lower pk); the lower code stands
+        # for the place, so every environment picks the same row.
+        Location.objects.all().delete()
+        higher = Location.objects.create(name='Little Sprouts', type=Location.Type.CHILD_CARE, source='cdss-ccl',
+            external_id='100400210', point=Point(-118.9651, 35.4102, srid=4326))
+        lower = Location.objects.create(name='LITTLE SPROUTS', type=Location.Type.CHILD_CARE, source='cdss-ccl',
+            external_id='100400105', point=Point(-118.9652, 35.4103, srid=4326))
+        assert higher.pk < lower.pk
+
+        rows = {row.pk: row.licenses for row in Location.objects.one_per_place()}
+
+        assert rows == {lower.pk: 2}
+
+    def test_a_retired_license_is_not_part_of_the_place(self):
+        self.day_care.retire(self.day_care.created.date())
+
+        rows = {row.pk: row.licenses for row in Location.objects.one_per_place()}
+
+        assert rows == {self.school_age.pk: 2, self.across_town.pk: 1, self.academy.pk: 1}

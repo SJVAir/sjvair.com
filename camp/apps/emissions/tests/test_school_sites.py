@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.core.cache import cache
 from django.test import TestCase
 
@@ -59,6 +61,11 @@ class SiteIndexTests(SchoolSitesTestCase):
         assert names[0] == 'CLOSE ELEMENTARY'
         names = [row['name'] for row in schools.area_sites(areas.RegionArea(self.fresno), self.scope(), sort='name')]
         assert names == sorted(names)
+
+    def test_a_retired_site_is_left_out(self):
+        self.close.retire(date(2026, 10, 1))
+        assert 'CLOSE ELEMENTARY' not in self.rows()
+        assert self.close.pk not in schools.site_index()
 
     def test_summary(self):
         summary = schools.site_summary(list(self.rows().values()))
@@ -160,6 +167,12 @@ class LocationsMapTests(SchoolSitesTestCase):
         assert body['types'] == ['public_school', 'private_school', 'child_care']
         sites = {row[4]: row for row in body['sites']}
         assert body['types'][sites['QUARTER CARE'][3]] == 'child_care' and len(sites['CLOSE ELEMENTARY']) == 5
+
+    def test_schools_endpoint_leaves_out_retired_sites(self):
+        from django.urls import reverse
+        self.quarter.retire(date(2026, 10, 1))
+        body = self.client.get(reverse('api:v2:emissions:schools-geojson')).json()
+        assert 'QUARTER CARE' not in {row[4] for row in body['sites']}
 
     def test_the_main_map_opens_on_a_scope_county(self):
         from django.urls import reverse

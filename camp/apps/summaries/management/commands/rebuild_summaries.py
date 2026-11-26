@@ -1,4 +1,3 @@
-import calendar
 from datetime import datetime, timedelta
 
 import tqdm
@@ -13,12 +12,37 @@ from django.db.models import Q
 from camp.utils.datetime import make_aware
 from camp.apps.entries.stages import Stage
 from camp.apps.summaries.backfill import backfill_monitor_hours, backfill_region_hours
+from camp.apps.summaries.current_periods import roll_current_periods, touches_current_periods
+from camp.apps.summaries.periods import iter_hours, iter_period_starts, period_end
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
+from camp.apps.summaries.selection import (
+    is_summarized,
+    monitor_summary_entry_models,
+    region_summary_entry_models,
+)
 from camp.apps.summaries.tasks import (
-    get_summarizable_entry_models,
+    refresh_previous_max_8h,
     rollup_monitor_summaries,
     rollup_region_summaries,
 )
+
+
+def finished_period_starts(resolution, start, end, now):
+    '''
+    Starts of the `resolution` periods overlapping [start, end) that have
+    ended by `now`. An unfinished period (today, this month, ...) is left for
+    its scheduled rollup, as repair does: a row written now would hold a
+    partial period, and nothing updates month-and-longer rows before the
+    period ends. The current periods are written through yesterday by
+    `roll_current_periods`, which a rebuild whose range reaches into them calls.
+    '''
+    return [
+        ws for ws in iter_period_starts(resolution, start, end)
+        if period_end(resolution, ws) <= now
+    ]
+
+
+STOPPED = 'current periods: stopped at midnight; re-run to write them'
 
 
 class Command(BaseCommand):
@@ -43,11 +67,12 @@ class Command(BaseCommand):
         from camp.apps.monitors.models import Monitor
         from camp.apps.regions.models import Region
 
+        now = timezone.now()
         start = self._parse_date(options['start'])
         end = (
             self._parse_date(options['end'])
             if options['end']
-            else timezone.now().replace(minute=0, second=0, microsecond=0)
+            else now.replace(minute=0, second=0, microsecond=0)
         )
 
         if start >= end:
@@ -65,7 +90,7 @@ class Command(BaseCommand):
             if not monitors.exists():
                 raise CommandError(f'Monitor not found: {monitor_id}')
         elif region_id:
-            region = Region.objects.filter(pk=region_id).first()
+            region = Region.all_objects.filter(pk=region_id).first()
             if not region:
                 raise CommandError(f'Region not found: {region_id}')
             if not region.boundary:
@@ -78,7 +103,7 @@ class Command(BaseCommand):
 
         # Determine region scope
         if region_id:
-            regions = Region.objects.filter(pk=region_id)
+            regions = Region.all_objects.filter(pk=region_id)
         elif monitor_id:
             monitor = monitors.first()
             regions = monitor.regions if monitor else Region.objects.none()
@@ -87,8 +112,9 @@ class Command(BaseCommand):
 
         region_ids = list(regions.values_list('pk', flat=True))
 
-        hours = list(self._iter_hours(start, end))
-        entry_models = get_summarizable_entry_models()
+        # Unscoped, the queued rollups take no id list (every owner), not thousands of ids each.
+        scoped = bool(monitor_id or region_id)
+        hours = list(iter_hours(start, end))
 
         self.stdout.write(
             f'Date range: {start:%Y-%m-%d %H:%M} → {end:%Y-%m-%d %H:%M} '
@@ -100,28 +126,36 @@ class Command(BaseCommand):
         # Monitor summaries
         if not regions_only:
             if enqueue:
-                self._enqueue_monitor_summaries(monitor_ids, hours, entry_models)
-                self._enqueue_monitor_rollups(start, end)
+                self._enqueue_monitor_summaries(monitors, hours)
+                self._enqueue_monitor_rollups(start, end, now, monitor_ids if scoped else None)
+                if touches_current_periods(end, timezone.now()):
+                    from camp.apps.summaries.tasks import current_monitor_periods
+                    current_monitor_periods(monitor_ids=monitor_ids, rewritten_until=end)
             else:
-                self._backfill_monitor_summaries(monitors, start, end, entry_models)
-                self._rollup(rollup_monitor_summaries, 'monitor', monitor_ids, start, end)
+                self._backfill_monitor_summaries(monitors, start, end)
+                self._rollup(rollup_monitor_summaries, 'monitor', monitor_ids, start, end, now)
+                self._current_periods('monitor', monitor_ids, end)
 
         # Region summaries
         if not monitors_only:
             if enqueue:
-                self._enqueue_region_summaries(region_ids, hours, entry_models)
-                self._enqueue_region_rollups(start, end)
+                self._enqueue_region_summaries(region_ids, hours, region_summary_entry_models())
+                self._enqueue_region_rollups(start, end, now, region_ids if scoped else None)
+                if touches_current_periods(end, timezone.now()):
+                    from camp.apps.summaries.tasks import current_region_periods
+                    current_region_periods(region_ids=region_ids, rewritten_until=end)
             else:
                 self._backfill_region_summaries(list(regions), hours)
-                self._rollup(rollup_region_summaries, 'region', region_ids, start, end)
+                self._rollup(rollup_region_summaries, 'region', region_ids, start, end, now)
+                self._current_periods('region', region_ids, end)
 
         self.stdout.write(self.style.SUCCESS('Done.'))
 
-    def _backfill_monitor_summaries(self, monitors, start, end, entry_models):
+    def _backfill_monitor_summaries(self, monitors, start, end):
         self.stdout.write(f'\nComputing hourly monitor summaries...')
         self.stdout.flush()
         for monitor in tqdm.tqdm(monitors, file=self.stdout, dynamic_ncols=True):
-            backfill_monitor_hours(monitor, start, end, entry_models)
+            backfill_monitor_hours(monitor, start, end, monitor_summary_entry_models(monitor))
 
     def _backfill_region_summaries(self, regions, hours):
         region_monitor_grades = {}
@@ -140,14 +174,14 @@ class Command(BaseCommand):
                 continue
             backfill_region_hours(region, hours, monitor_grades)
 
-    def _rollup(self, rollup_fn, label, ids, start, end):
+    def _rollup(self, rollup_fn, label, ids, start, end, now):
         R = BaseSummary.Resolution
         levels = [
-            ('daily',     R.DAILY,     R.HOURLY,  list(self._iter_days(start, end))),
-            ('monthly',   R.MONTHLY,   R.DAILY,   list(self._iter_months(start, end))),
-            ('quarterly', R.QUARTERLY, R.MONTHLY, list(self._iter_quarters(start, end))),
-            ('seasonal',  R.SEASONAL,  R.MONTHLY, list(self._iter_seasons(start, end))),
-            ('yearly',    R.YEARLY,    R.MONTHLY, list(self._iter_years(start, end))),
+            ('daily',     R.DAILY,     R.HOURLY,  finished_period_starts('day', start, end, now)),
+            ('monthly',   R.MONTHLY,   R.DAILY,   finished_period_starts('month', start, end, now)),
+            ('quarterly', R.QUARTERLY, R.MONTHLY, finished_period_starts('quarter', start, end, now)),
+            ('seasonal',  R.SEASONAL,  R.MONTHLY, finished_period_starts('season', start, end, now)),
+            ('yearly',    R.YEARLY,    R.MONTHLY, finished_period_starts('year', start, end, now)),
         ]
         for name, target, source, windows in levels:
             if not windows:
@@ -155,22 +189,51 @@ class Command(BaseCommand):
             self.stdout.write(f'\nRolling up {name} {label} summaries ({len(windows):,} windows)...')
             self.stdout.flush()
             for window_start in tqdm.tqdm(windows, file=self.stdout, dynamic_ncols=True):
-                window_end = self._window_end(target, window_start)
+                window_end = period_end(target, window_start)
                 rollup_fn(target, source, window_start, window_end, **{f'{label}_ids': ids})
+            if target == R.DAILY:
+                # The day before the first one read its next morning's old hours.
+                refresh_previous_max_8h(label, windows[0], ids)
+
+    def _current_periods(self, label, ids, end):
+        # The clock is read here, not at the start: a long rebuild that runs
+        # past midnight writes the new day's periods instead of stopping at once.
+        now = timezone.now()
+        if not touches_current_periods(end, now):
+            return
+        self.stdout.write(f'\nWriting current {label} periods...')
+        self.stdout.flush()
+        if roll_current_periods(label, ids, now, rewritten_until=end)['stopped']:
+            self.stdout.write(STOPPED)
 
     # ---- Async enqueue methods ----
 
-    def _enqueue_monitor_summaries(self, monitor_ids, hours, entry_models):
+    def _enqueue_monitor_summaries(self, monitors, hours):
         from camp.apps.summaries.tasks import summarize_monitor_hour
         self.stdout.write('\nEnqueuing hourly monitor summaries...')
         self.stdout.flush()
+
+        # Each entry model only for the monitors whose type summarizes it.
+        monitor_types = {m.pk: type(m) for m in monitors}
+        entry_models = sorted(
+            {EntryModel for monitor_type in set(monitor_types.values())
+             for EntryModel in monitor_summary_entry_models(monitor_type)},
+            key=lambda m: m.entry_type,
+        )
+        # Checked per monitor's type rather than against Monitor.get_subclasses(),
+        # so a bare Monitor row (no subclass) keeps the flag types, as before.
+        scoped_ids = {
+            EntryModel: [pk for pk, t in monitor_types.items() if is_summarized(t, EntryModel)]
+            for EntryModel in entry_models
+        }
+
         count = 0
         for hour in tqdm.tqdm(hours, file=self.stdout, dynamic_ncols=True):
             for EntryModel in entry_models:
                 combos = (
                     EntryModel.objects
                     .filter(
-                        monitor_id__in=monitor_ids,
+                        monitor_id__in=scoped_ids[EntryModel],
                         timestamp__gte=hour,
                         timestamp__lt=hour + timedelta(hours=1),
                     )
@@ -198,7 +261,7 @@ class Command(BaseCommand):
                     count += 1
         self.stdout.write(f'  → {count:,} tasks enqueued')
 
-    def _enqueue_monitor_rollups(self, start, end):
+    def _enqueue_monitor_rollups(self, start, end, now, monitor_ids=None):
         from camp.apps.summaries.tasks import (
             daily_monitor_summaries, monthly_monitor_summaries,
             quarterly_monitor_summaries, seasonal_monitor_summaries,
@@ -207,20 +270,20 @@ class Command(BaseCommand):
         self.stdout.write('\nEnqueuing monitor rollups...')
         self.stdout.flush()
         windows = [
-            (daily_monitor_summaries,     'day',           self._iter_days(start, end)),
-            (monthly_monitor_summaries,   'month_start',   self._iter_months(start, end)),
-            (quarterly_monitor_summaries, 'quarter_start', self._iter_quarters(start, end)),
-            (seasonal_monitor_summaries,  'season_start',  self._iter_seasons(start, end)),
-            (yearly_monitor_summaries,    'year_start',    self._iter_years(start, end)),
+            (daily_monitor_summaries,     'day',           finished_period_starts('day', start, end, now)),
+            (monthly_monitor_summaries,   'month_start',   finished_period_starts('month', start, end, now)),
+            (quarterly_monitor_summaries, 'quarter_start', finished_period_starts('quarter', start, end, now)),
+            (seasonal_monitor_summaries,  'season_start',  finished_period_starts('season', start, end, now)),
+            (yearly_monitor_summaries,    'year_start',    finished_period_starts('year', start, end, now)),
         ]
         count = 0
         for task_fn, kwarg, window_iter in windows:
             for window in window_iter:
-                task_fn(**{kwarg: window})
+                task_fn(**{kwarg: window, 'monitor_ids': monitor_ids})
                 count += 1
         self.stdout.write(f'  → {count:,} tasks enqueued')
 
-    def _enqueue_region_rollups(self, start, end):
+    def _enqueue_region_rollups(self, start, end, now, region_ids=None):
         from camp.apps.summaries.tasks import (
             daily_region_summaries, monthly_region_summaries,
             quarterly_region_summaries, seasonal_region_summaries,
@@ -229,16 +292,16 @@ class Command(BaseCommand):
         self.stdout.write('\nEnqueuing region rollups...')
         self.stdout.flush()
         windows = [
-            (daily_region_summaries,     'day',           self._iter_days(start, end)),
-            (monthly_region_summaries,   'month_start',   self._iter_months(start, end)),
-            (quarterly_region_summaries, 'quarter_start', self._iter_quarters(start, end)),
-            (seasonal_region_summaries,  'season_start',  self._iter_seasons(start, end)),
-            (yearly_region_summaries,    'year_start',    self._iter_years(start, end)),
+            (daily_region_summaries,     'day',           finished_period_starts('day', start, end, now)),
+            (monthly_region_summaries,   'month_start',   finished_period_starts('month', start, end, now)),
+            (quarterly_region_summaries, 'quarter_start', finished_period_starts('quarter', start, end, now)),
+            (seasonal_region_summaries,  'season_start',  finished_period_starts('season', start, end, now)),
+            (yearly_region_summaries,    'year_start',    finished_period_starts('year', start, end, now)),
         ]
         count = 0
         for task_fn, kwarg, window_iter in windows:
             for window in window_iter:
-                task_fn(**{kwarg: window})
+                task_fn(**{kwarg: window, 'region_ids': region_ids})
                 count += 1
         self.stdout.write(f'  → {count:,} tasks enqueued')
 
@@ -249,79 +312,3 @@ class Command(BaseCommand):
         if d is None:
             raise CommandError(f'Invalid date: {value!r}. Use YYYY-MM-DD.')
         return make_aware(datetime(d.year, d.month, d.day), settings.DEFAULT_TIMEZONE)
-
-    def _window_end(self, resolution, window_start):
-        R = BaseSummary.Resolution
-        if resolution == R.DAILY:
-            return window_start + timedelta(days=1)
-        if resolution == R.MONTHLY:
-            _, days = calendar.monthrange(window_start.year, window_start.month)
-            return window_start + timedelta(days=days)
-        if resolution in (R.QUARTERLY, R.SEASONAL):
-            month = window_start.month + 3
-            year = window_start.year
-            if month > 12:
-                month -= 12
-                year += 1
-            return make_aware(datetime(year, month, 1), settings.DEFAULT_TIMEZONE)
-        if resolution == R.YEARLY:
-            return window_start.replace(year=window_start.year + 1)
-
-    def _iter_hours(self, start, end):
-        current = start
-        while current < end:
-            yield current
-            current += timedelta(hours=1)
-
-    def _iter_days(self, start, end):
-        day = start.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_day = end.replace(hour=0, minute=0, second=0, microsecond=0)
-        while day <= end_day:
-            yield day
-            day += timedelta(days=1)
-
-    def _iter_months(self, start, end):
-        month = start.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        while month <= end:
-            yield month
-            if month.month == 12:
-                month = month.replace(year=month.year + 1, month=1)
-            else:
-                month = month.replace(month=month.month + 1)
-
-    def _iter_quarters(self, start, end):
-        # Quarter starts: Jan, Apr, Jul, Oct
-        month = start.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        # Rewind to the start of the current quarter
-        month = month.replace(month=((month.month - 1) // 3) * 3 + 1)
-        while month <= end:
-            yield month
-            next_month = month.month + 3
-            if next_month > 12:
-                month = month.replace(year=month.year + 1, month=next_month - 12)
-            else:
-                month = month.replace(month=next_month)
-
-    def _iter_seasons(self, start, end):
-        # Season starts: Dec, Mar, Jun, Sep
-        season_start_months = {12, 3, 6, 9}
-        month = start.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        # Rewind to the previous season start
-        while month.month not in season_start_months:
-            if month.month == 1:
-                month = month.replace(year=month.year - 1, month=12)
-            else:
-                month = month.replace(month=month.month - 1)
-        while month <= end:
-            yield month
-            next_month = month.month + 3
-            if next_month > 12:
-                month = month.replace(year=month.year + 1, month=next_month - 12)
-            else:
-                month = month.replace(month=next_month)
-
-    def _iter_years(self, start, end):
-        year = start.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-        while year <= end:
-            yield year
-            year = year.replace(year=year.year + 1)

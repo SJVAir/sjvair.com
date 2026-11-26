@@ -18,6 +18,8 @@ urlpatterns = [
     # Account management
     path('', views.ProfileView.as_view(), name='profile'),
 
+    path('delete/', views.DeleteAccountView.as_view(), name='delete'),
+
     path('alerts/', AlertList.as_view(), name='alerts'),
     path('subscriptions/', SubscriptionList.as_view(), name='subscriptions'),
 

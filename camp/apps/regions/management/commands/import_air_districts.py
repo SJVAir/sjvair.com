@@ -44,7 +44,7 @@ class Command(BaseCommand):
                 'arcgis_name': district['name'],
                 **{field: entry.get(field, '') for field in air_districts.DIRECTORY_FIELDS},
             }
-            region, created = Region.objects.import_or_update(
+            region, created = Region.all_objects.import_or_update(
                 name=name,
                 slug=slugify(name),
                 type=Region.Type.AIR_DISTRICT,

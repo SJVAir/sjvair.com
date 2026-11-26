@@ -8,12 +8,12 @@ from django.utils.http import urlsafe_base64_encode
 from django.utils.translation import gettext_lazy as _
 
 from django_recaptcha.fields import ReCaptchaField
-from django_recaptcha.widgets import ReCaptchaV2Checkbox
 from phonenumber_field.formfields import PhoneNumberField
 from phonenumber_field.validators import validate_international_phonenumber
 from phonenumber_field.widgets import RegionalPhoneNumberWidget
 
 from camp.apps.accounts import sms_keywords
+from camp.utils.forms import VisibleReCaptchaV2Checkbox
 
 from .models import User
 
@@ -115,6 +115,32 @@ class ProfileForm(forms.ModelForm):
         return phone
 
 
+class DeleteAccountForm(forms.Form):
+    error_messages = {
+        'password_incorrect': _("That password is incorrect."),
+    }
+
+    password = forms.CharField(
+        label=_("Password"),
+        strip=False,
+        widget=forms.PasswordInput(attrs={'autocomplete': 'current-password'}),
+    )
+    confirm = forms.BooleanField(
+        label=_("I understand this can't be undone"),
+        error_messages={'required': _("Please confirm that you understand.")},
+    )
+
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user')
+        super().__init__(*args, **kwargs)
+
+    def clean_password(self):
+        password = self.cleaned_data['password']
+        if not self.user.check_password(password):
+            raise forms.ValidationError(self.error_messages['password_incorrect'], code='password_incorrect')
+        return password
+
+
 class UserCreationForm(forms.ModelForm):
     error_messages = {
         'duplicate_email': _("A user with that email address already exists."),
@@ -136,7 +162,7 @@ class UserCreationForm(forms.ModelForm):
         widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}),
     )
 
-    captcha = ReCaptchaField(label='')
+    captcha = ReCaptchaField(label='', widget=VisibleReCaptchaV2Checkbox)
 
     class Meta:
         model = User

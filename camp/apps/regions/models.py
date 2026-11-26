@@ -1,6 +1,7 @@
 from typing import Literal, Optional
 
 from django.contrib.gis.db import models
+from django.core.exceptions import ValidationError
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.functional import cached_property
@@ -9,8 +10,8 @@ from django.utils.translation import gettext_lazy as _
 from django_sqids import SqidsField, shuffle_alphabet
 from model_utils.models import TimeStampedModel
 
-from camp.apps.regions.managers import RegionManager
-from camp.apps.regions.querysets import BoundaryQuerySet, LocationQuerySet
+from camp.apps.regions.managers import CurrentLocationManager, CurrentRegionManager, LocationManager, RegionManager
+from camp.apps.regions.querysets import BoundaryQuerySet
 from camp.utils import gis
 from camp.utils.encoders import JSONEncoder
 
@@ -53,6 +54,35 @@ class Region(TimeStampedModel):
         AGRICULTURAL = 'agricultural', _('Agricultural Survey Geography')
         CUSTOM = 'custom', _('Custom')
 
+    # Plural of each type's label, e.g. for a "browse by type" list. Every type has one.
+    TYPE_LABELS_PLURAL = {
+        Type.COUNTY: _('Counties'),
+        Type.CITY: _('Cities'),
+        Type.ZIPCODE: _('ZIP Codes'),
+        Type.TRACT: _('Census Tracts'),
+        Type.CDP: _('Census Designated Places'),
+        Type.CONGRESSIONAL_DISTRICT: _('Congressional Districts'),
+        Type.STATE_ASSEMBLY: _('State Assembly Districts'),
+        Type.STATE_SENATE: _('State Senate Districts'),
+        Type.SCHOOL_DISTRICT: _('School Districts'),
+        Type.AIR_DISTRICT: _('Air Districts'),
+        Type.URBAN_AREA: _('Urban Areas'),
+        Type.LAND_USE: _('Land Use Areas'),
+        Type.PROTECTED: _('Protected Areas'),
+        Type.AB617_COMMUNITY: _('AB 617 Communities'),
+        Type.MTRS: _('MTRS Sections'),
+        Type.CUSTOM: _('Custom Regions'),
+    }
+
+    # How a region of this type is shown, `{name}` standing for its name.
+    # Types not listed show the name as it is.
+    TYPE_NAME_TEMPLATES = {
+        Type.ZIPCODE: _('ZIP {name}'),
+        Type.TRACT: _('Census Tract {name}'),
+        Type.URBAN_AREA: _('{name} Urban Area'),
+        Type.AB617_COMMUNITY: _('{name} AB 617 Community'),
+    }
+
     # Maps each Type to the Category it belongs to, mirroring the
     # groupings above. Kept as an explicit mapping (rather than deriving
     # it from Type ordering) so the API's category field doesn't silently
@@ -81,6 +111,33 @@ class Region(TimeStampedModel):
         Type.CUSTOM: Category.CUSTOM,
     }
 
+    # The region type(s) each type nests under, for browsing down the
+    # hierarchy. These are the types a place normally belongs to (a ZIP
+    # straddles counties, so "belongs" means "overlaps"); types with no
+    # natural parent are empty.
+    TYPE_PARENTS = {
+        Type.COUNTY: [],
+        Type.CITY: [Type.COUNTY.value],
+        Type.ZIPCODE: [Type.COUNTY.value],
+        Type.TRACT: [Type.COUNTY.value],
+        Type.CDP: [Type.COUNTY.value],
+        Type.CONGRESSIONAL_DISTRICT: [],
+        Type.STATE_ASSEMBLY: [],
+        Type.STATE_SENATE: [],
+        Type.SCHOOL_DISTRICT: [Type.COUNTY.value],
+        Type.AIR_DISTRICT: [],
+        Type.URBAN_AREA: [Type.COUNTY.value],
+        Type.LAND_USE: [],
+        Type.PROTECTED: [],
+        Type.AB617_COMMUNITY: [Type.COUNTY.value],
+        Type.MTRS: [],
+        Type.CUSTOM: [],
+    }
+
+    # Types too numerous or unstable to browse as a list (square-mile
+    # sections; land-use polygons, whose codes aren't stable).
+    NON_BROWSABLE_TYPES = frozenset({Type.MTRS, Type.LAND_USE})
+
     # The community layers, each shown as-is (never merged), with the short
     # label the explorers give them: a CDP reads as a "Community". Plain
     # strings, not lazy ones: they end up in cached, JSON-embedded lists.
@@ -101,7 +158,40 @@ class Region(TimeStampedModel):
     metadata = models.JSONField(blank=True, default=dict, encoder=JSONEncoder)
     boundary = models.OneToOneField('Boundary', null=True, blank=True, on_delete=models.SET_NULL, related_name='current_for',)
 
-    objects = RegionManager()
+    # Codes (type + external_id) are a permanent public reference, so a region
+    # is retired rather than deleted. Retired rows stay in the table and are
+    # hidden from `objects`; `all_objects` sees everything.
+    retired_at = models.DateField(null=True, blank=True, db_index=True)
+    replaced_by = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='replaces')
+
+    all_objects = RegionManager()
+    objects = CurrentRegionManager()
+
+    @property
+    def is_retired(self):
+        return self.retired_at is not None
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.replaced_by_id is not None and self.pk is not None and self.replaced_by_id == self.pk:
+            errors['replaced_by'] = 'A row cannot replace itself.'
+        elif self.replaced_by_id is not None and self.retired_at is None:
+            errors['replaced_by'] = 'Only a retired row can have a replacement; set retired_at too.'
+        if errors:
+            raise ValidationError(errors)
+
+    def retire(self, since, replaced_by=None):
+        if replaced_by is not None and replaced_by.pk == self.pk:
+            raise ValueError('A row cannot be replaced by itself.')
+        self.retired_at = since
+        self.replaced_by = replaced_by
+        self.save(update_fields=['retired_at', 'replaced_by'])
+
+    def unretire(self):
+        self.retired_at = None
+        self.replaced_by = None
+        self.save(update_fields=['retired_at', 'replaced_by'])
 
     @property
     def short_name(self):
@@ -121,6 +211,8 @@ class Region(TimeStampedModel):
         ]
         ordering = ['type', 'name']
         unique_together = ('external_id', 'type')
+        default_manager_name = 'all_objects'
+        base_manager_name = 'all_objects'
 
     def __str__(self):
         return f'{self.name} ({self.get_type_display()})'
@@ -270,6 +362,18 @@ class Location(TimeStampedModel):
         Type.CHILD_CARE: _('Child care'),
     }
 
+    class Group(models.TextChoices):
+        # Sections that list location types together (regions/meta/
+        # location_groups, in this order); keys are permanent.
+        SCHOOL = 'school', _('Schools')
+        CHILD_CARE = 'child_care', _('Child care')
+
+    TYPE_GROUPS = {
+        Type.PUBLIC_SCHOOL: Group.SCHOOL,
+        Type.PRIVATE_SCHOOL: Group.SCHOOL,
+        Type.CHILD_CARE: Group.CHILD_CARE,
+    }
+
     sqid = SqidsField(alphabet=shuffle_alphabet('regions.Location'))
 
     type = models.CharField(_('Type'), max_length=32, choices=Type.choices, db_index=True)
@@ -319,7 +423,13 @@ class Location(TimeStampedModel):
     metadata = models.JSONField(blank=True, default=dict, encoder=JSONEncoder)
     imported_at = models.DateTimeField(_('Imported At'), default=timezone.now)
 
-    objects = LocationQuerySet.as_manager()
+    # Codes (source + external_id) are a permanent public reference, so a
+    # location that closes is retired rather than deleted (see Region).
+    retired_at = models.DateField(null=True, blank=True, db_index=True)
+    replaced_by = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='replaces')
+
+    all_objects = LocationManager()
+    objects = CurrentLocationManager()
 
     # The region links resolve_regions() fills in, in the order it fills them.
     REGION_FIELDS = ('county', 'city', 'zipcode', 'school_district')
@@ -327,6 +437,8 @@ class Location(TimeStampedModel):
     class Meta:
         ordering = ['name']
         unique_together = ('source', 'external_id')
+        default_manager_name = 'all_objects'
+        base_manager_name = 'all_objects'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -350,6 +462,37 @@ class Location(TimeStampedModel):
 
     def __str__(self):
         return self.name
+
+    @property
+    def is_retired(self):
+        return self.retired_at is not None
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.replaced_by_id is not None and self.pk is not None and self.replaced_by_id == self.pk:
+            errors['replaced_by'] = 'A row cannot replace itself.'
+        elif self.replaced_by_id is not None and self.retired_at is None:
+            errors['replaced_by'] = 'Only a retired row can have a replacement; set retired_at too.'
+        if errors:
+            raise ValidationError(errors)
+
+    def retire(self, since, replaced_by=None):
+        if replaced_by is not None and replaced_by.pk == self.pk:
+            raise ValueError('A row cannot be replaced by itself.')
+        self.retired_at = since
+        self.replaced_by = replaced_by
+        self.save(update_fields=['retired_at', 'replaced_by'])
+
+    def unretire(self):
+        self.retired_at = None
+        self.replaced_by = None
+        self.save(update_fields=['retired_at', 'replaced_by'])
+
+    @property
+    def facility_numbers(self) -> list[str]:
+        """A child-care site's license numbers (its code is one of them, or one that has since closed); [] for schools."""
+        return (self.metadata or {}).get('facility_numbers') or []
 
     def save(self, *args, **kwargs):
         """

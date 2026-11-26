@@ -26,7 +26,7 @@ class Command(CountyFilterMixin, BaseCommand):
 
         with transaction.atomic():
             for _, row in gdf.iterrows():
-                region, created = Region.objects.import_or_update(
+                region, created = Region.all_objects.import_or_update(
                     name=row.NAMELSAD20,
                     slug=f'cd-{row["CD118FP"]}',
                     type=Region.Type.CONGRESSIONAL_DISTRICT,

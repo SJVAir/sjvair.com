@@ -18,6 +18,9 @@ class ChemicalSerializer(serializers.Serializer):
         'dtxsid',
         'iarc_group',
         'categories',
+        # CDPR's stand-ins for an unnamed ingredient (UNKNOWN, AI IS CONFIDENTIAL): real
+        # applications with no pounds, which a chemical picker can leave out.
+        ('placeholder', lambda c: c.is_placeholder),
     )
 
 
@@ -26,6 +29,7 @@ class CommoditySerializer(serializers.Serializer):
         ('id', lambda c: c.sqid),
         'site_code',
         'name',
+        'display_name',
     )
 
 
@@ -35,6 +39,7 @@ class ProductSerializer(serializers.Serializer):
         'prodno',
         'reg_number',
         'name',
+        'display_name',
         # The classified flag (fumigants.classify_fumigants), which corrects
         # CDPR's misses; the raw CDPR flag is kept beside it.
         ('fumigant', lambda p: p.is_fumigant),

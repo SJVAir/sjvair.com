@@ -1,4 +1,16 @@
 from django import forms
+from django.conf import settings
+from django.utils import timezone
+
+
+class PacificDateTimeField(forms.DateTimeField):
+    """A DateTimeField that reads a zone-less value as Pacific wall time,
+    whatever zone is active. Zone-aware values ("Z" or an offset) keep
+    their own zone."""
+
+    def to_python(self, value):
+        with timezone.override(settings.DEFAULT_TIMEZONE):
+            return super().to_python(value)
 
 
 class BboxField(forms.CharField):

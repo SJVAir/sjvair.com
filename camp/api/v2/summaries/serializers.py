@@ -1,12 +1,50 @@
+from contextlib import contextmanager
+from contextvars import ContextVar
+
 from django.conf import settings
 
 from resticus import serializers
 
 from camp.api.v2.monitors.serializers import MonitorSerializer
+from camp.apps.summaries.schedule import row_is_final
+
+# The instant `is_final` is judged at. The summary endpoints bind it once per
+# request (serializing_at), so every row and the cache rule agree; unbound,
+# rows use the current time.
+_serialize_now = ContextVar('summary_serialize_now', default=None)
+
+
+# Set to a mutable {'partial': bool} holder by serializing_at; `_is_final` marks
+# it when it serializes a partial row, so the endpoint can keep that response
+# off the long cache.
+_serialized = ContextVar('summary_serialized', default=None)
+
+
+@contextmanager
+def serializing_at(now):
+    """Bind the instant; yields a holder whose 'partial' is True once a partial row was serialized."""
+    holder = {'partial': False}
+    token = _serialize_now.set(now)
+    token_holder = _serialized.set(holder)
+    try:
+        yield holder
+    finally:
+        _serialized.reset(token_holder)
+        _serialize_now.reset(token)
 
 
 def _timestamp(s):
     return s.timestamp.astimezone(settings.DEFAULT_TIMEZONE).isoformat()
+
+
+def _is_final(s):
+    is_partial = bool(s.is_partial)
+    if is_partial:
+        holder = _serialized.get()
+        if holder is not None:
+            holder['partial'] = True
+    return row_is_final(
+        s.resolution, s.timestamp, s.entry_type, now=_serialize_now.get(), is_partial=is_partial)
 
 
 class MonitorSummarySerializer(serializers.Serializer):
@@ -16,6 +54,7 @@ class MonitorSummarySerializer(serializers.Serializer):
         'resolution',
         'processor',
         'count',
+        ('sum', lambda s: s.sum_value),
         'expected_count',
         'minimum',
         'maximum',
@@ -23,7 +62,14 @@ class MonitorSummarySerializer(serializers.Serializer):
         'stddev',
         'p25',
         'p75',
+        'max_1h',
+        'max_8h',
+        'mean_24h',
+        'daily_statistic_mean',
+        'daily_statistic_days',
+        'daily_statistic_expected_days',
         'is_complete',
+        ('is_final', _is_final),
     ]
 
 
@@ -58,7 +104,14 @@ class RegionSummarySerializer(serializers.Serializer):
         'stddev',
         'p25',
         'p75',
+        'max_1h',
+        'max_8h',
+        'mean_24h',
+        'daily_statistic_mean',
+        'daily_statistic_days',
+        'daily_statistic_expected_days',
         'station_count',
+        ('is_final', _is_final),
     ]
 
 
