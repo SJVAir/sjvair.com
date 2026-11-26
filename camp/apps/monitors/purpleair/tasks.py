@@ -331,7 +331,15 @@ def _history_dispatch_next(job):
 
 
 def _history_dispatch(job):
-    monitor_ids = monitors_for_window(job.chunk_start, job.cursor, job.monitor_ids)
+    # A sensor PurpleAir can't find (deleted) won't be found for any window,
+    # so after its first not_found gap the rest of the job skips it.
+    not_found = {str(pk) for pk in PurpleAirHistoryGap.objects.filter(
+        job=job, reason=PurpleAirHistoryGap.Reason.NOT_FOUND,
+    ).values_list('monitor_id', flat=True)}
+    monitor_ids = [
+        pk for pk in monitors_for_window(job.chunk_start, job.cursor, job.monitor_ids)
+        if str(pk) not in not_found
+    ]
 
     job.batch_id += 1
     job.pending_tasks = len(monitor_ids)

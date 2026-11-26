@@ -371,6 +371,31 @@ class HistoryTickTests(TestCase):
             self.tick()
         assert api.call_count == 0
 
+    def test_sensor_not_found_is_skipped_in_later_windows(self):
+        self.job.range_start = self.range_start - timedelta(days=7)
+        self.job.save()
+        with patch(API, side_effect=PurpleAirNotFound('Cannot find a sensor')) as api:
+            self.tick()  # [Jan 1, Jan 8): not found
+            self.job.locked_at = None
+            self.job.save()
+            self.tick()  # [Dec 25, Jan 1): nothing to dispatch, so the job finishes
+        assert api.call_count == 1
+        assert self.job.state == PurpleAirHistoryJob.State.DONE
+        assert PurpleAirHistoryGap.objects.filter(job=self.job).count() == 1
+
+    def test_not_found_in_another_job_does_not_skip(self):
+        other = PurpleAirHistoryJob.objects.create(
+            cursor=self.range_end, range_start=self.range_start, range_end=self.range_end,
+            state=PurpleAirHistoryJob.State.DONE,
+        )
+        PurpleAirHistoryGap.objects.create(
+            job=other, monitor=self.monitor, window_start=self.range_start, window_end=self.range_end,
+            reason=PurpleAirHistoryGap.Reason.NOT_FOUND,
+        )
+        with patch(API, return_value=_tail(self.range_end, 3)) as api:
+            self.tick()
+        assert api.call_count == 1
+
     def test_dispatches_then_completes_the_window(self):
         with patch(API, return_value=_tail(self.range_end, 3)) as api:
             self.tick()
